@@ -9,10 +9,7 @@ from ollama_client import chat
 
 load_dotenv()
 
-supabase = create_client(
-    os.environ["SUPABASE_URL"],
-    os.environ["SUPABASE_KEY"],
-)
+supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_KEY"])
 
 GRAPHQL_URL = "https://leetcode.com/graphql"
 HEADERS = {
@@ -24,12 +21,9 @@ HEADERS = {
 MODEL = "qwen2.5:7b-instruct"
 
 
-# ---------------------------------------------------------------------------
 # Fetch hints + Python template from LeetCode
-# ---------------------------------------------------------------------------
 
 def fetch_meta(slug: str) -> dict:
-    """Fetch hints and Python code template for a problem."""
     query = """
     query questionData($titleSlug: String!) {
       question(titleSlug: $titleSlug) {
@@ -51,22 +45,16 @@ def fetch_meta(slug: str) -> dict:
         data = r.json()["data"]["question"]
         hints = data.get("hints", [])
         snippets = data.get("codeSnippets", [])
-        py_template = next(
-            (s["code"] for s in snippets if "Python" in s["lang"]), ""
-        )
+        py_template = next((s["code"] for s in snippets if "Python" in s["lang"]), "")
         return {"hints": hints, "python_template": py_template}
     except Exception as e:
         print(f"  ⚠️  Could not fetch meta for {slug}: {e}")
         return {"hints": [], "python_template": ""}
 
 
-# ---------------------------------------------------------------------------
 # Generate ground truth solution via local LLM
-# ---------------------------------------------------------------------------
 
-def generate_solution(title: str, description: str,
-                       hints: list, template: str) -> str:
-    """Use the local LLM to generate a reference Python solution."""
+def generate_solution(title: str, description: str, hints: list, template: str) -> str:
     hints_text = "\n".join(f"- {h}" for h in hints) if hints else "None provided."
     prompt = (
         f"You are an expert competitive programmer.\n\n"
@@ -77,24 +65,15 @@ def generate_solution(title: str, description: str,
         "Write a clean, correct, complete Python solution. "
         "Return ONLY the Python code — no explanation, no markdown fences."
     )
-    raw = chat(
-        MODEL,
-        "You are an expert competitive programmer. Return only clean Python code, no markdown.",
-        [{"role": "user", "content": prompt}],
-        temperature=0.1,
-    )
-    # Strip any markdown fences the model adds
+    raw = chat(MODEL, "You are an expert competitive programmer. Return only clean Python code, no markdown.", [{"role": "user", "content": prompt}], temperature=0.1)
     raw = re.sub(r'```[\w]*\n?', '', raw)
     raw = re.sub(r'```', '', raw)
     return raw.strip()
 
 
-# ---------------------------------------------------------------------------
 # Main
-# ---------------------------------------------------------------------------
 
 def main():
-    # Only fetch for problems that don't have a solution yet
     res = (
         supabase.table("problems")
         .select("id, slug, title, description")

@@ -30,49 +30,28 @@ STRICT RULES — violating any of these will result in a wrong answer:
 
 
 def clean_answer(text: str) -> str:
-    """Strip markdown fences, Answer: prefixes, and other noise."""
-    # Strip markdown fences
     text = re.sub(r'```[\w]*\n?', '', text)
     text = re.sub(r'```', '', text)
-    # Strip "Answer:" prefix (case-insensitive, with optional space)
     text = re.sub(r'(?i)^answer\s*:\s*', '', text)
-    # Strip backtick-wrapped single line e.g. `seen_chars = set()`
     text = re.sub(r'^`([^`]+)`$', r'\1', text.strip())
     return text.strip()
 
 
 def get_student_answer(step_prompt: str, context: str, agent: str = "normal") -> str:
-    """Simulate a student answering a micro-step question.
-    agent: 'weak', 'normal', or 'strong'
-    """
     model = AGENTS.get(agent, NORMAL_MODEL)
 
     if agent == "strong":
         temperature = 0.3
     elif agent == "normal":
-        temperature = 0.5
-    else:  # weak
-        temperature = 0.8
+        temperature = 0.4
+    else:
+        temperature = 0.6
 
-    # Keep context minimal — just the variable names established, not full code
-    # This prevents the agent from copying prior answers into the current step
     context_msg = ""
     if context:
-        context_msg = (
-            f"VARIABLES DEFINED SO FAR (for reference only — do NOT repeat them):\n"
-            f"{context}\n\n"
-        )
+        context_msg = (f"VARIABLES DEFINED SO FAR (for reference only — do NOT repeat them):\n"f"{context}\n\n")
 
-    user_msg = (
-        f"{context_msg}"
-        f"CURRENT STEP (answer THIS only):\n{step_prompt}\n\n"
-        "Your one-line answer:"
-    )
+    user_msg = (f"{context_msg}"f"CURRENT STEP (answer THIS only):\n{step_prompt}\n\n""Your one-line answer:")
 
-    raw = chat(
-        model,
-        STUDENT_SYSTEM,
-        [{"role": "user", "content": user_msg}],
-        temperature=temperature,
-    )
+    raw = chat(model, STUDENT_SYSTEM, [{"role": "user", "content": user_msg}], temperature=temperature)
     return clean_answer(raw)

@@ -1,5 +1,5 @@
 DECOMPOSE_SYSTEM = """
-You are a CS tutor breaking a programming problem into ordered micro-steps for a beginner student.
+PERSONA: You are a CS tutor breaking a programming problem into ordered micro-steps for a beginner student.
 
 RULES:
 - Generate 7-10 steps maximum.
@@ -67,7 +67,7 @@ Now decompose the given problem the same way. Return JSON only.
 """
 
 EVAL_SYSTEM = """
-You are a strict but fair grader for ONE micro-step in a programming tutor.
+PERSONA: You are a strict but fair grader for ONE micro-step in a programming tutor.
 
 RULES:
 - Output JSON only — no markdown, no prose outside the JSON object.

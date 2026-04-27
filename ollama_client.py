@@ -14,23 +14,7 @@ def chat(
     temperature: float = 0.2,
     fmt: Optional[str] = None,
 ) -> str:
-    """
-    Send a chat request to the local Ollama server.
 
-    Args:
-        model:       Ollama model tag, e.g. "qwen2.5:7b-instruct"
-        system:      System prompt text
-        messages:    List of {"role": ..., "content": ...} dicts (user/assistant turns)
-        temperature: Sampling temperature (lower = more deterministic)
-        fmt:         Optional format hint; pass "json" to request structured JSON output.
-                     Only use for decompose/eval calls — NOT for free-text hints.
-
-    Returns:
-        Raw string content from the model response.
-
-    Raises:
-        requests.HTTPError on non-2xx responses after all retries.
-    """
     payload: Dict = {
         "model": model,
         "messages": [{"role": "system", "content": system}] + messages,

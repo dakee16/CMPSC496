@@ -20,9 +20,7 @@ def upload_problems(path="problems_raw.json"):
 
     for p in problems:
         try:
-            supabase.table("problems").upsert(
-                p, on_conflict="slug"  # skip duplicates
-            ).execute()
+            supabase.table("problems").upsert(p, on_conflict="slug").execute()
             success += 1
             print(f"  ✅ {p['slug']}")
         except Exception as e:
