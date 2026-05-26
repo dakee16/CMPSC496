@@ -171,11 +171,18 @@ def decompose_question(question_id: str, question_text: str) -> list[StepItem]:
 
 
 def eval_step(step: StepItem, student_answer: str, context: str) -> EvalResult:
+    if not student_answer or not student_answer.strip():
+        return EvalResult(
+            correct=False,
+            short_reason="No answer provided.",
+            correct_answer=None,
+        )
     if step.expected_type == "code":
         student_answer = normalize_code(student_answer)
+        
     user_msg = (
         f"MICRO-STEP:\n{step.prompt}\n\n"
-        f"RUBRIC (what correct looks like for THIS step only):\n{step.rubric or 'Not provided'}\n\n"
+        f"RUBRIC:\n{step.rubric or 'Not provided'}\n\n"
         f"EXPECTED_TYPE: {step.expected_type}\n\n"
         f"PRIOR CONTEXT (validated facts for this question only):\n{context or 'None yet.'}\n\n"
         f"STUDENT ANSWER:\n{student_answer}\n\n"
@@ -360,7 +367,7 @@ def run_question(problem: dict) -> None:
 
 def main() -> None:
     print("Loading problems from Supabase…")
-    problems = load_problems(limit=500)
+    problems = load_problems(limit=100)
     if not problems:
         print("⚠️  No problems found. Run upload_to_supabase.py first.")
         return

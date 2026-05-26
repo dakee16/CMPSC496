@@ -41,17 +41,17 @@ def get_student_answer(step_prompt: str, context: str, agent: str = "normal") ->
     model = AGENTS.get(agent, NORMAL_MODEL)
 
     if agent == "strong":
-        temperature = 0.3
+        temperature = 0.5
     elif agent == "normal":
-        temperature = 0.4
+        temperature = 0.5
     else:
-        temperature = 0.6
+        temperature = 0.5
 
     context_msg = ""
     if context:
-        context_msg = (f"VARIABLES DEFINED SO FAR (for reference only — do NOT repeat them):\n"f"{context}\n\n")
+        context_msg = (f"VARIABLES DEFINED SO FAR (for reference only):\n"f"{context}\n\n")
 
-    user_msg = (f"{context_msg}"f"CURRENT STEP (answer THIS only):\n{step_prompt}\n\n""Your one-line answer:")
+    user_msg = (f"{context_msg}"f"CURRENT STEP (answer THIS only):\n{step_prompt}\n\n""Your answer:")
 
     raw = chat(model, STUDENT_SYSTEM, [{"role": "user", "content": user_msg}], temperature=temperature)
     return clean_answer(raw)

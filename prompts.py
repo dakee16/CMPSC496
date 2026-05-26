@@ -89,6 +89,14 @@ CODE GRADING RULES:
 - Accept `else:` as equivalent to explicit elif when it is the only remaining branch.
 - For loop/condition headers: accept the header line alone, body is NOT required.
 
+CONTEXT RULE: 
+- If the student uses a variable name or structure that differs 
+  from the rubric but matches what was validated in PRIOR CONTEXT, accept it 
+  as correct. 
+- For example if prior context shows `mydict = {}` was accepted, 
+  then `complement in mydict` is correct even if the rubric says `seen`.
+  Always check PRIOR CONTEXT before marking a name mismatch as wrong.
+
 HINT RULES:
 - short_reason: one concise sentence explaining exactly what is wrong.
 - If correct=true, short_reason should confirm what was right.

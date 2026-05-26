@@ -63,6 +63,12 @@ def decompose(req: DecomposeRequest):
 
 @app.post("/evaluate")
 def evaluate(req: EvaluateRequest):
+    if not req.answer or not req.answer.strip():
+        return {
+            "correct": False,
+            "short_reason": "No answer provided.",
+            "correct_answer": "",
+        }
     try:
         step = StepItem(
             question_id=req.step.get("step_id", "Step 1"),
@@ -78,4 +84,41 @@ def evaluate(req: EvaluateRequest):
             "correct_answer": result.correct_answer or "",
         }
     except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
+
+@app.get("/problems")
+def list_problems(limit: int = 100, difficulty: str = None):
+    """List problems from Supabase with optional difficulty filter."""
+    try:
+        from supabase import create_client
+        import os
+        sb = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_KEY"])
+        query = sb.table("problems").select(
+            "id, slug, title, difficulty, topic_tags"
+        ).limit(limit)
+        if difficulty:
+            query = query.eq("difficulty", difficulty)
+        res = query.execute()
+        return {"problems": res.data, "count": len(res.data)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/problems/{slug}")
+def get_problem(slug: str):
+    """Fetch a single problem by slug from Supabase."""
+    try:
+        from supabase import create_client
+        import os
+        sb = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_KEY"])
+        res = sb.table("problems").select(
+            "id, slug, title, difficulty, description, topic_tags, solution"
+        ).eq("slug", slug).single().execute()
+        if not res.data:
+            raise HTTPException(status_code=404, detail=f"Problem '{slug}' not found.")
+        return res.data
+    except HTTPException:
+        raise
+    except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
