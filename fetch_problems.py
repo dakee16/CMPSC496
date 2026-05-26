@@ -1,126 +1,131 @@
+"""
+fetch_problems.py — Scrape 500 free LeetCode problems via GraphQL.
+Outputs problems_raw.json for upload_to_supabase.py to ingest.
+"""
 import json
-import time
 import re
-import os
+import time
 import requests
-from dotenv import load_dotenv
-from supabase import create_client
-from ollama_client import chat
-
-load_dotenv()
-
-supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_KEY"])
 
 GRAPHQL_URL = "https://leetcode.com/graphql"
 HEADERS = {
     "Content-Type": "application/json",
     "User-Agent": "Mozilla/5.0",
-    "Referer": "https://leetcode.com"
+    "Referer": "https://leetcode.com",
 }
 
-MODEL = "qwen2.5:7b-instruct"
-
-
-# Fetch hints + Python template from LeetCode
-
-def fetch_meta(slug: str) -> dict:
-    query = """
-    query questionData($titleSlug: String!) {
-      question(titleSlug: $titleSlug) {
-        hints
-        codeSnippets {
-          lang
-          code
-        }
-      }
+LIST_QUERY = """
+query problemsetQuestionList($categorySlug: String, $limit: Int, $skip: Int, $filters: QuestionListFilterInput) {
+  problemsetQuestionList: questionList(
+    categorySlug: $categorySlug
+    limit: $limit
+    skip: $skip
+    filters: $filters
+  ) {
+    total: totalNum
+    questions: data {
+      titleSlug
+      title
+      difficulty
+      topicTags { name }
+      paidOnly: isPaidOnly
     }
-    """
-    try:
-        r = requests.post(
-            GRAPHQL_URL,
-            json={"query": query, "variables": {"titleSlug": slug}},
-            headers=HEADERS,
-            timeout=15,
-        )
-        data = r.json()["data"]["question"]
-        hints = data.get("hints", [])
-        snippets = data.get("codeSnippets", [])
-        py_template = next((s["code"] for s in snippets if "Python" in s["lang"]), "")
-        return {"hints": hints, "python_template": py_template}
-    except Exception as e:
-        print(f"  ⚠️  Could not fetch meta for {slug}: {e}")
-        return {"hints": [], "python_template": ""}
+  }
+}
+"""
+
+CONTENT_QUERY = """
+query questionData($titleSlug: String!) {
+  question(titleSlug: $titleSlug) {
+    content
+  }
+}
+"""
+
+TARGET = 500
+PAGE_SIZE = 50
 
 
-# Generate ground truth solution via local LLM
+def strip_html(html: str) -> str:
+    if not html:
+        return ""
+    text = re.sub(r"<[^>]+>", " ", html)
+    replacements = {
+        "&nbsp;": " ", "&lt;": "<", "&gt;": ">",
+        "&amp;": "&", "&quot;": '"', "&#39;": "'",
+    }
+    for k, v in replacements.items():
+        text = text.replace(k, v)
+    return re.sub(r"\s+", " ", text).strip()
 
-def generate_solution(title: str, description: str, hints: list, template: str) -> str:
-    hints_text = "\n".join(f"- {h}" for h in hints) if hints else "None provided."
-    prompt = (
-        f"You are an expert competitive programmer.\n\n"
-        f"Problem: {title}\n\n"
-        f"Description:\n{description[:1000]}\n\n"
-        f"Hints:\n{hints_text}\n\n"
-        f"Python function template to complete:\n{template}\n\n"
-        "Write a clean, correct, complete Python solution. "
-        "Return ONLY the Python code — no explanation, no markdown fences."
+
+def graphql(query: str, variables: dict) -> dict:
+    r = requests.post(
+        GRAPHQL_URL,
+        json={"query": query, "variables": variables},
+        headers=HEADERS,
+        timeout=20,
     )
-    raw = chat(MODEL, "You are an expert competitive programmer. Return only clean Python code, no markdown.", [{"role": "user", "content": prompt}], temperature=0.1)
-    raw = re.sub(r'```[\w]*\n?', '', raw)
-    raw = re.sub(r'```', '', raw)
-    return raw.strip()
+    r.raise_for_status()
+    return r.json()
 
 
-# Main
+def fetch_list(skip: int, limit: int) -> list[dict]:
+    data = graphql(LIST_QUERY, {
+        "categorySlug": "",
+        "limit": limit,
+        "skip": skip,
+        "filters": {},
+    })
+    return data["data"]["problemsetQuestionList"]["questions"]
+
+
+def fetch_content(slug: str) -> str:
+    try:
+        data = graphql(CONTENT_QUERY, {"titleSlug": slug})
+        return (data["data"]["question"] or {}).get("content") or ""
+    except Exception as e:
+        print(f"  ⚠️  content fetch failed for {slug}: {e}")
+        return ""
+
 
 def main():
-    res = (
-        supabase.table("problems")
-        .select("id, slug, title, description")
-        .is_("solution", "null")
-        .limit(500)
-        .execute()
-    )
-    problems = res.data
+    collected = []
+    skip = 0
+    print(f"Fetching {TARGET} free LeetCode problems...\n")
 
-    if not problems:
-        print("✅ All problems already have solutions.")
-        return
+    while len(collected) < TARGET:
+        print(f"Page skip={skip}...")
+        batch = fetch_list(skip, PAGE_SIZE)
+        if not batch:
+            print("No more problems available.")
+            break
 
-    print(f"Generating solutions for {len(problems)} problems...\n")
+        for q in batch:
+            if q.get("paidOnly"):
+                continue
+            if len(collected) >= TARGET:
+                break
+            slug = q["titleSlug"]
+            print(f"  [{len(collected)+1}/{TARGET}] {slug}")
+            content = fetch_content(slug)
+            collected.append({
+                "slug": slug,
+                "title": q["title"],
+                "difficulty": q["difficulty"],
+                "description": strip_html(content),
+                "topic_tags": [t["name"] for t in q.get("topicTags", [])],
+                "source": "leetcode",
+            })
+            time.sleep(0.4)  # polite rate limit
 
-    for i, p in enumerate(problems):
-        slug = p["slug"]
-        print(f"[{i+1}/{len(problems)}] {slug}")
+        skip += PAGE_SIZE
+        time.sleep(0.5)
 
-        # Get hints + template from LeetCode
-        meta = fetch_meta(slug)
-        time.sleep(0.8)  # polite rate limiting
+    with open("problems_raw.json", "w") as f:
+        json.dump(collected, f, indent=2)
 
-        # Generate solution via LLM
-        solution = generate_solution(
-            p["title"],
-            p["description"] or "",
-            meta["hints"],
-            meta["python_template"],
-        )
-
-        if not solution:
-            print(f"  ⚠️  Empty solution — skipping.")
-            continue
-
-        # Save to Supabase
-        try:
-            supabase.table("problems").update(
-                {"solution": solution}
-            ).eq("id", p["id"]).execute()
-            print(f"  ✅ Saved ({len(solution)} chars)")
-        except Exception as e:
-            print(f"  ⚠️  Failed to save: {e}")
-
-        time.sleep(1.0)  # LLM cooldown
-
-    print("\nDone. All solutions generated.")
+    print(f"\n✅ Saved {len(collected)} problems to problems_raw.json")
 
 
 if __name__ == "__main__":

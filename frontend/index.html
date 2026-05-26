@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>MicroTutor</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <h1>MicroTutor</h1>
+  <p>An AI-powered micro-programming tutor.</p>
+
+  <hr />
+
+  <div id="problem-section">
+    <h2>Two Sum</h2>
+    <p><strong>Difficulty:</strong> Easy</p>
+    <p>
+      Given an array of integers <code>nums</code> and an integer <code>target</code>,
+      return indices of the two numbers such that they add up to <code>target</code>.
+      You may assume that each input would have exactly one solution, and you may not
+      use the same element twice.
+    </p>
+  </div>
+
+  <hr />
+
+  <button id="start-btn">Start Tutoring Session</button>
+
+  <div id="layout-container">
+
+    <div id="step-section" style="display: none;">
+        <h2>Step <span id="step-number"> 1 </span> of <span id="total-steps"> ? </span></h2>
+
+        <p id="step-prompt">Step prompt will appear here.</p>
+
+        <label for="answer-input">Your answer:</label>
+        <br />
+        <textarea id="answer-input" rows="4" cols="60" placeholder="Type your code here..."></textarea>
+        <br />
+        <button id="submit-btn">Submit Answer</button>
+
+        <div id="feedback-section" style="display: none;">
+        <hr/>
+        <p id="feedback-text"></p>
+        <button id="next-btn" disabled >Next Step</button>
+        </div>
+    </div>
+    <div id="answers-panel" style="display: none;">
+        <h3>Your Answers</h3>
+        <ul id="answers-list"></ul>
+    </div>
+
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>

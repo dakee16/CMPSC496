@@ -14,13 +14,16 @@ from run_phase1 import decompose_question, eval_step, parse_json
 from schemas import StepItem
 
 app = FastAPI(title="MicroTutor API", version="1.0")
+from fastapi.middleware.cors import CORSMiddleware
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "https://*.vercel.app"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=["*"],          # allow any frontend origin (for dev)
+    allow_credentials=True,
+    allow_methods=["*"],          # allow GET, POST, PUT, etc.
+    allow_headers=["*"],          # allow any headers
 )
+
 
 
 class DecomposeRequest(BaseModel):
