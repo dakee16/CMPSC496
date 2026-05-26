@@ -112,7 +112,7 @@ EVERYTHING LOGGED TO SUPABASE
 ## 🗃️ Database Schema
 
 ```sql
-problems      — 500 LeetCode problems with ground truth solutions
+problems      — 100 LeetCode problems with ground truth solutions
     id · slug · title · difficulty · description · topic_tags · solution
 
 steps         — decomposed micro-steps per problem
@@ -157,8 +157,8 @@ ollama pull qwen2.5:7b-instruct
 ### 2. Clone & Install
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/microprog-ai-tutor.git
-cd microprog-ai-tutor
+git clone https://github.com/YOUR_USERNAME/CMPSC496.git
+cd CMPSC496
 
 python3 -m venv .venv
 source .venv/bin/activate
@@ -172,7 +172,7 @@ Create a `.env` file in the root:
 
 ```env
 SUPABASE_URL=https://your-project-id.supabase.co
-SUPABASE_KEY=your-anon-key-here
+SUPABASE_KEY=your-public-anon-key-here
 ```
 
 ### 4. Set Up Supabase
