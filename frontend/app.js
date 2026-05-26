@@ -29,6 +29,8 @@ const MAX_ATTEMPTS = 3;
 
 startBtn.addEventListener("click", async function() {
   console.log("Start clicked — calling backend...");
+  startBtn.textContent = "Calling Backend...";
+  startBtn.disabled = true;
 
   try {
     const response = await fetch(`${API_URL}/decompose`, {
@@ -78,6 +80,7 @@ submitBtn.addEventListener("click", async function() {
   submitBtn.textContent = "Evaluating...";
   const currentStep = steps[currentStepIndex]; 
   const userAnswer = answerInput.value
+
   
   try {
     const response = await fetch(`${API_URL}/evaluate`, {
