@@ -1,87 +1,146 @@
+/* ════════════════════════════════════════════════════════════
+   DESIGN TOKENS — dark theme, midnight palette
+   ════════════════════════════════════════════════════════════ */
+:root {
+  /* Brand colors */
+  --indigo-600: #6366f1;       /* primary action */
+  --indigo-500: #818cf8;       /* hover / lighter */
+  --indigo-400: #a5b4fc;       /* even lighter for accents */
+  --indigo-50: #1e1b4b;        /* very dark indigo for tinted backgrounds */
+
+  /* Dark page surfaces */
+  --page-bg: #0a0e27;          /* deepest navy — body background */
+  --card-bg: #151a36;           /* card background */
+  --card-bg-soft: #1a1f3d;      /* nested elements */
+  --card-border: #252a4a;       /* card borders */
+
+  /* Text — light on dark */
+  --text-bright: #f1f5f9;       /* main text, headings */
+  --text-muted: #94a3b8;        /* body text, secondary */
+  --text-dim: #64748b;           /* tertiary, labels */
+
+  /* Difficulty pills — desaturated for dark */
+  --green-bg: rgba(34, 197, 94, 0.15);
+  --green-text: #4ade80;
+  --amber-bg: rgba(245, 158, 11, 0.15);
+  --amber-text: #fbbf24;
+  --red-bg: rgba(239, 68, 68, 0.15);
+  --red-text: #f87171;
+
+  /* Shadows — stronger on dark */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.5);
+
+  --radius: 12px;
+  --transition: all 0.18s ease;
+}
+
+/* ════════════════════════════════════════════════════════════
+   GLOBAL RESET + BASE PAGE
+   ════════════════════════════════════════════════════════════ */
+* {
+  box-sizing: border-box;
+}
+
 body {
-  font-family: system-ui, sans-serif;
+  font-family: 'Inter', system-ui, sans-serif;
+  color: var(--text-bright);
+  background: var(--page-bg);
+  margin: 0;
+  padding: 0;
+  line-height: 1.6;
+  min-height: 100vh;
+}
+
+/* Everything except the header gets centered + padded */
+body > *:not(#app-header) {
   max-width: 1100px;
-  margin: 20px auto;
-  padding: 0 20px;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 40px;
+  padding-right: 40px;
 }
 
-#layout-container {
-  display: flex;
-  gap: 30px;
-  align-items: flex-start;
+hr {
+  display: none;
 }
 
-#step-section {
-  flex: 2;
+/* ════════════════════════════════════════════════════════════
+   APP HEADER — gradient bar at the top
+   ════════════════════════════════════════════════════════════ */
+
+#app-header {
+  background: linear-gradient(135deg, #0a0e27 0%, #1e1b4b 50%, #312e81 100%);
+  padding: 36px 40px;
+  margin-bottom: 32px;
+  box-shadow: var(--shadow-lg);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  text-align: center;
 }
 
-#answers-panel {
-  flex: 1;
-  background: #f5f5f5;
-  padding: 15px 20px;
-  border-radius: 8px;
-  border: 1px solid #ddd;
+#app-header h1 {
+  font-size: 30px;
+  font-weight: 700;
+  color: white;
+  letter-spacing: -0.02em;
+  margin: 0;
 }
 
-#answers-list {
-  padding-left: 20px;
+#app-header p {
+  color: rgba(255, 255, 255, 0.65);
+  margin: 4px 0 0;
+  font-size: 15px;
 }
 
-#answers-list li {
-  margin-bottom: 12px;
-}
-
-#answers-list li code {
-  display: block;
-  background: white;
-  padding: 6px 10px;
-  border-radius: 4px;
-  margin-top: 4px;
-  font-size: 13px;
-  white-space: pre-wrap;
-}
-
-textarea {
-  font-family: monospace;
-  font-size: 14px;
-}
-
-button {
-  padding: 8px 16px;
-  cursor: pointer;
-}
-
-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
-}
-
+/* ════════════════════════════════════════════════════════════
+   TABS BAR
+   ════════════════════════════════════════════════════════════ */
 #tabs {
   display: flex;
-  gap: 8px;
-  margin-bottom: 20px;
-  border-bottom: 1px solid #ddd;
+  gap: 4px;
+  margin-bottom: 32px;
+  background: var(--card-bg);
+  padding: 6px;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--card-border);
+  width: fit-content;
 }
 
 .tab-btn {
   background: none;
   border: none;
-  padding: 10px 20px;
+  padding: 10px 22px;
   cursor: pointer;
-  font-size: 15px;
-  color: #666;
-  border-bottom: 3px solid transparent;
-  margin-bottom: -1px;
+  font-size: 14px;
+  font-weight: 500;
+  font-family: inherit;
+  color: var(--text-muted);
+  border-radius: 8px;
+  transition: var(--transition);
 }
 
 .tab-btn:hover {
-  color: #000;
+  color: var(--text-bright);
+  background: var(--card-bg-soft);
 }
 
 .tab-btn.active {
-  color: #000;
+  color: white;
+  background: var(--indigo-600);
   font-weight: 600;
-  border-bottom: 3px solid #007aff;
+}
+
+/* ════════════════════════════════════════════════════════════
+   PROBLEM LIST PAGE
+   ════════════════════════════════════════════════════════════ */
+#problem-list-container h2 {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-bright);
+  margin: 0 0 20px;
+  text-align: center;  
 }
 
 #problem-list {
@@ -94,48 +153,297 @@ button:disabled {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 14px 18px;
-  margin-bottom: 8px;
-  background: white;
-  border: 1px solid #e1e1e1;
-  border-radius: 8px;
+  padding: 18px 22px;
+  margin-bottom: 10px;
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: var(--transition);
+  box-shadow: var(--shadow-sm);
 }
 
 .problem-item:hover {
-  border-color: #007aff;
-  background: #f8faff;
-  transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  border-color: var(--indigo-500);
+  background: var(--card-bg-soft);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
 }
-
 
 .problem-title {
   font-weight: 600;
   font-size: 15px;
+  color: var(--text-bright);
 }
 
+/* ════════════════════════════════════════════════════════════
+   DIFFICULTY PILLS
+   ════════════════════════════════════════════════════════════ */
 .difficulty {
-  padding: 4px 12px;
-  border-radius: 12px;
-  font-size: 12px;
-  font-weight: 600;
+  padding: 5px 14px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.3px;
+  letter-spacing: 0.5px;
 }
 
 .difficulty-easy {
-  background: #e8f5e9;
-  color: #2e7d32;
+  background: var(--green-bg);
+  color: var(--green-text);
 }
 
 .difficulty-medium {
-  background: #fff8e1;
-  color: #c77700;
+  background: var(--amber-bg);
+  color: var(--amber-text);
 }
 
 .difficulty-hard {
-  background: #ffebee;
-  color: #c62828;
+  background: var(--red-bg);
+  color: var(--red-text);
+}
+
+/* ════════════════════════════════════════════════════════════
+   PROBLEM DETAIL PAGE
+   ════════════════════════════════════════════════════════════ */
+#problem-title {
+  text-align: center;
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-bright);
+  margin: 20px 0 10px;
+  letter-spacing: -0.01em;
+}
+
+#problem-description {
+  white-space: pre-wrap;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.75;
+  background: var(--card-bg);
+  padding: 28px 32px;
+  border-radius: var(--radius);
+  border: 1px solid var(--card-border);
+  box-shadow: var(--shadow-md);
+  max-width: 760px;
+  margin: 28px auto;
+  color: var(--text-muted);
+}
+
+#problem-description .desc-header {
+  color: var(--text-bright);
+  font-size: 15px;
+  font-weight: 700;
+  margin-top: 20px;        /* space before each header */
+  margin-bottom: 8px;      /* space after each header */
+}
+
+#problem-description .desc-header:first-child {
+  margin-top: 0;           /* no top margin on the very first header */
+}
+
+#problem-description .io-label {
+  font-style: normal;
+  color: var(--indigo-400);
+  font-weight: 600;
+  display: block;            /* forces its own line */
+  margin-top: 4px;           /* tight spacing between Input/Output/Explanation */
+}
+
+/* ════════════════════════════════════════════════════════════
+   BUTTONS
+   ════════════════════════════════════════════════════════════ */
+
+/* Default (secondary) button */
+button {
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  padding: 10px 20px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: var(--transition);
+  border: 1px solid var(--card-border);
+  background: var(--card-bg);
+  color: var(--text-bright);
+}
+
+button:hover:not(:disabled):not(.tab-btn) {
+  border-color: var(--indigo-500);
+  background: var(--card-bg-soft);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+/* Primary action buttons */
+#start-btn,
+#submit-btn,
+#next-btn {
+  background: var(--indigo-600);
+  color: white;
+  border-color: var(--indigo-600);
+  font-weight: 600;
+  padding: 12px 28px;
+  font-size: 14px;
+  box-shadow: var(--shadow-md);
+}
+
+#start-btn:hover:not(:disabled),
+#submit-btn:hover:not(:disabled),
+#next-btn:hover:not(:disabled) {
+  background: var(--indigo-500);
+  border-color: var(--indigo-500);
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-1px);
+}
+
+
+
+/* ════════════════════════════════════════════════════════════
+   STEP SECTION — main tutoring UI
+   ════════════════════════════════════════════════════════════ */
+#layout-container {
+  display: flex;
+  gap: 32px;
+  align-items: flex-start;
+  margin-top: 32px;
+}
+
+#step-section {
+  flex: 2;
+  background: var(--card-bg);
+  padding: 32px;
+  border-radius: var(--radius);
+  border: 1px solid var(--card-border);
+  box-shadow: var(--shadow-md);
+}
+
+#step-section h2 {
+  font-size: 20px;
+  color: var(--text-bright);
+  margin: 0 0 12px;
+  font-weight: 700;
+}
+
+#step-prompt {
+  font-size: 15px;
+  color: var(--text-muted);
+  line-height: 1.65;
+  margin-bottom: 20px;
+}
+
+label[for="answer-input"] {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+#submit-btn {
+  margin: 16px 0 0;
+  display: inline-block;
+}
+
+/* Feedback box */
+#feedback-section {
+  margin-top: 24px;
+  padding: 18px 22px;
+  background: var(--indigo-50);
+  border-radius: 10px;
+  border-left: 4px solid var(--indigo-500);
+}
+
+#feedback-text {
+  margin: 0 0 14px;
+  font-size: 14px;
+  white-space: pre-wrap;
+  color: var(--text-bright);
+}
+
+#next-btn {
+  display: inline-block;
+}
+
+/* ════════════════════════════════════════════════════════════
+   ANSWERS PANEL — right side
+   ════════════════════════════════════════════════════════════ */
+#answers-panel {
+  flex: 1;
+  background: var(--card-bg);
+  padding: 24px;
+  border-radius: var(--radius);
+  border: 1px solid var(--card-border);
+  box-shadow: var(--shadow-md);
+  position: sticky;
+  top: 24px;
+}
+
+#answers-panel h3 {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--indigo-400);
+  margin: 0 0 16px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+#answers-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+#answers-list li {
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  background: var(--card-bg-soft);
+  border-radius: 8px;
+  font-size: 13px;
+  font-family: 'SF Mono', Monaco, monospace;
+  border: 1px solid var(--card-border);
+  word-break: break-word;
+  color: var(--text-muted);
+}
+
+
+/* ════════════════════════════════════════════════════════════
+   ACTION ROWS
+   ════════════════════════════════════════════════════════════ */
+
+.action-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 24px;
+}
+
+#problem-section .action-row {
+  max-width: 760px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* CodeMirror — match midnight theme */
+.CodeMirror {
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+  font-size: 13px;
+  height: 160px;
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  background: var(--card-bg-soft) !important;
+  transition: var(--transition);
+}
+
+.CodeMirror.CodeMirror-focused {
+  border-color: var(--indigo-500);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+}
+
+.CodeMirror-gutters {
+  background: var(--card-bg-soft) !important;
+  border-right: 1px solid var(--card-border) !important;
 }

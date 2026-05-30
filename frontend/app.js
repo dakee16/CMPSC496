@@ -12,6 +12,10 @@ const API_URL = "http://localhost:8000";
 let steps = [];          
 let currentStepIndex = 0; 
 
+const answerInput = document.getElementById("answer-input");
+const submitBtn = document.getElementById("submit-btn");
+const feedbackSection = document.getElementById("feedback-section");
+const feedbackText = document.getElementById("feedback-text");
 const startBtn = document.getElementById("start-btn");
 const problemSection = document.getElementById("problem-section");
 const stepSection = document.getElementById("step-section");
@@ -27,7 +31,9 @@ const problemListContainer = document.getElementById("problem-list-container");
 const problemTitle = document.getElementById("problem-title");
 const problemDifficulty = document.getElementById("problem-difficulty");
 const problemDescription = document.getElementById("problem-description");
+const backButtons = document.querySelectorAll(".back-btn");
 let attemptCount = 0;
+let selectedProblem = null;
 const MAX_ATTEMPTS = 3;
 
 //
@@ -44,9 +50,9 @@ startBtn.addEventListener("click", async function() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        slug: PROBLEM.slug,
-        title: PROBLEM.title,
-        description: PROBLEM.description
+        slug: selectedProblem.slug,
+        title: selectedProblem.title,
+        description: selectedProblem.description
       })
     });
 
@@ -57,6 +63,7 @@ startBtn.addEventListener("click", async function() {
     problemSection.style.display = "none";
     startBtn.style.display = "none";
     stepSection.style.display = "block";
+    codeEditor.refresh();
     stepNumber.textContent = "1";
     totalSteps.textContent = steps.length;
     stepPrompt.textContent = steps[0].prompt;
@@ -70,11 +77,6 @@ startBtn.addEventListener("click", async function() {
   }
 });
 
-const answerInput = document.getElementById("answer-input");
-const submitBtn = document.getElementById("submit-btn");
-const feedbackSection = document.getElementById("feedback-section");
-const feedbackText = document.getElementById("feedback-text");
-
 //
 // SUBMIT BUTTON EVEN LISTENER 
 //
@@ -86,7 +88,7 @@ submitBtn.addEventListener("click", async function() {
   submitBtn.disabled = true;
   submitBtn.textContent = "Evaluating...";
   const currentStep = steps[currentStepIndex]; 
-  const userAnswer = answerInput.value
+  const userAnswer = codeEditor.getValue();
 
   
   try {
@@ -148,7 +150,7 @@ nextBtn.addEventListener("click", function() {
   else { 
     stepNumber.textContent = (currentStepIndex + 1);
     stepPrompt.textContent = steps[currentStepIndex].prompt;
-    answerInput.value = "";
+    codeEditor.setValue("");
     feedbackSection.style.display = "none";
     attemptCount = 0;
   }
@@ -203,6 +205,23 @@ async function loadProblems() {
       <span class="problem-title">${problem.title}</span>
       <span class="difficulty difficulty-${problem.difficulty.toLowerCase()}">${problem.difficulty}</span>`;
       problemList.appendChild(problemsListElement);
+      //
+      // LIST ELEMENT CLICK LISTENER
+      //
+      problemsListElement.addEventListener("click", async function(){
+
+        const response = await fetch(`${API_URL}/problems/${problem.slug}`);
+        const data = await response.json();
+        selectedProblem = data;
+        problemListContainer.style.display = "none";        
+        problemTitle.textContent = data.title;
+        problemDifficulty.textContent = data.difficulty;
+        problemDifficulty.className = `difficulty difficulty-${data.difficulty.toLowerCase()}`;
+        problemDescription.innerHTML = formatDescription(data.description);
+        problemSection.style.display = 'block';
+        startBtn.style.display = 'block';
+
+      })
         
     });
    
@@ -211,5 +230,62 @@ async function loadProblems() {
   }
 }
 
-
 loadProblems();
+
+// 
+// HELPER FUNCTION TO FORMAT THE PROBLEM DESCRIPTION
+//
+function formatDescription(text) {
+  const constraintsIndex = text.indexOf("Constraints:");
+  if (constraintsIndex !== -1) {
+    text = text.substring(0, constraintsIndex);
+  }
+  
+  return `<div class="desc-header">Description:</div>` + text
+    .replace(/\s*Example \d+:\s*/g, function(match) {
+      return `<div class="desc-header">${match.trim()}</div>`;
+    })
+    .replace(/\s*Input:\s*/g, `<em class="io-label">Input: </em>`)
+    .replace(/\s*Output:\s*/g, `<em class="io-label">Output: </em>`)
+    .replace(/\s*Explanation:\s*/g, `<em class="io-label">Explanation: </em>`);
+}
+
+//
+// BACK BUTTON LISTENERS
+//
+
+backButtons.forEach(function(btn) {
+  btn.addEventListener("click", function() {
+    
+    problemSection.style.display = "none";
+    stepSection.style.display = "none";
+    answersPanel.style.display = "none";
+    startBtn.style.display = "none";
+    problemListContainer.style.display = "block";
+    feedbackSection.style.display = "none";
+    codeEditor.setValue("");
+    
+    steps= [];
+    currentStepIndex = 0;
+    attemptCount = 0;
+    selectedProblem = null;
+    answersList.innerHTML = ""
+    startBtn.textContent = "Start Tutoring Session"
+    startBtn.disabled = false
+        
+  });
+});
+
+//
+// INITIALIZE CODEMIRROR
+//
+
+const codeEditor = CodeMirror.fromTextArea(answerInput, {
+  mode: "python",
+  theme: "dracula",
+  lineNumbers: true,
+  indentUnit: 4,
+  tabSize: 4,
+  indentWithTabs: false,
+  lineWrapping: true,
+});
