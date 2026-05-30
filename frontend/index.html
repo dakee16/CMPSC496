@@ -1,56 +1,81 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
   <title>MicroTutor</title>
   <link rel="stylesheet" href="style.css" />
 </head>
+
 <body>
+
+  <!-- Page header -->
   <h1>MicroTutor</h1>
   <p>An AI-powered micro-programming tutor.</p>
 
   <hr />
 
-  <div id="problem-section">
-    <h2>Two Sum</h2>
-    <p><strong>Difficulty:</strong> Easy</p>
-    <p>
-      Given an array of integers <code>nums</code> and an integer <code>target</code>,
-      return indices of the two numbers such that they add up to <code>target</code>.
-      You may assume that each input would have exactly one solution, and you may not
-      use the same element twice.
-    </p>
+  <!-- Tab buttons -->
+  <div id="tabs">
+    <button class="tab-btn active" data-tab="leetcode">LeetCode</button>
+    <button class="tab-btn" data-tab="upload">Upload File</button>
+  </div>
+
+  <!-- LeetCode tab -->
+  <div id="tab-leetcode" class="tab-div">
+    <div id="problem-list-container">
+      <h2>Pick a problem:</h2>
+      <ul id="problem-list"></ul>
+    </div>
+
+    <!-- Problem details — hidden until a problem is clicked -->
+    <div id="problem-section" style="display: none;">
+      <h2 id="problem-title"></h2>
+      <p><strong>Difficulty:</strong> <span id="problem-difficulty"></span></p>
+      <p id="problem-description"></p>
+    </div>
+
+    <button id="start-btn" style="display: none;">Start Tutoring Session</button>
   </div>
 
   <hr />
 
   <button id="start-btn">Start Tutoring Session</button>
+  </div>
 
+  <!-- Upload File tab -->
+  <div id="tab-upload" class="tab-div" style="display: none;">
+    <p>File upload coming soon.</p>
+  </div>
+
+  <!-- Step UI + answers panel -->
   <div id="layout-container">
 
     <div id="step-section" style="display: none;">
-        <h2>Step <span id="step-number"> 1 </span> of <span id="total-steps"> ? </span></h2>
+      <h2>Step <span id="step-number"> 1 </span> of <span id="total-steps"> ? </span></h2>
+      <p id="step-prompt">Step prompt will appear here.</p>
 
-        <p id="step-prompt">Step prompt will appear here.</p>
+      <label for="answer-input">Your answer:</label>
+      <br />
+      <textarea id="answer-input" rows="4" cols="60" placeholder="Type your code here..."></textarea>
+      <br />
+      <button id="submit-btn">Submit Answer</button>
 
-        <label for="answer-input">Your answer:</label>
-        <br />
-        <textarea id="answer-input" rows="4" cols="60" placeholder="Type your code here..."></textarea>
-        <br />
-        <button id="submit-btn">Submit Answer</button>
-
-        <div id="feedback-section" style="display: none;">
-        <hr/>
+      <div id="feedback-section" style="display: none;">
+        <hr />
         <p id="feedback-text"></p>
-        <button id="next-btn" disabled >Next Step</button>
-        </div>
+        <button id="next-btn" disabled>Next Step</button>
+      </div>
     </div>
+
     <div id="answers-panel" style="display: none;">
-        <h3>Your Answers</h3>
-        <ul id="answers-list"></ul>
+      <h3>Your Answers</h3>
+      <ul id="answers-list"></ul>
     </div>
 
   </div>
+
   <script src="app.js"></script>
 </body>
+
 </html>

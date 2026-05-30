@@ -55,3 +55,87 @@ button:disabled {
   cursor: not-allowed;
   opacity: 0.5;
 }
+
+#tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid #ddd;
+}
+
+.tab-btn {
+  background: none;
+  border: none;
+  padding: 10px 20px;
+  cursor: pointer;
+  font-size: 15px;
+  color: #666;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -1px;
+}
+
+.tab-btn:hover {
+  color: #000;
+}
+
+.tab-btn.active {
+  color: #000;
+  font-weight: 600;
+  border-bottom: 3px solid #007aff;
+}
+
+#problem-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.problem-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 18px;
+  margin-bottom: 8px;
+  background: white;
+  border: 1px solid #e1e1e1;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.problem-item:hover {
+  border-color: #007aff;
+  background: #f8faff;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+
+
+.problem-title {
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.difficulty {
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.difficulty-easy {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.difficulty-medium {
+  background: #fff8e1;
+  color: #c77700;
+}
+
+.difficulty-hard {
+  background: #ffebee;
+  color: #c62828;
+}

@@ -20,6 +20,13 @@ const totalSteps = document.getElementById("total-steps");
 const stepPrompt = document.getElementById("step-prompt");
 const answersPanel = document.getElementById("answers-panel");
 const answersList  = document.getElementById("answers-list");
+const tabButtons = document.querySelectorAll(".tab-btn");
+const tabDiv = document.querySelectorAll(".tab-div");
+const problemList = document.getElementById("problem-list");
+const problemListContainer = document.getElementById("problem-list-container");
+const problemTitle = document.getElementById("problem-title");
+const problemDifficulty = document.getElementById("problem-difficulty");
+const problemDescription = document.getElementById("problem-description");
 let attemptCount = 0;
 const MAX_ATTEMPTS = 3;
 
@@ -158,3 +165,51 @@ function addAnswerToPanel(stepNum, answer) {
   answerListElement.textContent = `Step ${stepNum}: ${answer}`;
   answersList.appendChild(answerListElement);
 }
+
+
+// 
+// FUNCTION FOR THE TAB SELECT BUTTONS 
+//
+
+
+tabButtons.forEach(function(clicked_button) {
+  clicked_button.addEventListener("click", function() {
+    
+    const tabName = clicked_button.dataset.tab;
+    tabButtons.forEach(function(btn){btn.classList.remove("active")});
+    clicked_button.classList.add("active");
+    tabDiv.forEach(function(div){div.style.display = "none"});
+    const tabToDisplay = "tab-" + tabName;
+    document.getElementById(tabToDisplay).style.display = "block";
+    
+  });
+});
+
+
+// 
+// LOAD PROBLEMS ON PAGE LOAD
+// 
+
+async function loadProblems() {
+  try {
+    const response = await fetch(`${API_URL}/problems`);
+    const data = await response.json();
+    console.log("Loaded problems:", data);
+
+    data.problems.forEach(function(problem){
+      const problemsListElement = document.createElement("li");
+      problemsListElement.classList.add("problem-item");
+      problemsListElement.innerHTML = `
+      <span class="problem-title">${problem.title}</span>
+      <span class="difficulty difficulty-${problem.difficulty.toLowerCase()}">${problem.difficulty}</span>`;
+      problemList.appendChild(problemsListElement);
+        
+    });
+   
+  } catch (error) {
+    console.error("Failed to load problems:", error);
+  }
+}
+
+
+loadProblems();
