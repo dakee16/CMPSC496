@@ -179,6 +179,7 @@ def eval_step(step: StepItem, student_answer: str, context: str) -> EvalResult:
         )
     if step.expected_type == "code":
         student_answer = normalize_code(student_answer)
+        student_answer = re.sub(r'(\w)\s+\(', r'\1(', student_answer)
         
     user_msg = (
         f"MICRO-STEP:\n{step.prompt}\n\n"

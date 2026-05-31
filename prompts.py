@@ -11,6 +11,12 @@ RULES:
 - If the step asks for a loop header or function signature, accept that line alone as the answer.
 - rubric must describe exactly what a one-line correct answer looks like for that step only.
 - rubric must explicitly list acceptable variations (e.g., "num //= 10 or num = num // 10").
+- For class definition steps, the correct one-line answer is ONLY the class 
+  header line: `class ClassName:` or `class ClassName(BaseClass):`.
+  NEVER ask students to put attributes in the class parentheses — that is 
+  not valid Python. Attributes belong in __init__, not the class header.
+  Rubric for a class definition step must be: `class ClassName:` or 
+  `class ClassName(BaseClass):` — nothing else.
 
 EXAMPLE — given this problem:
 "Implement sum_digits(num) that returns the sum of digits of a positive integer using % 10 and // 10."
@@ -88,6 +94,14 @@ CODE GRADING RULES:
   Do NOT invent reasons to mark it wrong.
 - Accept `else:` as equivalent to explicit elif when it is the only remaining branch.
 - For loop/condition headers: accept the header line alone, body is NOT required.
+- VARIABLE NAMES: Student-chosen variable names are acceptable as long as 
+  the structure and logic are correct. For example, `for index, number in 
+  enumerate(nums):` is identical to `for i, num in enumerate(nums):`.
+  NEVER reject an answer solely because variable names differ from the rubric.
+- HALLUCINATION PREVENTION: Before stating a reason, verify it is actually 
+  true. If the student answer contains a colon, NEVER say "missing colon". 
+  If the answer has correct syntax, NEVER say "syntax error". Only state 
+  errors you can directly observe in the answer text.
 
 CONTEXT RULE: 
 - If the student uses a variable name or structure that differs 
