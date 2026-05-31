@@ -431,7 +431,8 @@ label[for="answer-input"] {
 .CodeMirror {
   font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
   font-size: 13px;
-  height: 160px;
+  min-height: 160px;
+  height: auto;
   border: 1px solid var(--card-border);
   border-radius: 8px;
   background: var(--card-bg-soft) !important;
@@ -445,5 +446,5 @@ label[for="answer-input"] {
 
 .CodeMirror-gutters {
   background: var(--card-bg-soft) !important;
-  border-right: 1px solid var(--card-border) !important;
+  border-right: none !important;
 }

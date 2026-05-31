@@ -22,8 +22,6 @@ const stepSection = document.getElementById("step-section");
 const stepNumber = document.getElementById("step-number");
 const totalSteps = document.getElementById("total-steps");
 const stepPrompt = document.getElementById("step-prompt");
-const answersPanel = document.getElementById("answers-panel");
-const answersList  = document.getElementById("answers-list");
 const tabButtons = document.querySelectorAll(".tab-btn");
 const tabDiv = document.querySelectorAll(".tab-div");
 const problemList = document.getElementById("problem-list");
@@ -34,6 +32,8 @@ const problemDescription = document.getElementById("problem-description");
 const backButtons = document.querySelectorAll(".back-btn");
 let attemptCount = 0;
 let selectedProblem = null;
+let lockedCode = ""; 
+let lockedLineCount = 0;
 const MAX_ATTEMPTS = 3;
 
 //
@@ -67,7 +67,7 @@ startBtn.addEventListener("click", async function() {
     stepNumber.textContent = "1";
     totalSteps.textContent = steps.length;
     stepPrompt.textContent = steps[0].prompt;
-    answersPanel.style.display = "block"
+
 
 
     console.log(`Loaded ${steps.length} steps. First step:`, steps[0]);
@@ -88,7 +88,10 @@ submitBtn.addEventListener("click", async function() {
   submitBtn.disabled = true;
   submitBtn.textContent = "Evaluating...";
   const currentStep = steps[currentStepIndex]; 
-  const userAnswer = codeEditor.getValue();
+  const userAnswer = codeEditor.getRange(
+  { line: lockedLineCount, ch: 0 },
+  { line: codeEditor.lineCount(), ch: 0 }
+).replace(/\n+$/, "");
 
   
   try {
@@ -107,8 +110,17 @@ submitBtn.addEventListener("click", async function() {
 
   if (llmFeedback.correct) {
   feedbackText.textContent = "✅ Correct! " + llmFeedback.short_reason;
-  addAnswerToPanel(currentStepIndex + 1, userAnswer);
+  lockedCode = lockedCode + userAnswer + "\n";
+  lockedLineCount = lockedCode.split("\n").length - 1;
+  codeEditor.setValue(lockedCode);
+  codeEditor.markText(
+    { line: 0, ch: 0 },
+    { line: lockedLineCount, ch: 0 },
+    { readOnly: true }
+  );
+  codeEditor.setCursor({ line: lockedLineCount, ch: 0 });
   nextBtn.disabled = false;
+
 } else {
 
     nextBtn.disabled = true;
@@ -150,24 +162,11 @@ nextBtn.addEventListener("click", function() {
   else { 
     stepNumber.textContent = (currentStepIndex + 1);
     stepPrompt.textContent = steps[currentStepIndex].prompt;
-    codeEditor.setValue("");
     feedbackSection.style.display = "none";
     attemptCount = 0;
   }
   
 });
-
-//
-// HELPER FUNCTION FOR ADDING ANSWERS 
-//
-
-function addAnswerToPanel(stepNum, answer) {
-
-  const answerListElement = document.createElement("li");
-  answerListElement.textContent = `Step ${stepNum}: ${answer}`;
-  answersList.appendChild(answerListElement);
-}
-
 
 // 
 // FUNCTION FOR THE TAB SELECT BUTTONS 
@@ -259,17 +258,17 @@ backButtons.forEach(function(btn) {
     
     problemSection.style.display = "none";
     stepSection.style.display = "none";
-    answersPanel.style.display = "none";
     startBtn.style.display = "none";
     problemListContainer.style.display = "block";
     feedbackSection.style.display = "none";
     codeEditor.setValue("");
+    lockedCode = "";
+    lockedLineCount = 0;
     
     steps= [];
     currentStepIndex = 0;
     attemptCount = 0;
     selectedProblem = null;
-    answersList.innerHTML = ""
     startBtn.textContent = "Start Tutoring Session"
     startBtn.disabled = false
         
@@ -289,3 +288,4 @@ const codeEditor = CodeMirror.fromTextArea(answerInput, {
   indentWithTabs: false,
   lineWrapping: true,
 });
+
