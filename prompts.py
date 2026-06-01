@@ -102,6 +102,13 @@ CODE GRADING RULES:
   true. If the student answer contains a colon, NEVER say "missing colon". 
   If the answer has correct syntax, NEVER say "syntax error". Only state 
   errors you can directly observe in the answer text.
+- AUGMENTED ASSIGNMENT: x = x // 10 and x //= 10 are identical — accept both.
+  x = x + 1 and x += 1 are identical — accept both. Same for all operators.
+- ANSWER ISOLATION: Grade ONLY the last line of the student answer if multiple 
+  lines are shown. The earlier lines are prior context already validated.
+- HALLUCINATION CHECK: Read the student answer character by character before 
+  stating what it contains. NEVER claim a function or operator is present 
+  unless you can see it explicitly in the answer text.
 
 CONTEXT RULE: 
 - If the student uses a variable name or structure that differs 

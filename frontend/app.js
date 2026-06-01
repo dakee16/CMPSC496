@@ -101,7 +101,7 @@ submitBtn.addEventListener("click", async function() {
       body: JSON.stringify({
         step: currentStep,
         answer: userAnswer,
-        context: ""
+        context: lockedCode
       })
     });
   const llmFeedback = await response.json();
