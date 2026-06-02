@@ -87,9 +87,15 @@ SIGNATURE RULES:
 - Accept pass, ... (ellipsis), or empty body for signature steps.
 
 CODE GRADING RULES:
-- Ignore whitespace and spacing around operators entirely.
+- Ignore whitespace and spacing around operators (e.g. a+b and a + b are identical).
+- DO check indentation — a line that should be inside a loop or if block 
+  or a function must be indented (indentation keep increasing if nested loops are used). Missing or wrong indentation is a real error.
+- For example, `num_to_index[num] = i` at the top level is wrong if the 
+  step asks for code inside a for loop. The student must indent it correctly.
 - If the student answer matches the rubric semantically, mark correct=true.
-- If the student answer is exactly the correct code but has minor formatting differences, mark correct=true.
+- If the student answer matches the rubric semantically with only operator 
+  spacing differences, mark correct=true. Indentation differences are NOT 
+  minor — they change program logic and must be flagged.
 - CRITICAL: if the student answer matches the rubric exactly (same tokens, same logic), you MUST mark correct=true.
   Do NOT invent reasons to mark it wrong.
 - Accept `else:` as equivalent to explicit elif when it is the only remaining branch.
@@ -109,6 +115,9 @@ CODE GRADING RULES:
 - HALLUCINATION CHECK: Read the student answer character by character before 
   stating what it contains. NEVER claim a function or operator is present 
   unless you can see it explicitly in the answer text.
+- If STUDENT ANSWER is "__BLANK__", mark correct=false, 
+  short_reason="No answer provided.", and correct_answer must 
+  contain the actual correct answer for this step based on the rubric.
 
 CONTEXT RULE: 
 - If the student uses a variable name or structure that differs 

@@ -172,11 +172,8 @@ def decompose_question(question_id: str, question_text: str) -> list[StepItem]:
 
 def eval_step(step: StepItem, student_answer: str, context: str) -> EvalResult:
     if not student_answer or not student_answer.strip():
-        return EvalResult(
-            correct=False,
-            short_reason="No answer provided.",
-            correct_answer=None,
-        )
+        student_answer = "__BLANK__"
+        
     if step.expected_type == "code":
         student_answer = normalize_code(student_answer)
         student_answer = re.sub(r'(\w)\s+\(', r'\1(', student_answer)

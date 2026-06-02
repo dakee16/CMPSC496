@@ -64,11 +64,8 @@ def decompose(req: DecomposeRequest):
 @app.post("/evaluate")
 def evaluate(req: EvaluateRequest):
     if not req.answer or not req.answer.strip():
-        return {
-            "correct": False,
-            "short_reason": "No answer provided.",
-            "correct_answer": "",
-        }
+        req.answer = "__BLANK__"
+        
     try:
         step = StepItem(
             question_id=req.step.get("step_id", "Step 1"),
