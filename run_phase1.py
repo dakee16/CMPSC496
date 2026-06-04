@@ -57,8 +57,19 @@ def parse_json(text: str) -> dict:
 # Code helpers
 
 def normalize_code(text: str) -> str:
-    text = re.sub(r'\s*(//=|//|\*\*|==|!=|<=|>=|%|[+\-*/<>])\s*', r' \1 ', text)
-    return re.sub(r'  +', ' ', text).strip()
+    """Normalize operator spacing but PRESERVE leading indentation."""
+    lines = text.split('\n')
+    normalized = []
+    for line in lines:
+        # Preserve leading whitespace exactly
+        leading = len(line) - len(line.lstrip())
+        indent = line[:leading]
+        content = line[leading:]
+        # Normalize operator spacing on the content only
+        content = re.sub(r'\s*(//=|//|\*\*|==|!=|<=|>=|%|[+\-*/<>])\s*', r' \1 ', content)
+        content = re.sub(r'  +', ' ', content).strip()
+        normalized.append(indent + content)
+    return '\n'.join(normalized).strip()
 
 
 def strip_comments(text: str) -> str:

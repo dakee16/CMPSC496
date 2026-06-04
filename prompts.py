@@ -88,10 +88,12 @@ SIGNATURE RULES:
 
 CODE GRADING RULES:
 - Ignore whitespace and spacing around operators (e.g. a+b and a + b are identical).
+
 - DO check indentation — a line that should be inside a loop or if block 
-  or a function must be indented (indentation keep increasing if nested loops are used). Missing or wrong indentation is a real error.
+  or a function must be indented (check for double, triple... indentation too for nested conditionals or loops). Missing or wrong indentation is a real error.
 - For example, `num_to_index[num] = i` at the top level is wrong if the 
   step asks for code inside a for loop. The student must indent it correctly.
+  
 - If the student answer matches the rubric semantically, mark correct=true.
 - If the student answer matches the rubric semantically with only operator 
   spacing differences, mark correct=true. Indentation differences are NOT 
