@@ -71,6 +71,51 @@ def normalize_code(text: str) -> str:
         normalized.append(indent + content)
     return '\n'.join(normalized).strip()
 
+def expected_indent(context: str) -> int:
+    """
+    Determine required indentation for the next line
+    by looking at the last non-empty line of context.
+    """
+    if not context or not context.strip():
+        return 0
+    lines = [l for l in context.split('\n') if l.strip()]
+    if not lines:
+        return 0
+    last = lines[-1]
+    last_indent = len(last) - len(last.lstrip())
+    if last.rstrip().endswith(':'):
+        return last_indent + 4
+    return last_indent
+
+
+def check_indentation(answer: str, context: str) -> str | None:
+    """
+    Returns an error string if indentation is wrong, None if correct.
+    Only checks the first non-empty line of the answer.
+    """
+    if not context or not context.strip():
+        return None  # no context to infer from
+
+    first_line = next((l for l in answer.split('\n') if l.strip()), None)
+    if not first_line:
+        return None
+
+    actual = len(first_line) - len(first_line.lstrip())
+    expected = expected_indent(context)
+
+    stripped = first_line.strip()
+    is_header = any(stripped.startswith(kw) for kw in
+                    ('def ', 'class ', 'for ', 'while ', 'if ', 'else:',
+                     'elif ', 'try:', 'except', 'finally:', 'with '))
+
+    if actual != expected:
+        return (
+            f"Wrong indentation: expected {expected} spaces "
+            f"but got {actual}. "
+            + ("Indent inside the block." if actual < expected
+               else "Too much indentation.")
+        )
+    return None
 
 def strip_comments(text: str) -> str:
     lines = [re.sub(r'\s*#.*$', '', line) for line in text.splitlines()]
@@ -188,6 +233,34 @@ def eval_step(step: StepItem, student_answer: str, context: str) -> EvalResult:
     if step.expected_type == "code":
         student_answer = normalize_code(student_answer)
         student_answer = re.sub(r'(\w)\s+\(', r'\1(', student_answer)
+
+        indent_err = check_indentation(student_answer, context)
+        if indent_err:
+            # Still call LLM but only to get the correct_answer
+            rubric_prompt = (
+                f"MICRO-STEP:\n{step.prompt}\n\n"
+                f"RUBRIC:\n{step.rubric or 'Not provided'}\n\n"
+                f"PRIOR CONTEXT:\n{context or 'None yet.'}\n\n"
+                f"The correct answer for this step requires exactly {expected_indent(context)} "
+                f"spaces of indentation. Provide the correct answer with that indentation.\n"
+                'Return JSON only: {"correct": false, "short_reason": "...", "correct_answer": "..."}'
+            )
+            try:
+                raw = chat(MODEL, EVAL_SYSTEM,
+                           [{"role": "user", "content": rubric_prompt}],
+                           temperature=0.0, fmt="json")
+                data = parse_json(raw)
+                return EvalResult(
+                    correct=False,
+                    short_reason=indent_err,
+                    correct_answer=data.get("correct_answer") or None,
+                )
+            except Exception:
+                return EvalResult(
+                    correct=False,
+                    short_reason=indent_err,
+                    correct_answer=None,
+                )
         
     user_msg = (
         f"MICRO-STEP:\n{step.prompt}\n\n"
