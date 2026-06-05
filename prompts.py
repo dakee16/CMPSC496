@@ -17,6 +17,10 @@ RULES:
   not valid Python. Attributes belong in __init__, not the class header.
   Rubric for a class definition step must be: `class ClassName:` or 
   `class ClassName(BaseClass):` — nothing else.
+- For any step whose code belongs INSIDE a function, loop, or conditional 
+  block, the rubric MUST show the answer with correct indentation.
+  Example: rubric for "initialize variable inside function" must be 
+  `    num_to_index = {}` (with 4 spaces), not `num_to_index = {}`.
 
 EXAMPLE — given this problem:
 "Implement sum_digits(num) that returns the sum of digits of a positive integer using % 10 and // 10."
@@ -89,10 +93,15 @@ SIGNATURE RULES:
 CODE GRADING RULES:
 - Ignore whitespace and spacing around operators (e.g. a+b and a + b are identical).
 
-- DO check indentation — a line that should be inside a loop or if block 
-  or a function must be indented (check for double, triple... indentation too for nested conditionals or loops). Missing or wrong indentation is a real error.
-- For example, `num_to_index[num] = i` at the top level is wrong if the 
-  step asks for code inside a for loop. The student must indent it correctly.
+- INDENTATION FROM CONTEXT: If PRIOR CONTEXT contains a function definition 
+  (def ...:), loop header (for/while ...:), or conditional (if/else/elif ...:),
+  then any step that asks for code INSIDE that block must be indented by 
+  exactly 4 spaces relative to that block's header.
+  Example: if context shows `def two_sum(...):`, then `num_to_index = {}` 
+  is WRONG — it must be `    num_to_index = {}` (4 spaces indent).
+  If the student's answer has 0 indentation when it should have 4, mark 
+  correct=false with short_reason="Missing indentation — this line should 
+  be indented inside the function/loop/conditional."
   
 - If the student answer matches the rubric semantically, mark correct=true.
 - If the student answer matches the rubric semantically with only operator 
