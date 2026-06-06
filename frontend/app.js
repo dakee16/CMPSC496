@@ -105,6 +105,8 @@ startBtn.addEventListener("click", async function () {
 //
 // SUBMIT BUTTON EVEN LISTENER 
 //
+console.log("userAnswer repr:", JSON.stringify(userAnswer));
+console.log("lockedCode repr:", JSON.stringify(lockedCode));
 
 submitBtn.addEventListener("click", async function () {
 
