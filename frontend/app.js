@@ -223,6 +223,16 @@ tabButtons.forEach(function (clicked_button) {
     // ── restore the leetcode list (it gets hidden when you open a problem) ──
     if (tabName === "leetcode") {
       problemListContainer.style.display = "block";
+    } else {
+      // upload tab: show the list if files were parsed, else show the controls
+      if (uploadedProblemList.children.length > 0) {
+        uploadListContainer.style.display = "block";
+        uploadControls.style.display = "none";
+        uploadAnotherBtn.style.display = "block";
+      } else {
+        uploadControls.style.display = "flex";
+        uploadListContainer.style.display = "none";
+      }
     }
   });
 });
@@ -239,9 +249,9 @@ backButtons.forEach(function (btn) {
     document.getElementById("step-problem-list-btn").style.display = "none";
     startBtn.style.display = "none";
     if (activeTab === "upload") {
-        
+
       uploadListContainer.style.display = "block";
-    
+
     } else {
       problemListContainer.style.display = "block";
     }
@@ -293,9 +303,9 @@ fileInput.addEventListener("change", function (event) {
       });
       uploadedProblemList.appendChild(uploadProblemListElement);
     });
-    
+
     uploadListContainer.style.display = "block";
-    uploadControls.style.display = "none";   
+    uploadControls.style.display = "none";
     uploadAnotherBtn.style.display = "block";
   };
   reader.readAsText(file);
@@ -339,10 +349,10 @@ prevBtn.addEventListener("click", function () {
 //
 
 uploadAnotherBtn.addEventListener("click", function () {
-  uploadControls.style.display = "flex";  
-  uploadAnotherBtn.style.display = "none"; 
-  uploadListContainer.style.display ="none";
-  fileInput.value = ""; 
+  uploadControls.style.display = "flex";
+  uploadAnotherBtn.style.display = "none";
+  uploadListContainer.style.display = "none";
+  fileInput.value = "";
   fileName.textContent = "No file chosen";
 });
 
@@ -427,8 +437,8 @@ function parseProblems(rawText) {
       const diffMatch = chunk.match(/Difficulty\s*:\s*(Easy|Medium|Hard)/i);
       let difficulty = null;
       if (diffMatch) {
-        difficulty = diffMatch[1];                 
-        difficulty = difficulty[0].toUpperCase() + difficulty.slice(1).toLowerCase(); 
+        difficulty = diffMatch[1];
+        difficulty = difficulty[0].toUpperCase() + difficulty.slice(1).toLowerCase();
         title = title.replace(/Difficulty\s*:\s*(Easy|Medium|Hard)/i, "");
       }
 
