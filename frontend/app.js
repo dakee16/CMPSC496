@@ -1,5 +1,9 @@
 console.log("app.js loaded");
 
+// ════════════════════════════════════════════════════════════
+// CONSTANTS + STATE
+// ════════════════════════════════════════════════════════════
+
 const PROBLEM = {
   slug: "two-sum",
   title: "Two Sum",
@@ -9,8 +13,20 @@ const PROBLEM = {
 const API_URL = "http://localhost:8000";
 
 
-let steps = [];          
-let currentStepIndex = 0; 
+let steps = [];
+let currentStepIndex = 0;
+let stepCode = [];
+let activeTab = "leetcode";
+
+let attemptCount = 0;
+let selectedProblem = null;
+let lockedCode = "";
+let lockedLineCount = 0;
+const MAX_ATTEMPTS = 3;
+
+// ════════════════════════════════════════════════════════════
+// DOM REFERENCES
+// ════════════════════════════════════════════════════════════
 
 const answerInput = document.getElementById("answer-input");
 const submitBtn = document.getElementById("submit-btn");
@@ -26,21 +42,29 @@ const tabButtons = document.querySelectorAll(".tab-btn");
 const tabDiv = document.querySelectorAll(".tab-div");
 const problemList = document.getElementById("problem-list");
 const problemListContainer = document.getElementById("problem-list-container");
+const uploadListContainer = document.getElementById("uploaded-problem-list-container");
 const problemTitle = document.getElementById("problem-title");
 const problemDifficulty = document.getElementById("problem-difficulty");
 const problemDescription = document.getElementById("problem-description");
 const backButtons = document.querySelectorAll(".back-btn");
-let attemptCount = 0;
-let selectedProblem = null;
-let lockedCode = ""; 
-let lockedLineCount = 0;
-const MAX_ATTEMPTS = 3;
+const fileInput = document.getElementById("file-input");
+const prevBtn = document.getElementById("prev-btn");
+const uploadedProblemList = document.getElementById("uploaded-problem-list");
+const nextBtn = document.getElementById("next-btn");
+const uploadControls = document.getElementById("upload-controls");
+const fileName = document.getElementById("file-name");
+const uploadAnotherBtn = document.getElementById("upload-another-btn");
+
+
+// ════════════════════════════════════════════════════════════
+// EVENT LISTENERS
+// ════════════════════════════════════════════════════════════
 
 //
 // START BUTTON EVEN LISTENER 
 //
 
-startBtn.addEventListener("click", async function() {
+startBtn.addEventListener("click", async function () {
   console.log("Start clicked — calling backend...");
   startBtn.textContent = "Calling Backend...";
   startBtn.disabled = true;
@@ -63,6 +87,7 @@ startBtn.addEventListener("click", async function() {
     problemSection.style.display = "none";
     startBtn.style.display = "none";
     stepSection.style.display = "block";
+    document.getElementById("step-problem-list-btn").style.display = "block";
     codeEditor.refresh();
     stepNumber.textContent = "1";
     totalSteps.textContent = steps.length;
@@ -81,19 +106,19 @@ startBtn.addEventListener("click", async function() {
 // SUBMIT BUTTON EVEN LISTENER 
 //
 
-submitBtn.addEventListener("click", async function() {
+submitBtn.addEventListener("click", async function () {
 
   console.log("Submit clicked");
   attemptCount++;
   submitBtn.disabled = true;
   submitBtn.textContent = "Evaluating...";
-  const currentStep = steps[currentStepIndex]; 
+  const currentStep = steps[currentStepIndex];
   const userAnswer = codeEditor.getRange(
-  { line: lockedLineCount, ch: 0 },
-  { line: codeEditor.lineCount(), ch: 0 }
-).replace(/\n+$/, "");
+    { line: lockedLineCount, ch: 0 },
+    { line: codeEditor.lineCount(), ch: 0 }
+  ).replace(/\n+$/, "");
 
-  
+
   try {
     const response = await fetch(`${API_URL}/evaluate`, {
       method: "POST",
@@ -104,68 +129,71 @@ submitBtn.addEventListener("click", async function() {
         context: lockedCode
       })
     });
-  const llmFeedback = await response.json();
+    const llmFeedback = await response.json();
 
-  feedbackSection.style.display = "block";
+    feedbackSection.style.display = "block";
 
-  if (llmFeedback.correct) {
-  feedbackText.textContent = "✅ Correct! " + llmFeedback.short_reason;
-  lockedCode = lockedCode + userAnswer + "\n";
-  lockedLineCount = lockedCode.split("\n").length - 1;
-  codeEditor.setValue(lockedCode);
-  codeEditor.markText(
-    { line: 0, ch: 0 },
-    { line: lockedLineCount, ch: 0 },
-    { readOnly: true }
-  );
-  codeEditor.setCursor({ line: lockedLineCount, ch: 0 });
-  nextBtn.disabled = false;
 
-} else {
+    if (llmFeedback.correct) {
+      feedbackText.textContent = "✅ Correct! " + llmFeedback.short_reason;
+      stepCode[currentStepIndex] = userAnswer;
 
-    nextBtn.disabled = true;
-    if (attemptCount<MAX_ATTEMPTS){
-        feedbackText.textContent = "❌ Incorrect. " + llmFeedback.short_reason 
-    }
-    else{
+      lockedCode = lockedCode + userAnswer + "\n";
+      codeEditor.setValue(lockedCode);
+
+      lockedLineCount = codeEditor.lineCount() - 1;
+
+      codeEditor.markText(
+        { line: 0, ch: 0 },
+        { line: lockedLineCount, ch: 0 },
+        { readOnly: true }
+      );
+      codeEditor.setCursor(lockedLineCount, 0);
+      nextBtn.disabled = false;
+
+    } else {
+
+      nextBtn.disabled = true;
+      if (attemptCount < MAX_ATTEMPTS) {
+        feedbackText.textContent = "❌ Incorrect. " + llmFeedback.short_reason
+      }
+      else {
         feedbackText.textContent = "❌ Incorrect. " + llmFeedback.short_reason + " | Correct answer: " + llmFeedback.correct_answer;
+      }
     }
-}
-   
-submitBtn.disabled = false;
-submitBtn.textContent = "Submit Answer";
 
-}
+    submitBtn.disabled = false;
+    submitBtn.textContent = "Submit Answer";
 
-catch (error) {
+  }
+
+  catch (error) {
     console.error("Something went wrong while evaluating:", error);
     submitBtn.disabled = false;
     submitBtn.textContent = "Submit Answer";
   }
 });
 
-const nextBtn = document.getElementById("next-btn");
-
 //
 // NEXT BUTTON EVEN LISTENER 
 //
 
-nextBtn.addEventListener("click", function() {
+nextBtn.addEventListener("click", function () {
 
   console.log("Next clicked");
-  
+
   currentStepIndex++;
 
   if (currentStepIndex >= steps.length) {
-   alert( "🎉 You finished all steps!");
+    alert("🎉 You finished all steps!");
   }
-  else { 
+  else {
     stepNumber.textContent = (currentStepIndex + 1);
     stepPrompt.textContent = steps[currentStepIndex].prompt;
     feedbackSection.style.display = "none";
     attemptCount = 0;
   }
-  
+
 });
 
 // 
@@ -173,19 +201,149 @@ nextBtn.addEventListener("click", function() {
 //
 
 
-tabButtons.forEach(function(clicked_button) {
-  clicked_button.addEventListener("click", function() {
-    
+tabButtons.forEach(function (clicked_button) {
+  clicked_button.addEventListener("click", function () {
+
     const tabName = clicked_button.dataset.tab;
-    tabButtons.forEach(function(btn){btn.classList.remove("active")});
+    tabButtons.forEach(function (btn) { btn.classList.remove("active") });
     clicked_button.classList.add("active");
-    tabDiv.forEach(function(div){div.style.display = "none"});
+    tabDiv.forEach(function (div) { div.style.display = "none" });
     const tabToDisplay = "tab-" + tabName;
     document.getElementById(tabToDisplay).style.display = "block";
-    
+    activeTab = tabName;
+
+    // ── reset any open problem/step view when switching tabs ──
+    problemSection.style.display = "none";
+    stepSection.style.display = "none";
+    document.getElementById("step-problem-list-btn").style.display = "none";
+    startBtn.style.display = "none";
+    feedbackSection.style.display = "none";
+    selectedProblem = null;
   });
 });
 
+//
+// BACK BUTTON LISTENERS
+//
+
+backButtons.forEach(function (btn) {
+  btn.addEventListener("click", function () {
+
+    problemSection.style.display = "none";
+    stepSection.style.display = "none";
+    document.getElementById("step-problem-list-btn").style.display = "none";
+    startBtn.style.display = "none";
+    if (activeTab === "upload") {
+        
+      uploadListContainer.style.display = "block";
+    
+    } else {
+      problemListContainer.style.display = "block";
+    }
+    feedbackSection.style.display = "none";
+    codeEditor.setValue("");
+    lockedCode = "";
+    lockedLineCount = 0;
+
+    steps = [];
+    currentStepIndex = 0;
+    attemptCount = 0;
+    selectedProblem = null;
+    startBtn.textContent = "Start Tutoring Session"
+    startBtn.disabled = false
+
+  });
+});
+
+//
+// FILE UPLOAD LISTENER
+//
+
+fileInput.addEventListener("change", function (event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  fileName.textContent = file.name;   // ← show chosen filename
+
+  const reader = new FileReader();
+  reader.onload = function () {
+    const raw = reader.result;
+
+    const problems = parseProblems(raw);
+    console.log("Parsed problems:", problems);
+
+    if (problems.length === 0) {
+      alert("No problems found — check the file format (Problem N: / Description:).");
+      return;
+    }
+
+    uploadedProblemList.innerHTML = "";
+
+    problems.forEach(function (p) {
+      const uploadProblemListElement = document.createElement("li");
+      uploadProblemListElement.classList.add("problem-item");
+      uploadProblemListElement.innerHTML = `<span class="problem-title">${p.title}</span>`;
+      uploadProblemListElement.addEventListener("click", function () {
+        showProblemDetail(p);
+      });
+      uploadedProblemList.appendChild(uploadProblemListElement);
+    });
+    
+    uploadListContainer.style.display = "block";
+    uploadControls.style.display = "none";   
+    uploadAnotherBtn.style.display = "block";
+  };
+  reader.readAsText(file);
+});
+
+//
+// PREVIOUS BUTTON LISTENER
+//
+
+prevBtn.addEventListener("click", function () {
+
+  if (currentStepIndex === 0) return;
+  currentStepIndex--;
+
+  stepCode[currentStepIndex] = undefined;
+
+  lockedCode = "";
+  for (let i = 0; i < currentStepIndex; i++) {
+    lockedCode = lockedCode + stepCode[i] + "\n";
+  }
+
+  codeEditor.setValue(lockedCode);
+  lockedLineCount = lockedCode === "" ? 0 : codeEditor.lineCount() - 1;
+
+  if (lockedLineCount > 0) {
+    codeEditor.markText(
+      { line: 0, ch: 0 },
+      { line: lockedLineCount, ch: 0 },
+      { readOnly: true }
+    );
+  }
+  codeEditor.setCursor(lockedLineCount, 0);
+  stepNumber.textContent = (currentStepIndex + 1);
+  stepPrompt.textContent = steps[currentStepIndex].prompt;
+  feedbackSection.style.display = "none";
+  attemptCount = 0;
+});
+
+//
+// UPLOAD ANOTHER FILE LISTENER
+//
+
+uploadAnotherBtn.addEventListener("click", function () {
+  uploadControls.style.display = "flex";  
+  uploadAnotherBtn.style.display = "none"; 
+  uploadListContainer.style.display ="none";
+  fileInput.value = ""; 
+  fileName.textContent = "No file chosen";
+});
+
+// ════════════════════════════════════════════════════════════
+// FUNCTIONS
+// ════════════════════════════════════════════════════════════
 
 // 
 // LOAD PROBLEMS ON PAGE LOAD
@@ -197,7 +355,7 @@ async function loadProblems() {
     const data = await response.json();
     console.log("Loaded problems:", data);
 
-    data.problems.forEach(function(problem){
+    data.problems.forEach(function (problem) {
       const problemsListElement = document.createElement("li");
       problemsListElement.classList.add("problem-item");
       problemsListElement.innerHTML = `
@@ -207,41 +365,33 @@ async function loadProblems() {
       //
       // LIST ELEMENT CLICK LISTENER
       //
-      problemsListElement.addEventListener("click", async function(){
+      problemsListElement.addEventListener("click", async function () {
 
         const response = await fetch(`${API_URL}/problems/${problem.slug}`);
         const data = await response.json();
         selectedProblem = data;
-        problemListContainer.style.display = "none";        
-        problemTitle.textContent = data.title;
-        problemDifficulty.textContent = data.difficulty;
-        problemDifficulty.className = `difficulty difficulty-${data.difficulty.toLowerCase()}`;
-        problemDescription.innerHTML = formatDescription(data.description);
-        problemSection.style.display = 'block';
-        startBtn.style.display = 'block';
-
+        showProblemDetail(data);
       })
-        
+
     });
-   
+
   } catch (error) {
     console.error("Failed to load problems:", error);
   }
 }
 
-loadProblems();
-
 // 
 // HELPER FUNCTION TO FORMAT THE PROBLEM DESCRIPTION
 //
+
 function formatDescription(text) {
   const constraintsIndex = text.indexOf("Constraints:");
   if (constraintsIndex !== -1) {
     text = text.substring(0, constraintsIndex);
   }
-  
+
   return `<div class="desc-header">Description:</div>` + text
-    .replace(/\s*Example \d+:\s*/g, function(match) {
+    .replace(/\s*Example \d+:\s*/g, function (match) {
       return `<div class="desc-header">${match.trim()}</div>`;
     })
     .replace(/\s*Input:\s*/g, `<em class="io-label">Input: </em>`)
@@ -250,30 +400,79 @@ function formatDescription(text) {
 }
 
 //
-// BACK BUTTON LISTENERS
+// HELPER FUNCTION FOR SLUGIFY 
 //
 
-backButtons.forEach(function(btn) {
-  btn.addEventListener("click", function() {
-    
-    problemSection.style.display = "none";
-    stepSection.style.display = "none";
-    startBtn.style.display = "none";
-    problemListContainer.style.display = "block";
-    feedbackSection.style.display = "none";
-    codeEditor.setValue("");
-    lockedCode = "";
-    lockedLineCount = 0;
-    
-    steps= [];
-    currentStepIndex = 0;
-    attemptCount = 0;
-    selectedProblem = null;
-    startBtn.textContent = "Start Tutoring Session"
-    startBtn.disabled = false
-        
-  });
-});
+function slugify(title) {
+  return title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
+
+//
+// HELPER FUNCTION FOR PARSING PROBLEMS
+//
+
+function parseProblems(rawText) {
+  return rawText
+    .split(/^Problem\s+\d+\s*:/m)
+    .slice(1)
+    .map(chunk => {
+      const idx = chunk.search(/Description\s*:/i);
+      if (idx === -1) return null;
+      let title = chunk.slice(0, idx);
+      const diffMatch = chunk.match(/Difficulty\s*:\s*(Easy|Medium|Hard)/i);
+      let difficulty = null;
+      if (diffMatch) {
+        difficulty = diffMatch[1];                 
+        difficulty = difficulty[0].toUpperCase() + difficulty.slice(1).toLowerCase(); 
+        title = title.replace(/Difficulty\s*:\s*(Easy|Medium|Hard)/i, "");
+      }
+
+      title = title.trim().replace(/_/g, " ");
+
+      const description = chunk.slice(idx)
+        .replace(/Description\s*:/i, "")
+        .trim()
+        .replace(/\s+/g, " ");
+
+      const problem = { slug: slugify(title), title, description };
+      if (difficulty) problem.difficulty = difficulty;
+      return problem;
+    })
+    .filter(p => p && p.title && p.description);
+}
+
+
+//
+// HELPER FOR SHOWING PROBLEM DETAILS
+//
+
+function showProblemDetail(problem) {
+
+  selectedProblem = problem;
+  problemTitle.textContent = problem.title;
+  problemDescription.innerHTML = formatDescription(problem.description);
+
+  if (problem.difficulty) {
+    problemDifficulty.style.display = "";
+    problemDifficulty.textContent = problem.difficulty;
+    problemDifficulty.className = `difficulty difficulty-${problem.difficulty.toLowerCase()}`;
+  }
+  else {
+    problemDifficulty.style.display = "none";
+
+  }
+  problemListContainer.style.display = "none";
+  uploadListContainer.style.display = "none"
+  problemSection.style.display = "block";
+  startBtn.style.display = "block";
+
+
+}
+
+
+// ════════════════════════════════════════════════════════════
+// INITIALIZATION
+// ════════════════════════════════════════════════════════════
 
 //
 // INITIALIZE CODEMIRROR
@@ -289,3 +488,4 @@ const codeEditor = CodeMirror.fromTextArea(answerInput, {
   lineWrapping: true,
 });
 
+loadProblems();

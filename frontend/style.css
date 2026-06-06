@@ -290,6 +290,12 @@ button:disabled {
   font-size: 14px;
   box-shadow: var(--shadow-md);
 }
+#prev-btn,
+#step-problem-list-btn,
+.back-btn {
+  padding: 12px 28px;
+  font-weight: 600;
+}
 
 #start-btn:hover:not(:disabled),
 #submit-btn:hover:not(:disabled),
@@ -307,13 +313,18 @@ button:disabled {
    ════════════════════════════════════════════════════════════ */
 #layout-container {
   display: flex;
-  gap: 32px;
+  flex-direction: column;
   align-items: flex-start;
+  gap: 16px;
   margin-top: 32px;
+  width: 100%;
+  max-width: 900px;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 #step-section {
-  flex: 2;
+  width: 100%;
   background: var(--card-bg);
   padding: 32px;
   border-radius: var(--radius);
@@ -326,6 +337,10 @@ button:disabled {
   color: var(--text-bright);
   margin: 0 0 12px;
   font-weight: 700;
+}
+#step-problem-list-btn {
+  margin-bottom: 0;
+  align-self: flex-start;
 }
 
 #step-prompt {
@@ -447,4 +462,84 @@ label[for="answer-input"] {
 .CodeMirror-gutters {
   background: var(--card-bg-soft) !important;
   border-right: none !important;
+}
+
+
+/* ════════════════════════════════════════════════════════════
+   UPLOAD CONTROLS
+   ════════════════════════════════════════════════════════════ */
+#upload-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  margin-bottom: 32px;
+  max-width: 760px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+#upload-heading {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-bright);
+  text-align: center;
+  margin: 0;
+}
+
+#upload-example {
+  width: 100%;
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius);
+  padding: 22px 26px;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text-muted);
+  white-space: pre-wrap;
+  box-shadow: var(--shadow-md);
+  margin: 0;
+}
+
+#upload-button-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+
+#file-input {
+  display: none;
+}
+
+.file-label {
+  display: inline-block;
+  background: var(--indigo-600);
+  color: white;
+  font-weight: 600;
+  font-size: 14px;
+  padding: 12px 28px;
+  border-radius: 8px;
+  cursor: pointer;
+  box-shadow: var(--shadow-md);
+  transition: var(--transition);
+}
+
+.file-label:hover {
+  background: var(--indigo-500);
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-1px);
+}
+
+#file-name {
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+#upload-another-btn {
+  display: block;
+  margin: 20px auto 0;     
+  padding: 12px 28px;
+  font-weight: 600;
 }

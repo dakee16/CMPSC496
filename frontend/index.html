@@ -30,39 +30,60 @@
     <button class="tab-btn" data-tab="upload">Upload File</button>
   </div>
 
+
   <!-- LeetCode tab -->
   <div id="tab-leetcode" class="tab-div">
     <div id="problem-list-container">
       <h2>Pick a problem:</h2>
       <ul id="problem-list"></ul>
     </div>
-
-    <!-- Problem details — hidden until a problem is clicked -->
-    <div id="problem-section" style="display: none;">
-      <h2 id="problem-title"></h2>
-      <div style="text-align: center;">
-        <span id="problem-difficulty" class="difficulty"></span>
-      </div>
-      <pre id="problem-description"></pre>
-
-      <div class="action-row">
-        <button class="back-btn">← Problem List</button>
-        <button id="start-btn">Start Tutoring Session</button>
-      </div>
-    </div>
-
-    <button id="start-btn" style="display: none;">Start Tutoring Session</button>
   </div>
-  </div>
+
 
   <!-- Upload File tab -->
   <div id="tab-upload" class="tab-div" style="display: none;">
-    <p>File upload coming soon.</p>
+    <div id="upload-controls">
+      <h2 id="upload-heading">Upload a file in the format shown below:</h2>
+
+      <pre id="upload-example">Problem 1: Two Sum
+Difficulty: Easy          *optional (Easy / Medium / Hard)
+Description: Given an array of integers, return indices of the two numbers that add up to a target.
+
+Problem 2: Reverse String
+Description: Write a function that reverses a string in place.</pre>
+
+      <div id="upload-button-row">
+        <label for="file-input" class="file-label">Choose a file</label>
+        <input type="file" id="file-input" accept=".txt,text/plain" />
+        <span id="file-name">No file chosen</span>
+      </div>
+    </div>
+
+    <div id="uploaded-problem-list-container">
+      <ul id="uploaded-problem-list"></ul>
+      <button id="upload-another-btn" style="display: none;">Upload a new file</button>
+    </div>
+  </div>
+
+
+  <div id="problem-section" style="display: none;">
+    <h2 id="problem-title"></h2>
+    <div style="text-align: center;">
+      <span id="problem-difficulty" class="difficulty"></span>
+    </div>
+    <pre id="problem-description"></pre>
+
+
+    <div class="action-row">
+      <button class="back-btn">← Problem List</button>
+      <button id="start-btn">Start Tutoring Session</button>
+    </div>
   </div>
 
   <!-- Step UI  -->
   <div id="layout-container">
 
+    <button class="back-btn" id="step-problem-list-btn" style="display: none;">← Problem List</button>
     <div id="step-section" style="display: none;">
       <h2>Step <span id="step-number"> 1 </span> of <span id="total-steps"> ? </span></h2>
       <p id="step-prompt">Step prompt will appear here.</p>
@@ -71,7 +92,7 @@
       <textarea id="answer-input"></textarea>
 
       <div class="action-row">
-        <button class="back-btn">← Problem List</button>
+        <button id="prev-btn">← Previous Step</button>
         <button id="submit-btn">Submit Answer</button>
       </div>
 
