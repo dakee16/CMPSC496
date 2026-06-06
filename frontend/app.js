@@ -219,6 +219,11 @@ tabButtons.forEach(function (clicked_button) {
     startBtn.style.display = "none";
     feedbackSection.style.display = "none";
     selectedProblem = null;
+
+    // ── restore the leetcode list (it gets hidden when you open a problem) ──
+    if (tabName === "leetcode") {
+      problemListContainer.style.display = "block";
+    }
   });
 });
 
