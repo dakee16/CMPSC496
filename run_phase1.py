@@ -58,6 +58,7 @@ def parse_json(text: str) -> dict:
 
 def normalize_code(text: str) -> str:
     """Normalize operator spacing but PRESERVE leading indentation."""
+    text = text.expandtabs(4)
     lines = text.split('\n')
     normalized = []
     for line in lines:
@@ -230,7 +231,9 @@ def eval_step(step: StepItem, student_answer: str, context: str) -> EvalResult:
     if not student_answer or not student_answer.strip():
         student_answer = "__BLANK__"
         
-    if step.expected_type == "code":
+        student_answer = student_answer.expandtabs(4)
+        
+    if step.expected_type == "code" and student_answer != "__BLANK__":
         student_answer = normalize_code(student_answer)
         student_answer = re.sub(r'(\w)\s+\(', r'\1(', student_answer)
 
