@@ -116,7 +116,7 @@ submitBtn.addEventListener("click", async function () {
   const userAnswer = codeEditor.getRange(
     { line: lockedLineCount, ch: 0 },
     { line: codeEditor.lineCount(), ch: 0 }
-  ).replace(/\n+$/, "");
+  ).replace(/\s+$/, "");
 
 
   try {
