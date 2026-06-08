@@ -118,6 +118,7 @@ submitBtn.addEventListener("click", async function () {
     { line: codeEditor.lineCount(), ch: 0 }
   ).replace(/\n+$/, "");
 
+  const normalizedAnswer = userAnswer.replace(/\t/g, "    ");
 
   try {
     const response = await fetch(`${API_URL}/evaluate`, {
@@ -125,7 +126,7 @@ submitBtn.addEventListener("click", async function () {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         step: currentStep,
-        answer: userAnswer,
+        answer: normalizedAnswer,
         context: lockedCode
       })
     });
@@ -133,7 +134,7 @@ submitBtn.addEventListener("click", async function () {
 
     feedbackSection.style.display = "block";
 
-    console.log("userAnswer repr:", JSON.stringify(userAnswer));
+    console.log("userAnswer repr:", JSON.stringify(normalizedAnswer));
     console.log("lockedCode repr:", JSON.stringify(lockedCode));
 
 

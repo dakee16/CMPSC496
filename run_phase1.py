@@ -70,7 +70,7 @@ def normalize_code(text: str) -> str:
         content = re.sub(r'\s*(//=|//|\*\*|==|!=|<=|>=|%|[+\-*/<>])\s*', r' \1 ', content)
         content = re.sub(r'  +', ' ', content).strip()
         normalized.append(indent + content)
-    return '\n'.join(normalized).strip()
+    return '\n'.join(normalized).rstrip()
 
 def expected_indent(context: str) -> int:
     """
