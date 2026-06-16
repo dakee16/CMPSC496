@@ -11,6 +11,14 @@ RULES:
 - If the step asks for a loop header or function signature, accept that line alone as the answer.
 - rubric must describe exactly what a one-line correct answer looks like for that step only.
 - rubric must explicitly list acceptable variations (e.g., "num //= 10 or num = num // 10").
+- canonical: the SINGLE runnable line of Python for this step. Pick ONE form
+  (no "or", no prose, no comments). For string/explanation steps, use "".
+- indent: the block-nesting depth of this line in the final function.
+  The def/class header is 0. A line in the function body is 1. A line inside
+  a loop or if that sits in the function body is 2. And so on.
+- The canonical lines, stacked in order at their indent depths, MUST form a
+  correct, runnable program. Never place a guaranteed-return before code that
+  still needs to run — that creates dead code and is invalid.
 - For class definition steps, the correct one-line answer is ONLY the class 
   header line: `class ClassName:` or `class ClassName(BaseClass):`.
   NEVER ask students to put attributes in the class parentheses — that is 
@@ -73,6 +81,14 @@ Good decomposition:
   ]
 }
 
+Each step object must now also include "canonical" and "indent". Example for
+the sum_digits steps above:
+  {"step_id":"Step 1", ..., "canonical":"def sum_digits(num):", "indent":0}
+  {"step_id":"Step 2", ..., "canonical":"total = 0", "indent":1}
+  {"step_id":"Step 3", ..., "canonical":"while num > 0:", "indent":1}
+  {"step_id":"Step 4", ..., "canonical":"digit = num % 10", "indent":2}
+  {"step_id":"Step 7", ..., "canonical":"return total", "indent":1}
+
 Now decompose the given problem the same way. Return JSON only.
 """
 
@@ -92,21 +108,11 @@ SIGNATURE RULES:
 
 CODE GRADING RULES:
 - Ignore whitespace and spacing around operators (e.g. a+b and a + b are identical).
-
-- INDENTATION FROM CONTEXT: If PRIOR CONTEXT contains a function definition 
-  (def ...:), loop header (for/while ...:), or conditional (if/else/elif ...:),
-  then any step that asks for code INSIDE that block must be indented by 
-  exactly 4 spaces relative to that block's header.
-  Example: if context shows `def two_sum(...):`, then `num_to_index = {}` 
-  is WRONG — it must be `    num_to_index = {}` (4 spaces indent).
-  If the student's answer has 0 indentation when it should have 4, mark 
-  correct=false with short_reason="Missing indentation — this line should 
-  be indented inside the function/loop/conditional."
   
 - If the student answer matches the rubric semantically, mark correct=true.
-- If the student answer matches the rubric semantically with only operator 
-  spacing differences, mark correct=true. Indentation differences are NOT 
-  minor — they change program logic and must be flagged.
+  IGNORE indentation completely — leading whitespace is stripped before you
+  see it and is handled by the reconstructor. NEVER mark an answer wrong for
+  indentation, and NEVER mention indentation in short_reason.
 - CRITICAL: if the student answer matches the rubric exactly (same tokens, same logic), you MUST mark correct=true.
   Do NOT invent reasons to mark it wrong.
 - Accept `else:` as equivalent to explicit elif when it is the only remaining branch.

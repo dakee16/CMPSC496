@@ -1,0 +1,58 @@
+{
+  "palindrome-number": [
+    {
+      "input": [
+        0
+      ],
+      "expected": true
+    },
+    {
+      "input": [
+        -123456789
+      ],
+      "expected": false
+    },
+    {
+      "input": [
+        12321
+      ],
+      "expected": true
+    },
+    {
+      "input": [
+        1
+      ],
+      "expected": true
+    },
+    {
+      "input": [
+        12345
+      ],
+      "expected": false
+    },
+    {
+      "input": [
+        -121
+      ],
+      "expected": false
+    },
+    {
+      "input": [
+        123456789
+      ],
+      "expected": false
+    },
+    {
+      "input": [
+        1234567890
+      ],
+      "expected": false
+    },
+    {
+      "input": [
+        987654321
+      ],
+      "expected": false
+    }
+  ]
+}

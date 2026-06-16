@@ -9,6 +9,7 @@ from ollama_client import chat
 from schemas import DecomposeOutput, EvalResult, StepItem
 from prompts import DECOMPOSE_SYSTEM, EVAL_SYSTEM
 from student_agent import get_student_answer
+from sandbox import get_oracle_tests, passes_tests
 
 load_dotenv()
 
@@ -187,14 +188,59 @@ def save_interaction(step_uuid: str, agent: str, attempt: int, answer: str, corr
     }).execute()
 
 
-# LLM calls
+def assemble_canonical(steps: list[StepItem]) -> str:
+    """Stack the canonical lines at their indent depths into a runnable function."""
+    lines = []
+    for s in steps:
+        if s.expected_type != "code":
+            continue
+        line = (s.canonical or "").strip()
+        if line:
+            lines.append("    " * max(0, s.indent) + line)
+    return "\n".join(lines)
 
-def decompose_question(question_id: str, question_text: str) -> list[StepItem]:
+
+def validate_decomposition(steps: list[StepItem], problem: dict) -> dict:
+    """Assemble canonical answers, run against oracle tests.
+    status: 'pass' (works), 'fail' (broken — e.g. dead code), 'skipped' (can't check)."""
+    code_steps = [s for s in steps if s.expected_type == "code"]
+    if not code_steps or any(not (s.canonical or "").strip() for s in code_steps):
+        return {"status": "skipped", "detail": "missing canonical lines", "code": "", "failures": []}
+
+    code = assemble_canonical(steps)
+    try:
+        compile(code, "<assembled>", "exec")
+    except SyntaxError as e:
+        return {"status": "fail", "detail": f"not valid Python: {e}", "code": code, "failures": []}
+
+    tests = get_oracle_tests(problem)
+    if not tests:
+        return {"status": "skipped", "detail": "no oracle tests (non-JSON inputs / no ground truth)",
+                "code": code, "failures": []}
+
+    m = re.search(r'def\s+(\w+)', code)
+    entry = m.group(1) if m else None
+    res = passes_tests(code, tests, entry_name=entry)
+    if res["ok"] and res["fraction"] == 1.0:
+        return {"status": "pass", "detail": f"{res['passed']}/{res['total']} pass",
+                "code": code, "failures": []}
+    return {"status": "fail",
+            "detail": res["error"] or f"only {res['passed']}/{res['total']} pass",
+            "code": code, "failures": res.get("failures", [])}
+
+
+def decompose_question(question_id: str, question_text: str,
+                       feedback: str = "") -> list[StepItem]:
     user_msg = (
         f"QUESTION_ID: {question_id}\n"
         f"PROBLEM:\n{question_text}\n\n"
-        "Return JSON only using this schema:\n"
-        '{"steps": [{"step_id":"Step 1","prompt":"...","expected_type":"code","rubric":"..."}, ...]}'
+        + (f"PREVIOUS ATTEMPT FAILED VALIDATION:\n{feedback}\n"
+           "Fix the step ordering / canonical lines so the assembled program is "
+           "correct. Do not place a return before code that still needs to run.\n\n"
+           if feedback else "")
+        + "Return JSON only using this schema:\n"
+        '{"steps": [{"step_id":"Step 1","prompt":"...","expected_type":"code",'
+        '"rubric":"...","canonical":"def f(x):","indent":0}, ...]}'
     )
     raw = chat(
         MODEL,
@@ -217,6 +263,8 @@ def decompose_question(question_id: str, question_text: str) -> list[StepItem]:
                     "expected_type": s.get("expected_type", "string"),
                     "skill":         "auto-decomposed",
                     "rubric":        s.get("rubric"),
+                    "canonical":     s.get("canonical"),
+                    "indent":        int(s.get("indent", 0) or 0),
                 }
                 for idx, s in enumerate(data.get("steps", []))
                 if s.get("prompt")
@@ -227,47 +275,56 @@ def decompose_question(question_id: str, question_text: str) -> list[StepItem]:
     return parsed.steps
 
 
+def decompose_validated(problem: dict, max_tries: int = 3) -> list[StepItem]:
+    """Decompose, then gate on execution. If the assembled canonical solution
+    fails the oracle tests, re-prompt with the failing cases and retry."""
+    qid = problem.get("slug") or problem.get("title", "problem")
+    text = problem.get("description") or problem.get("title", "")
+    feedback = ""
+    best = None
+
+    for attempt in range(1, max_tries + 1):
+        steps = decompose_question(qid, text, feedback=feedback)
+        report = validate_decomposition(steps, problem)
+        print(f"  🧪 Decomposition attempt {attempt}: {report['status']} — {report['detail']}")
+
+        if report["status"] in ("pass", "skipped"):
+            return steps  # pass = verified correct; skipped = can't verify, accept as-is
+
+        best = steps  # keep the latest failing attempt as fallback
+        fails = report.get("failures", [])[:3]
+        feedback = (
+            "Assembled program:\n" + report["code"] + "\n\n"
+            "Failing tests (input → expected vs what your steps produced):\n"
+            + "\n".join(f"  {f['input']} → expected {f['expected']}, got {f['got']}"
+                        for f in fails)
+        )
+
+    print(f"  ⚠️  Decomposition still failing after {max_tries} tries — using best attempt.")
+    return best
+
+
+def _dedent_all(text: str) -> str:
+    """Strip leading whitespace from every line — indentation is graded by the
+    reconstructor, never at the step level."""
+    return re.sub(r'(?m)^[ \t]+', '', text)
+
+
 def eval_step(step: StepItem, student_answer: str, context: str) -> EvalResult:
     if not student_answer or not student_answer.strip():
         student_answer = "__BLANK__"
-        
-        student_answer = student_answer.expandtabs(4)
-        
+
     if step.expected_type == "code" and student_answer != "__BLANK__":
         student_answer = normalize_code(student_answer)
         student_answer = re.sub(r'(\w)\s+\(', r'\1(', student_answer)
+        # Indentation is NOT graded here — strip it so only logic is compared.
+        student_answer = _dedent_all(student_answer)
 
-        indent_err = check_indentation(student_answer, context)
-        if indent_err:
-            # Still call LLM but only to get the correct_answer
-            rubric_prompt = (
-                f"MICRO-STEP:\n{step.prompt}\n\n"
-                f"RUBRIC:\n{step.rubric or 'Not provided'}\n\n"
-                f"PRIOR CONTEXT:\n{context or 'None yet.'}\n\n"
-                f"The correct answer for this step requires exactly {expected_indent(context)} "
-                f"spaces of indentation. Provide the correct answer with that indentation.\n"
-                'Return JSON only: {"correct": false, "short_reason": "...", "correct_answer": "..."}'
-            )
-            try:
-                raw = chat(MODEL, EVAL_SYSTEM,
-                           [{"role": "user", "content": rubric_prompt}],
-                           temperature=0.0, fmt="json")
-                data = parse_json(raw)
-                return EvalResult(
-                    correct=False,
-                    short_reason=indent_err,
-                    correct_answer=data.get("correct_answer") or None,
-                )
-            except Exception:
-                return EvalResult(
-                    correct=False,
-                    short_reason=indent_err,
-                    correct_answer=None,
-                )
-        
+    rubric_for_grading = _dedent_all(step.rubric) if step.rubric else None
+
     user_msg = (
         f"MICRO-STEP:\n{step.prompt}\n\n"
-        f"RUBRIC:\n{step.rubric or 'Not provided'}\n\n"
+        f"RUBRIC:\n{rubric_for_grading or 'Not provided'}\n\n"
         f"EXPECTED_TYPE: {step.expected_type}\n\n"
         f"PRIOR CONTEXT (validated facts for this question only):\n{context or 'None yet.'}\n\n"
         f"STUDENT ANSWER:\n{student_answer}\n\n"

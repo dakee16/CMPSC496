@@ -11,6 +11,8 @@ class StepItem(BaseModel):
     expected_type: ExpectedType = "string"
     skill: str = "unspecified"
     rubric: Optional[str] = None
+    canonical: Optional[str] = None   # ONE runnable line for this step
+    indent: int = 0                   # block depth (0=def, 1=body, 2=inside loop/if)
 
 
 class DecomposeOutput(BaseModel):

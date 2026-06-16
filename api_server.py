@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from typing import Optional
 import json
 
-from run_phase1 import decompose_question, eval_step, parse_json
+from run_phase1 import decompose_validated, eval_step, parse_json
 from schemas import StepItem
 
 app = FastAPI(title="MicroTutor API", version="1.0")
@@ -45,7 +45,9 @@ def health():
 @app.post("/decompose")
 def decompose(req: DecomposeRequest):
     try:
-        steps = decompose_question(req.slug, req.description)
+        steps = decompose_validated(
+            {"slug": req.slug, "title": req.slug, "description": req.description}
+        )
         return {
             "steps": [
                 {
