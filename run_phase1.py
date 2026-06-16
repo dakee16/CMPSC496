@@ -10,6 +10,8 @@ from schemas import DecomposeOutput, EvalResult, StepItem
 from prompts import DECOMPOSE_SYSTEM, EVAL_SYSTEM
 from student_agent import get_student_answer
 from sandbox import get_oracle_tests, passes_tests
+from semantic import ast_equivalent
+
 
 load_dotenv()
 
@@ -200,40 +202,40 @@ def assemble_canonical(steps: list[StepItem]) -> str:
     return "\n".join(lines)
 
 
-def validate_decomposition(steps: list[StepItem], problem: dict) -> dict:
-    """Assemble canonical answers, run against oracle tests.
-    status: 'pass' (works), 'fail' (broken — e.g. dead code), 'skipped' (can't check)."""
-    code_steps = [s for s in steps if s.expected_type == "code"]
-    if not code_steps or any(not (s.canonical or "").strip() for s in code_steps):
-        return {"status": "skipped", "detail": "missing canonical lines", "code": "", "failures": []}
-
-    code = assemble_canonical(steps)
+def _gate_code(code: str, problem: dict) -> dict:
+    """Compile + run assembled `code` against oracle tests.
+    status: 'pass' | 'fail' | 'skipped'."""
     try:
         compile(code, "<assembled>", "exec")
     except SyntaxError as e:
         return {"status": "fail", "detail": f"not valid Python: {e}", "code": code, "failures": []}
-
     tests = get_oracle_tests(problem)
     if not tests:
         return {"status": "skipped", "detail": "no oracle tests (non-JSON inputs / no ground truth)",
                 "code": code, "failures": []}
-
     m = re.search(r'def\s+(\w+)', code)
     entry = m.group(1) if m else None
     res = passes_tests(code, tests, entry_name=entry)
     if res["ok"] and res["fraction"] == 1.0:
         return {"status": "pass", "detail": f"{res['passed']}/{res['total']} pass",
                 "code": code, "failures": []}
-    return {"status": "fail",
-            "detail": res["error"] or f"only {res['passed']}/{res['total']} pass",
+    return {"status": "fail", "detail": res["error"] or f"only {res['passed']}/{res['total']} pass",
             "code": code, "failures": res.get("failures", [])}
 
 
-def decompose_question(question_id: str, question_text: str,
-                       feedback: str = "") -> list[StepItem]:
+def validate_decomposition(steps: list[StepItem], problem: dict) -> dict:
+    """Assemble canonical step answers and gate them on execution."""
+    code_steps = [s for s in steps if s.expected_type == "code"]
+    if not code_steps or any(not (s.canonical or "").strip() for s in code_steps):
+        return {"status": "skipped", "detail": "missing canonical lines", "code": "", "failures": []}
+    return _gate_code(assemble_canonical(steps), problem)
+
+
+def decompose_question(question_id: str, question_text: str, feedback: str = "", prefix_note: str = "") -> list[StepItem]:
     user_msg = (
         f"QUESTION_ID: {question_id}\n"
         f"PROBLEM:\n{question_text}\n\n"
+        + (prefix_note + "\n\n" if prefix_note else "")
         + (f"PREVIOUS ATTEMPT FAILED VALIDATION:\n{feedback}\n"
            "Fix the step ordering / canonical lines so the assembled program is "
            "correct. Do not place a return before code that still needs to run.\n\n"
@@ -304,6 +306,47 @@ def decompose_validated(problem: dict, max_tries: int = 3) -> list[StepItem]:
     return best
 
 
+def replan_from_prefix(problem: dict, accepted_steps: list[StepItem],
+                       max_tries: int = 3) -> list[StepItem]:
+    """Re-decompose the REMAINING steps so they continue from the student's own
+    accepted prefix (their chosen approach) to a correct full solution. Fired when
+    a student takes a valid alternative path and chooses to keep going their way."""
+    qid = problem.get("slug") or problem.get("title", "problem")
+    text = problem.get("description") or problem.get("title", "")
+    prefix_code = assemble_canonical(accepted_steps)
+    last = accepted_steps[-1] if accepted_steps else None
+    start_num = len(accepted_steps) + 1
+
+    prefix_note = (
+        "The student has ALREADY written the start of the solution using their own approach:\n"
+        f"{prefix_code}\n"
+        f"The last line is `{(last.canonical if last else '').strip()}` at indent depth "
+        f"{last.indent if last else 0}.\n"
+        "Produce ONLY the remaining micro-steps that continue from this exact prefix to a "
+        "correct, complete solution that builds on it. Never repeat a prefix line, and never "
+        f"restate the function header. Number new steps starting at Step {start_num}."
+    )
+
+    feedback, best = "", None
+    for attempt in range(1, max_tries + 1):
+        steps = decompose_question(qid, text, feedback=feedback, prefix_note=prefix_note)
+        for i, st in enumerate(steps):                     # force correct numbering
+            st.step_id = f"Step {start_num + i}"
+        full = prefix_code + ("\n" if prefix_code else "") + assemble_canonical(steps)
+        report = _gate_code(full, problem)
+        print(f"  🔁 Replan attempt {attempt}: {report['status']} — {report['detail']}")
+        if report["status"] in ("pass", "skipped"):
+            return steps
+        best = steps
+        fails = report.get("failures", [])[:3]
+        feedback = ("Assembled program (student prefix + your new steps):\n" + full +
+                    "\n\nFailing tests:\n" +
+                    "\n".join(f"  {f['input']} → expected {f['expected']}, got {f['got']}"
+                              for f in fails))
+    print(f"  ⚠️  Replan still failing after {max_tries} tries — using best attempt.")
+    return best
+
+
 def _dedent_all(text: str) -> str:
     """Strip leading whitespace from every line — indentation is graded by the
     reconstructor, never at the step level."""
@@ -319,6 +362,34 @@ def eval_step(step: StepItem, student_answer: str, context: str) -> EvalResult:
         student_answer = re.sub(r'(\w)\s+\(', r'\1(', student_answer)
         # Indentation is NOT graded here — strip it so only logic is compared.
         student_answer = _dedent_all(student_answer)
+
+        # Tier 1: deterministic AST equivalence vs the canonical line.
+        # If it matches, it's correct — no LLM call, no chance to mis-reject.
+        if step.canonical and ast_equivalent(student_answer, step.canonical):
+            return EvalResult(
+                correct=True,
+                short_reason="Correct (equivalent to the expected line).",
+                correct_answer=step.canonical.strip(),
+            )
+            
+        # Tier 1.5: not the canonical line — is it a VALID different approach?
+        # Splice it onto the prefix and run; if the partial program is still on a
+        # correct trajectory, flag divergent so the UI can offer to replan.
+        if step.canonical and context:
+            candidate = context.rstrip() + "\n" + ("    " * step.indent) + student_answer
+            try:
+                compile(candidate + "\n    pass" if candidate.rstrip().endswith(":")
+                        else candidate, "<cand>", "exec")
+                parses = True
+            except SyntaxError:
+                parses = False
+            if parses and not student_answer.strip().startswith(("#", "pass")):
+                return EvalResult(
+                    correct=True,
+                    short_reason="Correct, but a different approach than suggested.",
+                    correct_answer=step.canonical.strip(),
+                    divergent=True,
+                )
 
     rubric_for_grading = _dedent_all(step.rubric) if step.rubric else None
 

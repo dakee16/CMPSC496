@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from typing import Optional
 import json
 
-from run_phase1 import decompose_validated, eval_step, parse_json
+from run_phase1 import decompose_validated, eval_step, parse_json, replan_from_prefix
 from schemas import StepItem
 
 app = FastAPI(title="MicroTutor API", version="1.0")
@@ -35,6 +35,11 @@ class EvaluateRequest(BaseModel):
     step: dict
     answer: str
     context: str = ""
+    
+class ReplanRequest(BaseModel):
+    slug: str
+    description: str
+    accepted_steps: list[dict]
 
 
 @app.get("/health")
@@ -55,6 +60,8 @@ def decompose(req: DecomposeRequest):
                     "prompt": s.prompt,
                     "expected_type": s.expected_type,
                     "rubric": s.rubric or "",
+                    "canonical": s.canonical or "",
+                    "indent": s.indent,
                 }
                 for s in steps
             ]
@@ -67,7 +74,6 @@ def decompose(req: DecomposeRequest):
 def evaluate(req: EvaluateRequest):
     if not req.answer or not req.answer.strip():
         req.answer = "__BLANK__"
-        
     try:
         step = StepItem(
             question_id=req.step.get("step_id", "Step 1"),
@@ -75,12 +81,37 @@ def evaluate(req: EvaluateRequest):
             prompt=req.step.get("prompt", ""),
             expected_type=req.step.get("expected_type", "code"),
             rubric=req.step.get("rubric", ""),
+            canonical=req.step.get("canonical") or None,
+            indent=int(req.step.get("indent", 0) or 0),
         )
         result = eval_step(step, req.answer, req.context)
         return {
             "correct": result.correct,
             "short_reason": result.short_reason,
             "correct_answer": result.correct_answer or "",
+            "divergent": result.divergent,
+        }
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
+@app.post("/replan")
+def replan(req: ReplanRequest):
+    try:
+        accepted = [StepItem(**s) for s in req.accepted_steps]
+        problem = {"slug": req.slug, "title": req.slug, "description": req.description}
+        new_steps = replan_from_prefix(problem, accepted)
+        return {
+            "steps": [
+                {
+                    "step_id": s.step_id,
+                    "prompt": s.prompt,
+                    "expected_type": s.expected_type,
+                    "rubric": s.rubric or "",
+                    "canonical": s.canonical or "",
+                    "indent": s.indent,
+                }
+                for s in new_steps
+            ]
         }
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e))

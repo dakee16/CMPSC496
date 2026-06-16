@@ -23,3 +23,4 @@ class EvalResult(BaseModel):
     correct: bool
     short_reason: str
     correct_answer: Optional[str] = None
+    divergent: bool = False   # correct, but NOT the canonical line — offer replan
