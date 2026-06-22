@@ -13,7 +13,7 @@ class StepItem(BaseModel):
     rubric: Optional[str] = None
     canonical: Optional[str] = None   # ONE runnable line for this step
     indent: int = 0                   # block depth (0=def, 1=body, 2=inside loop/if)
-
+    reference: Optional[str] = None 
 
 class DecomposeOutput(BaseModel):
     steps: List[StepItem]

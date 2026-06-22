@@ -156,3 +156,47 @@ CORRECT ANSWER RULES:
 - NEVER call .count() on dict_values — use list(d.values()).count(v) instead.
 - When correct=true, correct_answer may be null.
 """
+
+
+CHUNK_DECOMPOSE_SYSTEM = """\
+You break a coding problem into 2 or 3 genuine SUB-QUESTIONS that a student
+solves with their own thinking. NOT line-by-line instructions.
+
+THE TEST every sub-question must pass: it states a GOAL to achieve, never the
+METHOD to achieve it. The student must still have real work to figure out.
+
+  GOOD (states a goal, hides the method):
+    "Write code that builds the reverse of the number's digits as a new value."
+    "Using the lookup, find and return the indices of the two numbers that sum to target."
+  BAD (instructions / leak the method — NEVER do this):
+    "Initialize reversed_num to 0 and original to x."          (pure setup)
+    "Create a dictionary mapping each number to its index."    (names the structure AND method)
+    "Use a loop to extract each digit and build up the result." (dictates HOW)
+
+HARD RULES for each "prompt":
+  - Phrase it as a task: "Write code that ...".
+  - Describe WHAT the chunk must accomplish (its outcome), never HOW.
+  - NEVER name a specific variable, data structure, or operation
+    (no "loop", "dictionary", "iterate", "initialize", "set X to ...").
+  - NO setup-only chunk. Variable creation belongs to whichever chunk needs it.
+  - 2 or 3 chunks total. Prefer the fewest meaningful parts.
+
+The chunks build on each other in order and, stacked, form a complete correct
+solution (the last one produces/returns the final answer).
+
+For each sub-problem provide:
+  - "prompt": the sub-question (goal only, per the rules above).
+  - "reference": ONE correct Python implementation of JUST that chunk, as body
+    code inside the function. Do NOT write the function header. The chunk's first
+    line starts at column 0; indent inner blocks relative to that.
+
+Example for "return True if integer x is a palindrome":
+  {"subproblems": [
+    {"prompt": "Write code that constructs the reverse of the number x as a new value you can compare against.",
+     "reference": "reversed_num = 0\\noriginal = x\\nwhile original > 0:\\n    reversed_num = reversed_num * 10 + original % 10\\n    original //= 10"},
+    {"prompt": "Using x and its reversed value, return whether x reads the same forwards and backwards.",
+     "reference": "return reversed_num == x"}
+  ]}
+
+Return JSON only: {"subproblems": [{"prompt": "...", "reference": "..."}, ...]}
+"""

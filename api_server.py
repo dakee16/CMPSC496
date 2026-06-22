@@ -10,7 +10,8 @@ from pydantic import BaseModel
 from typing import Optional
 import json
 
-from run_phase1 import decompose_validated, eval_step, parse_json, replan_from_prefix
+from run_phase1 import decompose_validated, eval_step, parse_json, decompose_into_chunks, replan_from_prefix
+from grader import grade_chunk
 from schemas import StepItem
 
 app = FastAPI(title="MicroTutor API", version="1.0")
@@ -40,6 +41,13 @@ class ReplanRequest(BaseModel):
     slug: str
     description: str
     accepted_steps: list[dict]
+    
+class ChunkRequest(BaseModel):
+    problem: dict
+    chunks: list[dict]
+    index: int
+    student_code: str
+    accepted_prefix: list[str] = []
 
 
 @app.get("/health")
@@ -116,6 +124,45 @@ def replan(req: ReplanRequest):
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e))
     
+@app.post("/decompose_chunks")
+def decompose_chunks_route(req: DecomposeRequest):
+    try:
+        problem = {"slug": req.slug, "title": req.slug, "description": req.description}
+        # Fetch the full problem dict (needs solution for oracle)
+        from run_phase1 import load_problems
+        problems = load_problems(limit=500)
+        full = next((p for p in problems if p.get("slug") == req.slug), None)
+        if full:
+            problem["solution"] = full.get("solution", "")
+        result = decompose_into_chunks(problem)
+        return {
+            "header": result["header"],
+            "chunks": [
+                {"step_id": c.step_id, "prompt": c.prompt,
+                 "expected_type": c.expected_type, "reference": c.reference or ""}
+                for c in result["chunks"]
+            ]
+        }
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/grade_chunk")
+def grade_chunk_route(req: ChunkRequest):
+    try:
+        chunks = [StepItem(question_id=req.problem.get("slug", "q"),
+                           step_id=c.get("step_id", f"Part {i+1}"),
+                           prompt=c.get("prompt", ""),
+                           expected_type=c.get("expected_type", "code"),
+                           reference=c.get("reference", ""))
+                  for i, c in enumerate(req.chunks)]
+        result = grade_chunk(req.problem, chunks, req.index,
+                             req.student_code, req.accepted_prefix)
+        return {"correct": result["correct"], "tier": result["tier"],
+                "reason": result["reason"],
+                "failures": result.get("failures", [])[:3]}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/problems")
 def list_problems(limit: int = 100, difficulty: str = None):

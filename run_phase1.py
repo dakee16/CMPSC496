@@ -1,16 +1,17 @@
 import json
 import os
 import re
+import textwrap
 from dotenv import load_dotenv
 from pydantic import ValidationError
 from supabase import create_client
 
 from ollama_client import chat
 from schemas import DecomposeOutput, EvalResult, StepItem
-from prompts import DECOMPOSE_SYSTEM, EVAL_SYSTEM
 from student_agent import get_student_answer
-from sandbox import get_oracle_tests, passes_tests
 from semantic import ast_equivalent
+from sandbox import get_oracle_tests, passes_tests, _extract_signature
+from prompts import DECOMPOSE_SYSTEM, EVAL_SYSTEM, CHUNK_DECOMPOSE_SYSTEM
 
 
 load_dotenv()
@@ -223,8 +224,55 @@ def _gate_code(code: str, problem: dict) -> dict:
             "code": code, "failures": res.get("failures", [])}
 
 
+def assemble_references(header: str, chunks: list[StepItem]) -> str:
+    body = "\n".join((c.reference or "").rstrip() for c in chunks if (c.reference or "").strip())
+    return header + "\n" + textwrap.indent(body, "    ")
+
+
+def decompose_into_chunks(problem: dict, max_tries: int = 3) -> dict:
+    name, params = _extract_signature(problem.get("solution", ""))
+    header = f"def {name or 'solve'}({', '.join(params)}):"
+    text = problem.get("description") or problem.get("title", "")
+    qid = problem.get("slug") or problem.get("title", "problem")
+
+    feedback, best = "", None
+    for attempt in range(1, max_tries + 1):
+        user_msg = (
+            f"PROBLEM:\n{text}\n\n"
+            f"The function header is: {header}\n"
+            "Write body chunks only.\n\n"
+            + (f"PREVIOUS ATTEMPT FAILED:\n{feedback}\nFix it so the assembled body "
+               "is correct.\n\n" if feedback else "")
+            + 'Return JSON only: {"subproblems": [{"prompt": "...", "reference": "..."}, ...]}'
+        )
+        raw = chat(MODEL, CHUNK_DECOMPOSE_SYSTEM,
+                   [{"role": "user", "content": user_msg}], temperature=0.2, fmt="json")
+        try:
+            data = parse_json(raw)
+        except (ValueError, json.JSONDecodeError):
+            continue
+        chunks = [
+            StepItem(question_id=qid, step_id=f"Part {i + 1}", prompt=c.get("prompt", "").strip(),
+                     expected_type="code", reference=c.get("reference", ""))
+            for i, c in enumerate(data.get("subproblems", [])) if c.get("prompt")
+        ]
+        if not chunks:
+            continue
+
+        code = assemble_references(header, chunks)
+        report = _gate_code(code, problem)
+        print(f"  🧩 Chunk decomposition attempt {attempt}: {report['status']} — {report['detail']}")
+        if report["status"] in ("pass", "skipped"):
+            return {"header": header, "chunks": chunks}
+        best = {"header": header, "chunks": chunks}
+        fails = report.get("failures", [])[:3]
+        feedback = ("Assembled body:\n" + code + "\n\nFailing tests:\n" +
+                    "\n".join(f"  {f['input']} → expected {f['expected']}, got {f['got']}" for f in fails))
+
+    print(f"  ⚠️  Chunk decomposition still failing after {max_tries} tries — using best.")
+    return best or {"header": header, "chunks": []}
+
 def validate_decomposition(steps: list[StepItem], problem: dict) -> dict:
-    """Assemble canonical step answers and gate them on execution."""
     code_steps = [s for s in steps if s.expected_type == "code"]
     if not code_steps or any(not (s.canonical or "").strip() for s in code_steps):
         return {"status": "skipped", "detail": "missing canonical lines", "code": "", "failures": []}
