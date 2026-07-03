@@ -152,8 +152,34 @@ def grade_chunk(problem: dict, chunks: list[StepItem], index: int,
     full_body = "\n".join(b for b in (upto, tail_body) if b.strip())
     full_code = header + "\n" + _indent_body(full_body)
 
+    # Ensure we have a solution for oracle generation — fetch from Supabase if missing
+    if not problem.get("solution", "").strip():
+        try:
+            from supabase import create_client
+            import os
+            sb = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_KEY"])
+            res_db = sb.table("problems").select("solution").eq(
+                "slug", problem.get("slug", "")).single().execute()
+            if res_db.data and res_db.data.get("solution"):
+                problem = {**problem, "solution": res_db.data["solution"]}
+        except Exception:
+            pass
+
     tests = get_oracle_tests(problem)
+    res = None
+
     if not tests:
+        try:
+            compile(full_code, "<smoke>", "exec")
+            ns = {}
+            exec(compile(full_code, "<smoke>", "exec"), ns)  # noqa: S102
+            # If it executes without error, we can't verify correctness — defer to judge
+        except SyntaxError as e:
+            return {"correct": False, "tier": "syntactic",
+                    "reason": f"Code doesn't compile: {e.msg} (line {e.lineno}).",
+                    "failures": []}
+        except Exception:
+            pass  # runtime errors during exec are expected (no inputs yet)
         return _llm_judge(problem, header, upto, chunks[index], full_code)
 
     m = re.search(r'def\s+(\w+)', full_code)
@@ -162,13 +188,14 @@ def grade_chunk(problem: dict, chunks: list[StepItem], index: int,
         return {"correct": True, "tier": "execution",
                 "reason": "Correct — passes all tests (any valid approach accepted).",
                 "failures": []}
-
+        
+        
+    # ── Tier 3: interface-adaptive retry ──
     if index < len(chunks) - 1 and tail_body.strip():
         student_outputs = _assigned_names(student_code)
         adapted_tail = _adapt_tail(problem, header, upto, tail_body, student_outputs)
         if adapted_tail:
             reads, writes = _read_write_names(adapted_tail)
-            # Anti-bypass guard: must build ON the student's output, not around it.
             if (reads & student_outputs) and not (writes & student_outputs):
                 adapted_full = header + "\n" + _indent_body(
                     "\n".join(b for b in (upto, adapted_tail) if b.strip()))
@@ -182,4 +209,4 @@ def grade_chunk(problem: dict, chunks: list[StepItem], index: int,
 
     # Tier 4: execution exhausted — fall back to LLM judge for final verdict.
     return _llm_judge(problem, header, upto, chunks[index], full_code,
-                      execution_failures=res.get("failures", []))
+                      execution_failures=res.get("failures", []) if res else [])

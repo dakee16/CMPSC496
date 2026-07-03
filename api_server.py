@@ -135,6 +135,15 @@ def decompose_chunks_route(req: DecomposeRequest):
         if full:
             problem["solution"] = full.get("solution", "")
         result = decompose_into_chunks(problem)
+        
+        # Pre-warm oracle tests
+        if problem.get("solution", "").strip():
+            try:
+                from sandbox import get_oracle_tests
+                get_oracle_tests(problem)  # generates + caches, result discarded
+                print(f"  ✅ Oracle pre-warmed for {problem.get('slug')}")
+            except Exception as e:
+                print(f"  ⚠️  Oracle pre-warm failed: {e}")
         return {
             "header": result["header"],
             "chunks": [
