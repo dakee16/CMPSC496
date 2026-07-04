@@ -83,23 +83,33 @@ Description: Write a function that reverses a string in place.</pre>
   <!-- Step UI  -->
   <div id="layout-container">
 
-    <button class="back-btn" id="step-problem-list-btn" style="display: none;">← Problem List</button>
-    <div id="step-section" style="display: none;">
-      <h2>Step <span id="step-number"> 1 </span> of <span id="total-steps"> ? </span></h2>
-      <p id="step-prompt">Step prompt will appear here.</p>
-
+    <button class="back-btn" id="chunk-problem-list-btn" style="display: none;">← Problem List</button>
+    <div id="part-section" style="display: none;">
+      <h2>Part <span id="part-number"> 1 </span> of <span id="total-parts"> ? </span></h2>
+      <p id="part-prompt"></p>
+      <div id="progress-display-wrapper" style="display: none;">
+        <label>Function so far:</label>
+        <pre id="progress-display"></pre>
+      </div>
       <label for="answer-input">Your answer:</label>
       <textarea id="answer-input"></textarea>
 
       <div class="action-row">
-        <button id="prev-btn">← Previous Step</button>
         <button id="submit-btn">Submit Answer</button>
+        <button id="edit-code-btn">Edit Code</button>
       </div>
 
       <div id="feedback-section" style="display: none;">
         <p id="feedback-text"></p>
-        <button id="next-btn" disabled>Next Step</button>
+        <button id="next-btn" disabled>Next Part</button>
       </div>
+    </div>
+
+    <!-- PHASE 3: assembled-solution screen, shown after the last chunk -->
+    <div id="solution-section" style="display: none;">
+      <h2>🎉 Solution Complete</h2>
+      <pre id="final-solution"></pre>
+      <button class="back-btn">← Problem List</button>
     </div>
   </div>
 

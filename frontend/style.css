@@ -3,21 +3,32 @@
    ════════════════════════════════════════════════════════════ */
 :root {
   /* Brand colors */
-  --indigo-600: #6366f1;       /* primary action */
-  --indigo-500: #818cf8;       /* hover / lighter */
-  --indigo-400: #a5b4fc;       /* even lighter for accents */
-  --indigo-50: #1e1b4b;        /* very dark indigo for tinted backgrounds */
+  --indigo-600: #6366f1;
+  /* primary action */
+  --indigo-500: #818cf8;
+  /* hover / lighter */
+  --indigo-400: #a5b4fc;
+  /* even lighter for accents */
+  --indigo-50: #1e1b4b;
+  /* very dark indigo for tinted backgrounds */
 
   /* Dark page surfaces */
-  --page-bg: #0a0e27;          /* deepest navy — body background */
-  --card-bg: #151a36;           /* card background */
-  --card-bg-soft: #1a1f3d;      /* nested elements */
-  --card-border: #252a4a;       /* card borders */
+  --page-bg: #0a0e27;
+  /* deepest navy — body background */
+  --card-bg: #151a36;
+  /* card background */
+  --card-bg-soft: #1a1f3d;
+  /* nested elements */
+  --card-border: #252a4a;
+  /* card borders */
 
   /* Text — light on dark */
-  --text-bright: #f1f5f9;       /* main text, headings */
-  --text-muted: #94a3b8;        /* body text, secondary */
-  --text-dim: #64748b;           /* tertiary, labels */
+  --text-bright: #f1f5f9;
+  /* main text, headings */
+  --text-muted: #94a3b8;
+  /* body text, secondary */
+  --text-dim: #64748b;
+  /* tertiary, labels */
 
   /* Difficulty pills — desaturated for dark */
   --green-bg: rgba(34, 197, 94, 0.15);
@@ -54,7 +65,7 @@ body {
 }
 
 /* Everything except the header gets centered + padded */
-body > *:not(#app-header) {
+body>*:not(#app-header) {
   max-width: 1100px;
   margin-left: auto;
   margin-right: auto;
@@ -140,7 +151,7 @@ hr {
   font-weight: 600;
   color: var(--text-bright);
   margin: 0 0 20px;
-  text-align: center;  
+  text-align: center;
 }
 
 #problem-list {
@@ -234,20 +245,25 @@ hr {
   color: var(--text-bright);
   font-size: 15px;
   font-weight: 700;
-  margin-top: 20px;        /* space before each header */
-  margin-bottom: 8px;      /* space after each header */
+  margin-top: 20px;
+  /* space before each header */
+  margin-bottom: 8px;
+  /* space after each header */
 }
 
 #problem-description .desc-header:first-child {
-  margin-top: 0;           /* no top margin on the very first header */
+  margin-top: 0;
+  /* no top margin on the very first header */
 }
 
 #problem-description .io-label {
   font-style: normal;
   color: var(--indigo-400);
   font-weight: 600;
-  display: block;            /* forces its own line */
-  margin-top: 4px;           /* tight spacing between Input/Output/Explanation */
+  display: block;
+  /* forces its own line */
+  margin-top: 4px;
+  /* tight spacing between Input/Output/Explanation */
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -290,8 +306,8 @@ button:disabled {
   font-size: 14px;
   box-shadow: var(--shadow-md);
 }
-#prev-btn,
-#step-problem-list-btn,
+
+#chunk-problem-list-btn,
 .back-btn {
   padding: 12px 28px;
   font-weight: 600;
@@ -323,7 +339,7 @@ button:disabled {
   margin-right: auto;
 }
 
-#step-section {
+#part-section {
   width: 100%;
   background: var(--card-bg);
   padding: 32px;
@@ -332,18 +348,19 @@ button:disabled {
   box-shadow: var(--shadow-md);
 }
 
-#step-section h2 {
+#part-section h2 {
   font-size: 20px;
   color: var(--text-bright);
   margin: 0 0 12px;
   font-weight: 700;
 }
-#step-problem-list-btn {
+
+#chunk-problem-list-btn {
   margin-bottom: 0;
   align-self: flex-start;
 }
 
-#step-prompt {
+#part-prompt {
   font-size: 15px;
   color: var(--text-muted);
   line-height: 1.65;
@@ -381,6 +398,41 @@ label[for="answer-input"] {
 
 #next-btn {
   display: inline-block;
+}
+
+/* ════════════════════════════════════════════════════════════
+   SOLUTION SECTION — Phase 3 assembled-solution screen
+   ════════════════════════════════════════════════════════════ */
+#solution-section {
+  width: 100%;
+  background: var(--card-bg);
+  padding: 32px;
+  border-radius: var(--radius);
+  border: 1px solid var(--card-border);
+  box-shadow: var(--shadow-md);
+}
+
+#solution-section h2 {
+  font-size: 20px;
+  color: var(--text-bright);
+  margin: 0 0 20px;
+  font-weight: 700;
+}
+
+#final-solution {
+  white-space: pre;
+  /* preserve exact indentation, no wrapping */
+  overflow-x: auto;
+  /* horizontal scroll for long lines */
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+  font-size: 13px;
+  line-height: 1.7;
+  background: var(--card-bg-soft);
+  color: var(--text-bright);
+  padding: 20px 24px;
+  border-radius: 8px;
+  border: 1px solid var(--card-border);
+  margin: 0 0 20px;
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -446,7 +498,8 @@ label[for="answer-input"] {
 .CodeMirror {
   font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
   font-size: 13px;
-  min-height: 160px;
+  min-height: 280px;
+  /* Phase 5: taller for multi-line chunk answers */
   height: auto;
   border: 1px solid var(--card-border);
   border-radius: 8px;
@@ -468,6 +521,7 @@ label[for="answer-input"] {
 /* ════════════════════════════════════════════════════════════
    UPLOAD CONTROLS
    ════════════════════════════════════════════════════════════ */
+
 #upload-controls {
   display: flex;
   flex-direction: column;
@@ -539,7 +593,42 @@ label[for="answer-input"] {
 
 #upload-another-btn {
   display: block;
-  margin: 20px auto 0;     
+  margin: 20px auto 0;
   padding: 12px 28px;
   font-weight: 600;
+}
+
+
+
+/* ════════════════════════════════════════════════════════════
+   PROGRESS DISPLAY
+   ════════════════════════════════════════════════════════════ */
+
+#progress-display-wrapper {
+  margin-bottom: 16px;
+}
+
+#progress-display-wrapper label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+#progress-display {
+  white-space: pre;
+  overflow-x: auto;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+  font-size: 13px;
+  line-height: 1.7;
+  background: var(--card-bg-soft);
+  color: var(--indigo-400);
+  /* indigo tint = "in progress" */
+  padding: 14px 18px;
+  border-radius: 8px;
+  border: 1px solid var(--card-border);
+  margin: 0;
+  opacity: 0.85;
+  /* slightly faded so it reads as context, not editable */
 }

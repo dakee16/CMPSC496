@@ -167,7 +167,6 @@ def grade_chunk(problem: dict, chunks: list[StepItem], index: int,
 
     tests = get_oracle_tests(problem)
     res = None
-
     if not tests:
         try:
             compile(full_code, "<smoke>", "exec")

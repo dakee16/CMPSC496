@@ -11,18 +11,19 @@ const PROBLEM = {
 };
 
 const API_URL = "http://localhost:8000";
+const MAX_ATTEMPTS = 3;
 
 
-let steps = [];
-let currentStepIndex = 0;
-let stepCode = [];
+let chunks = [];
+let currentChunkIndex = 0;
+let header = "";
+let acceptedAnswers = [];
 let activeTab = "leetcode";
-
 let attemptCount = 0;
 let selectedProblem = null;
-let lockedCode = "";
-let lockedLineCount = 0;
-const MAX_ATTEMPTS = 3;
+let message = "";
+
+
 
 // ════════════════════════════════════════════════════════════
 // DOM REFERENCES
@@ -34,10 +35,10 @@ const feedbackSection = document.getElementById("feedback-section");
 const feedbackText = document.getElementById("feedback-text");
 const startBtn = document.getElementById("start-btn");
 const problemSection = document.getElementById("problem-section");
-const stepSection = document.getElementById("step-section");
-const stepNumber = document.getElementById("step-number");
-const totalSteps = document.getElementById("total-steps");
-const stepPrompt = document.getElementById("step-prompt");
+const partSection = document.getElementById("part-section");
+const chunkNumber = document.getElementById("part-number");
+const totalchunks = document.getElementById("total-parts");
+const chunkPrompt = document.getElementById("part-prompt");
 const tabButtons = document.querySelectorAll(".tab-btn");
 const tabDiv = document.querySelectorAll(".tab-div");
 const problemList = document.getElementById("problem-list");
@@ -48,12 +49,16 @@ const problemDifficulty = document.getElementById("problem-difficulty");
 const problemDescription = document.getElementById("problem-description");
 const backButtons = document.querySelectorAll(".back-btn");
 const fileInput = document.getElementById("file-input");
-const prevBtn = document.getElementById("prev-btn");
+const editCodeBtn = document.getElementById("edit-code-btn");
 const uploadedProblemList = document.getElementById("uploaded-problem-list");
 const nextBtn = document.getElementById("next-btn");
 const uploadControls = document.getElementById("upload-controls");
 const fileName = document.getElementById("file-name");
 const uploadAnotherBtn = document.getElementById("upload-another-btn");
+const solutionSection = document.getElementById("solution-section");
+const finalSolution = document.getElementById("final-solution");
+const progressDisplayWrapper = document.getElementById("progress-display-wrapper");
+const progressDisplay = document.getElementById("progress-display");
 
 
 // ════════════════════════════════════════════════════════════
@@ -65,17 +70,17 @@ const uploadAnotherBtn = document.getElementById("upload-another-btn");
 //
 
 startBtn.addEventListener("click", async function () {
+
   console.log("Start clicked — calling backend...");
   startBtn.textContent = "Calling Backend...";
   startBtn.disabled = true;
 
   try {
-    const response = await fetch(`${API_URL}/decompose`, {
+    const response = await fetch(`${API_URL}/decompose_chunks`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         slug: selectedProblem.slug,
-        title: selectedProblem.title,
         description: selectedProblem.description
       })
     });
@@ -83,22 +88,31 @@ startBtn.addEventListener("click", async function () {
     const data = await response.json();
     console.log("Got response from backend:", data);
 
-    steps = data.steps;
+    header = data.header;
+    chunks = data.chunks;
+    acceptedAnswers = [];
+
     problemSection.style.display = "none";
     startBtn.style.display = "none";
-    stepSection.style.display = "block";
-    document.getElementById("step-problem-list-btn").style.display = "block";
+    partSection.style.display = "block";
+    document.getElementById("chunk-problem-list-btn").style.display = "block";
     codeEditor.refresh();
-    stepNumber.textContent = "1";
-    totalSteps.textContent = steps.length;
-    stepPrompt.textContent = steps[0].prompt;
+    chunkNumber.textContent = "1";
+    totalchunks.textContent = chunks.length;
+    chunkPrompt.textContent = chunks[0].prompt;
+    progressDisplay.textContent = buildCurrentProgress();
+    progressDisplayWrapper.style.display = "block";
 
 
 
-    console.log(`Loaded ${steps.length} steps. First step:`, steps[0]);
+    console.log(`Loaded ${chunks.length} chunks. First chunk:`, chunks[0]);
 
   } catch (error) {
-    console.error("Something went wrong while decomposing:", error);
+    console.error("Decompose error:", error);
+    feedbackSection.style.display = "block";
+    feedbackText.textContent = "⚠️ Could not reach the grader. Try again.";
+    startBtn.disabled = false;
+    startBtn.textContent = "Start Tutoring Session";
   }
 });
 
@@ -112,67 +126,63 @@ submitBtn.addEventListener("click", async function () {
   attemptCount++;
   submitBtn.disabled = true;
   submitBtn.textContent = "Evaluating...";
-  const currentStep = steps[currentStepIndex];
-  const userAnswer = codeEditor.getRange(
-    { line: lockedLineCount, ch: 0 },
-    { line: codeEditor.lineCount(), ch: 0 }
-  ).replace(/\s+$/, "");
 
-  const normalizedAnswer = userAnswer.replace(/\t/g, "    ");
-
+  const studentCode = codeEditor.getValue();
   try {
-    const response = await fetch(`${API_URL}/evaluate`, {
+    const response = await fetch(`${API_URL}/grade_chunk`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        step: currentStep,
-        answer: normalizedAnswer,
-        context: lockedCode
+      body: JSON.stringify({          // ← everything goes inside body
+        problem: {
+          slug: selectedProblem.slug,
+          title: selectedProblem.title,
+          description: selectedProblem.description,
+          solution: ""
+        },
+        chunks: chunks,
+        index: currentChunkIndex,
+        student_code: studentCode,
+        accepted_prefix: acceptedAnswers
       })
     });
-    const llmFeedback = await response.json();
-
+    const result = await response.json();
+    console.log(result);
     feedbackSection.style.display = "block";
 
-    console.log("userAnswer repr:", JSON.stringify(normalizedAnswer));
-    console.log("lockedCode repr:", JSON.stringify(lockedCode));
-
-
-    if (llmFeedback.correct) {
-      feedbackText.textContent = "✅ Correct! " + llmFeedback.short_reason;
-      stepCode[currentStepIndex] = userAnswer;
-
-      lockedCode = lockedCode + userAnswer + "\n";
-      codeEditor.setValue(lockedCode);
-
-      lockedLineCount = codeEditor.lineCount() - 1;
-
-      codeEditor.markText(
-        { line: 0, ch: 0 },
-        { line: lockedLineCount, ch: 0 },
-        { readOnly: true }
-      );
-      codeEditor.setCursor(lockedLineCount, 0);
+    if (result.correct == true) {
+      message = "✅ Correct! " + result.reason;
+      if (result.tier == "execution-adapted") {
+        message = "✅ Correct — your approach works! " + result.reason;
+      }
+      feedbackText.textContent = message;
+      acceptedAnswers.push(studentCode);
+      progressDisplay.textContent = buildCurrentProgress();
       nextBtn.disabled = false;
-
-    } else {
-
+    }
+    else {
       nextBtn.disabled = true;
-      if (attemptCount < MAX_ATTEMPTS) {
-        feedbackText.textContent = "❌ Incorrect. " + llmFeedback.short_reason
+      message = "❌ " + result.reason;
+      if (result.failures && (result.failures.length > 0)) {
+        message += "\n\nFailing cases:";
+        for (const f of result.failures) {
+          message += `\n  input ${JSON.stringify(f.input)} → expected ${JSON.stringify(f.expected)}, got ${JSON.stringify(f.got)}`;
+        }
       }
-      else {
-        feedbackText.textContent = "❌ Incorrect. " + llmFeedback.short_reason + " | Correct answer: " + llmFeedback.correct_answer;
+      if (attemptCount >= MAX_ATTEMPTS) {
+        const ref = chunks[currentChunkIndex].reference || "";
+        message += "\n\n💡 Here's a reference answer for this part:\n" + ref;
+        acceptedAnswers.push(ref);
+        progressDisplay.textContent = buildCurrentProgress();
+        nextBtn.disabled = false;
       }
+      feedbackText.textContent = message;
     }
 
     submitBtn.disabled = false;
     submitBtn.textContent = "Submit Answer";
-
   }
-
   catch (error) {
-    console.error("Something went wrong while evaluating:", error);
+    feedbackText.textContent = "⚠️ Could not reach the grader. Try again.";
     submitBtn.disabled = false;
     submitBtn.textContent = "Submit Answer";
   }
@@ -186,72 +196,39 @@ nextBtn.addEventListener("click", function () {
 
   console.log("Next clicked");
 
-  currentStepIndex++;
+  currentChunkIndex++;
 
-  if (currentStepIndex >= steps.length) {
-    alert("🎉 You finished all steps!");
+  if (currentChunkIndex >= chunks.length) {
+    partSection.style.display = "none";
+    feedbackSection.style.display = "none";
+    const full = buildFinalSolution();
+    finalSolution.textContent = full;
+    solutionSection.style.display = "block";
   }
   else {
-    stepNumber.textContent = (currentStepIndex + 1);
-    stepPrompt.textContent = steps[currentStepIndex].prompt;
+    chunkNumber.textContent = (currentChunkIndex + 1);
+    chunkPrompt.textContent = chunks[currentChunkIndex].prompt;
+    codeEditor.setValue("");
     feedbackSection.style.display = "none";
     attemptCount = 0;
   }
 
 });
 
-// 
-// FUNCTION FOR THE TAB SELECT BUTTONS 
-//
-
-
-tabButtons.forEach(function (clicked_button) {
-  clicked_button.addEventListener("click", function () {
-
-    const tabName = clicked_button.dataset.tab;
-    tabButtons.forEach(function (btn) { btn.classList.remove("active") });
-    clicked_button.classList.add("active");
-    tabDiv.forEach(function (div) { div.style.display = "none" });
-    const tabToDisplay = "tab-" + tabName;
-    document.getElementById(tabToDisplay).style.display = "block";
-    activeTab = tabName;
-
-    // ── reset any open problem/step view when switching tabs ──
-    problemSection.style.display = "none";
-    stepSection.style.display = "none";
-    document.getElementById("step-problem-list-btn").style.display = "none";
-    startBtn.style.display = "none";
-    feedbackSection.style.display = "none";
-    selectedProblem = null;
-
-    // ── restore the leetcode list (it gets hidden when you open a problem) ──
-    if (tabName === "leetcode") {
-      problemListContainer.style.display = "block";
-    } else {
-      // upload tab: show the list if files were parsed, else show the controls
-      if (uploadedProblemList.children.length > 0) {
-        uploadListContainer.style.display = "block";
-        uploadControls.style.display = "none";
-        uploadAnotherBtn.style.display = "block";
-      } else {
-        uploadControls.style.display = "flex";
-        uploadListContainer.style.display = "none";
-      }
-    }
-  });
-});
-
 //
 // BACK BUTTON LISTENERS
 //
 
+
 backButtons.forEach(function (btn) {
   btn.addEventListener("click", function () {
-
+    solutionSection.style.display = "none";
     problemSection.style.display = "none";
-    stepSection.style.display = "none";
-    document.getElementById("step-problem-list-btn").style.display = "none";
+    partSection.style.display = "none";
+    document.getElementById("chunk-problem-list-btn").style.display = "none";
     startBtn.style.display = "none";
+    progressDisplayWrapper.style.display = "none";
+    progressDisplay.textContent = "";
     if (activeTab === "upload") {
 
       uploadListContainer.style.display = "block";
@@ -260,12 +237,12 @@ backButtons.forEach(function (btn) {
       problemListContainer.style.display = "block";
     }
     feedbackSection.style.display = "none";
-    codeEditor.setValue("");
-    lockedCode = "";
-    lockedLineCount = 0;
 
-    steps = [];
-    currentStepIndex = 0;
+    chunks = [];
+    codeEditor.setValue("");
+    currentChunkIndex = 0;
+    header = "";
+    acceptedAnswers = [];
     attemptCount = 0;
     selectedProblem = null;
     startBtn.textContent = "Start Tutoring Session"
@@ -315,37 +292,9 @@ fileInput.addEventListener("change", function (event) {
   reader.readAsText(file);
 });
 
-//
-// PREVIOUS BUTTON LISTENER
-//
-
-prevBtn.addEventListener("click", function () {
-
-  if (currentStepIndex === 0) return;
-  currentStepIndex--;
-
-  stepCode[currentStepIndex] = undefined;
-
-  lockedCode = "";
-  for (let i = 0; i < currentStepIndex; i++) {
-    lockedCode = lockedCode + stepCode[i] + "\n";
-  }
-
-  codeEditor.setValue(lockedCode);
-  lockedLineCount = lockedCode === "" ? 0 : codeEditor.lineCount() - 1;
-
-  if (lockedLineCount > 0) {
-    codeEditor.markText(
-      { line: 0, ch: 0 },
-      { line: lockedLineCount, ch: 0 },
-      { readOnly: true }
-    );
-  }
-  codeEditor.setCursor(lockedLineCount, 0);
-  stepNumber.textContent = (currentStepIndex + 1);
-  stepPrompt.textContent = steps[currentStepIndex].prompt;
-  feedbackSection.style.display = "none";
-  attemptCount = 0;
+// EDIT CODE BUTTON — placeholder.
+editCodeBtn.addEventListener("click", function () {
+  alert("Edit Code coming soon.");
 });
 
 //
@@ -363,6 +312,68 @@ uploadAnotherBtn.addEventListener("click", function () {
 // ════════════════════════════════════════════════════════════
 // FUNCTIONS
 // ════════════════════════════════════════════════════════════
+
+function buildCurrentProgress() {
+  const indented = acceptedAnswers.map(function (answer) {
+    return answer
+      .split("\n")
+      .map(function (line) { return "    " + line; })
+      .join("\n");
+  });
+  return header + "\n" + indented.join("\n");
+}
+
+function buildFinalSolution() {
+
+  const indentedAnswers = acceptedAnswers.map(function (answer) {
+    return answer
+      .split("\n")
+      .map(function (line) { return "    " + line; })
+      .join("\n");
+  });
+  return header + "\n" + indentedAnswers.join("\n");
+}
+
+// 
+// FUNCTION FOR THE TAB SELECT BUTTONS 
+//
+
+
+tabButtons.forEach(function (clicked_button) {
+  clicked_button.addEventListener("click", function () {
+
+    const tabName = clicked_button.dataset.tab;
+    tabButtons.forEach(function (btn) { btn.classList.remove("active") });
+    clicked_button.classList.add("active");
+    tabDiv.forEach(function (div) { div.style.display = "none" });
+    const tabToDisplay = "tab-" + tabName;
+    document.getElementById(tabToDisplay).style.display = "block";
+    activeTab = tabName;
+
+    // ── reset any open problem/chunk view when switching tabs ──
+    problemSection.style.display = "none";
+    partSection.style.display = "none";
+    document.getElementById("chunk-problem-list-btn").style.display = "none";
+    startBtn.style.display = "none";
+    feedbackSection.style.display = "none";
+    selectedProblem = null;
+
+    // ── restore the leetcode list (it gets hidden when you open a problem) ──
+    if (tabName === "leetcode") {
+      problemListContainer.style.display = "block";
+    } else {
+      // upload tab: show the list if files were parsed, else show the controls
+      if (uploadedProblemList.children.length > 0) {
+        uploadListContainer.style.display = "block";
+        uploadControls.style.display = "none";
+        uploadAnotherBtn.style.display = "block";
+      } else {
+        uploadControls.style.display = "flex";
+        uploadListContainer.style.display = "none";
+      }
+    }
+  });
+});
 
 // 
 // LOAD PROBLEMS ON PAGE LOAD

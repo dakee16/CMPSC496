@@ -9,6 +9,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
 import json
+from dotenv import load_dotenv
+load_dotenv()
 
 from run_phase1 import decompose_validated, eval_step, parse_json, decompose_into_chunks, replan_from_prefix
 from grader import grade_chunk
@@ -159,6 +161,13 @@ def decompose_chunks_route(req: DecomposeRequest):
 @app.post("/grade_chunk")
 def grade_chunk_route(req: ChunkRequest):
     try:
+        slug = req.problem.get("slug")
+        if slug and not req.problem.get("solution"):
+            from run_phase1 import load_problems
+            problems = load_problems(limit=500)
+            full = next((p for p in problems if p.get("slug") == slug), None)
+            if full:
+                req.problem["solution"] = full.get("solution", "")
         chunks = [StepItem(question_id=req.problem.get("slug", "q"),
                            step_id=c.get("step_id", f"Part {i+1}"),
                            prompt=c.get("prompt", ""),
@@ -172,6 +181,8 @@ def grade_chunk_route(req: ChunkRequest):
                 "failures": result.get("failures", [])[:3]}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
 
 @app.get("/problems")
 def list_problems(limit: int = 100, difficulty: str = None):
