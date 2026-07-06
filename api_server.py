@@ -10,14 +10,20 @@ from pydantic import BaseModel
 from typing import Optional
 import json
 from dotenv import load_dotenv
-load_dotenv()
+import bcrypt
+import os
+from supabase import create_client
+
 
 from run_phase1 import decompose_validated, eval_step, parse_json, decompose_into_chunks, replan_from_prefix, get_chunk_decomposition
 from grader import grade_chunk
 from schemas import StepItem
 
 app = FastAPI(title="MicroTutor API", version="1.0")
+_sb = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_KEY"])
+load_dotenv()
 from fastapi.middleware.cors import CORSMiddleware
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -50,6 +56,24 @@ class ChunkRequest(BaseModel):
     index: int
     student_code: str
     accepted_prefix: list[str] = []
+
+class AuthRequest(BaseModel):
+    username: str
+    password: str
+
+class LogInteractionRequest(BaseModel):
+    student_id: str
+    slug: str
+    chunk_index: int
+    attempt_number: int
+    student_code: str
+    verdict: bool
+    tier: str
+    reason: str
+
+class MarkSolvedRequest(BaseModel):
+    student_id: str
+    slug: str
 
 
 @app.get("/health")
@@ -219,3 +243,65 @@ def get_problem(slug: str):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    
+
+
+@app.post("/register")
+def register(req: AuthRequest):
+    pw_hash = bcrypt.hashpw(req.password.encode(), bcrypt.gensalt()).decode()
+
+    try:
+        result = _sb.table("students").insert({
+            "username": req.username,
+            "password_hash": pw_hash
+        }).execute()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Username already taken")
+
+    if not result.data:
+        raise HTTPException(status_code=400, detail="Could not create account")
+
+    row = result.data[0]
+    return {"student_id": row["id"], "username": row["username"]}
+
+
+@app.post("/login")
+def login(req: AuthRequest):
+
+    result = _sb.table("students").select("*").eq("username", req.username).execute()
+
+    if not result.data:
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+
+    row = result.data[0]
+    if not bcrypt.checkpw(req.password.encode(), row["password_hash"].encode()):
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+
+    return {"student_id": row["id"], "username": row["username"]}
+
+
+@app.get("/solved/{student_id}")
+def get_solved(student_id: str):
+     
+    result = _sb.table("solved").select("problem_slug").eq("student_id", student_id).execute()
+    slugs = [r["problem_slug"] for r in (result.data or [])]
+    return {"slugs": slugs}
+
+
+@app.post("/mark_solved")
+def mark_solved(req: MarkSolvedRequest):
+ 
+    _sb.table("solved").upsert({
+        "student_id": req.student_id,
+        "problem_slug": req.slug
+    }, on_conflict="student_id,problem_slug").execute()
+    return {"ok": True}
+
+
+@app.post("/log_interaction")
+def log_interaction(req: LogInteractionRequest):
+
+    data = req.model_dump()
+    data["problem_slug"] = data.pop("slug")
+    _sb.table("student_interactions").insert(data).execute()
+    return {"ok": True}

@@ -24,7 +24,9 @@ let selectedProblem = null;
 let message = "";
 let lockLine = 0;
 let activeMark = null;
-
+let currentStudent = null;
+let solvedSlugs = new Set();
+let authMode = "login";
 
 
 // ════════════════════════════════════════════════════════════
@@ -59,6 +61,19 @@ const fileName = document.getElementById("file-name");
 const uploadAnotherBtn = document.getElementById("upload-another-btn");
 const solutionSection = document.getElementById("solution-section");
 const finalSolution = document.getElementById("final-solution");
+const authSection = document.getElementById("auth-section");
+const mainApp = document.getElementById("main-app");
+const authHeading = document.getElementById("auth-heading");
+const authError = document.getElementById("auth-error");
+const authUsername = document.getElementById("auth-username");
+const authPassword = document.getElementById("auth-password");
+const authSubmitBtn = document.getElementById("auth-submit-btn");
+const authToggle = document.getElementById("auth-toggle");
+const authTogglePrompt = document.getElementById("auth-toggle-prompt");
+const logoutBtn = document.getElementById("logout-btn");
+const storedSession = localStorage.getItem("microtutor_student");
+
+
 
 
 
@@ -66,65 +81,99 @@ const finalSolution = document.getElementById("final-solution");
 // EVENT LISTENERS
 // ════════════════════════════════════════════════════════════
 
-// Rebuild the readOnly mark covering lines 0..(lockLine-1).
-function refreshLockedRegion() {
-  if (activeMark) {
-    activeMark.clear();
-    activeMark = null;
+
+//
+// AUTH TOGGLE EVEN LISTENER 
+//
+
+authToggle.addEventListener("click", function (e) {
+  e.preventDefault();
+  authError.style.display = "none";
+
+  if (authMode === "login") {
+    authMode = "signup";
+    authHeading.textContent = "Sign Up";
+    authSubmitBtn.textContent = "Sign Up";
+    authTogglePrompt.textContent = "Already have an account?";
+    authToggle.textContent = "Log in";
+  } else {
+    authMode = "login";
+    authHeading.textContent = "Log In";
+    authSubmitBtn.textContent = "Log In";
+    authTogglePrompt.textContent = "Don't have an account?";
+    authToggle.textContent = "Sign up";
   }
-  if (lockLine <= 0) return;
-  activeMark = codeEditor.markText(
-    { line: 0, ch: 0 },
-    { line: lockLine, ch: 0 },
-    { readOnly: true, inclusiveLeft: true, inclusiveRight: false, className: "cm-locked" }
-  );
-}
+});
 
-// Seed the editor with the header + one indented line for chunk 1.
-function seedEditorForProblem(headerText) {
-  codeEditor.setValue(headerText + "\n    ");
-  lockLine = 1;
-  refreshLockedRegion();
-  codeEditor.setCursor({ line: 1, ch: 4 });
-  codeEditor.focus();
-}
+//
+// AUTH SUBMIT EVEN LISTENER 
+//
 
-// Extract only the editable portion of the editor as one string.
-// Strips 4 leading spaces per line so backend gets column-0 code.
-function getEditableStudentCode() {
-  const lines = codeEditor.getValue().split("\n");
-  const editable = lines.slice(lockLine);
-  const dedented = editable.map(function (line) {
-    return line.startsWith("    ") ? line.slice(4) : line;
-  });
-  while (dedented.length > 0 && dedented[dedented.length - 1].trim() === "") {
-    dedented.pop();
+authSubmitBtn.addEventListener("click", async function () {
+
+  authError.style.display = "none";
+  const userUsername = authUsername.value.trim();
+  const userPassword = authPassword.value;
+
+  if (userUsername.length === 0) {
+    authError.textContent = "Username field cannot be empty";
+    authError.style.display = "block";
+    return;
   }
-  return dedented.join("\n");
-}
+  if (userPassword.length === 0) {
+    authError.textContent = "Password field cannot be empty";
+    authError.style.display = "block";
+    return;
+  }
 
-// Lock the current editor content and add a fresh indented line below.
-function lockCurrentChunkAndAdvance() {
-  const currentText = codeEditor.getValue();
-  const trimmed = currentText.replace(/\s+$/, "");
-  const newText = trimmed + "\n    ";
-  codeEditor.setValue(newText);
-  const lastLineIndex = codeEditor.lineCount() - 1;
-  lockLine = lastLineIndex;
-  refreshLockedRegion();
-  codeEditor.setCursor({ line: lastLineIndex, ch: 4 });
-  codeEditor.focus();
-}
+  const endpoint = authMode === "login" ? "/login" : "/register";
 
-// Replace only the editable region with the given reference code, indented.
-function replaceEditableWithReference(refText) {
-  const lines = codeEditor.getValue().split("\n");
-  const locked = lines.slice(0, lockLine);
-  const indentedRef = refText.split("\n").map(function (l) { return "    " + l; });
-  const newValue = locked.concat(indentedRef).join("\n");
-  codeEditor.setValue(newValue);
-  refreshLockedRegion();
-}
+  try {
+    const response = await fetch(`${API_URL}${endpoint}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        username: userUsername,
+        password: userPassword
+      })
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      authError.textContent = "Something went wrong.";
+      authError.style.display = "block";
+      return;
+    }
+
+
+    currentStudent = { id: data.student_id, username: data.username };
+    localStorage.setItem("microtutor_student", JSON.stringify(currentStudent));
+
+    await loadSolvedSlugs();
+    showMainApp();
+
+  } catch (error) {
+    console.error("Auth request failed:", error);
+    authError.textContent = "Could not reach the server.";
+    authError.style.display = "block";
+  }
+});
+
+//
+// LOGOUT BUTTON 
+//
+
+
+logoutBtn.addEventListener("click", function () {
+
+  localStorage.removeItem("microtutor_student");
+  currentStudent = null;
+  solvedSlugs = new Set()
+  showAuthPage()
+
+});
+
 
 
 //
@@ -194,7 +243,7 @@ submitBtn.addEventListener("click", async function () {
     const response = await fetch(`${API_URL}/grade_chunk`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({          // ← everything goes inside body
+      body: JSON.stringify({
         problem: {
           slug: selectedProblem.slug,
           title: selectedProblem.title,
@@ -208,7 +257,28 @@ submitBtn.addEventListener("click", async function () {
       })
     });
     const result = await response.json();
-    console.log(result);
+
+    if (currentStudent) {
+      fetch(`${API_URL}/log_interaction`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          student_id: currentStudent.id,
+          slug: selectedProblem.slug,
+          chunk_index: currentChunkIndex,
+          attempt_number: attemptCount,
+          student_code: studentCode,
+          verdict: result.correct,
+          tier: result.tier,
+          reason: result.reason
+        })
+      }).catch(function (error) {
+        console.warn("Interaction logging failed:", error);
+      });
+    }
+
     feedbackSection.style.display = "block";
 
     if (result.correct == true) {
@@ -265,6 +335,25 @@ nextBtn.addEventListener("click", function () {
     const full = buildFinalSolution();
     finalSolution.textContent = full;
     solutionSection.style.display = "block";
+    if (currentStudent && selectedProblem) {
+      fetch(`${API_URL}/mark_solved`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          student_id: currentStudent.id,
+          slug: selectedProblem.slug
+        })
+      })
+        .then(function () {
+          solvedSlugs.add(selectedProblem.slug);
+          applySolvedHighlight();
+        })
+        .catch(function (error) {
+          console.warn("Mark solved failed:", error);
+        });
+    }
   } else {
     chunkNumber.textContent = (currentChunkIndex + 1);
     chunkPrompt.textContent = chunks[currentChunkIndex].prompt;
@@ -380,6 +469,99 @@ uploadAnotherBtn.addEventListener("click", function () {
 
 
 
+
+async function loadSolvedSlugs() {
+  if (!currentStudent) return;
+  try {
+    const response = await fetch(`${API_URL}/solved/${currentStudent.id}`);
+    const data = await response.json();
+    solvedSlugs = new Set(data.slugs);
+    applySolvedHighlight()
+  } catch (error) {
+    console.log("error while loading solved problems for user")
+
+  }
+};
+
+function applySolvedHighlight() {
+  document.querySelectorAll("#problem-list .problem-item").forEach(function (currentProblem) {
+    const slug = currentProblem.dataset.slug;
+    if (solvedSlugs.has(slug)) {
+      currentProblem.classList.add("solved");
+    } else {
+      currentProblem.classList.remove("solved");
+    }
+  });
+}
+
+
+function refreshLockedRegion() {
+  if (activeMark) {
+    activeMark.clear();
+    activeMark = null;
+  }
+  if (lockLine <= 0) return;
+  activeMark = codeEditor.markText(
+    { line: 0, ch: 0 },
+    { line: lockLine, ch: 0 },
+    { readOnly: true, inclusiveLeft: true, inclusiveRight: false, className: "cm-locked" }
+  );
+}
+
+
+function seedEditorForProblem(headerText) {
+  codeEditor.setValue(headerText + "\n    ");
+  lockLine = 1;
+  refreshLockedRegion();
+  codeEditor.setCursor({ line: 1, ch: 4 });
+  codeEditor.focus();
+}
+
+function getEditableStudentCode() {
+  const lines = codeEditor.getValue().split("\n");
+  const editable = lines.slice(lockLine);
+  const dedented = editable.map(function (line) {
+    return line.startsWith("    ") ? line.slice(4) : line;
+  });
+  while (dedented.length > 0 && dedented[dedented.length - 1].trim() === "") {
+    dedented.pop();
+  }
+  return dedented.join("\n");
+}
+
+
+function lockCurrentChunkAndAdvance() {
+  const currentText = codeEditor.getValue();
+  const trimmed = currentText.replace(/\s+$/, "");
+  const newText = trimmed + "\n    ";
+  codeEditor.setValue(newText);
+  const lastLineIndex = codeEditor.lineCount() - 1;
+  lockLine = lastLineIndex;
+  refreshLockedRegion();
+  codeEditor.setCursor({ line: lastLineIndex, ch: 4 });
+  codeEditor.focus();
+}
+
+function replaceEditableWithReference(refText) {
+  const lines = codeEditor.getValue().split("\n");
+  const locked = lines.slice(0, lockLine);
+  const indentedRef = refText.split("\n").map(function (l) { return "    " + l; });
+  const newValue = locked.concat(indentedRef).join("\n");
+  codeEditor.setValue(newValue);
+  refreshLockedRegion();
+}
+
+function showAuthPage() {
+  authSection.style.display = "block";
+  mainApp.style.display = "none";
+  logoutBtn.style.display = "none";
+}
+function showMainApp() {
+  authSection.style.display = "none";
+  mainApp.style.display = "block";
+  logoutBtn.style.display = "inline-block";
+
+}
 function buildFinalSolution() {
 
   const indentedAnswers = acceptedAnswers.map(function (answer) {
@@ -444,6 +626,11 @@ async function loadProblems() {
 
     data.problems.forEach(function (problem) {
       const problemsListElement = document.createElement("li");
+      problemsListElement.dataset.slug = problem.slug;
+      if (solvedSlugs.has(problem.slug)) {
+        problemsListElement.classList.add("solved");
+      }
+
       problemsListElement.classList.add("problem-item");
       problemsListElement.innerHTML = `
       <span class="problem-title">${problem.title}</span>
@@ -575,4 +762,16 @@ const codeEditor = CodeMirror.fromTextArea(answerInput, {
   lineWrapping: true,
 });
 
-loadProblems();
+
+
+if (storedSession) {
+  currentStudent = JSON.parse(storedSession);
+
+  loadProblems().then(loadSolvedSlugs);
+
+  showMainApp();
+} else {
+  loadProblems();
+
+  showAuthPage();
+}

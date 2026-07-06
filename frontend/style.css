@@ -606,3 +606,140 @@ label[for="answer-input"] {
 .cm-locked {
   background: rgba(34, 197, 94, 0.10);   /* faint green = "accepted & locked" */
 }
+
+
+/* ════════════════════════════════════════════════════════════
+   LOGIN / SIGNUP PAGE
+   ════════════════════════════════════════════════════════════ */
+#auth-section {
+  min-height: 55vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#auth-card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius);
+  padding: 40px;
+  width: 100%;
+  max-width: 400px;
+  box-shadow: var(--shadow-lg);
+}
+
+#auth-card h2 {
+  text-align: center;
+  margin: 0 0 24px;
+  color: var(--text-bright);
+  font-size: 24px;
+  font-weight: 700;
+}
+
+#auth-card label {
+  display: block;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  margin: 16px 0 6px;
+}
+
+#auth-card input {
+  width: 100%;
+  padding: 11px 14px;
+  background: var(--card-bg-soft);
+  color: var(--text-bright);
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 14px;
+  transition: var(--transition);
+}
+
+#auth-card input:focus {
+  outline: none;
+  border-color: var(--indigo-500);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+}
+
+#auth-submit {
+  width: 100%;
+  margin-top: 24px;
+  background: var(--indigo-600);
+  color: white;
+  border-color: var(--indigo-600);
+  font-weight: 600;
+  padding: 12px;
+  font-size: 15px;
+}
+
+#auth-submit:hover:not(:disabled) {
+  background: var(--indigo-500);
+  border-color: var(--indigo-500);
+}
+
+#auth-error {
+  padding: 10px 14px;
+  background: var(--red-bg);
+  color: var(--red-text);
+  border-radius: 8px;
+  font-size: 13px;
+  margin-bottom: 16px;
+  text-align: center;
+}
+
+#auth-toggle-text {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+  margin: 20px 0 0;
+}
+
+#auth-toggle {
+  color: var(--indigo-400);
+  text-decoration: none;
+  font-weight: 600;
+  margin-left: 4px;
+}
+
+#auth-toggle:hover {
+  text-decoration: underline;
+}
+
+/* ════════════════════════════════════════════════════════════
+   SOLVED PROBLEM HIGHLIGHT + LOGOUT BUTTON
+   ════════════════════════════════════════════════════════════ */
+.problem-item.solved {
+  background: rgba(34, 197, 94, 0.10);
+  border-color: var(--green-text);
+}
+
+.problem-item.solved:hover {
+  background: rgba(34, 197, 94, 0.16);
+  border-color: var(--green-text);
+}
+
+.problem-item.solved .problem-title::before {
+  content: "✓ ";
+  color: var(--green-text);
+  font-weight: 700;
+}
+
+#app-header {
+  position: relative;
+}
+
+#logout-btn {
+  position: absolute;
+  right: 30px;
+  top: 30px;
+  padding: 8px 18px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: white;
+  font-weight: 600;
+}
+
+#logout-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+}

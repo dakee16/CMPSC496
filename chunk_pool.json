@@ -1,0 +1,27 @@
+{
+  "palindrome-number": [
+    {
+      "header": "def isPalindrome(x):",
+      "chunks": [
+        {
+          "step_id": "Part 1",
+          "prompt": "Write code that returns False for any negative value of x since a negative number cannot be a palindrome.",
+          "expected_type": "code",
+          "reference": "if x < 0: return False"
+        },
+        {
+          "step_id": "Part 2",
+          "prompt": "Using the absolute value of x, write code that constructs the reverse of the digits as a new integer you can compare against.",
+          "expected_type": "code",
+          "reference": "original = abs(x)\nreversed_num = 0\nwhile original > 0:\n    reversed_num = reversed_num * 10 + original % 10\n    original //= 10"
+        },
+        {
+          "step_id": "Part 3",
+          "prompt": "Using x and its reversed value, return whether x reads the same forwards and backwards.",
+          "expected_type": "code",
+          "reference": "return x == reversed_num"
+        }
+      ]
+    }
+  ]
+}
