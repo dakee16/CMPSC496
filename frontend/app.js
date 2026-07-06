@@ -22,6 +22,8 @@ let activeTab = "leetcode";
 let attemptCount = 0;
 let selectedProblem = null;
 let message = "";
+let lockLine = 0;
+let activeMark = null;
 
 
 
@@ -57,13 +59,73 @@ const fileName = document.getElementById("file-name");
 const uploadAnotherBtn = document.getElementById("upload-another-btn");
 const solutionSection = document.getElementById("solution-section");
 const finalSolution = document.getElementById("final-solution");
-const progressDisplayWrapper = document.getElementById("progress-display-wrapper");
-const progressDisplay = document.getElementById("progress-display");
+
 
 
 // ════════════════════════════════════════════════════════════
 // EVENT LISTENERS
 // ════════════════════════════════════════════════════════════
+
+// Rebuild the readOnly mark covering lines 0..(lockLine-1).
+function refreshLockedRegion() {
+  if (activeMark) {
+    activeMark.clear();
+    activeMark = null;
+  }
+  if (lockLine <= 0) return;
+  activeMark = codeEditor.markText(
+    { line: 0, ch: 0 },
+    { line: lockLine, ch: 0 },
+    { readOnly: true, inclusiveLeft: true, inclusiveRight: false, className: "cm-locked" }
+  );
+}
+
+// Seed the editor with the header + one indented line for chunk 1.
+function seedEditorForProblem(headerText) {
+  codeEditor.setValue(headerText + "\n    ");
+  lockLine = 1;
+  refreshLockedRegion();
+  codeEditor.setCursor({ line: 1, ch: 4 });
+  codeEditor.focus();
+}
+
+// Extract only the editable portion of the editor as one string.
+// Strips 4 leading spaces per line so backend gets column-0 code.
+function getEditableStudentCode() {
+  const lines = codeEditor.getValue().split("\n");
+  const editable = lines.slice(lockLine);
+  const dedented = editable.map(function (line) {
+    return line.startsWith("    ") ? line.slice(4) : line;
+  });
+  while (dedented.length > 0 && dedented[dedented.length - 1].trim() === "") {
+    dedented.pop();
+  }
+  return dedented.join("\n");
+}
+
+// Lock the current editor content and add a fresh indented line below.
+function lockCurrentChunkAndAdvance() {
+  const currentText = codeEditor.getValue();
+  const trimmed = currentText.replace(/\s+$/, "");
+  const newText = trimmed + "\n    ";
+  codeEditor.setValue(newText);
+  const lastLineIndex = codeEditor.lineCount() - 1;
+  lockLine = lastLineIndex;
+  refreshLockedRegion();
+  codeEditor.setCursor({ line: lastLineIndex, ch: 4 });
+  codeEditor.focus();
+}
+
+// Replace only the editable region with the given reference code, indented.
+function replaceEditableWithReference(refText) {
+  const lines = codeEditor.getValue().split("\n");
+  const locked = lines.slice(0, lockLine);
+  const indentedRef = refText.split("\n").map(function (l) { return "    " + l; });
+  const newValue = locked.concat(indentedRef).join("\n");
+  codeEditor.setValue(newValue);
+  refreshLockedRegion();
+}
+
 
 //
 // START BUTTON EVEN LISTENER 
@@ -100,8 +162,7 @@ startBtn.addEventListener("click", async function () {
     chunkNumber.textContent = "1";
     totalchunks.textContent = chunks.length;
     chunkPrompt.textContent = chunks[0].prompt;
-    progressDisplay.textContent = buildCurrentProgress();
-    progressDisplayWrapper.style.display = "block";
+    seedEditorForProblem(header);
 
 
 
@@ -127,7 +188,8 @@ submitBtn.addEventListener("click", async function () {
   submitBtn.disabled = true;
   submitBtn.textContent = "Evaluating...";
 
-  const studentCode = codeEditor.getValue();
+  const studentCode = getEditableStudentCode();
+  console.log("student_code being sent:", studentCode);
   try {
     const response = await fetch(`${API_URL}/grade_chunk`, {
       method: "POST",
@@ -156,7 +218,6 @@ submitBtn.addEventListener("click", async function () {
       }
       feedbackText.textContent = message;
       acceptedAnswers.push(studentCode);
-      progressDisplay.textContent = buildCurrentProgress();
       nextBtn.disabled = false;
     }
     else {
@@ -168,11 +229,11 @@ submitBtn.addEventListener("click", async function () {
           message += `\n  input ${JSON.stringify(f.input)} → expected ${JSON.stringify(f.expected)}, got ${JSON.stringify(f.got)}`;
         }
       }
-      if (attemptCount >= MAX_ATTEMPTS) {
+      if (attemptCount >= MAX_ATTEMPTS && acceptedAnswers.length === currentChunkIndex) {
         const ref = chunks[currentChunkIndex].reference || "";
         message += "\n\n💡 Here's a reference answer for this part:\n" + ref;
         acceptedAnswers.push(ref);
-        progressDisplay.textContent = buildCurrentProgress();
+        replaceEditableWithReference(ref);
         nextBtn.disabled = false;
       }
       feedbackText.textContent = message;
@@ -204,13 +265,12 @@ nextBtn.addEventListener("click", function () {
     const full = buildFinalSolution();
     finalSolution.textContent = full;
     solutionSection.style.display = "block";
-  }
-  else {
+  } else {
     chunkNumber.textContent = (currentChunkIndex + 1);
     chunkPrompt.textContent = chunks[currentChunkIndex].prompt;
-    codeEditor.setValue("");
     feedbackSection.style.display = "none";
     attemptCount = 0;
+    lockCurrentChunkAndAdvance();
   }
 
 });
@@ -227,8 +287,6 @@ backButtons.forEach(function (btn) {
     partSection.style.display = "none";
     document.getElementById("chunk-problem-list-btn").style.display = "none";
     startBtn.style.display = "none";
-    progressDisplayWrapper.style.display = "none";
-    progressDisplay.textContent = "";
     if (activeTab === "upload") {
 
       uploadListContainer.style.display = "block";
@@ -239,12 +297,19 @@ backButtons.forEach(function (btn) {
     feedbackSection.style.display = "none";
 
     chunks = [];
-    codeEditor.setValue("");
     currentChunkIndex = 0;
     header = "";
     acceptedAnswers = [];
     attemptCount = 0;
     selectedProblem = null;
+
+    // Reset the editor + lock state
+    if (activeMark) {
+      activeMark.clear();
+      activeMark = null;
+    }
+    lockLine = 0;
+    codeEditor.setValue("");
     startBtn.textContent = "Start Tutoring Session"
     startBtn.disabled = false
 
@@ -313,15 +378,7 @@ uploadAnotherBtn.addEventListener("click", function () {
 // FUNCTIONS
 // ════════════════════════════════════════════════════════════
 
-function buildCurrentProgress() {
-  const indented = acceptedAnswers.map(function (answer) {
-    return answer
-      .split("\n")
-      .map(function (line) { return "    " + line; })
-      .join("\n");
-  });
-  return header + "\n" + indented.join("\n");
-}
+
 
 function buildFinalSolution() {
 
