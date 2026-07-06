@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from typing import Optional
 import json
 
-from run_phase1 import decompose_validated, eval_step, parse_json, decompose_into_chunks, replan_from_prefix
+from run_phase1 import decompose_validated, eval_step, parse_json, decompose_into_chunks, replan_from_prefix, get_chunk_decomposition
 from grader import grade_chunk
 from schemas import StepItem
 
@@ -134,7 +134,7 @@ def decompose_chunks_route(req: DecomposeRequest):
         full = next((p for p in problems if p.get("slug") == req.slug), None)
         if full:
             problem["solution"] = full.get("solution", "")
-        result = decompose_into_chunks(problem)
+        result = get_chunk_decomposition(problem)
         
         # Pre-warm oracle tests
         if problem.get("solution", "").strip():
@@ -153,7 +153,7 @@ def decompose_chunks_route(req: DecomposeRequest):
             ]
         }
     except RuntimeError as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Decomposition unavailable: {e}")
 
 
 @app.post("/grade_chunk")

@@ -1,5 +1,6 @@
 import json
 import os
+import random
 import re
 import textwrap
 from dotenv import load_dotenv
@@ -25,6 +26,13 @@ supabase = create_client(
     os.environ["SUPABASE_URL"],
     os.environ["SUPABASE_KEY"],
 )
+
+
+_CHUNK_POOL_PATH = os.path.join(os.path.dirname(__file__), "chunk_pool.json")
+_POOL_TARGET = 5          # stop generating fresh once a problem has this many
+_FRESH_PROBABILITY = 0.4  # chance to generate fresh even when pool has entries
+
+
 
 # JSON parsing
 
@@ -229,7 +237,7 @@ def assemble_references(header: str, chunks: list[StepItem]) -> str:
     return header + "\n" + textwrap.indent(body, "    ")
 
 
-def decompose_into_chunks(problem: dict, max_tries: int = 3) -> dict:
+def decompose_into_chunks(problem: dict, max_tries: int = 5) -> dict:
     name, params = _extract_signature(problem.get("solution", ""))
     header = f"def {name or 'solve'}({', '.join(params)}):"
     text = problem.get("description") or problem.get("title", "")
@@ -269,8 +277,66 @@ def decompose_into_chunks(problem: dict, max_tries: int = 3) -> dict:
         feedback = ("Assembled body:\n" + code + "\n\nFailing tests:\n" +
                     "\n".join(f"  {f['input']} → expected {f['expected']}, got {f['got']}" for f in fails))
 
-    print(f"  ⚠️  Chunk decomposition still failing after {max_tries} tries — using best.")
-    return best or {"header": header, "chunks": []}
+    print(f"  ⚠️  Chunk decomposition failed all {max_tries} tries.")
+    raise RuntimeError("Could not generate a valid decomposition for this problem.")
+
+
+def _load_pool() -> dict:
+    if os.path.exists(_CHUNK_POOL_PATH):
+        try:
+            return json.load(open(_CHUNK_POOL_PATH))
+        except Exception:
+            return {}
+    return {}
+
+
+def _save_pool(pool: dict) -> None:
+    try:
+        json.dump(pool, open(_CHUNK_POOL_PATH, "w"), indent=2)
+    except Exception as e:
+        print(f"  ⚠️  Could not save chunk pool: {e}")
+
+
+def _serialize(result: dict) -> dict:
+    return {"header": result["header"],
+            "chunks": [{"step_id": c.step_id, "prompt": c.prompt,
+                        "expected_type": c.expected_type, "reference": c.reference or ""}
+                       for c in result["chunks"]]}
+
+
+def _deserialize(entry: dict) -> dict:
+    return {"header": entry["header"],
+            "chunks": [StepItem(question_id="pool", step_id=c["step_id"],
+                                prompt=c["prompt"], expected_type=c.get("expected_type", "code"),
+                                reference=c.get("reference", ""))
+                       for c in entry["chunks"]]}
+
+
+def get_chunk_decomposition(problem: dict) -> dict:
+    slug = problem.get("slug", "")
+    pool = _load_pool()
+    entries = pool.get(slug, [])
+
+    want_fresh = (not entries) or (len(entries) < _POOL_TARGET) or (random.random() < _FRESH_PROBABILITY)
+
+    if want_fresh:
+        try:
+            fresh = decompose_into_chunks(problem)
+            entries.append(_serialize(fresh))
+            pool[slug] = entries
+            _save_pool(pool)
+            print(f"  ✨ Fresh decomposition added to pool for {slug} (pool size: {len(entries)})")
+            return fresh
+        except RuntimeError as e:
+            if entries:
+                print(f"  ↩️  Fresh generation failed ({e}); serving from pool instead.")
+            else:
+                raise
+
+    chosen = random.choice(entries)
+    print(f"  🎲 Served pooled decomposition for {slug} (pool size: {len(entries)})")
+    return _deserialize(chosen)
+
 
 def validate_decomposition(steps: list[StepItem], problem: dict) -> dict:
     code_steps = [s for s in steps if s.expected_type == "code"]
