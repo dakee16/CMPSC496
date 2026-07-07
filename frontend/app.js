@@ -141,7 +141,7 @@ authSubmitBtn.addEventListener("click", async function () {
     const data = await response.json();
 
     if (!response.ok) {
-      authError.textContent = "Something went wrong.";
+      authError.textContent = data.detail || "Something went wrong.";
       authError.style.display = "block";
       return;
     }
@@ -174,7 +174,26 @@ logoutBtn.addEventListener("click", function () {
 
 });
 
+//
+// PRESS ENTER ON USERNAME FIELD
+//
+authUsername.addEventListener("keydown", function (e) {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    authPassword.focus();
+  }
+});
 
+//
+// PRESS ENTER ON PASSWORD FIELD
+//
+
+authPassword.addEventListener("keydown", function (e) {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    authSubmit.click();
+  }
+});
 
 //
 // START BUTTON EVEN LISTENER 
@@ -552,7 +571,7 @@ function replaceEditableWithReference(refText) {
 }
 
 function showAuthPage() {
-  authSection.style.display = "block";
+  authSection.style.display = "flex";
   mainApp.style.display = "none";
   logoutBtn.style.display = "none";
 }
