@@ -23,5 +23,24 @@
         }
       ]
     }
+  ],
+  "two-sum": [
+    {
+      "header": "def twoSum(nums, target):",
+      "chunks": [
+        {
+          "step_id": "Part 1",
+          "prompt": "Using the lookup, find and return the indices of the two numbers that sum to target.",
+          "expected_type": "code",
+          "reference": "for i, num in enumerate(nums):\n    complement = target - num\n    if complement in nums[i+1:]:\n        return [i, nums[i+1:].index(complement) + (i + 1)]"
+        },
+        {
+          "step_id": "Part 2",
+          "prompt": "Create a dictionary mapping each number to its index.",
+          "expected_type": "code",
+          "reference": "num_to_index = {num: i for i, num in enumerate(nums)}"
+        }
+      ]
+    }
   ]
 }

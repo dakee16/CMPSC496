@@ -267,8 +267,20 @@ def decompose_into_chunks(problem: dict, max_tries: int = 5) -> dict:
         if not chunks:
             continue
 
+        # Reject single-chunk decompositions — defeats the purpose
+        if len(chunks) < 2:
+            print(f"  🧩 Chunk decomposition attempt {attempt}: fail — only 1 chunk produced")
+            feedback = ("You produced only 1 chunk. This is invalid — you MUST break the "
+                        "problem into 2 or 3 distinct sub-questions. Split the solution at "
+                        "the point where the main computation begins vs. where the result "
+                        "is returned, or at any other natural boundary.")
+            continue
+        
         code = assemble_references(header, chunks)
+        print(f"\n  🔍 ASSEMBLED attempt {attempt}:\n{code}\n  ---")      
         report = _gate_code(code, problem)
+        print(f"  🔍 FAILURES: {report.get('failures', [])}\n")
+        
         print(f"  🧩 Chunk decomposition attempt {attempt}: {report['status']} — {report['detail']}")
         if report["status"] in ("pass", "skipped"):
             return {"header": header, "chunks": chunks}
@@ -312,12 +324,58 @@ def _deserialize(entry: dict) -> dict:
                        for c in entry["chunks"]]}
 
 
+def decompose_into_chunks_best(problem: dict, max_tries: int = 5) -> dict:
+    name, params = _extract_signature(problem.get("solution", ""))
+    header = f"def {name or 'solve'}({', '.join(params)}):"
+    text = problem.get("description") or problem.get("title", "")
+    qid = problem.get("slug") or problem.get("title", "problem")
+    best = None
+    best_score = -1
+
+    for attempt in range(1, max_tries + 1):
+        user_msg = (
+            f"PROBLEM:\n{text}\n\n"
+            f"The function header is: {header}\n"
+            "Write body chunks only.\n\n"
+            'Return JSON only: {"subproblems": [{"prompt": "...", "reference": "..."}, ...]}'
+        )
+        raw = chat(MODEL, CHUNK_DECOMPOSE_SYSTEM,
+                   [{"role": "user", "content": user_msg}], temperature=0.3, fmt="json")
+        try:
+            data = parse_json(raw)
+        except Exception:
+            continue
+        chunks = [
+            StepItem(question_id=qid, step_id=f"Part {i+1}",
+                     prompt=c.get("prompt", "").strip(),
+                     expected_type="code", reference=c.get("reference", ""))
+            for i, c in enumerate(data.get("subproblems", [])) if c.get("prompt")
+        ]
+        if not chunks:
+            continue
+        code = assemble_references(header, chunks)
+        report = _gate_code(code, problem)
+        score = report.get("fraction", 0) if report["status"] != "skipped" else 0.5
+        if score > best_score:
+            best_score = score
+            best = {"header": header, "chunks": chunks}
+        if report["status"] in ("pass", "skipped"):
+            return best
+
+    return best or {"header": header, "chunks": [
+        StepItem(question_id=qid, step_id="Part 1",
+                 prompt="Write a complete solution for this problem.",
+                 expected_type="code", reference="pass")
+    ]}
+    
+
 def get_chunk_decomposition(problem: dict) -> dict:
     slug = problem.get("slug", "")
     pool = _load_pool()
     entries = pool.get(slug, [])
 
-    want_fresh = (not entries) or (len(entries) < _POOL_TARGET) or (random.random() < _FRESH_PROBABILITY)
+    want_fresh = (not entries) or (len(entries) < _POOL_TARGET) or \
+                 (random.random() < _FRESH_PROBABILITY)
 
     if want_fresh:
         try:
@@ -325,13 +383,31 @@ def get_chunk_decomposition(problem: dict) -> dict:
             entries.append(_serialize(fresh))
             pool[slug] = entries
             _save_pool(pool)
-            print(f"  ✨ Fresh decomposition added to pool for {slug} (pool size: {len(entries)})")
+            print(f"  ✨ Fresh decomposition added to pool for {slug} "
+                  f"(pool size: {len(entries)})")
             return fresh
         except RuntimeError as e:
             if entries:
-                print(f"  ↩️  Fresh generation failed ({e}); serving from pool instead.")
+                # Pool has validated entries — serve one, log the failure
+                print(f"  ↩️  Fresh generation failed ({e}); serving from pool.")
             else:
-                raise
+                # Pool empty AND generation failed — serve best-attempt with a warning.
+                # Better than a 500 — the gate failure means it's imperfect but usable.
+                print(f"  ⚠️  All retries failed and pool empty for {slug}. "
+                      f"Serving best attempt (imperfect but not crashing).")
+                # Re-run once more explicitly to get best attempt
+                try:
+                    return decompose_into_chunks_best(problem)
+                except Exception:
+                    # Absolute last resort — return a minimal valid structure
+                    from sandbox import _extract_signature
+                    name, params = _extract_signature(problem.get("solution", ""))
+                    header = f"def {name or 'solve'}({', '.join(params)}):"
+                    return {"header": header, "chunks": [
+                        StepItem(question_id=slug, step_id="Part 1",
+                                 prompt="Write a complete solution for this problem.",
+                                 expected_type="code", reference="pass")
+                    ]}
 
     chosen = random.choice(entries)
     print(f"  🎲 Served pooled decomposition for {slug} (pool size: {len(entries)})")

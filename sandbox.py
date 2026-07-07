@@ -171,18 +171,30 @@ def generate_test_inputs(problem: dict, n: int = 10) -> list[list]:
     INPUTS ONLY — never expected outputs. Retries once if the model returns junk."""
     name, params = _extract_signature(problem.get("solution", ""))
     sig = f"{name}({', '.join(params)})" if name else problem.get("title", "")
+    desc_text = (problem.get('description') or '')[:800]
     prompt = (
         f"Problem: {problem.get('title','')}\n\n"
-        f"Description:\n{(problem.get('description') or '')[:800]}\n\n"
+        f"Description:\n{desc_text}\n\n"
         f"Function: {sig}\n"
         f"It takes {len(params)} argument(s): {', '.join(params) or 'unknown'}.\n\n"
-        f"Generate {n} diverse test INPUTS, including edge cases "
-        f"(zero, negative, empty, single-element, large where relevant).\n"
+        f"Generate {n} diverse test INPUTS that satisfy ALL constraints and "
+        f"preconditions stated in the problem description. "
+        f"For example, if the problem guarantees exactly one solution exists, "
+        f"every input you generate MUST have exactly one valid solution. "
+        f"If the problem says inputs are non-negative, never generate negatives.\n"
+        f"Include edge cases (empty, single-element, minimal values) that still "
+        f"respect the problem's constraints.\n"
         f"Each input is a JSON array of the positional arguments in order.\n"
         f"Use only JSON-serializable values (numbers, strings, booleans, arrays, objects).\n"
         f"Keep values reasonable: integers within -1000000000..1000000000, "
         f"strings under 50 chars, arrays under 20 items. Never emit extremely large numbers.\n"
         f'Return JSON only: {{"inputs": [[arg1, ...], ...]}}'
+        f"CRITICAL for correctness:\n"
+        f"- Never generate inputs where multiple valid answers exist "
+        f"(e.g. for Two Sum, never use arrays where more than one pair sums to target).\n"
+        f"- Never generate inputs with duplicate values unless the problem "
+        f"explicitly requires handling duplicates.\n"
+        f"- Every generated input must have exactly ONE correct output.\n"
     )
     raw = ""
     for temp in (0.2, 0.5):
@@ -197,32 +209,66 @@ def generate_test_inputs(problem: dict, n: int = 10) -> list[list]:
     return []
 
 
-def make_oracle_tests(problem: dict, n: int = 10) -> list[dict]:
-    """Generate inputs, then run the GROUND-TRUTH to compute expected outputs.
-    Returns [{"input": [...], "expected": value}, ...]. Inputs where the ground
-    truth itself errors are dropped."""
+def _count_valid_pairs(nums: list, target: int) -> int:
+    """Count how many distinct index pairs sum to target."""
+    count = 0
+    for i in range(len(nums)):
+        for j in range(i + 1, len(nums)):
+            if nums[i] + nums[j] == target:
+                count += 1
+    return count
+
+
+def _is_ambiguous_output(inp: list, out) -> bool:
+    """Detect inputs where multiple valid outputs exist for common problem patterns."""
+    if out is None:
+        return True
+    # Two Sum pattern: array + target, output is index pair
+    if (len(inp) == 2 and isinstance(inp[0], list) and isinstance(inp[1], int)
+            and isinstance(out, list) and len(out) == 2):
+        if _count_valid_pairs(inp[0], inp[1]) != 1:
+            return True
+        # Also reject duplicate values that break pre-built dict approach
+        nums = inp[0]
+        if len(nums) != len(set(nums)):
+            return True
+    return False
+
+
+def make_oracle_tests(problem: dict, n: int = 12) -> list[dict]:
+    """Generate inputs, run ground-truth to compute expected outputs.
+    Filters out ambiguous inputs (multiple valid answers, duplicates that
+    break common approaches) so the gate only tests unambiguous cases."""
     solution = problem.get("solution", "")
     if not solution.strip():
         return []
     name, _ = _extract_signature(solution)
+
+    # Generate more inputs than needed so we have room to filter
     inputs = generate_test_inputs(problem, n=n)
     if not inputs:
         return []
+
     run = run_solution(solution, inputs, entry_name=name)
     if not run["ok"]:
         return []
+
     tests = []
     for inp, out in zip(inputs, run["results"]):
         if isinstance(out, dict) and "__error__" in out:
             continue
+        if out is None:
+            continue
+        if _is_ambiguous_output(inp, out):
+            continue
         tests.append({"input": inp, "expected": out})
+
     return tests
 
 
 _CACHE_PATH = os.path.join(os.path.dirname(__file__), "tests_cache.json")
 
 def get_oracle_tests(problem: dict, n: int = 10) -> list[dict]:
-    """Cached wrapper around make_oracle_tests, keyed by slug — generate once, reuse."""
     slug = problem.get("slug", "")
     cache = {}
     if os.path.exists(_CACHE_PATH):

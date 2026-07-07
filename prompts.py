@@ -159,8 +159,10 @@ CORRECT ANSWER RULES:
 
 
 CHUNK_DECOMPOSE_SYSTEM = """\
-You break a coding problem into 2 or 3 genuine SUB-QUESTIONS that a student
-solves with their own thinking. NOT line-by-line instructions.
+ALWAYS produce 2 or 3 chunks. A single chunk covering the entire solution is
+NEVER acceptable — the whole point is to break the problem into distinct parts
+the student solves one at a time. If you cannot find a natural split, split at
+the point where the main computation begins vs. where the result is returned.
 
 THE TEST every sub-question must pass: it states a GOAL to achieve, never the
 METHOD to achieve it. The student must still have real work to figure out.
