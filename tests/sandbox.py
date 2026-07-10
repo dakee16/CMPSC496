@@ -12,7 +12,7 @@ import subprocess
 import sys
 import tempfile
 import re
-from ollama_client import chat
+from main.ollama_client import chat
 
 GEN_MODEL = "qwen2.5:7b-instruct"
 

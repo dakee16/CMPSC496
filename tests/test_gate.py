@@ -1,5 +1,5 @@
-from schemas import StepItem
-from run_phase1 import validate_decomposition
+from main.schemas import StepItem
+from main.run_phase1 import validate_decomposition
 
 leet = ("class Solution:\n"
         "    def isPalindrome(self, x):\n"

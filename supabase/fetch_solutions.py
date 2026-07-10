@@ -5,7 +5,7 @@ import os
 import requests
 from dotenv import load_dotenv
 from supabase import create_client
-from ollama_client import chat
+from main.ollama_client import chat
 
 load_dotenv()
 

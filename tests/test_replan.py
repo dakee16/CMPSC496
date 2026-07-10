@@ -1,5 +1,5 @@
-from schemas import StepItem
-from run_phase1 import replan_from_prefix, assemble_canonical
+from main.schemas import StepItem
+from main.run_phase1 import replan_from_prefix, assemble_canonical
 
 leet = ("class Solution:\n"
         "    def isPalindrome(self, x):\n"

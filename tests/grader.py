@@ -14,9 +14,9 @@ import ast
 import re
 import textwrap
 
-from schemas import StepItem
+from main.schemas import StepItem
 from sandbox import get_oracle_tests, passes_tests, _extract_signature
-from ollama_client import chat
+from main.ollama_client import chat
 
 MODEL = "qwen2.5:7b-instruct"
 
@@ -106,7 +106,7 @@ def _llm_judge(problem: dict, header: str, student_upto: str,
     raw = chat(MODEL, JUDGE_SYSTEM, [{"role": "user", "content": user}],
                temperature=0.0, fmt="json")
     try:
-        from run_phase1 import parse_json
+        from main.run_phase1 import parse_json
         data = parse_json(raw)
         return {"correct": bool(data.get("correct")), "tier": "llm-judge",
                 "reason": data.get("reason", "No reason given."), "failures": []}

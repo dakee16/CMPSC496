@@ -9,9 +9,9 @@ from supabase import create_client
 
 from ollama_client import chat
 from schemas import DecomposeOutput, EvalResult, StepItem
-from student_agent import get_student_answer
-from semantic import ast_equivalent
-from sandbox import get_oracle_tests, passes_tests, _extract_signature
+from research.student_agent import get_student_answer
+from tests.semantic import ast_equivalent
+from tests.sandbox import get_oracle_tests, passes_tests, _extract_signature
 from prompts import DECOMPOSE_SYSTEM, EVAL_SYSTEM, CHUNK_DECOMPOSE_SYSTEM
 
 
@@ -400,7 +400,7 @@ def get_chunk_decomposition(problem: dict) -> dict:
                     return decompose_into_chunks_best(problem)
                 except Exception:
                     # Absolute last resort — return a minimal valid structure
-                    from sandbox import _extract_signature
+                    from tests.sandbox import _extract_signature
                     name, params = _extract_signature(problem.get("solution", ""))
                     header = f"def {name or 'solve'}({', '.join(params)}):"
                     return {"header": header, "chunks": [
