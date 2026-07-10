@@ -24,11 +24,6 @@ SB = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_KEY"])
 
 # ── Agent configuration: SAME temperature, only model size varies ──
 UNIFIED_TEMPERATURE = 0.3
-AGENTS_LIST = [
-    {"level": "weak"},
-    {"level": "normal"},
-    {"level": "strong"},
-]
 
 
 def log_interaction(slug: str, chunk_index: int, chunk_prompt: str, agent_level: str,
@@ -52,7 +47,7 @@ def log_interaction(slug: str, chunk_index: int, chunk_prompt: str, agent_level:
         print(f"    ⚠️  DB log failed: {e}")
 
 
-def run_agent_on_problem(problem: dict, chunks_result: dict, agent: dict) -> dict:
+def run_agent_on_problem(problem: dict, chunks_result: dict, agent_level: str) -> dict:
     """Run one agent through all chunks of one problem. Two attempts per chunk;
     reveal reference on second failure. Returns summary stats for the poster."""
     slug = problem["slug"]
@@ -66,15 +61,16 @@ def run_agent_on_problem(problem: dict, chunks_result: dict, agent: dict) -> dic
     accepted_prefix = []
     stats = {"chunks_passed_a1": 0, "chunks_passed_a2": 0, "chunks_revealed": 0}
 
-    print(f"\n  ── {agent['level'].upper()} ({agent['model']}) ──")
+    from .student_agent import AGENTS
+    print(f"\n  ── {agent_level.upper()} ({AGENTS[agent_level]}) ──")
 
     for idx, chunk in enumerate(chunks):
         print(f"    Part {idx+1}: {chunk.prompt[:80]}")
 
         # Attempt 1
-        code1 = get_student_answer(chunk.prompt, accepted_prefix, agent["level"])
+        code1 = get_student_answer(chunk.prompt, accepted_prefix, agent_level)
         result1 = grade_chunk(problem, chunks, idx, code1, accepted_prefix)
-        log_interaction(slug, idx, chunk.prompt, agent["level"], 1, code1, result1)
+        log_interaction(slug, idx, chunk.prompt, agent_level, 1, code1, result1)
         print(f"      A1 [{result1['tier']}] {'✅' if result1['correct'] else '❌'}")
 
         if result1["correct"]:
@@ -83,9 +79,9 @@ def run_agent_on_problem(problem: dict, chunks_result: dict, agent: dict) -> dic
             continue
 
         # Attempt 2 with hint
-        code2 = get_student_answer(chunk.prompt, accepted_prefix, agent["level"], hint=result1.get("reason"))
+        code2 = get_student_answer(chunk.prompt, accepted_prefix, agent_level, hint=result1.get("reason"))
         result2 = grade_chunk(problem, chunks, idx, code2, accepted_prefix)
-        log_interaction(slug, idx, chunk.prompt, agent["level"], 2, code2, result2)
+        log_interaction(slug, idx, chunk.prompt, agent_level, 2, code2, result2)
         print(f"      A2 [{result2['tier']}] {'✅' if result2['correct'] else '❌'}")
 
         if result2["correct"]:
@@ -160,11 +156,11 @@ def main():
             continue
 
         # Run all three agents
-        for agent in AGENTS:
+        for agent_level in ["weak", "normal", "strong"]:
             try:
-                run_agent_on_problem(problem, chunks_result, agent)
+                run_agent_on_problem(problem, chunks_result, agent_level)
             except Exception as e:
-                print(f"  ⚠️  Agent {agent['level']} crashed: {e}")
+                print(f"  ⚠️  Agent {agent_level} crashed: {e}")
 
         processed += 1
         print(f"\n  ✅ {slug} done. ({processed} processed, {skipped} skipped, {failed} failed)")
