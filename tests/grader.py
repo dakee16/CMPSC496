@@ -15,7 +15,7 @@ import re
 import textwrap
 
 from main.schemas import StepItem
-from sandbox import get_oracle_tests, passes_tests, _extract_signature
+from .sandbox import get_oracle_tests, passes_tests, _extract_signature
 from main.ollama_client import chat
 
 MODEL = "qwen2.5:7b-instruct"

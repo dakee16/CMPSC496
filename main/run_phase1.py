@@ -7,12 +7,12 @@ from dotenv import load_dotenv
 from pydantic import ValidationError
 from supabase import create_client
 
-from ollama_client import chat
-from schemas import DecomposeOutput, EvalResult, StepItem
+from .ollama_client import chat
+from .schemas import DecomposeOutput, EvalResult, StepItem
 from research.student_agent import get_student_answer
 from tests.semantic import ast_equivalent
 from tests.sandbox import get_oracle_tests, passes_tests, _extract_signature
-from prompts import DECOMPOSE_SYSTEM, EVAL_SYSTEM, CHUNK_DECOMPOSE_SYSTEM
+from .prompts import DECOMPOSE_SYSTEM, EVAL_SYSTEM, CHUNK_DECOMPOSE_SYSTEM
 
 
 load_dotenv()

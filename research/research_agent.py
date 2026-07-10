@@ -17,7 +17,7 @@ from supabase import create_client
 from main.run_phase1 import get_chunk_decomposition
 from tests.grader import grade_chunk
 from main.ollama_client import chat
-from student_agent import get_student_answer, AGENTS
+from .student_agent import get_student_answer, AGENTS
 
 load_dotenv()
 SB = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_KEY"])
@@ -114,11 +114,17 @@ def already_done(slug: str) -> bool:
         return False
 
 
-def load_problems() -> list[dict]:
+'''def load_problems() -> list[dict]:
     """Load all problems from Supabase with their ground-truth solutions."""
     res = SB.table("problems").select("slug, title, description, difficulty, solution").execute()
-    return res.data or []
+    return res.data or []'''
 
+def load_problems() -> list[dict]:
+    """TEMP: small slice for validation before the full run."""
+    res = SB.table("problems").select(
+        "slug, title, description, difficulty, solution"
+    ).in_("slug", ["palindrome-number", "two-sum", "roman-to-integer"]).execute()
+    return res.data or []
 
 def main():
     problems = load_problems()
