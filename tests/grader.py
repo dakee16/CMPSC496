@@ -14,9 +14,9 @@ import ast
 import re
 import textwrap
 
-from schemas import StepItem
-from sandbox import get_oracle_tests, passes_tests, _extract_signature
-from ollama_client import chat
+from main.schemas import StepItem
+from .sandbox import get_oracle_tests, passes_tests, _extract_signature
+from main.ollama_client import chat
 
 MODEL = "qwen2.5:7b-instruct"
 
@@ -75,10 +75,20 @@ def _adapt_tail(problem: dict, header: str, upto: str,
     return re.sub(r'```', '', raw).strip()
 
 JUDGE_SYSTEM = """\
-You are a strict but fair code evaluator. A student answered one sub-question
-of a larger coding problem. Execution-based grading could not give a definitive
-verdict. Your job: decide correct or incorrect, and give the student useful
-feedback. Be concise. Never reveal the reference implementation.
+You are a strict but fair code evaluator grading ONE sub-question of a larger
+coding problem — not the whole solution. Remember: the student was ONLY asked
+to write the code for THIS sub-question. Later sub-questions will handle the
+rest of the logic. If their code correctly answers THIS sub-question in
+isolation — even if it's incomplete on its own — mark it correct.
+
+Examples of what to accept as CORRECT:
+- If the sub-question was "create a lookup dictionary" and the student wrote
+  `num_to_index = {}`, that's CORRECT — populating it is a later sub-question.
+- If the sub-question was "check if negative" and they wrote
+  `if x < 0: return False`, that's CORRECT even though the function has more.
+
+Only mark WRONG if the code truly does not answer the sub-question asked.
+Be concise. Never reveal the reference implementation in your feedback.
 """
 
 
@@ -106,7 +116,7 @@ def _llm_judge(problem: dict, header: str, student_upto: str,
     raw = chat(MODEL, JUDGE_SYSTEM, [{"role": "user", "content": user}],
                temperature=0.0, fmt="json")
     try:
-        from run_phase1 import parse_json
+        from main.run_phase1 import parse_json
         data = parse_json(raw)
         return {"correct": bool(data.get("correct")), "tier": "llm-judge",
                 "reason": data.get("reason", "No reason given."), "failures": []}
@@ -195,7 +205,13 @@ def grade_chunk(problem: dict, chunks: list[StepItem], index: int,
         adapted_tail = _adapt_tail(problem, header, upto, tail_body, student_outputs)
         if adapted_tail:
             reads, writes = _read_write_names(adapted_tail)
-            if (reads & student_outputs) and not (writes & student_outputs):
+            # Guard: must actually build on the student's work. If student produced
+            # NO named outputs (e.g., just declared an empty dict), we allow the tail
+            # to populate it — that's the natural completion, not a bypass.
+            has_outputs = bool(student_outputs)
+            builds_on = (reads & student_outputs) or not has_outputs
+            doesnt_clobber = not (writes & student_outputs) or not has_outputs
+            if builds_on and doesnt_clobber:
                 adapted_full = header + "\n" + _indent_body(
                     "\n".join(b for b in (upto, adapted_tail) if b.strip()))
                 m2 = re.search(r'def\s+(\w+)', adapted_full)

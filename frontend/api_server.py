@@ -15,9 +15,9 @@ import os
 from supabase import create_client
 
 
-from run_phase1 import decompose_validated, eval_step, parse_json, decompose_into_chunks, replan_from_prefix, get_chunk_decomposition
-from grader import grade_chunk
-from schemas import StepItem
+from main.run_phase1 import decompose_validated, eval_step, parse_json, decompose_into_chunks, replan_from_prefix, get_chunk_decomposition
+from tests.grader import grade_chunk
+from main.schemas import StepItem
 
 app = FastAPI(title="MicroTutor API", version="1.0")
 _sb = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_KEY"])
@@ -155,7 +155,7 @@ def decompose_chunks_route(req: DecomposeRequest):
     try:
         problem = {"slug": req.slug, "title": req.slug, "description": req.description}
         # Fetch the full problem dict (needs solution for oracle)
-        from run_phase1 import load_problems
+        from main.run_phase1 import load_problems
         problems = load_problems(limit=500)
         full = next((p for p in problems if p.get("slug") == req.slug), None)
         if full:
@@ -165,7 +165,7 @@ def decompose_chunks_route(req: DecomposeRequest):
         # Pre-warm oracle tests
         if problem.get("solution", "").strip():
             try:
-                from sandbox import get_oracle_tests
+                from tests.sandbox import get_oracle_tests
                 get_oracle_tests(problem)  # generates + caches, result discarded
                 print(f"  ✅ Oracle pre-warmed for {problem.get('slug')}")
             except Exception as e:
@@ -187,7 +187,7 @@ def grade_chunk_route(req: ChunkRequest):
     try:
         slug = req.problem.get("slug")
         if slug and not req.problem.get("solution"):
-            from run_phase1 import load_problems
+            from main.run_phase1 import load_problems
             problems = load_problems(limit=500)
             full = next((p for p in problems if p.get("slug") == slug), None)
             if full:
