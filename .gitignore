@@ -5,3 +5,4 @@ __pycache__/
 .env
 problems_raw.json
 .env
+chunk_pool.json
