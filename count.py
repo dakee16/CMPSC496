@@ -1,4 +1,9 @@
-{
+import json
+
+# Paste the 30 slugs that were manually reviewed here:
+REVIEWED_SLUGS = [
+    "palindrome-number", "two-sum", "roman-to-integer",
+    {
   "palindrome-number": [
     {
       "header": "def isPalindrome(x):",
@@ -235,3 +240,21 @@
     }
   ]
 }
+]
+
+pool = json.load(open("main/chunk_pool.json"))
+total_components = 0
+missing = []
+
+for slug in REVIEWED_SLUGS:
+    entries = pool.get(slug, [])
+    if not entries:
+        missing.append(slug)
+        continue
+    # Uses the first pooled decomposition for that slug —
+    # change index if a different one was reviewed
+    total_components += len(entries[0]["chunks"])
+
+print(f"Total components across {len(REVIEWED_SLUGS) - len(missing)} slugs: {total_components}")
+if missing:
+    print(f"⚠️  Not found in pool, count manually: {missing}")

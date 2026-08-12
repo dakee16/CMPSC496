@@ -12,9 +12,11 @@ import subprocess
 import sys
 import tempfile
 import re
-from main.ollama_client import chat
+from datetime import datetime, timezone
+from main.ollama_client import chat, OPENAI_MODEL
 
-GEN_MODEL = "qwen2.5:7b-instruct"
+GEN_MODEL = OPENAI_MODEL   # system role: oracle test-input generation
+                           # (main/mutation.py imports GEN_MODEL from here)
 
 # Harness that runs INSIDE the child process. Reads a JSON payload file (argv[1]):
 #   {"code": "<python>", "inputs": [[arg1, arg2], ...], "entry_name": "optional"}
@@ -268,24 +270,119 @@ def make_oracle_tests(problem: dict, n: int = 12) -> list[dict]:
 
 _CACHE_PATH = os.path.join(os.path.dirname(__file__), "tests_cache.json")
 
-def get_oracle_tests(problem: dict, n: int = 10) -> list[dict]:
-    slug = problem.get("slug", "")
-    cache = {}
+# A cache entry is:
+#   {"final_tests": [{"input", "expected"}, ...],   # the suite, possibly grown
+#    "strong": bool,                                # cleared mutation testing?
+#    "kill_rate": float, "kill_rate_direct": float, # see main/mutation.py
+#    "validated_at": "<UTC ISO-8601>"}
+# Entries written before mutation testing existed are a bare list of tests.
+# Those are treated as unvalidated and upgraded in place on first access.
+
+
+def _load_cache() -> dict:
     if os.path.exists(_CACHE_PATH):
         try:
-            cache = json.load(open(_CACHE_PATH))
-        except Exception:
-            cache = {}
-    if slug and slug in cache:
-        return cache[slug]
-    tests = make_oracle_tests(problem, n=n)
-    if slug and tests:
-        cache[slug] = tests
-        try:
-            json.dump(cache, open(_CACHE_PATH, "w"), indent=2)
+            return json.load(open(_CACHE_PATH))
         except Exception:
             pass
-    return tests
+    return {}
+
+
+def _save_cache(cache: dict) -> None:
+    try:
+        json.dump(cache, open(_CACHE_PATH, "w"), indent=2)
+    except Exception:
+        pass
+
+
+def _entry_tests(entry) -> list[dict]:
+    """The test list out of a cache entry, old format (bare list) or new."""
+    if isinstance(entry, list):
+        return entry
+    if isinstance(entry, dict):
+        return entry.get("final_tests", [])
+    return []
+
+
+def _is_validated(entry) -> bool:
+    """A prior validation left a verdict here — don't spend another pass."""
+    return isinstance(entry, dict) and "strong" in entry
+
+
+def get_oracle_tests(problem: dict, n: int = 10) -> list[dict]:
+    """Cached oracle tests for `problem`, mutation-tested before they are
+    trusted. Tests are generated (or loaded) and then handed to
+    validate_oracle, which may GROW the suite with counterexamples that kill
+    surviving mutants; the grown suite and its verdict are persisted together.
+
+    Validation runs at most once per problem — an entry that already carries a
+    verdict is returned as-is, weak or strong. Always returns a plain list of
+    tests, so existing callers are unaffected."""
+    slug = problem.get("slug", "")
+    cache = _load_cache()
+    entry = cache.get(slug) if slug else None
+
+    if _is_validated(entry):
+        print(f"  [oracle] {slug}: validation SKIPPED (cached "
+              f"strong={entry['strong']}, kill_rate={entry.get('kill_rate', 0):.2f})")
+        return _entry_tests(entry)
+
+    tests = _entry_tests(entry) if entry is not None else make_oracle_tests(problem, n=n)
+    if not tests:
+        return []
+
+    # Local import: main.mutation imports this module, so a top-level import
+    # here would be circular.
+    from main.mutation import validate_oracle
+
+    origin = "cached (old format)" if entry is not None else "freshly generated"
+    print(f"  [oracle] {slug or '?'}: validation RUNNING on {len(tests)} "
+          f"{origin} tests")
+    report = validate_oracle(problem, tests)
+    validated = {
+        "final_tests": report["final_tests"],
+        "strong": report["strong"],
+        "kill_rate": report["kill_rate"],
+        "kill_rate_direct": report["kill_rate_direct"],
+        "validated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    }
+    print(f"  [oracle] {slug or '?'}: {len(tests)} -> "
+          f"{len(validated['final_tests'])} tests, "
+          f"kill_rate={validated['kill_rate']:.2f} "
+          f"(direct {validated['kill_rate_direct']:.2f}) "
+          f"{'STRONG' if validated['strong'] else 'WEAK'}")
+
+    if slug:
+        cache[slug] = validated
+        _save_cache(cache)
+    return validated["final_tests"]
+
+
+def is_oracle_strong(problem) -> bool:
+    """Did this problem's oracle clear mutation testing?
+
+    Reads the cached verdict, running validation once to populate it if it is
+    missing. Accepts a problem dict, or a bare slug for a cache-only lookup —
+    a slug alone carries no ground-truth solution to mutate, so an unvalidated
+    one simply reads as not-strong."""
+    if isinstance(problem, str):
+        entry = _load_cache().get(problem)
+        if not _is_validated(entry):
+            print(f"  [oracle] {problem}: no cached verdict (slug lookup only)")
+            return False
+        print(f"  [oracle] {problem}: validation SKIPPED "
+              f"(cached strong={entry['strong']})")
+        return bool(entry["strong"])
+
+    slug = problem.get("slug", "")
+    entry = _load_cache().get(slug) if slug else None
+    if _is_validated(entry):
+        print(f"  [oracle] {slug}: validation SKIPPED "
+              f"(cached strong={entry['strong']})")
+    else:
+        get_oracle_tests(problem)               # validates and persists the verdict
+        entry = _load_cache().get(slug) if slug else None
+    return bool(_is_validated(entry) and entry["strong"])
 
 
 # ── self-test: run `python sandbox.py` ──

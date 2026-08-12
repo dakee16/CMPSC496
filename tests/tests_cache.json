@@ -1,36 +1,48 @@
 {
-  "palindrome-number": [
-    {
-      "input": [
-        121
-      ],
-      "expected": true
-    },
-    {
-      "input": [
-        0
-      ],
-      "expected": true
-    },
-    {
-      "input": [
-        12321
-      ],
-      "expected": true
-    },
-    {
-      "input": [
-        123321
-      ],
-      "expected": true
-    },
-    {
-      "input": [
-        123454321
-      ],
-      "expected": true
-    }
-  ],
+  "palindrome-number": {
+    "final_tests": [
+      {
+        "input": [
+          121
+        ],
+        "expected": true
+      },
+      {
+        "input": [
+          0
+        ],
+        "expected": true
+      },
+      {
+        "input": [
+          12321
+        ],
+        "expected": true
+      },
+      {
+        "input": [
+          123321
+        ],
+        "expected": true
+      },
+      {
+        "input": [
+          123454321
+        ],
+        "expected": true
+      },
+      {
+        "input": [
+          -1
+        ],
+        "expected": false
+      }
+    ],
+    "strong": true,
+    "kill_rate": 1.0,
+    "kill_rate_direct": 0.8,
+    "validated_at": "2026-08-12T21:50:05+00:00"
+  },
   "roman-to-integer": [
     {
       "input": [
@@ -168,6 +180,68 @@
         0,
         1
       ]
+    }
+  ],
+  "longest-substring-without-repeating-characters": [
+    {
+      "input": [
+        "abcabcbb"
+      ],
+      "expected": 3
+    },
+    {
+      "input": [
+        "bbbbb"
+      ],
+      "expected": 1
+    },
+    {
+      "input": [
+        "pwwkew"
+      ],
+      "expected": 3
+    },
+    {
+      "input": [
+        " "
+      ],
+      "expected": 1
+    },
+    {
+      "input": [
+        "a!@# $%^&*()_+"
+      ],
+      "expected": 14
+    },
+    {
+      "input": [
+        "aaabccddd"
+      ],
+      "expected": 3
+    },
+    {
+      "input": [
+        "zxyzyzzx"
+      ],
+      "expected": 3
+    },
+    {
+      "input": [
+        "1234567890"
+      ],
+      "expected": 10
+    },
+    {
+      "input": [
+        "!@#$%^&*()_+{}|:\"<>?`-=[]\\;',./"
+      ],
+      "expected": 31
+    },
+    {
+      "input": [
+        "a"
+      ],
+      "expected": 1
     }
   ]
 }

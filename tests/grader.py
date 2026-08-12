@@ -16,9 +16,9 @@ import textwrap
 
 from main.schemas import StepItem
 from .sandbox import get_oracle_tests, passes_tests, _extract_signature
-from main.ollama_client import chat
+from main.ollama_client import chat, OPENAI_MODEL
 
-MODEL = "qwen2.5:7b-instruct"
+MODEL = OPENAI_MODEL   # system role: Tier 3 adaptation, Tier 4 judgment
 
 
 def _indent_body(code: str) -> str:

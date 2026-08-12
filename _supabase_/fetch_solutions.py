@@ -5,7 +5,7 @@ import os
 import requests
 from dotenv import load_dotenv
 from supabase import create_client
-from main.ollama_client import chat
+from main.ollama_client import chat, OPENAI_MODEL
 
 load_dotenv()
 
@@ -18,7 +18,7 @@ HEADERS = {
     "Referer": "https://leetcode.com"
 }
 
-MODEL = "qwen2.5:7b-instruct"
+MODEL = OPENAI_MODEL   # system role: reference-solution generation
 
 
 # Fetch hints + Python template from LeetCode

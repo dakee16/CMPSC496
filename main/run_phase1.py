@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 from pydantic import ValidationError
 from supabase import create_client
 
-from .ollama_client import chat
+from .ollama_client import chat, OPENAI_MODEL
 from .schemas import DecomposeOutput, EvalResult, StepItem
 from research.student_agent import get_student_answer
 from tests.semantic import ast_equivalent
@@ -17,7 +17,7 @@ from .prompts import DECOMPOSE_SYSTEM, EVAL_SYSTEM, CHUNK_DECOMPOSE_SYSTEM
 
 load_dotenv()
 
-MODEL  = "qwen2.5:7b-instruct"
+MODEL  = OPENAI_MODEL   # system role: decomposition, replan, assembly, judging
 AGENTS = ["weak", "normal", "strong"]
 
 # Supabase client
