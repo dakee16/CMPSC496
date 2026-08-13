@@ -88,7 +88,11 @@ def warm_up_oracles(problems: list[dict] | None = None) -> dict:
             print(f"{head}: FAILED — no oracle tests generated")
             continue
 
-        entry = _load_cache().get(slug) or {}
+        # Must key by content, not slug: a slug lookup can land on a
+        # pre-migration orphan entry, which is a bare list, not a dict.
+        entry = _load_cache().get(content_hash(problem))
+        if not isinstance(entry, dict):
+            entry = {}
         summary["newly_validated"] += 1
         print(f"{head}: VALIDATED {len(tests)} tests, "
               f"kill_rate={entry.get('kill_rate', 0.0):.2f} "

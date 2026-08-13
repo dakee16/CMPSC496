@@ -38,6 +38,11 @@ app.add_middleware(
 class DecomposeRequest(BaseModel):
     slug: str
     description: str
+    # Uploaded problems carry the professor's reference solution in the request;
+    # curated ones are looked up in the DB by slug. Either way a solution is
+    # REQUIRED before the pipeline runs — see decompose_chunks_route.
+    title: str | None = None
+    solution: str | None = None
 
 
 class EvaluateRequest(BaseModel):
@@ -153,23 +158,39 @@ def replan(req: ReplanRequest):
 @app.post("/decompose_chunks")
 def decompose_chunks_route(req: DecomposeRequest):
     try:
-        problem = {"slug": req.slug, "title": req.slug, "description": req.description}
-        # Fetch the full problem dict (needs solution for oracle)
-        from main.run_phase1 import load_problems
-        problems = load_problems(limit=500)
-        full = next((p for p in problems if p.get("slug") == req.slug), None)
-        if full:
-            problem["solution"] = full.get("solution", "")
+        problem = {"slug": req.slug, "title": req.title or req.slug,
+                   "description": req.description,
+                   "solution": (req.solution or "").strip()}
+
+        # Curated problems keep their ground truth in the DB; uploads send it in
+        # the request. Only look it up when the request didn't carry one.
+        if not problem["solution"]:
+            from main.run_phase1 import load_problems
+            problems = load_problems(limit=500)
+            full = next((p for p in problems if p.get("slug") == req.slug), None)
+            if full:
+                problem["solution"] = (full.get("solution") or "").strip()
+
+        # No ground truth means no oracle, which means no mutation validation and
+        # no Gate 1 — the decomposition would be served unvalidated. That silent
+        # degradation is exactly what uploads used to do; it is now a hard error.
+        if not problem["solution"]:
+            raise HTTPException(
+                status_code=400,
+                detail=(f"No reference solution for '{req.slug}'. A problem cannot "
+                        f"be decomposed without ground truth — oracle tests, "
+                        f"mutation validation and the necessity gate all depend "
+                        f"on it. Supply `solution` with the request."))
+
         result = get_chunk_decomposition(problem)
-        
-        # Pre-warm oracle tests
-        if problem.get("solution", "").strip():
-            try:
-                from tests.sandbox import get_oracle_tests
-                get_oracle_tests(problem)  # generates + caches, result discarded
-                print(f"  ✅ Oracle pre-warmed for {problem.get('slug')}")
-            except Exception as e:
-                print(f"  ⚠️  Oracle pre-warm failed: {e}")
+
+        # Pre-warm oracle tests (guaranteed to have a solution by this point).
+        try:
+            from tests.sandbox import get_oracle_tests
+            get_oracle_tests(problem)  # generates + caches, result discarded
+            print(f"  ✅ Oracle pre-warmed for {problem.get('slug')}")
+        except Exception as e:
+            print(f"  ⚠️  Oracle pre-warm failed: {e}")
         return {
             "header": result["header"],
             "chunks": [
@@ -186,12 +207,19 @@ def decompose_chunks_route(req: DecomposeRequest):
 def grade_chunk_route(req: ChunkRequest):
     try:
         slug = req.problem.get("slug")
-        if slug and not req.problem.get("solution"):
+        if slug and not (req.problem.get("solution") or "").strip():
             from main.run_phase1 import load_problems
             problems = load_problems(limit=500)
             full = next((p for p in problems if p.get("slug") == slug), None)
             if full:
-                req.problem["solution"] = full.get("solution", "")
+                req.problem["solution"] = (full.get("solution") or "").strip()
+        if not (req.problem.get("solution") or "").strip():
+            # Grading tiers 1-2 run the oracle; without ground truth they would
+            # silently fall back to weaker LLM-only judgement.
+            raise HTTPException(
+                status_code=400,
+                detail=f"No reference solution for '{slug}'. Cannot grade without "
+                       f"ground truth — send `solution` with the problem.")
         chunks = [StepItem(question_id=req.problem.get("slug", "q"),
                            step_id=c.get("step_id", f"Part {i+1}"),
                            prompt=c.get("prompt", ""),

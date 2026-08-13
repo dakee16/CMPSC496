@@ -211,7 +211,11 @@ startBtn.addEventListener("click", async function () {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         slug: selectedProblem.slug,
-        description: selectedProblem.description
+        title: selectedProblem.title,
+        description: selectedProblem.description,
+        // Uploaded problems carry their own ground truth; for curated ones this
+        // is already present from /problems and the backend falls back to the DB.
+        solution: selectedProblem.solution || ""
       })
     });
 
@@ -267,7 +271,7 @@ submitBtn.addEventListener("click", async function () {
           slug: selectedProblem.slug,
           title: selectedProblem.title,
           description: selectedProblem.description,
-          solution: ""
+          solution: selectedProblem.solution || ""
         },
         chunks: chunks,
         index: currentChunkIndex,
@@ -442,7 +446,8 @@ fileInput.addEventListener("change", function (event) {
     console.log("Parsed problems:", problems);
 
     if (problems.length === 0) {
-      alert("No problems found — check the file format (Problem N: / Description:).");
+      alert("No problems found — check the file format (Problem N: / Description: / Solution:). " +
+            "Every problem needs a reference solution; ones without a Solution: section are skipped.");
       return;
     }
 
@@ -722,16 +727,29 @@ function parseProblems(rawText) {
 
       title = title.trim().replace(/_/g, " ");
 
-      const description = chunk.slice(idx)
+      // The professor supplies a reference solution for every uploaded problem.
+      // It ends the description block; everything after "Solution:" is code, so
+      // it keeps its whitespace (indentation is significant) while the prose
+      // description stays collapsed.
+      const solIdx = chunk.search(/Solution\s*:/i);
+      const description = chunk.slice(idx, solIdx === -1 ? chunk.length : solIdx)
         .replace(/Description\s*:/i, "")
         .trim()
         .replace(/\s+/g, " ");
 
-      const problem = { slug: slugify(title), title, description };
+      const solution = solIdx === -1 ? "" : chunk.slice(solIdx)
+        .replace(/Solution\s*:/i, "")
+        .replace(/^\s*```[\w]*\n?/, "")
+        .replace(/```\s*$/, "")
+        .trim();
+
+      const problem = { slug: slugify(title), title, description, solution };
       if (difficulty) problem.difficulty = difficulty;
       return problem;
     })
-    .filter(p => p && p.title && p.description);
+    // No reference solution means no oracle, no mutation validation and no
+    // necessity gate — reject it here rather than serve an unvalidated problem.
+    .filter(p => p && p.title && p.description && p.solution);
 }
 
 

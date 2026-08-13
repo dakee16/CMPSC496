@@ -1,1 +1,811 @@
-{}
+{
+  "8e85022d74ad7aa08108bf65a309a42bdfa35e5029be0afe703c6c40970114a5": {
+    "entry_name": "lengthOfLongestSubstring",
+    "params": [
+      "s"
+    ],
+    "confirmed": true,
+    "slug": "longest-substring-without-repeating-characters"
+  },
+  "3af01c31974c963b6fb37c961b64d3b2bb2dfb219891fa07b2d635a9e23f92e7": {
+    "entry_name": "findMedianSortedArrays",
+    "params": [
+      "nums1",
+      "nums2"
+    ],
+    "confirmed": true,
+    "slug": "median-of-two-sorted-arrays"
+  },
+  "9e49c050a8d355427fbaeb9c92e3a2c34a1a38ea038d53601c11a16bb54b2015": {
+    "entry_name": "letterCombinations",
+    "params": [
+      "digits"
+    ],
+    "confirmed": true,
+    "slug": "letter-combinations-of-a-phone-number"
+  },
+  "4784d1e52fcf75d41e3cbb770d77e19e937b9ec89d3099be769d62f02c8b9d9d": {
+    "entry_name": "twoSum",
+    "params": [
+      "nums",
+      "target"
+    ],
+    "confirmed": true,
+    "slug": "two-sum"
+  },
+  "3c2205c1345885cad77135fafa70942cce9535d54592201ad065891d863507f3": {
+    "entry_name": "addTwoNumbers",
+    "params": [
+      "l1",
+      "l2"
+    ],
+    "confirmed": false,
+    "slug": "add-two-numbers"
+  },
+  "fd997dae84332800cdeff25fa45c614c4a69ed5b40710ac7eb41900c06f0d1cf": {
+    "entry_name": "longestPalindrome",
+    "params": [
+      "s"
+    ],
+    "confirmed": true,
+    "slug": "longest-palindromic-substring"
+  },
+  "8d36e060cb989192e536671cd0c47814bed54cd0ebca8a030778cd03eb01ab71": {
+    "entry_name": "reverse",
+    "params": [
+      "x"
+    ],
+    "confirmed": true,
+    "slug": "reverse-integer"
+  },
+  "2e9c8415f3df0fa7a549e8b4e0bca0d835bf67440c2dbf53301f195a4804f019": {
+    "entry_name": "isPalindrome",
+    "params": [
+      "x"
+    ],
+    "confirmed": true,
+    "slug": "palindrome-number"
+  },
+  "036cd45b57fe716b7a0db0aab868f705e77de2a7425c5628f49b5322dafbc65e": {
+    "entry_name": "fourSum",
+    "params": [
+      "nums",
+      "target"
+    ],
+    "confirmed": true,
+    "slug": "4sum"
+  },
+  "c175f32448eb41499dc262ce8e475b5362f96beaa68a6cf303391aa842751760": {
+    "entry_name": "maxArea",
+    "params": [
+      "height"
+    ],
+    "confirmed": true,
+    "slug": "container-with-most-water"
+  },
+  "d2c9c7896afcd5fd55147e25ca2fe440b18b291235240b01e3e4db7abf3feb2c": {
+    "entry_name": "romanToInt",
+    "params": [
+      "s"
+    ],
+    "confirmed": true,
+    "slug": "roman-to-integer"
+  },
+  "caa58924a9755a82be2043a95058e880ef896893587fecc7f9ec1363f4172f37": {
+    "entry_name": "threeSum",
+    "params": [
+      "nums"
+    ],
+    "confirmed": true,
+    "slug": "3sum"
+  },
+  "ca2816eb5ec3cdacc58d5b8265e5d07f1a66b63695ea6722283e8cae3d8a68f3": {
+    "entry_name": "mergeTwoLists",
+    "params": [
+      "list1",
+      "list2"
+    ],
+    "confirmed": false,
+    "slug": "merge-two-sorted-lists"
+  },
+  "d658e187147631ca23950d4192cff14c1453b608cfaa63bd716eb79b41f83469": {
+    "entry_name": "generateParenthesis",
+    "params": [
+      "n"
+    ],
+    "confirmed": true,
+    "slug": "generate-parentheses"
+  },
+  "f443b0bbdff3c04652b67d0387360fbdf6efd32c9141b5d4412cf8c509434508": {
+    "entry_name": "reverseKGroup",
+    "params": [
+      "head",
+      "k"
+    ],
+    "confirmed": true,
+    "slug": "reverse-nodes-in-k-group"
+  },
+  "91bf07d22a4f46f7f6fc6871a1b3dcc8d6701f4ffa26c6574309b74be9f7190b": {
+    "entry_name": "search",
+    "params": [
+      "nums",
+      "target"
+    ],
+    "confirmed": true,
+    "slug": "search-in-rotated-sorted-array"
+  },
+  "edc4ea0747c162e55faee843f06141705ffd0f61822c78d580043aaa4ed96f6f": {
+    "entry_name": "strStr",
+    "params": [
+      "haystack",
+      "needle"
+    ],
+    "confirmed": true,
+    "slug": "find-the-index-of-the-first-occurrence-in-a-string"
+  },
+  "adb2b469b25f685bcfff181ff3c41fa1038e1ada0546e8c7d2025bed53028ed6": {
+    "entry_name": "findSubstring",
+    "params": [
+      "s",
+      "words"
+    ],
+    "confirmed": true,
+    "slug": "substring-with-concatenation-of-all-words"
+  },
+  "455dfb6b19cbcdc6b6148eb40c8ae291f604d671f7f6c30fdff65fac0975dfd5": {
+    "entry_name": "longestValidParentheses",
+    "params": [
+      "s"
+    ],
+    "confirmed": true,
+    "slug": "longest-valid-parentheses"
+  },
+  "d257b6f54862eeda362922166f335349537882dcc3ffd2d3a0785d64fa525583": {
+    "entry_name": "isValidSudoku",
+    "params": [
+      "board"
+    ],
+    "confirmed": true,
+    "slug": "valid-sudoku"
+  },
+  "f5d05f102ff5173edbdb52c783a7c1cadfed7f52a64d6a6c9d69d5d950d30fd6": {
+    "entry_name": "solveSudoku",
+    "params": [
+      "board"
+    ],
+    "confirmed": true,
+    "slug": "sudoku-solver"
+  },
+  "d40eb7040c53060fe463bf91e86e29e4cbae70e1667f635bb1e8fbb8e3b8dae9": {
+    "entry_name": "combinationSum",
+    "params": [
+      "candidates",
+      "target"
+    ],
+    "confirmed": true,
+    "slug": "combination-sum"
+  },
+  "7622b1fbcf98cf36a1e6b22fbbd95ffeae3cb1af9bf573b627ca6062b7ecbfac": {
+    "entry_name": "isMatch",
+    "params": [
+      "s",
+      "p"
+    ],
+    "confirmed": true,
+    "slug": "wildcard-matching"
+  },
+  "72a2238d9898413bd61022c7d244b0a412a097e66abb83164427f57cc70620a7": {
+    "entry_name": "jump",
+    "params": [
+      "nums"
+    ],
+    "confirmed": true,
+    "slug": "jump-game-ii"
+  },
+  "305f204dd44a142c72bbd099bb64ebcac4e5cbe2dccebf964103249675ef73c8": {
+    "entry_name": "permute",
+    "params": [
+      "nums"
+    ],
+    "confirmed": true,
+    "slug": "permutations"
+  },
+  "b4c43e3183720d2cb288366d7e0b9e4a58d537ab9dd64895fef2ef2c3adfa413": {
+    "entry_name": "rotate",
+    "params": [
+      "matrix"
+    ],
+    "confirmed": false,
+    "slug": "rotate-image"
+  },
+  "d92f34b5fcd14c00b1d52f9006756fb85d73b5975a6afccb3147f025125011ea": {
+    "entry_name": "myPow",
+    "params": [
+      "x",
+      "n"
+    ],
+    "confirmed": true,
+    "slug": "powx-n"
+  },
+  "65bea10dff531ec648959f45eca6c24e61f40a0c45a772830f70d1a73f4d6a78": {
+    "entry_name": "spiralOrder",
+    "params": [
+      "matrix"
+    ],
+    "confirmed": true,
+    "slug": "spiral-matrix"
+  },
+  "98d6ceb6ba22efcb66e5093940c6ade7cf4623b5a7d33e84b807425f68a3ce18": {
+    "entry_name": "insert",
+    "params": [
+      "intervals",
+      "newInterval"
+    ],
+    "confirmed": true,
+    "slug": "insert-interval"
+  },
+  "618f70de539370c818bd5463fb088ed341687340dd34d2236eaf59d2f53de6f7": {
+    "entry_name": "lengthOfLastWord",
+    "params": [
+      "s"
+    ],
+    "confirmed": true,
+    "slug": "length-of-last-word"
+  },
+  "09c5c11d5d0b6de898cc962fd34c98984d12b0f1440ef2b8d4a1df2b6e89f744": {
+    "entry_name": "getPermutation",
+    "params": [
+      "n",
+      "k"
+    ],
+    "confirmed": true,
+    "slug": "permutation-sequence"
+  },
+  "fc5103c1a58cba9cf9fb46de9d4ccf2c7192c2027bf9d318a922a7f5ce23a57f": {
+    "entry_name": "uniquePaths",
+    "params": [
+      "m",
+      "n"
+    ],
+    "confirmed": true,
+    "slug": "unique-paths"
+  },
+  "956a4df2cc704bd821b494562231060c2fe32f444641c2a121b110cddd236433": {
+    "entry_name": "minPathSum",
+    "params": [
+      "grid"
+    ],
+    "confirmed": true,
+    "slug": "minimum-path-sum"
+  },
+  "87bb0b33dfd1762bb6da98f94e8840ea5b5438c0a9f94154b51714fe8b641109": {
+    "entry_name": "plusOne",
+    "params": [
+      "digits"
+    ],
+    "confirmed": true,
+    "slug": "plus-one"
+  },
+  "a4981fa6f4f7e0a52b7e7c1a37ea0c78427679f3f941c264c21e7671faec4317": {
+    "entry_name": "addBinary",
+    "params": [
+      "a",
+      "b"
+    ],
+    "confirmed": true,
+    "slug": "add-binary"
+  },
+  "c7a27145d02dbe5cd41b2b1ecc4f103246299e22590412393c4b0fa4ab91329a": {
+    "entry_name": "fullJustify",
+    "params": [
+      "words",
+      "maxWidth"
+    ],
+    "confirmed": true,
+    "slug": "text-justification"
+  },
+  "bdb5c99ead22875319993ee9d2172bbfb1e46774a00e7ae4f5fa072031b5707d": {
+    "entry_name": "mySqrt",
+    "params": [
+      "x"
+    ],
+    "confirmed": true,
+    "slug": "sqrtx"
+  },
+  "97ac6b7c4b84fea80169f47f17c618e45fe8ca2637ec3db77ce2abc0c1df5e0b": {
+    "entry_name": "climbStairs",
+    "params": [
+      "n"
+    ],
+    "confirmed": true,
+    "slug": "climbing-stairs"
+  },
+  "dc06b642cd45610075daed9f6eae8fd5afefea1f56846a4273c05afc9e4ae222": {
+    "entry_name": "minDistance",
+    "params": [
+      "word1",
+      "word2"
+    ],
+    "confirmed": true,
+    "slug": "edit-distance"
+  },
+  "0f3b37346694d52a0ca5721d8e16c0a13a19d3241c247f0fd8ae1a22503b43de": {
+    "entry_name": "searchMatrix",
+    "params": [
+      "matrix",
+      "target"
+    ],
+    "confirmed": true,
+    "slug": "search-a-2d-matrix"
+  },
+  "b018541526a8b41ad3af2620503e4359116b716231ee5c0afd7ce6506ab36fa4": {
+    "entry_name": "min_window",
+    "params": [
+      "s",
+      "t"
+    ],
+    "confirmed": true,
+    "slug": "minimum-window-substring"
+  },
+  "bee16473da71b0768c147c763b45a51ace9dcc1f8cb021a4812851062da3aeba": {
+    "entry_name": "combine",
+    "params": [
+      "n",
+      "k"
+    ],
+    "confirmed": true,
+    "slug": "combinations"
+  },
+  "fdd85859c7114306bb7d5231c9962ef9e4c87eef54b655c15252866c5480a40c": {
+    "entry_name": "subsets",
+    "params": [
+      "nums"
+    ],
+    "confirmed": true,
+    "slug": "subsets"
+  },
+  "28dda75375c93780cc530087ee0887fe9a521f4e04923bd1b2cb3f89a9693727": {
+    "entry_name": "search",
+    "params": [
+      "nums",
+      "target"
+    ],
+    "confirmed": true,
+    "slug": "search-in-rotated-sorted-array-ii"
+  },
+  "abcd111cdab52078fcb91529c0b7c4709c9bdad65cccefa1629fe25b69e5215d": {
+    "entry_name": "deleteDuplicates",
+    "params": [
+      "head"
+    ],
+    "confirmed": true,
+    "slug": "remove-duplicates-from-sorted-list-ii"
+  },
+  "5392e2b081315e103a32aebe2b74570b1ec7e264afae6d074797b58099a7d654": {
+    "entry_name": "deleteDuplicates",
+    "params": [
+      "head"
+    ],
+    "confirmed": false,
+    "slug": "remove-duplicates-from-sorted-list"
+  },
+  "be1ac0bb4dd6d9ac6a76def75c157d5e2bef72a665b110126bbb3f585e396464": {
+    "entry_name": "maximalRectangle",
+    "params": [
+      "matrix"
+    ],
+    "confirmed": true,
+    "slug": "maximal-rectangle"
+  },
+  "05c7644fd0808e6ce7b8531b0ed97483b1d23549b31ef189e93b08ae06e4f795": {
+    "entry_name": "grayCode",
+    "params": [
+      "n"
+    ],
+    "confirmed": false,
+    "slug": "gray-code"
+  },
+  "2735ddb48f571b24255ca6f8c882e439783a822e95bb0503ebf5485fcb3df819": {
+    "entry_name": "subsetsWithDup",
+    "params": [
+      "nums"
+    ],
+    "confirmed": true,
+    "slug": "subsets-ii"
+  },
+  "eb5d7f80c108ccdab98150171777f0e80757124305729d6c1c21b08e25c283e4": {
+    "entry_name": "convert",
+    "params": [
+      "s",
+      "numRows"
+    ],
+    "confirmed": true,
+    "slug": "zigzag-conversion"
+  },
+  "c95f06b87bdb2862be12e0653ddfd5665a5deb33534c572bc2e5f7306efe7011": {
+    "entry_name": "removeNthFromEnd",
+    "params": [
+      "head",
+      "n"
+    ],
+    "confirmed": false,
+    "slug": "remove-nth-node-from-end-of-list"
+  },
+  "478075b5c0cadd6f9fba525b0cd04e5165bf3527af36f8ea3ee1bcf4eb3a820c": {
+    "entry_name": "isSameTree",
+    "params": [
+      "p",
+      "q"
+    ],
+    "confirmed": true,
+    "slug": "same-tree"
+  },
+  "2012dc4f3aaad2ce7af1495f4889bcf9f36b65697485e0453fb0e0e2104f4ad9": {
+    "entry_name": "myAtoi",
+    "params": [
+      "s"
+    ],
+    "confirmed": true,
+    "slug": "string-to-integer-atoi"
+  },
+  "8b7cfecc343c51273c4063ef8521ccae990c04147f209a0f78217c439767312e": {
+    "entry_name": "isMatch",
+    "params": [
+      "s",
+      "p"
+    ],
+    "confirmed": true,
+    "slug": "regular-expression-matching"
+  },
+  "6c2b6df55d7b114357b9f6f319266994e8ed6afd44e737da7333c11111bb84fb": {
+    "entry_name": "intToRoman",
+    "params": [
+      "num"
+    ],
+    "confirmed": true,
+    "slug": "integer-to-roman"
+  },
+  "ec76d620684baa7be75f5cd4f1e2268a288712b85c42b6fd2b0e27264d27ea96": {
+    "entry_name": "longestCommonPrefix",
+    "params": [
+      "strs"
+    ],
+    "confirmed": true,
+    "slug": "longest-common-prefix"
+  },
+  "03180f6be033096aef508c28179a014b13ddb2eacf9d91900510b02a3d1a21ad": {
+    "entry_name": "threeSumClosest",
+    "params": [
+      "nums",
+      "target"
+    ],
+    "confirmed": true,
+    "slug": "3sum-closest"
+  },
+  "7b151335f89f7e3a9a40a35762c6cc35688e53ead7b05118bc20cbd10f2227ee": {
+    "entry_name": "isValid",
+    "params": [
+      "s"
+    ],
+    "confirmed": true,
+    "slug": "valid-parentheses"
+  },
+  "0e0efe8d86914aa488c98ccef958cd8a3d4690480d7dd4a2bd2aed5854ffcd5f": {
+    "entry_name": "mergeKLists",
+    "params": [
+      "lists"
+    ],
+    "confirmed": false,
+    "slug": "merge-k-sorted-lists"
+  },
+  "6a8e15cf066b80f42e47232d0de1dd886c6b7cfb7588af0bcdbc680e63391546": {
+    "entry_name": "swapPairs",
+    "params": [
+      "head"
+    ],
+    "confirmed": true,
+    "slug": "swap-nodes-in-pairs"
+  },
+  "9e86b84b85ea3bf5eeb86564c32599588f2f25916c4529a542ec7bab0b82ba74": {
+    "entry_name": "removeDuplicates",
+    "params": [
+      "nums"
+    ],
+    "confirmed": true,
+    "slug": "remove-duplicates-from-sorted-array"
+  },
+  "a18e136dd8c8718909fbf018e8f8adc68a121dbd283d86dd9d31d370c4a6b757": {
+    "entry_name": "removeElement",
+    "params": [
+      "nums",
+      "val"
+    ],
+    "confirmed": true,
+    "slug": "remove-element"
+  },
+  "ce3c667013b8fe3a5505eeed836f7ab480a15ac5d95d79196b90830ed1ec5a3f": {
+    "entry_name": "divide",
+    "params": [
+      "dividend",
+      "divisor"
+    ],
+    "confirmed": true,
+    "slug": "divide-two-integers"
+  },
+  "067fdcd3f91b0b81736fa033ff4d1a61d9e19e25bc9a4e29061b5f1f120ca358": {
+    "entry_name": "nextPermutation",
+    "params": [
+      "nums"
+    ],
+    "confirmed": true,
+    "slug": "next-permutation"
+  },
+  "d2ca574a536a5bd33fb24e77a28f023631b9df727b82d85d96be15271e26469f": {
+    "entry_name": "binarySearch",
+    "params": [
+      "nums",
+      "target",
+      "findLeftmost"
+    ],
+    "confirmed": true,
+    "slug": "find-first-and-last-position-of-element-in-sorted-array"
+  },
+  "27b8449352331995170ae2fb870f47258c965de3679a196a5071e8576ac0842e": {
+    "entry_name": "searchInsert",
+    "params": [
+      "nums",
+      "target"
+    ],
+    "confirmed": true,
+    "slug": "search-insert-position"
+  },
+  "98dedc2927ea06b4400f3b0ce95b9597e64e856073f5cf7e91aac391296e0cb3": {
+    "entry_name": "permuteUnique",
+    "params": [
+      "nums"
+    ],
+    "confirmed": true,
+    "slug": "permutations-ii"
+  },
+  "138819019a34b6e290c361e6307b57d2fef2c9e182daad78b6046c5276f59ffd": {
+    "entry_name": "countAndSay",
+    "params": [
+      "n"
+    ],
+    "confirmed": true,
+    "slug": "count-and-say"
+  },
+  "2779ff9c98617cc227c6eb8b86e7c3004235c80b9181238da0d8ce09c4a54abb": {
+    "entry_name": "combinationSum2",
+    "params": [
+      "candidates",
+      "target"
+    ],
+    "confirmed": true,
+    "slug": "combination-sum-ii"
+  },
+  "88b68b3f9b5042afdc13e2b54b27c58800bf610a8b49a2472aa9078b6021485c": {
+    "entry_name": "firstMissingPositive",
+    "params": [
+      "nums"
+    ],
+    "confirmed": true,
+    "slug": "first-missing-positive"
+  },
+  "64b7ba06b28689d03e2dc68cfcd14aa36d356321f3dff9605637cf41cdc67311": {
+    "entry_name": "trap",
+    "params": [
+      "height"
+    ],
+    "confirmed": true,
+    "slug": "trapping-rain-water"
+  },
+  "d02a7d95e09b84d5e608a5dd91f08f1ea7d5c0d0eed008bba42de111adb9439f": {
+    "entry_name": "multiply",
+    "params": [
+      "num1",
+      "num2"
+    ],
+    "confirmed": true,
+    "slug": "multiply-strings"
+  },
+  "f7f6a9e4dededdacf346de83102f1405c1dc9470584a12cd458460ecc15e72a0": {
+    "entry_name": "groupAnagrams",
+    "params": [
+      "strs"
+    ],
+    "confirmed": false,
+    "slug": "group-anagrams"
+  },
+  "722d42e027493a19218a4f0c694c1428cf5b251a353aa87f5e16c60e2485537d": {
+    "entry_name": "solveNQueens",
+    "params": [
+      "n"
+    ],
+    "confirmed": true,
+    "slug": "n-queens"
+  },
+  "a8050f4ff2d6fcb0d0873f8d9da8ac67a0b8166eb34ef8cda4765216f7a3db5e": {
+    "entry_name": "totalNQueens",
+    "params": [
+      "n"
+    ],
+    "confirmed": true,
+    "slug": "n-queens-ii"
+  },
+  "0d4a7f2a7e25a5de70c3a586e9d9686487f3476f5e03e73f26a3b84948d53f9f": {
+    "entry_name": "maxSubArray",
+    "params": [
+      "nums"
+    ],
+    "confirmed": true,
+    "slug": "maximum-subarray"
+  },
+  "f65063297112cf6950f3042a5d0aabb869060e5b4e56c2fa7482c989498b5ba4": {
+    "entry_name": "canJump",
+    "params": [
+      "nums"
+    ],
+    "confirmed": true,
+    "slug": "jump-game"
+  },
+  "eb6dbd61506ff60027be9622739babdb3e102fb020b2041ea9354bd242a87c72": {
+    "entry_name": "merge",
+    "params": [
+      "intervals"
+    ],
+    "confirmed": true,
+    "slug": "merge-intervals"
+  },
+  "e5ebe373a8221cbf81d7e5357835b3ab869fe40502ea716f6861040479476f65": {
+    "entry_name": "generateMatrix",
+    "params": [
+      "n"
+    ],
+    "confirmed": true,
+    "slug": "spiral-matrix-ii"
+  },
+  "521dbd9252b4d963781668d236d894c209fb4e0d313a3d1136ea0ab839a1aa41": {
+    "entry_name": "rotateRight",
+    "params": [
+      "head",
+      "k"
+    ],
+    "confirmed": true,
+    "slug": "rotate-list"
+  },
+  "5baf74cf6a627f034041f275a9a466ecf0dbc46ed6419faee9271c6cc12583aa": {
+    "entry_name": "uniquePathsWithObstacles",
+    "params": [
+      "obstacleGrid"
+    ],
+    "confirmed": true,
+    "slug": "unique-paths-ii"
+  },
+  "9b174e02d9841db64efc0b949aed084f660049dcad3134f9429e7f1edf06e134": {
+    "entry_name": "isNumber",
+    "params": [
+      "s"
+    ],
+    "confirmed": true,
+    "slug": "valid-number"
+  },
+  "1ec91c73438ba95853d4c9b05cae1d18bd54093a04a736ded4ccd744169ff3f8": {
+    "entry_name": "simplifyPath",
+    "params": [
+      "path"
+    ],
+    "confirmed": true,
+    "slug": "simplify-path"
+  },
+  "ad344b322e3ec8325b0ffc53331d430474017171f6ef88ce8d851c1731a94146": {
+    "entry_name": "setZeroes",
+    "params": [
+      "matrix"
+    ],
+    "confirmed": false,
+    "slug": "set-matrix-zeroes"
+  },
+  "fc08d04780920acb0f01d06b17e3a71c2fa157e4c069dcd7b6340abc94c364ec": {
+    "entry_name": "sortColors",
+    "params": [
+      "nums"
+    ],
+    "confirmed": false,
+    "slug": "sort-colors"
+  },
+  "957bbf6a5607411f6f5d5371673c667d57f3af6f5735e60677deaa36b119f0a3": {
+    "entry_name": "exist",
+    "params": [
+      "board",
+      "word"
+    ],
+    "confirmed": true,
+    "slug": "word-search"
+  },
+  "5b4b493b2530a0e3a12d742a67b46bbab02d7775dca532466cd980e28165c63d": {
+    "entry_name": "removeDuplicates",
+    "params": [
+      "nums"
+    ],
+    "confirmed": true,
+    "slug": "remove-duplicates-from-sorted-array-ii"
+  },
+  "01c0c9a2f252bfd103e7e931076fba738f2ef2a89f7a490360ec7ea39c45e2f8": {
+    "entry_name": "largestRectangleArea",
+    "params": [
+      "heights"
+    ],
+    "confirmed": true,
+    "slug": "largest-rectangle-in-histogram"
+  },
+  "cf042d1df5a4232e98340866d606fe7fe54150b5b84b852c297a6c179ba114a4": {
+    "entry_name": "partition",
+    "params": [
+      "head",
+      "x"
+    ],
+    "confirmed": true,
+    "slug": "partition-list"
+  },
+  "d43c1858ddb25d7fcf034939e360bc63f2f82a56ebfe6fd19e43d2cb0edf2863": {
+    "entry_name": "restoreIpAddresses",
+    "params": [
+      "s"
+    ],
+    "confirmed": true,
+    "slug": "restore-ip-addresses"
+  },
+  "6d7434ebb366ff4e3220ef082406fc1239594f52117ebe076f887e5dd1098fea": {
+    "entry_name": "isScramble",
+    "params": [
+      "s1",
+      "s2"
+    ],
+    "confirmed": true,
+    "slug": "scramble-string"
+  },
+  "9f165136d84de3b3f95e6b178a7f958fdae9923225d465ac570d41bfbf871c06": {
+    "entry_name": "merge",
+    "params": [
+      "nums1",
+      "m",
+      "nums2",
+      "n"
+    ],
+    "confirmed": false,
+    "slug": "merge-sorted-array"
+  },
+  "8933796695e72a8c838cce6b3bef91d1e2bdbad42f7eff4088404fce4a357eea": {
+    "entry_name": "numDecodings",
+    "params": [
+      "s"
+    ],
+    "confirmed": true,
+    "slug": "decode-ways"
+  },
+  "517f662c2254ef40f46c86983acfc107ecd4c62bbf355bafb5d47ea1ba1d1c6b": {
+    "entry_name": "isValidBST",
+    "params": [
+      "root"
+    ],
+    "confirmed": true,
+    "slug": "validate-binary-search-tree"
+  },
+  "fbf7619ccfebb44285b43b8cb46b6bf3d1dedb4f05e5937dfdbf04534fd423ca": {
+    "entry_name": "recoverTree",
+    "params": [
+      "root"
+    ],
+    "confirmed": false,
+    "slug": "recover-binary-search-tree"
+  },
+  "8d643a98926ed9ec1a11a8f765b595f95e269e377d7cb13996efe74106f84fbe": {
+    "entry_name": "countVowels",
+    "params": [
+      "s"
+    ],
+    "confirmed": true,
+    "slug": "count-vowels"
+  }
+}
