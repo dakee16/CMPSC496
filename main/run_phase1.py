@@ -11,7 +11,9 @@ from .ollama_client import chat, OPENAI_MODEL
 from .schemas import DecomposeOutput, EvalResult, StepItem
 from research.student_agent import get_student_answer
 from tests.semantic import ast_equivalent
-from tests.sandbox import get_oracle_tests, passes_tests, _extract_signature
+from tests.sandbox import get_oracle_tests, passes_tests
+from .identity import content_hash, get_resolved_entry
+from .gates import check_necessity
 from .prompts import DECOMPOSE_SYSTEM, EVAL_SYSTEM, CHUNK_DECOMPOSE_SYSTEM
 
 
@@ -238,7 +240,8 @@ def assemble_references(header: str, chunks: list[StepItem]) -> str:
 
 
 def decompose_into_chunks(problem: dict, max_tries: int = 5) -> dict:
-    name, params = _extract_signature(problem.get("solution", ""))
+    resolved = get_resolved_entry(problem)
+    name, params = resolved["entry_name"], resolved["params"]
     header = f"def {name or 'solve'}({', '.join(params)}):"
     text = problem.get("description") or problem.get("title", "")
     qid = problem.get("slug") or problem.get("title", "problem")
@@ -283,7 +286,20 @@ def decompose_into_chunks(problem: dict, max_tries: int = 5) -> dict:
         
         print(f"  🧩 Chunk decomposition attempt {attempt}: {report['status']} — {report['detail']}")
         if report["status"] in ("pass", "skipped"):
-            return {"header": header, "chunks": chunks}
+            # Gate 1: the chunks work together, but is each one load-bearing?
+            nec = check_necessity(header, chunks, problem)
+            print(f"  🧱 Necessity gate: {nec['status']} — "
+                  f"{nec['summary'].splitlines()[0]}")
+            if nec["status"] == "oracle_not_strong":
+                # Not a verdict on this decomposition — Gate 1 could not judge
+                # it. Retrying regenerates chunks, which cannot strengthen an
+                # oracle, so fail loudly now instead of burning the retries.
+                raise RuntimeError(nec["summary"])
+            if nec["status"] in ("pass", "skipped"):
+                return {"header": header, "chunks": chunks}
+            best = {"header": header, "chunks": chunks}
+            feedback = "Assembled body:\n" + code + "\n\n" + nec["summary"]
+            continue
         best = {"header": header, "chunks": chunks}
         fails = report.get("failures", [])[:3]
         feedback = ("Assembled body:\n" + code + "\n\nFailing tests:\n" +
@@ -325,7 +341,8 @@ def _deserialize(entry: dict) -> dict:
 
 
 def decompose_into_chunks_best(problem: dict, max_tries: int = 5) -> dict:
-    name, params = _extract_signature(problem.get("solution", ""))
+    resolved = get_resolved_entry(problem)
+    name, params = resolved["entry_name"], resolved["params"]
     header = f"def {name or 'solve'}({', '.join(params)}):"
     text = problem.get("description") or problem.get("title", "")
     qid = problem.get("slug") or problem.get("title", "problem")
@@ -370,9 +387,10 @@ def decompose_into_chunks_best(problem: dict, max_tries: int = 5) -> dict:
     
 
 def get_chunk_decomposition(problem: dict) -> dict:
-    slug = problem.get("slug", "")
+    slug = problem.get("slug", "")      # for humans reading the logs only
+    key = content_hash(problem)         # pool identity: content, not title
     pool = _load_pool()
-    entries = pool.get(slug, [])
+    entries = pool.get(key, [])
 
     want_fresh = (not entries) or (len(entries) < _POOL_TARGET) or \
                  (random.random() < _FRESH_PROBABILITY)
@@ -381,7 +399,7 @@ def get_chunk_decomposition(problem: dict) -> dict:
         try:
             fresh = decompose_into_chunks(problem)
             entries.append(_serialize(fresh))
-            pool[slug] = entries
+            pool[key] = entries
             _save_pool(pool)
             print(f"  ✨ Fresh decomposition added to pool for {slug} "
                   f"(pool size: {len(entries)})")
@@ -400,9 +418,9 @@ def get_chunk_decomposition(problem: dict) -> dict:
                     return decompose_into_chunks_best(problem)
                 except Exception:
                     # Absolute last resort — return a minimal valid structure
-                    from tests.sandbox import _extract_signature
-                    name, params = _extract_signature(problem.get("solution", ""))
-                    header = f"def {name or 'solve'}({', '.join(params)}):"
+                    resolved = get_resolved_entry(problem)
+                    header = (f"def {resolved['entry_name'] or 'solve'}"
+                              f"({', '.join(resolved['params'])}):")
                     return {"header": header, "chunks": [
                         StepItem(question_id=slug, step_id="Part 1",
                                  prompt="Write a complete solution for this problem.",

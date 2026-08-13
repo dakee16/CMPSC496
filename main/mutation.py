@@ -23,10 +23,10 @@ import ast
 import copy
 import json
 
+from .identity import get_resolved_entry
 from .ollama_client import chat
 from tests.sandbox import (
     GEN_MODEL,
-    _extract_signature,
     _first_json_obj,
     _norm,
     make_oracle_tests,
@@ -154,7 +154,8 @@ def _candidate_inputs(problem: dict, original: str, mutant_code: str,
     """Ask the LLM for up to n input argument-lists that might make the two
     programs disagree. INPUTS ONLY — the model never reports outputs, and its
     opinion about them is never read."""
-    name, params = _extract_signature(original)
+    resolved = get_resolved_entry(problem)
+    name, params = resolved["entry_name"], resolved["params"]
     sig = f"{name}({', '.join(params)})" if name else problem.get("title", "")
     prompt = (
         f"Problem: {problem.get('title','')}\n\n"
@@ -265,7 +266,7 @@ def evaluate_oracle(problem: dict, oracle_tests: list) -> dict:
     BEFORE counterexample repair — the strength of the suite exactly as handed
     in, which is the number to use when comparing two suites."""
     solution = problem.get("solution", "")
-    entry, _ = _extract_signature(solution)
+    entry = get_resolved_entry(problem)["entry_name"]
     mutants = generate_mutants(solution)
 
     tests = list(oracle_tests)              # working set grows; caller's list untouched

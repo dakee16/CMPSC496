@@ -171,7 +171,11 @@ def _first_json_obj(text: str) -> dict | None:
 def generate_test_inputs(problem: dict, n: int = 10) -> list[list]:
     """Ask the LLM for n diverse input argument-lists (edge cases included).
     INPUTS ONLY — never expected outputs. Retries once if the model returns junk."""
-    name, params = _extract_signature(problem.get("solution", ""))
+    # Local import: main.identity imports this module, so a top-level import
+    # here would be circular.
+    from main.identity import get_resolved_entry
+    resolved = get_resolved_entry(problem)
+    name, params = resolved["entry_name"], resolved["params"]
     sig = f"{name}({', '.join(params)})" if name else problem.get("title", "")
     desc_text = (problem.get('description') or '')[:800]
     prompt = (
@@ -244,7 +248,8 @@ def make_oracle_tests(problem: dict, n: int = 12) -> list[dict]:
     solution = problem.get("solution", "")
     if not solution.strip():
         return []
-    name, _ = _extract_signature(solution)
+    from main.identity import get_resolved_entry
+    name = get_resolved_entry(problem)["entry_name"]
 
     # Generate more inputs than needed so we have room to filter
     inputs = generate_test_inputs(problem, n=n)
@@ -318,9 +323,11 @@ def get_oracle_tests(problem: dict, n: int = 10) -> list[dict]:
     Validation runs at most once per problem — an entry that already carries a
     verdict is returned as-is, weak or strong. Always returns a plain list of
     tests, so existing callers are unaffected."""
-    slug = problem.get("slug", "")
+    from main.identity import content_hash
+    slug = problem.get("slug", "")          # for humans reading the logs only
+    key = content_hash(problem)             # cache identity: content, not title
     cache = _load_cache()
-    entry = cache.get(slug) if slug else None
+    entry = cache.get(key)
 
     if _is_validated(entry):
         print(f"  [oracle] {slug}: validation SKIPPED (cached "
@@ -352,36 +359,27 @@ def get_oracle_tests(problem: dict, n: int = 10) -> list[dict]:
           f"(direct {validated['kill_rate_direct']:.2f}) "
           f"{'STRONG' if validated['strong'] else 'WEAK'}")
 
-    if slug:
-        cache[slug] = validated
-        _save_cache(cache)
+    cache[key] = {**validated, "slug": slug}   # slug stored for humans, not a key
+    _save_cache(cache)
     return validated["final_tests"]
 
 
-def is_oracle_strong(problem) -> bool:
+def is_oracle_strong(problem: dict) -> bool:
     """Did this problem's oracle clear mutation testing?
 
     Reads the cached verdict, running validation once to populate it if it is
-    missing. Accepts a problem dict, or a bare slug for a cache-only lookup —
-    a slug alone carries no ground-truth solution to mutate, so an unvalidated
-    one simply reads as not-strong."""
-    if isinstance(problem, str):
-        entry = _load_cache().get(problem)
-        if not _is_validated(entry):
-            print(f"  [oracle] {problem}: no cached verdict (slug lookup only)")
-            return False
-        print(f"  [oracle] {problem}: validation SKIPPED "
-              f"(cached strong={entry['strong']})")
-        return bool(entry["strong"])
-
+    missing. Takes the problem dict, not a slug: the cache is keyed by content
+    now, and a slug can no longer identify an entry — that ambiguity is exactly
+    the collision this change removes."""
+    from main.identity import content_hash
     slug = problem.get("slug", "")
-    entry = _load_cache().get(slug) if slug else None
+    entry = _load_cache().get(content_hash(problem))
     if _is_validated(entry):
         print(f"  [oracle] {slug}: validation SKIPPED "
               f"(cached strong={entry['strong']})")
     else:
         get_oracle_tests(problem)               # validates and persists the verdict
-        entry = _load_cache().get(slug) if slug else None
+        entry = _load_cache().get(content_hash(problem))
     return bool(_is_validated(entry) and entry["strong"])
 
 

@@ -15,7 +15,8 @@ import re
 import textwrap
 
 from main.schemas import StepItem
-from .sandbox import get_oracle_tests, passes_tests, _extract_signature
+from .sandbox import get_oracle_tests, passes_tests
+from main.identity import get_resolved_entry
 from main.ollama_client import chat, OPENAI_MODEL
 
 MODEL = OPENAI_MODEL   # system role: Tier 3 adaptation, Tier 4 judgment
@@ -26,7 +27,8 @@ def _indent_body(code: str) -> str:
 
 
 def _header_for(problem: dict) -> str:
-    name, params = _extract_signature(problem.get("solution", ""))
+    resolved = get_resolved_entry(problem)
+    name, params = resolved["entry_name"], resolved["params"]
     return f"def {name or 'solve'}({', '.join(params)}):"
 
 

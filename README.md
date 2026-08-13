@@ -163,8 +163,12 @@ cd CMPSC496
 python3 -m venv .venv
 source .venv/bin/activate
 
-pip install requests python-docx pydantic supabase python-dotenv
+pip install -r requirements.txt
 ```
+
+> **Run everything through `.venv`** — use `.venv/bin/python` (or activate the venv
+> first), never a bare/global `python`. A global interpreter is missing `supabase`
+> and will fail on import.
 
 ### 3. Environment Setup
 
