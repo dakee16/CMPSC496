@@ -28,6 +28,8 @@ try:
     import resource
 except ImportError:
     resource = None
+from typing import (List, Dict, Optional, Tuple, Set, Any, Union, Callable,
+                    Iterable, Iterator)
 
 def resolve_entry(ns, entry_name):
     if entry_name and callable(ns.get(entry_name)):
@@ -49,7 +51,15 @@ def main():
             resource.setrlimit(resource.RLIMIT_CPU, (5, 5))
         except Exception:
             pass
-    ns = {}
+    # exec() runs the payload's code against THIS dict as its globals — a
+    # bare `import typing` at the top of this harness script would NOT be
+    # visible inside exec(), since that import lives in the harness's own
+    # module globals, not in `ns`. Reference solutions routinely use type
+    # hints like `nums: List[int]`, which crash with a bare NameError the
+    # instant the function is defined unless these names are pre-seeded here.
+    ns = {"List": List, "Dict": Dict, "Optional": Optional, "Tuple": Tuple,
+          "Set": Set, "Any": Any, "Union": Union, "Callable": Callable,
+          "Iterable": Iterable, "Iterator": Iterator}
     try:
         exec(compile(payload["code"], "<solution>", "exec"), ns)
     except Exception as e:

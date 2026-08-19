@@ -68,11 +68,29 @@
         <h2 id="upload-heading">Upload a file in the format shown below:</h2>
 
         <pre id="upload-example">Problem 1: Two Sum
-Difficulty: Easy          *optional (Easy / Medium / Hard)
+Difficulty: Easy
 Description: Given an array of integers, return indices of the two numbers that add up to a target.
+Solution:
+def twoSum(nums, target):
+    seen = {}
+    for i, num in enumerate(nums):
+        complement = target - num
+        if complement in seen:
+            return [seen[complement], i]
+        seen[num] = i
 
 Problem 2: Reverse String
-Description: Write a function that reverses a string in place.</pre>
+Description: Write a function that reverses a string in place.
+Solution:
+def reverseString(s):
+    return s[::-1]</pre>
+        <p id="upload-solution-note">
+          <code>Difficulty</code> is optional (Easy / Medium / Hard) and defaults
+          to unset if left out. Every problem needs a <code>Solution:</code>
+          section with a working reference implementation — problems without
+          one are skipped, since the system can't build or check test cases
+          without a correct solution to compare against.
+        </p>
 
         <div id="upload-button-row">
           <label for="file-input" class="file-label">Choose a file</label>

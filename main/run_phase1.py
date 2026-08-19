@@ -35,6 +35,40 @@ _POOL_TARGET = 5          # stop generating fresh once a problem has this many
 _FRESH_PROBABILITY = 0.4  # chance to generate fresh even when pool has entries
 
 
+class OracleNotStrongError(RuntimeError):
+    """Raised when Gate 1 cannot render a verdict because the oracle behind it
+    has not been mutation-validated as STRONG. This is NOT an ordinary
+    decomposition failure and must never be caught by the same fallback logic
+    that handles a bad decomposition — it means we cannot safely evaluate at
+    all, not that the decomposition was bad."""
+    pass
+
+
+class NoOracleTestsError(RuntimeError):
+    """Raised when a decomposition cannot be validated because no oracle
+    tests exist for this problem at all — not weak, genuinely absent (e.g.
+    inputs that can't be represented in a simple serializable format). Like
+    OracleNotStrongError, this is NOT an ordinary decomposition failure:
+    retrying regenerates chunks, which cannot conjure test cases into
+    existence, so it must not be silently absorbed by the same fallback that
+    handles a bad decomposition."""
+    pass
+
+
+class DecompositionUnavailableError(RuntimeError):
+    """Raised when every attempt to produce a decomposition has failed —
+    generation, the pool, and the best-effort fallback all exhausted. There is
+    nothing left to serve.
+
+    Previously this situation was answered with a single fabricated chunk
+    whose reference was the literal string "pass": one chunk (violating the
+    2-3 chunk rule enforced everywhere else) with a reference guaranteed to be
+    non-load-bearing (violating the necessity gate it never actually passed
+    through). It looked like a decomposition and was not one. Refuse instead
+    and let the caller show an honest error."""
+    pass
+
+
 
 # JSON parsing
 
@@ -294,8 +328,15 @@ def decompose_into_chunks(problem: dict, max_tries: int = 5) -> dict:
                 # Not a verdict on this decomposition — Gate 1 could not judge
                 # it. Retrying regenerates chunks, which cannot strengthen an
                 # oracle, so fail loudly now instead of burning the retries.
-                raise RuntimeError(nec["summary"])
-            if nec["status"] in ("pass", "skipped"):
+                raise OracleNotStrongError(nec["summary"])
+            if nec["status"] == "skipped":
+                # No oracle exists for this problem at all — nothing has
+                # actually been checked. Must not be written into the pool
+                # or served as if validated. Retrying cannot fix a missing
+                # oracle, so fail loudly now, same reasoning as the
+                # oracle_not_strong case above.
+                raise NoOracleTestsError(nec["summary"])
+            if nec["status"] == "pass":
                 return {"header": header, "chunks": chunks}
             best = {"header": header, "chunks": chunks}
             feedback = "Assembled body:\n" + code + "\n\n" + nec["summary"]
@@ -379,11 +420,11 @@ def decompose_into_chunks_best(problem: dict, max_tries: int = 5) -> dict:
         if report["status"] in ("pass", "skipped"):
             return best
 
-    return best or {"header": header, "chunks": [
-        StepItem(question_id=qid, step_id="Part 1",
-                 prompt="Write a complete solution for this problem.",
-                 expected_type="code", reference="pass")
-    ]}
+    if best:
+        return best
+    raise DecompositionUnavailableError(
+        f"Every attempt to decompose '{qid}' failed to produce even one "
+        f"assembly that compiled and ran. Nothing safe to serve.")
     
 
 def get_chunk_decomposition(problem: dict) -> dict:
@@ -404,6 +445,14 @@ def get_chunk_decomposition(problem: dict) -> dict:
             print(f"  ✨ Fresh decomposition added to pool for {slug} "
                   f"(pool size: {len(entries)})")
             return fresh
+        except (OracleNotStrongError, NoOracleTestsError):
+            # Neither is "generation went badly." Gate 1 explicitly refused
+            # to certify this decomposition — either the oracle isn't strong
+            # enough yet, or no oracle exists for this problem at all. Falling
+            # back to decompose_into_chunks_best would serve an ungated
+            # decomposition under a different name, which is exactly what
+            # this exists to prevent.
+            raise
         except RuntimeError as e:
             if entries:
                 # Pool has validated entries — serve one, log the failure
@@ -416,16 +465,18 @@ def get_chunk_decomposition(problem: dict) -> dict:
                 # Re-run once more explicitly to get best attempt
                 try:
                     return decompose_into_chunks_best(problem)
-                except Exception:
-                    # Absolute last resort — return a minimal valid structure
-                    resolved = get_resolved_entry(problem)
-                    header = (f"def {resolved['entry_name'] or 'solve'}"
-                              f"({', '.join(resolved['params'])}):")
-                    return {"header": header, "chunks": [
-                        StepItem(question_id=slug, step_id="Part 1",
-                                 prompt="Write a complete solution for this problem.",
-                                 expected_type="code", reference="pass")
-                    ]}
+                except Exception as e:
+                    # Nothing left to try. The old behaviour here fabricated
+                    # a single chunk with reference "pass" -- one chunk
+                    # (violates the 2-3 chunk rule) whose reference is
+                    # guaranteed non-load-bearing (violates the necessity
+                    # gate it never went through). That is not a degraded
+                    # decomposition, it is not a decomposition at all, so
+                    # refuse instead of serving it.
+                    raise DecompositionUnavailableError(
+                        f"Could not produce any decomposition for '{slug}' "
+                        f"after exhausting fresh generation, the pool, and "
+                        f"the best-effort fallback ({e}).") from e
 
     chosen = random.choice(entries)
     print(f"  🎲 Served pooled decomposition for {slug} (pool size: {len(entries)})")

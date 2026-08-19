@@ -320,8 +320,8 @@ def evaluate_oracle(problem: dict, oracle_tests: list) -> dict:
     killed = status.count("killed") + status.count("killed_on_retry")
     equivalent = status.count("likely_equivalent")
     total = len(mutants)
-    denom = total - equivalent
-    kill_rate = killed / denom if denom else 1.0    # nothing left to catch ⇒ no evidence against
+    denom = total
+    kill_rate = killed / denom if denom else 0.0
     return {"kill_rate": kill_rate,
             "kill_rate_direct": killed_direct / denom if denom else 1.0,
             "strong": kill_rate >= CUTOFF_1_KILL_RATE,

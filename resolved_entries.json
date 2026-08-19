@@ -807,5 +807,21 @@
     ],
     "confirmed": true,
     "slug": "count-vowels"
+  },
+  "38ff536ac65755e8077b72d2fc0386ce723137dbd131406fc0fe14d0d408dc89": {
+    "entry_name": "isPalindrome",
+    "params": [
+      "x"
+    ],
+    "confirmed": true,
+    "slug": "test"
+  },
+  "aef518644d38a4bedf31a4428aab5eaa2de26e7f55f8c95af8e23efa01044050": {
+    "entry_name": "isBig",
+    "params": [
+      "n"
+    ],
+    "confirmed": true,
+    "slug": "test"
   }
 }

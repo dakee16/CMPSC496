@@ -110,16 +110,21 @@ def already_done(slug: str) -> bool:
         return False
 
 
-'''def load_problems() -> list[dict]:
-    """Load all problems from Supabase with their ground-truth solutions."""
-    res = SB.table("problems").select("slug, title, description, difficulty, solution").execute()
-    return res.data or []'''
-
 def load_problems() -> list[dict]:
-    """TEMP: small slice for validation before the full run."""
+    """Load all problems from Supabase with their ground-truth solutions."""
     res = SB.table("problems").select(
         "slug, title, description, difficulty, solution"
-    ).in_("slug", ["palindrome-number", "two-sum", "roman-to-integer"]).execute()
+    ).execute()
+    return res.data or []
+
+
+def load_problems_sample(slugs: list[str] | None = None) -> list[dict]:
+    """3-slug slice, kept for quick smoke-testing only. NOT called by main() --
+    call this explicitly if you want a fast sanity check before a full run."""
+    slugs = slugs or ["palindrome-number", "two-sum", "roman-to-integer"]
+    res = SB.table("problems").select(
+        "slug, title, description, difficulty, solution"
+    ).in_("slug", slugs).execute()
     return res.data or []
 
 def main():

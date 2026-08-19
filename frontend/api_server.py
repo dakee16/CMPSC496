@@ -14,6 +14,11 @@ import bcrypt
 import os
 from supabase import create_client
 
+# Must run before anything reads os.environ below. It happened to work only
+# because importing main.run_phase1 (next block) loads its own .env as a
+# side effect first -- reorder those imports, or drop that import, and the
+# create_client() call two lines down starts raising KeyError.
+load_dotenv()
 
 from main.run_phase1 import decompose_validated, eval_step, parse_json, decompose_into_chunks, replan_from_prefix, get_chunk_decomposition
 from tests.grader import grade_chunk
@@ -21,8 +26,6 @@ from main.schemas import StepItem
 
 app = FastAPI(title="MicroTutor API", version="1.0")
 _sb = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_KEY"])
-load_dotenv()
-from fastapi.middleware.cors import CORSMiddleware
 
 
 app.add_middleware(
