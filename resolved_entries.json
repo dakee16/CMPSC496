@@ -823,5 +823,37 @@
     ],
     "confirmed": true,
     "slug": "test"
+  },
+  "5bb4e610b8a601c769b746cc38d5d6fbee51324ac0c79e0b3c7be319893f8eff": {
+    "entry_name": "isPalindrome",
+    "params": [
+      "x"
+    ],
+    "confirmed": true,
+    "slug": "pal-allTrue"
+  },
+  "af86822cde9ca0562835787d70f74fac3acffd349aca6e6f20465b93c5abf441": {
+    "entry_name": "f",
+    "params": [
+      "x"
+    ],
+    "confirmed": true,
+    "slug": "z"
+  },
+  "5b740cf2a88c5a11bab3fe48ac0cce8af20e7db82086348593c9bfc2f3a080d7": {
+    "entry_name": "isPalindrome",
+    "params": [
+      "x"
+    ],
+    "confirmed": true,
+    "slug": "audit-weak-oracle"
+  },
+  "3e2231366b3521dbebc59a371477f1bde8a997057389d23cb09a54e21d7bc4c8": {
+    "entry_name": "rotate",
+    "params": [
+      "matrix"
+    ],
+    "confirmed": true,
+    "slug": "audit-no-oracle"
   }
 }

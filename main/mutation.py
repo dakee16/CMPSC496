@@ -323,7 +323,11 @@ def evaluate_oracle(problem: dict, oracle_tests: list) -> dict:
     denom = total
     kill_rate = killed / denom if denom else 0.0
     return {"kill_rate": kill_rate,
-            "kill_rate_direct": killed_direct / denom if denom else 1.0,
+            # No mutants means the oracle was never tested, not that it aced the
+            # test. Must match kill_rate's 0.0 above -- returning 1.0 here made a
+            # zero-mutant problem report a perfect direct score alongside a 0.00
+            # kill_rate, which is self-contradictory.
+            "kill_rate_direct": killed_direct / denom if denom else 0.0,
             "strong": kill_rate >= CUTOFF_1_KILL_RATE,
             "total_mutants": total, "killed": killed, "killed_direct": killed_direct,
             "likely_equivalent": equivalent, "new_tests": new_tests,

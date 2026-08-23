@@ -13,20 +13,38 @@ REVIEWED_SLUGS = [
     "palindrome-number", "two-sum", "roman-to-integer",
 ]
 
-# chunk_pool.json is now keyed by a content hash of each problem's
-# description + solution (main/identity.py:content_hash), not by slug --
-# that migration happened after this script was originally written. This
-# script only has slugs, and a slug alone can't reproduce the hash (the hash
-# needs the full description and solution text), so a slug-based lookup will
-# report every entry as "missing" against the new pool even once problems
-# have been reprocessed. Fixing this requires querying Supabase for each
-# slug's full problem row and hashing that, not just patching the lookup key.
-pool = json.load(open("main/chunk_pool.json"))
+# chunk_pool.json is keyed by a content hash of each problem's description +
+# solution (main/identity.py:content_hash), not by slug. A slug alone cannot
+# reproduce that hash, so the lookup pulls each problem's full row from
+# Supabase and hashes that -- otherwise every entry reports as "missing".
+import os
+
+from dotenv import load_dotenv
+from supabase import create_client
+
+from main.identity import content_hash
+
+load_dotenv()
+
+POOL_PATH = "main/chunk_pool.json"
+if not os.path.exists(POOL_PATH):
+    # Untracked runtime cache (commit 9740a7a); absent until a decomposition
+    # populates it. Nothing to count -- and "0 components" would be a wrong
+    # answer, not an empty one.
+    raise SystemExit(f"{POOL_PATH} does not exist yet -- run a decomposition "
+                     f"first, there is nothing to count.")
+
+pool = json.load(open(POOL_PATH))
+_sb = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_KEY"])
+_rows = {p["slug"]: p for p in (_sb.table("problems").select(
+    "slug, title, description, difficulty, solution").execute().data or [])}
+
 total_components = 0
 missing = []
 
 for slug in REVIEWED_SLUGS:
-    entries = pool.get(slug, [])
+    row = _rows.get(slug)
+    entries = pool.get(content_hash(row), []) if row else []
     if not entries:
         missing.append(slug)
         continue
