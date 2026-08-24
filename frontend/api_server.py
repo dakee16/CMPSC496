@@ -20,7 +20,7 @@ from supabase import create_client
 # create_client() call two lines down starts raising KeyError.
 load_dotenv()
 
-from main.run_phase1 import decompose_validated, eval_step, parse_json, decompose_into_chunks, replan_from_prefix, get_chunk_decomposition
+from main.run_phase1 import eval_step, parse_json, decompose_into_chunks, replan_from_prefix, get_chunk_decomposition
 from tests.grader import grade_chunk
 from main.schemas import StepItem
 
@@ -89,27 +89,14 @@ def health():
     return {"status": "ok", "message": "MicroTutor API running"}
 
 
-@app.post("/decompose")
-def decompose(req: DecomposeRequest):
-    try:
-        steps = decompose_validated(
-            {"slug": req.slug, "title": req.slug, "description": req.description}
-        )
-        return {
-            "steps": [
-                {
-                    "step_id": s.step_id,
-                    "prompt": s.prompt,
-                    "expected_type": s.expected_type,
-                    "rubric": s.rubric or "",
-                    "canonical": s.canonical or "",
-                    "indent": s.indent,
-                }
-                for s in steps
-            ]
-        }
-    except RuntimeError as e:
-        raise HTTPException(status_code=500, detail=str(e))
+# NOTE: POST /decompose (the older step-based flow) was removed. It had zero
+# callers anywhere in the repo and its backing function decompose_validated()
+# had none outside that route, so it was dead by construction -- and it served
+# ungated material: it built a problem dict with no "solution", so
+# get_oracle_tests() returned [] and the "skipped" status was accepted as pass,
+# with neither an oracle-strength nor a necessity check. /decompose_chunks is
+# the live path. /replan is NOT dead (tests/test_replan.py uses its backing
+# function) and is flagged for gating, not deletion.
 
 
 @app.post("/evaluate")

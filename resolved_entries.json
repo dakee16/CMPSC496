@@ -855,5 +855,37 @@
     ],
     "confirmed": true,
     "slug": "audit-no-oracle"
+  },
+  "43c7e7fb0d497af3f6d31f4481b995ee761c5137faf5f23bd1061e0d15e5877b": {
+    "entry_name": "digitSum",
+    "params": [
+      "n"
+    ],
+    "confirmed": true,
+    "slug": "eq"
+  },
+  "5a478bf2917e41f0cb3a59c7facff37ceed7f95f0c0f7273731cdac9a182085f": {
+    "entry_name": "f",
+    "params": [
+      "x"
+    ],
+    "confirmed": true,
+    "slug": "t"
+  },
+  "0eec89a6c272390f1ae388eba9fbcf7858ca576fbc9bfe7c052ef3e5af1a43ab": {
+    "entry_name": "grade",
+    "params": [
+      "score"
+    ],
+    "confirmed": true,
+    "slug": "dead"
+  },
+  "76b66c5eba8e55e7ca234609c0a19426a8aa8ea0a66d995ec05777a16eed712c": {
+    "entry_name": "sign",
+    "params": [
+      "n"
+    ],
+    "confirmed": true,
+    "slug": "dead"
   }
 }

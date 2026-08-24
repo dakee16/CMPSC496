@@ -536,33 +536,12 @@ def decompose_question(question_id: str, question_text: str, feedback: str = "",
     return parsed.steps
 
 
-def decompose_validated(problem: dict, max_tries: int = 3) -> list[StepItem]:
-    """Decompose, then gate on execution. If the assembled canonical solution
-    fails the oracle tests, re-prompt with the failing cases and retry."""
-    qid = problem.get("slug") or problem.get("title", "problem")
-    text = problem.get("description") or problem.get("title", "")
-    feedback = ""
-    best = None
-
-    for attempt in range(1, max_tries + 1):
-        steps = decompose_question(qid, text, feedback=feedback)
-        report = validate_decomposition(steps, problem)
-        print(f"  🧪 Decomposition attempt {attempt}: {report['status']} — {report['detail']}")
-
-        if report["status"] in ("pass", "skipped"):
-            return steps  # pass = verified correct; skipped = can't verify, accept as-is
-
-        best = steps  # keep the latest failing attempt as fallback
-        fails = report.get("failures", [])[:3]
-        feedback = (
-            "Assembled program:\n" + report["code"] + "\n\n"
-            "Failing tests (input → expected vs what your steps produced):\n"
-            + "\n".join(f"  {f['input']} → expected {f['expected']}, got {f['got']}"
-                        for f in fails)
-        )
-
-    print(f"  ⚠️  Decomposition still failing after {max_tries} tries — using best attempt.")
-    return best
+# NOTE: decompose_validated() was removed alongside the POST /decompose route
+# that was its only caller. It accepted report["status"] == "skipped" (i.e. "no
+# oracle exists, nothing was actually checked") as success and never ran the
+# necessity gate, so it could return an entirely unvalidated step list. Its
+# helpers stay: decompose_question() is still used by replan_from_prefix(), and
+# validate_decomposition() is still used by tests/test_gate.py.
 
 
 def replan_from_prefix(problem: dict, accepted_steps: list[StepItem],
