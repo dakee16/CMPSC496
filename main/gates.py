@@ -29,6 +29,89 @@ from tests.sandbox import get_oracle_tests, is_oracle_strong, passes_tests
 
 _NOOP = "pass"
 
+# A decomposition below this is degenerate, not "small". The whole point of
+# chunking is that a student's early mistake is caught rather than absorbed.
+_MIN_CHUNKS = 2
+
+# References that do nothing. Such a chunk cannot possibly be load-bearing, so
+# it would fail necessity anyway — catching it here gives a precise error
+# instead of a confusing knockout result.
+_NOOP_REFERENCES = {"", "pass", "...", "None", "return"}
+
+
+def _is_noop_reference(ref: str) -> bool:
+    """True if the reference is empty or does nothing once comments are gone."""
+    body = "\n".join(ln for ln in (ref or "").splitlines()
+                     if ln.strip() and not ln.strip().startswith("#"))
+    return body.strip() in _NOOP_REFERENCES
+
+
+def assert_serveable(problem: dict, decomposition: dict) -> dict:
+    """THE serve boundary. Nothing reaches a student except through here.
+
+    Gating used to live inside one generator, so every other path that produced
+    a decomposition — the best-effort fallback, replan — served ungated. The
+    shared mechanism was the status string "skipped" meaning "accept" in those
+    places while meaning "block" inside decompose_into_chunks. This function is
+    the single place that meaning is decided, and here "skipped"/no-oracle is
+    always FAILURE.
+
+    Enforced in order, raising a typed exception on the first failure:
+      a. the oracle exists (NoOracleTestsError) and is STRONG
+         (OracleNotStrongError) — STRONG per is_oracle_strong, which now keys
+         off kill_rate_direct; never reimplemented here
+      b. at least _MIN_CHUNKS chunks (DecompositionUnavailableError)
+      c. no chunk reference is a no-op (DecompositionUnavailableError)
+      d. check_necessity passes (typed by its own status)
+
+    Returns `decomposition` unchanged so callers can `return assert_serveable(...)`."""
+    # Local import: run_phase1 imports this module, so a top-level import here
+    # would be circular — same reason as the assemble_references import below.
+    from .run_phase1 import (DecompositionUnavailableError, NoOracleTestsError,
+                             OracleNotStrongError)
+
+    slug = problem.get("slug") or problem.get("title") or "<unnamed problem>"
+    chunks = (decomposition or {}).get("chunks") or []
+    header = (decomposition or {}).get("header", "")
+
+    # (a) An oracle that does not exist cannot certify anything. This is the
+    #     case that used to arrive as "skipped" and get accepted.
+    if not get_oracle_tests(problem):
+        raise NoOracleTestsError(
+            f"'{slug}' has no oracle tests, so nothing about this decomposition "
+            f"has actually been verified. Refusing to serve unverified material.")
+    if not is_oracle_strong(problem):
+        raise OracleNotStrongError(
+            f"'{slug}' has an oracle that did not clear mutation testing, so a "
+            f"necessity verdict on it would be unreliable. Strengthen the oracle "
+            f"(python -m main.warmup) before serving this decomposition.")
+
+    # (b) Degenerate output.
+    if len(chunks) < _MIN_CHUNKS:
+        raise DecompositionUnavailableError(
+            f"'{slug}' produced {len(chunks)} chunk(s); at least {_MIN_CHUNKS} "
+            f"are required. A single chunk is the whole problem restated, not a "
+            f"decomposition.")
+
+    # (c) Do-nothing references.
+    noop = [getattr(c, "step_id", f"Part {i + 1}") for i, c in enumerate(chunks)
+            if _is_noop_reference(getattr(c, "reference", ""))]
+    if noop:
+        raise DecompositionUnavailableError(
+            f"'{slug}' has chunk(s) with a do-nothing reference: {', '.join(noop)}. "
+            f"A chunk that does nothing can never be load-bearing.")
+
+    # (d) Necessity. Its own statuses carry the right exception type.
+    nec = check_necessity(header, chunks, problem)
+    if nec["status"] == "oracle_not_strong":
+        raise OracleNotStrongError(nec["summary"])
+    if nec["status"] == "skipped":
+        raise NoOracleTestsError(nec["summary"])
+    if nec["status"] != "pass":
+        raise DecompositionUnavailableError(nec["summary"])
+
+    return decomposition
+
 
 def _knock_out(chunk):
     """A copy of `chunk` with its reference replaced by a no-op. Never mutates

@@ -13,7 +13,7 @@ from research.student_agent import get_student_answer
 from tests.semantic import ast_equivalent
 from tests.sandbox import get_oracle_tests, passes_tests
 from .identity import content_hash, get_resolved_entry
-from .gates import check_necessity
+from .gates import assert_serveable, check_necessity
 from .prompts import DECOMPOSE_SYSTEM, EVAL_SYSTEM, CHUNK_DECOMPOSE_SYSTEM
 
 
@@ -413,15 +413,20 @@ def decompose_into_chunks_best(problem: dict, max_tries: int = 5) -> dict:
             continue
         code = assemble_references(header, chunks)
         report = _gate_code(code, problem)
-        score = report.get("fraction", 0) if report["status"] != "skipped" else 0.5
+        # "skipped" means no oracle ran, i.e. nothing was checked. It is no
+        # longer worth 0.5 and no longer short-circuits into a return —
+        # assert_serveable is the only thing that may accept anything now.
+        score = report.get("fraction", 0)
         if score > best_score:
             best_score = score
             best = {"header": header, "chunks": chunks}
-        if report["status"] in ("pass", "skipped"):
-            return best
+        if report["status"] == "pass":
+            break
 
     if best:
-        return best
+        # A best-effort fallback that serves ungated content is worse than no
+        # fallback: if the best attempt cannot clear the guard, this raises.
+        return assert_serveable(problem, best)
     raise DecompositionUnavailableError(
         f"Every attempt to decompose '{qid}' failed to produce even one "
         f"assembly that compiled and ran. Nothing safe to serve.")
@@ -480,7 +485,9 @@ def get_chunk_decomposition(problem: dict) -> dict:
 
     chosen = random.choice(entries)
     print(f"  🎲 Served pooled decomposition for {slug} (pool size: {len(entries)})")
-    return _deserialize(chosen)
+    # Pooled entries were gated when written, but the oracle may have changed
+    # since. Re-checking at the boundary is the point of having one.
+    return assert_serveable(problem, _deserialize(chosen))
 
 
 def validate_decomposition(steps: list[StepItem], problem: dict) -> dict:

@@ -226,6 +226,142 @@ def grade_chunk_route(req: ChunkRequest):
 
 
 
+# ── playground (read-only showcase) ───────────────────────────────────────
+# These serve the step-through demo in frontend/playground.html. They REPLAY
+# cached results and never trigger validation, decomposition, or any LLM call —
+# a demo must not stall for minutes on a click. The only things computed on read
+# are the AST mutants and their knockouts, which are deterministic, model-free
+# and sub-second; they are recomputed because evaluate_oracle's per-mutant
+# breakdown is not currently persisted (only the aggregate rates are).
+
+@app.get("/playground/problems")
+def playground_problems():
+    """Every problem with a cached verdict, for the showcase picker."""
+    from tests.sandbox import _load_cache
+    out = []
+    for entry in _load_cache().values():
+        if isinstance(entry, dict) and "strong" in entry:
+            out.append({"slug": entry.get("slug", ""),
+                        "strong": bool(entry["strong"]),
+                        "kill_rate_direct": entry.get("kill_rate_direct", 0.0),
+                        "n_tests": len(entry.get("final_tests", []))})
+    return sorted(out, key=lambda r: (not r["strong"], r["slug"]))
+
+
+@app.get("/playground/{slug}")
+def playground_detail(slug: str):
+    """One problem's full journey, assembled from cache. Never recomputes an
+    oracle or a decomposition; returns nulls the UI renders as 'not yet'."""
+    import json as _json
+    import os as _os
+    from main.identity import content_hash, get_resolved_entry
+    from main.mutation import _disagrees, generate_mutants
+    from tests.sandbox import _load_cache, passes_tests, run_solution
+
+    row = _sb.table("problems").select(
+        "slug, title, description, difficulty, solution").eq("slug", slug).execute().data
+    if not row:
+        raise HTTPException(status_code=404, detail=f"Problem '{slug}' not found.")
+    problem = row[0]
+    solution = problem.get("solution") or ""
+
+    cached = _load_cache().get(content_hash(problem))
+    if not (isinstance(cached, dict) and "strong" in cached):
+        return {"problem": problem, "oracle": None, "mutants": [],
+                "chunks": None, "necessity": [], "grading": None,
+                "note": "not yet validated"}
+
+    tests = cached.get("final_tests", [])
+    entry = get_resolved_entry(problem)["entry_name"]
+
+    # Stage 2 — prefer the breakdown persisted at validation time; only fall
+    # back to recomputing for entries written before it was stored.
+    breakdown = cached.get("breakdown")
+    if isinstance(breakdown, dict) and breakdown.get("mutants"):
+        # "killed" means the suite AS HANDED IN caught it; killed_on_retry means
+        # it only died after the search added a test, i.e. it slipped past the
+        # suite the student would have faced.
+        mutants = [{"label": m["label"], "caught": m["status"] == "killed",
+                    "status": m["status"]}
+                   for m in breakdown["mutants"]]
+        source = "cached"
+    else:
+        base = run_solution(solution, [t["input"] for t in tests], entry_name=entry)
+        expected = base["results"] if base["ok"] else []
+        mutants = []
+        for m in generate_mutants(solution):
+            caught = bool(expected) and _disagrees(
+                m["code"], entry, [t["input"] for t in tests], expected)
+            mutants.append({"label": m["label"], "caught": caught,
+                            "status": "killed" if caught else "survived"})
+        source = "recomputed"
+
+    # Stages 3/4 — pooled decomposition, if one exists.
+    chunks, necessity = None, []
+    pool_path = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
+                              "main", "chunk_pool.json")
+    if _os.path.exists(pool_path):
+        try:
+            pool = _json.load(open(pool_path))
+        except Exception:
+            pool = {}
+        pooled = (pool.get(content_hash(problem)) or [None])[0]
+        if pooled:
+            chunks = pooled["chunks"]
+            header = pooled["header"]
+            body = [c.get("reference", "") for c in chunks]
+            for i, c in enumerate(chunks):
+                knocked = list(body)
+                knocked[i] = "pass"
+                code = header + "\n" + "\n".join(
+                    "    " + ln for ref in knocked for ln in (ref or "").splitlines())
+                res = passes_tests(code, tests, entry_name=entry)
+                necessity.append({
+                    "step_id": c.get("step_id", f"Part {i + 1}"),
+                    "broke": (not res["ok"]) or res["fraction"] < 1.0,
+                    "passed": res.get("passed", 0), "total": res.get("total", 0)})
+
+    # Stage 5 — a right and a wrong submission, decided by EXECUTION only.
+    grading = None
+    if tests:
+        wrong = "def _f(*a, **k):\n    return None"
+        ok = passes_tests(solution, tests, entry_name=entry)
+        bad = passes_tests(wrong, tests, entry_name="_f")
+        grading = {
+            "correct": {"tier": "Tier 2 — executed against the oracle",
+                        "verdict": ok["ok"] and ok["fraction"] == 1.0,
+                        "passed": ok.get("passed", 0), "total": ok.get("total", 0)},
+            "incorrect": {"tier": "Tier 2 — executed against the oracle",
+                          "verdict": bad["ok"] and bad["fraction"] == 1.0,
+                          "passed": bad.get("passed", 0), "total": bad.get("total", 0)},
+        }
+
+    # Why is it weak? Without this the UI can show "100% caught" beside a WEAK
+    # badge — true but self-contradictory-looking — when the real reason is that
+    # the solution yielded too few mutants to judge at all.
+    from main.mutation import _MIN_MUTANTS, CUTOFF_1_KILL_RATE
+    weak_reason = None
+    if not cached["strong"]:
+        if len(mutants) < _MIN_MUTANTS:
+            weak_reason = (f"only {len(mutants)} way(s) to break this solution could be "
+                           f"found — too few to judge the tests fairly "
+                           f"(need at least {_MIN_MUTANTS})")
+        else:
+            weak_reason = (f"{round(cached.get('kill_rate_direct', 0.0) * 100)}% of cheaters "
+                           f"caught is below the {round(CUTOFF_1_KILL_RATE * 100)}% bar")
+
+    return {"problem": problem,
+            "oracle": {"n_tests": len(tests), "tests": tests[:6],
+                       "kill_rate_direct": cached.get("kill_rate_direct", 0.0),
+                       "kill_rate": cached.get("kill_rate", 0.0),
+                       "strong": bool(cached["strong"]),
+                       "weak_reason": weak_reason,
+                       "validated_at": cached.get("validated_at", "")},
+            "mutants": mutants, "breakdown": breakdown,
+            "breakdown_source": source, "chunks": chunks,
+            "necessity": necessity, "grading": grading, "note": None}
+
+
 @app.get("/problems")
 def list_problems(limit: int = 100, difficulty: str = None):
     """List problems from Supabase with optional difficulty filter."""

@@ -362,6 +362,20 @@ def get_oracle_tests(problem: dict, n: int = 10) -> list[dict]:
         "kill_rate": report["kill_rate"],
         "kill_rate_direct": report["kill_rate_direct"],
         "validated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        # Per-mutant breakdown, so a verdict stays auditable after the fact and
+        # the showcase can replay it instead of recomputing. Labels + statuses
+        # only — never mutant source, which would bloat the cache for nothing.
+        # ADDITIVE: entries written before this existed have no "breakdown"
+        # key, and readers must treat that as "not available", not an error.
+        "breakdown": {
+            "total_mutants": report.get("total_mutants", 0),
+            "killed": report.get("killed", 0),
+            "killed_on_retry": report.get("killed_on_retry", 0),
+            "proven_equivalent": report.get("proven_equivalent", 0),
+            "unresolved": report.get("unresolved", 0),
+            "mutants": [{"label": m["label"], "status": m["status"]}
+                        for m in report.get("mutants", [])],
+        },
     }
     print(f"  [oracle] {slug or '?'}: {len(tests)} -> "
           f"{len(validated['final_tests'])} tests, "
