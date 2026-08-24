@@ -21,11 +21,27 @@ from supabase import create_client
 load_dotenv()
 
 from main.run_phase1 import eval_step, parse_json, decompose_into_chunks, replan_from_prefix, get_chunk_decomposition
-from tests.grader import grade_chunk
 from main.schemas import StepItem
 
 app = FastAPI(title="MicroTutor API", version="1.0")
-_sb = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_KEY"])
+
+# Single lazy client boundary. Importing this module must perform NO network or
+# client construction, so tests can import the app and inject a fake without
+# credentials. No route may build its own client.
+_SB = None
+
+
+def get_supabase():
+    global _SB
+    if _SB is None:
+        _SB = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_KEY"])
+    return _SB
+
+
+def set_supabase(client):
+    """Test seam: inject a fake and skip credentials entirely."""
+    global _SB
+    _SB = client
 
 
 app.add_middleware(
@@ -46,6 +62,9 @@ class DecomposeRequest(BaseModel):
     # REQUIRED before the pipeline runs — see decompose_chunks_route.
     title: str | None = None
     solution: str | None = None
+    # Identity is bound ONCE, here, when the session begins. /grade_chunk never
+    # accepts it again — it must not be changeable mid-session.
+    student_id: str | None = None
 
 
 class EvaluateRequest(BaseModel):
@@ -58,12 +77,15 @@ class ReplanRequest(BaseModel):
     description: str
     accepted_steps: list[dict]
     
-class ChunkRequest(BaseModel):
-    problem: dict
-    chunks: list[dict]
-    index: int
+class ChunkRequest(BaseModel, extra="forbid"):
+    """The client is NOT authoritative. It may send only an opaque session id,
+    a stable submission id, its code, and (optionally) the index it believes it
+    is on so a stale UI can be detected. Solution, chunks, references, accepted
+    prefix and the real index all live server-side."""
+    session_id: str
+    submission_id: str
     student_code: str
-    accepted_prefix: list[str] = []
+    expected_index: int | None = None
 
 class AuthRequest(BaseModel):
     username: str
@@ -79,9 +101,10 @@ class LogInteractionRequest(BaseModel):
     tier: str
     reason: str
 
-class MarkSolvedRequest(BaseModel):
-    student_id: str
-    slug: str
+class MarkSolvedRequest(BaseModel, extra="forbid"):
+    """Only a completed grading session may claim a solve. Student, slug and
+    independence are DERIVED from it — the client cannot assert any of them."""
+    session_id: str
 
 
 class LiveRunRequest(BaseModel):
@@ -111,50 +134,27 @@ def health():
 
 @app.post("/evaluate")
 def evaluate(req: EvaluateRequest):
-    if not req.answer or not req.answer.strip():
-        req.answer = "__BLANK__"
-    try:
-        step = StepItem(
-            question_id=req.step.get("step_id", "Step 1"),
-            step_id=req.step.get("step_id", "Step 1"),
-            prompt=req.step.get("prompt", ""),
-            expected_type=req.step.get("expected_type", "code"),
-            rubric=req.step.get("rubric", ""),
-            canonical=req.step.get("canonical") or None,
-            indent=int(req.step.get("indent", 0) or 0),
-        )
-        result = eval_step(step, req.answer, req.context)
-        return {
-            "correct": result.correct,
-            "short_reason": result.short_reason,
-            "correct_answer": result.correct_answer or "",
-            "divergent": result.divergent,
-        }
-    except RuntimeError as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    
+    """DISABLED. This was the old step-based, LLM-ONLY answer evaluator: it
+    judged a student's answer with no execution, no oracle and no gates — a
+    second answer-checking implementation with different behavior. It has no
+    callers. All answer checking goes through /grade_chunk."""
+    raise HTTPException(status_code=410, detail={
+        "reason_code": "legacy_evaluate_disabled",
+        "message": "This endpoint has been retired; use /grade_chunk."})
+
+
 @app.post("/replan")
 def replan(req: ReplanRequest):
-    try:
-        accepted = [StepItem(**s) for s in req.accepted_steps]
-        problem = {"slug": req.slug, "title": req.slug, "description": req.description}
-        new_steps = replan_from_prefix(problem, accepted)
-        return {
-            "steps": [
-                {
-                    "step_id": s.step_id,
-                    "prompt": s.prompt,
-                    "expected_type": s.expected_type,
-                    "rubric": s.rubric or "",
-                    "canonical": s.canonical or "",
-                    "indent": s.indent,
-                }
-                for s in new_steps
-            ]
-        }
-    except RuntimeError as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    
+    """DISABLED. This route served ungated material: it built a problem dict
+    with no solution, so get_oracle_tests() returned [] and replan_from_prefix()
+    accepted status "skipped" as success — no oracle-strength check and no
+    necessity gate. It is closed rather than left open while it is rebuilt
+    behind the same serve boundary as /decompose_chunks."""
+    raise HTTPException(status_code=410, detail={
+        "reason_code": "replan_disabled",
+        "message": "Replanning is temporarily unavailable."})
+
+
 @app.post("/decompose_chunks")
 def decompose_chunks_route(req: DecomposeRequest):
     try:
@@ -183,6 +183,12 @@ def decompose_chunks_route(req: DecomposeRequest):
                         f"on it. Supply `solution` with the request."))
 
         result = get_chunk_decomposition(problem)
+        # Register a server-owned session. From here the browser never sees a
+        # reference, the solution, or oracle data again.
+        from main.identity import content_hash
+        from main.sessions import create_session
+        public = create_session(problem, result, content_hash(problem),
+                                student_id=getattr(req, "student_id", None))
 
         # Pre-warm oracle tests (guaranteed to have a solution by this point).
         try:
@@ -191,49 +197,103 @@ def decompose_chunks_route(req: DecomposeRequest):
             print(f"  ✅ Oracle pre-warmed for {problem.get('slug')}")
         except Exception as e:
             print(f"  ⚠️  Oracle pre-warm failed: {e}")
-        return {
-            "header": result["header"],
-            "chunks": [
-                {"step_id": c.step_id, "prompt": c.prompt,
-                 "expected_type": c.expected_type, "reference": c.reference or ""}
-                for c in result["chunks"]
-            ]
-        }
+        return public          # session_id, decomposition_id, header, PUBLIC chunks
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=f"Decomposition unavailable: {e}")
 
 
 @app.post("/grade_chunk")
 def grade_chunk_route(req: ChunkRequest):
-    try:
-        slug = req.problem.get("slug")
-        if slug and not (req.problem.get("solution") or "").strip():
-            from main.run_phase1 import load_problems
-            problems = load_problems(limit=500)
-            full = next((p for p in problems if p.get("slug") == slug), None)
-            if full:
-                req.problem["solution"] = (full.get("solution") or "").strip()
-        if not (req.problem.get("solution") or "").strip():
-            # Grading tiers 1-2 run the oracle; without ground truth they would
-            # silently fall back to weaker LLM-only judgement.
-            raise HTTPException(
-                status_code=400,
-                detail=f"No reference solution for '{slug}'. Cannot grade without "
-                       f"ground truth — send `solution` with the problem.")
-        chunks = [StepItem(question_id=req.problem.get("slug", "q"),
-                           step_id=c.get("step_id", f"Part {i+1}"),
-                           prompt=c.get("prompt", ""),
-                           expected_type=c.get("expected_type", "code"),
-                           reference=c.get("reference", ""))
-                  for i, c in enumerate(req.chunks)]
-        result = grade_chunk(req.problem, chunks, req.index,
-                             req.student_code, req.accepted_prefix)
-        return {"correct": result["correct"], "tier": result["tier"],
-                "reason": result["reason"],
-                "failures": result.get("failures", [])[:3]}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    """Grade one submission against a SERVER-OWNED session.
 
+    All grading logic lives in main.grading.grade_submission — this route only
+    loads the session, enforces request-level preconditions, applies the
+    attempt/reveal policy, and strips private material from the response."""
+    from main.grading import grade_submission
+    from main.sessions import MAX_ATTEMPTS, SessionError, load_session
+
+    try:
+        session = load_session(req.session_id)
+    except SessionError as e:
+        code = 409 if e.reason_code in ("session_completed", "session_expired",
+                                        "session_inactive") else 404
+        raise HTTPException(status_code=code,
+                            detail={"reason_code": e.reason_code, "message": str(e)})
+
+    # Stale UI: the browser thinks it is on a different chunk than the server.
+    if req.expected_index is not None and req.expected_index != session["index"]:
+        raise HTTPException(status_code=409, detail={
+            "reason_code": "stale_index",
+            "message": "Your page is out of date — reload to continue.",
+            "index": session["index"]})
+
+    # Reserve first. A concurrent twin of this exact submission is told to
+    # retry with the SAME id rather than being graded a second time.
+    from main.sessions import begin_submission, commit_outcome
+    prior, session = begin_submission(req.session_id, req.submission_id)
+    if prior is not None:
+        if prior.get("__in_flight__"):
+            raise HTTPException(status_code=409, detail={
+                "reason_code": "submission_in_progress",
+                "message": "This answer is still being graded — retry with the "
+                           "same submission id."})
+        return prior                            # stored result, graded once
+
+    # Graded with NO write transaction held, so a slow grade blocks nobody.
+    try:
+        result = grade_submission(session, req.student_code)
+    except Exception as e:                      # never let our fault convict
+        raise HTTPException(status_code=503, detail={
+            "reason_code": "grader_unavailable", "message": str(e)[:200]})
+
+    # ── attempt / reveal policy (server-owned) ──
+    accept_code, provenance, reveal_ref = None, "student", None
+    if result.verdict == "correct":
+        accept_code = req.student_code
+    elif result.verdict == "incorrect" and session["attempts"] + 1 >= MAX_ATTEMPTS:
+        # Second failure: reveal THIS chunk's reference, record its provenance,
+        # mark the session assisted, and move on.
+        reveal_ref = session["chunks"][session["index"]].get("reference", "")
+        accept_code, provenance = reveal_ref, "revealed_reference"
+
+    try:
+        state = commit_outcome(
+            req.session_id, req.submission_id, session["revision"], {
+                "verdict": result.verdict, "tier": result.tier,
+                "deterministic": result.deterministic,
+                "reason": result.student_reason, "divergent": result.divergent},
+            accept_code=accept_code, provenance=provenance,
+            consume_attempt=result.consume_attempt)
+    except SessionError as e:
+        raise HTTPException(status_code=409, detail={
+            "reason_code": e.reason_code, "message": str(e)})
+
+    # Log authoritatively here — the browser no longer reports its own verdicts.
+    bound_student = session.get("student_id")
+    if bound_student and result.verdict != "indeterminate":
+        try:
+            get_supabase().table("interactions").insert({
+                "student_id": bound_student, "slug": session["slug"],
+                "chunk_index": session["index"], "attempt_number": state["attempts"],
+                "student_code": (req.student_code or "")[:4000],
+                "verdict": result.verdict == "correct", "tier": result.tier,
+                "reason": result.student_reason[:500]}).execute()
+        except Exception as e:
+            print(f"  ⚠️  interaction log failed: {e}")
+
+    # PUBLIC response: no oracle data, no failures, no future references, no
+    # adapted tail, no internal exception text.
+    body = {"verdict": result.verdict, "tier": result.tier,
+            "deterministic": result.deterministic, "reason": result.student_reason,
+            "divergent": result.divergent, "index": state["index"],
+            "attempts": state["attempts"], "assisted": state["assisted"],
+            "completed": state["completed"],
+            "solved_independently": state["solved_independently"],
+            "total_chunks": state["total_chunks"],
+            "idempotent_replay": state.get("idempotent_replay", False)}
+    if reveal_ref is not None:
+        body["revealed_reference"] = reveal_ref     # only ever at the limit
+    return body
 
 
 # ── playground (read-only showcase) ───────────────────────────────────────
@@ -268,7 +328,7 @@ def playground_detail(slug: str):
     from main.mutation import _disagrees, generate_mutants
     from tests.sandbox import _load_cache, passes_tests, run_solution
 
-    row = _sb.table("problems").select(
+    row = get_supabase().table("problems").select(
         "slug, title, description, difficulty, solution").eq("slug", slug).execute().data
     if not row:
         raise HTTPException(status_code=404, detail=f"Problem '{slug}' not found.")
@@ -396,7 +456,7 @@ def playground_live(req: LiveRunRequest):
     # truth in the DB; uploads carry it in the request. No ground truth = no
     # oracle = nothing to watch — hard error, not a degraded run.
     if not problem["solution"] or not problem["description"]:
-        row = _sb.table("problems").select(
+        row = get_supabase().table("problems").select(
             "slug, title, description, solution").eq("slug", req.slug).execute().data
         if row:
             problem["solution"] = problem["solution"] or (row[0].get("solution") or "").strip()
@@ -421,10 +481,7 @@ def playground_live(req: LiveRunRequest):
 def list_problems(limit: int = 100, difficulty: str = None):
     """List problems from Supabase with optional difficulty filter."""
     try:
-        from supabase import create_client
-        import os
-        sb = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_KEY"])
-        query = sb.table("problems").select(
+        query = get_supabase().table("problems").select(
             "id, slug, title, difficulty, topic_tags"
         ).limit(limit)
         if difficulty:
@@ -439,10 +496,7 @@ def list_problems(limit: int = 100, difficulty: str = None):
 def get_problem(slug: str):
     """Fetch a single problem by slug from Supabase."""
     try:
-        from supabase import create_client
-        import os
-        sb = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_KEY"])
-        res = sb.table("problems").select(
+        res = get_supabase().table("problems").select(
             "id, slug, title, difficulty, description, topic_tags, solution"
         ).eq("slug", slug).single().execute()
         if not res.data:
@@ -460,7 +514,7 @@ def register(req: AuthRequest):
     pw_hash = bcrypt.hashpw(req.password.encode(), bcrypt.gensalt()).decode()
 
     try:
-        result = _sb.table("students").insert({
+        result = get_supabase().table("students").insert({
             "username": req.username,
             "password_hash": pw_hash
         }).execute()
@@ -477,7 +531,7 @@ def register(req: AuthRequest):
 @app.post("/login")
 def login(req: AuthRequest):
 
-    result = _sb.table("students").select("*").eq("username", req.username).execute()
+    result = get_supabase().table("students").select("*").eq("username", req.username).execute()
 
     if not result.data:
         raise HTTPException(status_code=401, detail="Invalid username or password")
@@ -492,19 +546,36 @@ def login(req: AuthRequest):
 @app.get("/solved/{student_id}")
 def get_solved(student_id: str):
      
-    result = _sb.table("solved").select("problem_slug").eq("student_id", student_id).execute()
+    result = get_supabase().table("solved").select("problem_slug").eq("student_id", student_id).execute()
     slugs = [r["problem_slug"] for r in (result.data or [])]
     return {"slugs": slugs}
 
 
 @app.post("/mark_solved")
 def mark_solved(req: MarkSolvedRequest):
- 
-    _sb.table("solved").upsert({
-        "student_id": req.student_id,
-        "problem_slug": req.slug
-    }, on_conflict="student_id,problem_slug").execute()
-    return {"ok": True}
+    """Derive the solve from a completed session. The old {student_id, slug}
+    form let a browser mark any problem solved for any student, including
+    incomplete or assisted work."""
+    from main.sessions import session_snapshot
+
+    snap = session_snapshot(req.session_id)
+    if snap is None:
+        raise HTTPException(status_code=404, detail={
+            "reason_code": "session_not_found", "message": "Unknown session."})
+    if snap["state"] != "completed":
+        raise HTTPException(status_code=409, detail={
+            "reason_code": "session_incomplete",
+            "message": "That session isn't finished."})
+    if not snap["student_id"]:
+        return {"ok": False, "recorded": False, "reason": "anonymous session"}
+
+    independent = not snap["assisted"]
+    if independent:
+        get_supabase().table("solved").upsert(
+            {"student_id": snap["student_id"], "problem_slug": snap["slug"]},
+            on_conflict="student_id,problem_slug").execute()
+    return {"ok": True, "recorded": independent,
+            "solved_independently": independent, "assisted": snap["assisted"]}
 
 
 @app.post("/log_interaction")
@@ -512,5 +583,5 @@ def log_interaction(req: LogInteractionRequest):
 
     data = req.model_dump()
     data["problem_slug"] = data.pop("slug")
-    _sb.table("student_interactions").insert(data).execute()
+    get_supabase().table("student_interactions").insert(data).execute()
     return {"ok": True}

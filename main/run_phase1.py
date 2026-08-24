@@ -280,7 +280,7 @@ def decompose_into_chunks(problem: dict, max_tries: int = 5) -> dict:
     text = problem.get("description") or problem.get("title", "")
     qid = problem.get("slug") or problem.get("title", "problem")
 
-    feedback, best = "", None
+    feedback, best, last_reason = "", None, ""
     for attempt in range(1, max_tries + 1):
         user_msg = (
             f"PROBLEM:\n{text}\n\n"
@@ -339,15 +339,23 @@ def decompose_into_chunks(problem: dict, max_tries: int = 5) -> dict:
             if nec["status"] == "pass":
                 return {"header": header, "chunks": chunks}
             best = {"header": header, "chunks": chunks}
+            last_reason = nec["summary"].splitlines()[0]
             feedback = "Assembled body:\n" + code + "\n\n" + nec["summary"]
             continue
         best = {"header": header, "chunks": chunks}
+        last_reason = f"assembly gate {report['status']} — {report['detail']}"
         fails = report.get("failures", [])[:3]
         feedback = ("Assembled body:\n" + code + "\n\nFailing tests:\n" +
                     "\n".join(f"  {f['input']} → expected {f['expected']}, got {f['got']}" for f in fails))
 
     print(f"  ⚠️  Chunk decomposition failed all {max_tries} tries.")
-    raise RuntimeError("Could not generate a valid decomposition for this problem.")
+    # Carry the last gate reason. "Could not generate" alone gave no way to tell
+    # an assembly failure (the model wrote wrong code) from a necessity failure
+    # (the chunks were fine but not load-bearing against this oracle) — very
+    # different problems needing very different follow-up.
+    raise RuntimeError(
+        f"Could not generate a valid decomposition for this problem after "
+        f"{max_tries} tries. Last gate result: {last_reason or 'unknown'}")
 
 
 def _load_pool() -> dict:

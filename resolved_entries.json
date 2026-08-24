@@ -540,16 +540,6 @@
     "confirmed": true,
     "slug": "next-permutation"
   },
-  "d2ca574a536a5bd33fb24e77a28f023631b9df727b82d85d96be15271e26469f": {
-    "entry_name": "binarySearch",
-    "params": [
-      "nums",
-      "target",
-      "findLeftmost"
-    ],
-    "confirmed": true,
-    "slug": "find-first-and-last-position-of-element-in-sorted-array"
-  },
   "27b8449352331995170ae2fb870f47258c965de3679a196a5071e8576ac0842e": {
     "entry_name": "searchInsert",
     "params": [
@@ -913,5 +903,22 @@
     ],
     "confirmed": true,
     "slug": "palindrome-number"
+  },
+  "9d4d7f93bb5888076b808ebfd023fe92ce1b996c87da6726428a26191bf7ecf5": {
+    "entry_name": "isPalindrome",
+    "params": [
+      "x"
+    ],
+    "confirmed": true,
+    "slug": "palindrome-number"
+  },
+  "d2ca574a536a5bd33fb24e77a28f023631b9df727b82d85d96be15271e26469f": {
+    "entry_name": "searchRange",
+    "params": [
+      "nums",
+      "target"
+    ],
+    "confirmed": true,
+    "slug": "find-first-and-last-position-of-element-in-sorted-array"
   }
 }

@@ -1,35 +1,31 @@
-from main.schemas import StepItem
-from main.run_phase1 import replan_from_prefix, assemble_canonical
+"""Regression: /replan is intentionally disabled and must stay closed.
 
-leet = ("class Solution:\n"
-        "    def isPalindrome(self, x):\n"
-        "        if x < 0:\n            return False\n"
-        "        s = str(x)\n        return s == s[::-1]")
-problem = {"slug": "palindrome-number", "title": "Palindrome Number",
-           "description": "Return True if the integer x reads the same forwards and backwards, else False.",
-           "solution": leet}
+It previously served ungated material — a solution-less problem dict meant
+get_oracle_tests() returned [] and replan_from_prefix() accepted status
+"skipped" as success, with neither an oracle-strength nor a necessity check.
+"""
+import os
+import sys
 
-def s(n, c, ind):
-    return StepItem(question_id="q", step_id=f"Step {n}", prompt="",
-                    expected_type="code", canonical=c, indent=ind)
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# Ground truth reverses a STRING. The student is doing it NUMERICALLY.
-accepted = [
-    s(1, "def is_palindrome(x):", 0),
-    s(2, "if x < 0:", 1),
-    s(3, "return False", 2),
-    s(4, "reversed_num = 0", 1),
-    s(5, "original = x", 1),
-    s(6, "while original > 0:", 1),
-    s(7, "reversed_num = reversed_num * 10 + original % 10", 2),
-    s(8, "original //= 10", 2),
-]
 
-new_steps = replan_from_prefix(problem, accepted)
+def test_replan_disabled_and_touches_nothing(tmp_path, monkeypatch):
+    os.environ["MICROTUTOR_SESSION_DB"] = str(tmp_path / "s.sqlite3")
+    import frontend.api_server as srv
+    from fastapi.testclient import TestClient
 
-print("\nReplanned remaining steps:")
-for st in new_steps:
-    print(f"  {st.step_id}: indent={st.indent}  canonical={st.canonical!r}")
+    def boom(*a, **k):
+        raise AssertionError("a disabled route must not reach services")
 
-print("\nFull assembled solution (student's numeric prefix + replan):")
-print(assemble_canonical(accepted) + "\n" + assemble_canonical(new_steps))
+    monkeypatch.setattr(srv, "get_supabase", boom)
+    monkeypatch.setattr(srv, "replan_from_prefix", boom, raising=False)
+    import tests.sandbox as sb
+    monkeypatch.setattr(sb, "get_oracle_tests", boom)
+    import main.ollama_client as oc
+    monkeypatch.setattr(oc, "chat", boom)
+
+    r = TestClient(srv.app).post("/replan", json={
+        "slug": "palindrome-number", "description": "d", "accepted_steps": []})
+    assert r.status_code == 410
+    assert r.json()["detail"]["reason_code"] == "replan_disabled"

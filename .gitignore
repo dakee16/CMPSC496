@@ -6,3 +6,6 @@ __pycache__/
 problems_raw.json
 .env
 chunk_pool.json
+
+# runtime grading session store
+data/grading_sessions.sqlite3*

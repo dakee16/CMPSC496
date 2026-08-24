@@ -81,7 +81,20 @@ def _mirror_resolve(solution: str) -> tuple[str | None, list[str]]:
             methods = [n for n in node.body
                        if isinstance(n, ast.FunctionDef) and not n.name.startswith("_")]
             if methods:
-                first = min(methods, key=lambda n: n.name)   # dir() is alphabetical
+                # A method invoked as self.<name>(...) by a sibling is a HELPER,
+                # not the entry point. dir()'s alphabetical order happily picks
+                # the helper: searchRange() calls binarySearch(), and "b" < "s",
+                # so the oracle got built around the helper and a student would
+                # be asked to implement the wrong function entirely. Drop any
+                # method a sibling calls, THEN fall back to alphabetical so this
+                # still matches the harness (which applies the same filter).
+                called = {n.func.attr for n in ast.walk(node)
+                          if isinstance(n, ast.Call)
+                          and isinstance(n.func, ast.Attribute)
+                          and isinstance(n.func.value, ast.Name)
+                          and n.func.value.id == "self"}
+                entries = [m for m in methods if m.name not in called] or methods
+                first = min(entries, key=lambda n: n.name)
                 return first.name, _params_of(first)
 
     funcs = [n for n in tree.body

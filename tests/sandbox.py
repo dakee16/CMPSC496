@@ -23,7 +23,7 @@ GEN_MODEL = OPENAI_MODEL   # system role: oracle test-input generation
 # Writes one JSON line to stdout:
 #   {"ok": true, "results": [...]}   or   {"ok": false, "error": "..."}
 _HARNESS = r'''
-import json, sys
+import json, re, sys
 try:
     import resource
 except ImportError:
@@ -31,12 +31,20 @@ except ImportError:
 from typing import (List, Dict, Optional, Tuple, Set, Any, Union, Callable,
                     Iterable, Iterator)
 
-def resolve_entry(ns, entry_name):
+def resolve_entry(ns, entry_name, helpers=()):
     if entry_name and callable(ns.get(entry_name)):
         return ns[entry_name]
     Sol = ns.get("Solution")
     if isinstance(Sol, type):
         inst = Sol()
+        # dir() is ALPHABETICAL, so a helper can outrank the real entry point:
+        # searchRange() calls binarySearch(), and "b" < "s". Skip any method a
+        # sibling invokes as self.<name>(...) -- those are helpers by
+        # definition. main/identity.py applies the identical filter so the two
+        # cannot disagree.
+        for m in dir(inst):
+            if not m.startswith("_") and m not in helpers and callable(getattr(inst, m)):
+                return getattr(inst, m)
         for m in dir(inst):
             if not m.startswith("_") and callable(getattr(inst, m)):
                 return getattr(inst, m)
@@ -64,7 +72,8 @@ def main():
         exec(compile(payload["code"], "<solution>", "exec"), ns)
     except Exception as e:
         print(json.dumps({"ok": False, "error": "exec: " + repr(e)})); return
-    fn = resolve_entry(ns, payload.get("entry_name"))
+    helpers = set(re.findall(r"self\.(\w+)\s*\(", payload["code"]))
+    fn = resolve_entry(ns, payload.get("entry_name"), helpers)
     if fn is None:
         print(json.dumps({"ok": False, "error": "no entry point found"})); return
     results = []
@@ -432,3 +441,57 @@ if __name__ == "__main__":
         print("\noracle tests (LLM inputs + ground-truth expected):")
         for t in make_oracle_tests(prob, n=8):
             print("  ", t)
+
+class OracleUnusableError(RuntimeError):
+    """No STRONG cached oracle for this problem, so it cannot be graded.
+
+    Carries `reason_code` so callers can distinguish missing / unvalidated /
+    weak / malformed without parsing the message."""
+
+    def __init__(self, message: str, reason_code: str):
+        super().__init__(message)
+        self.reason_code = reason_code
+
+
+def load_strong_cached_oracle(problem: dict) -> list[dict]:
+    """READ-ONLY oracle access for the answer-checking path.
+
+    get_oracle_tests() is the WRITE path: on a miss it generates tests, runs
+    mutation testing and can block for minutes. That is correct for warm-up and
+    fatal for grading — a student pressing Submit must never trigger it, and a
+    weak or absent oracle must never be silently accepted as a basis for a
+    verdict. This function only ever reads the cache.
+
+    Returns the tests when the content-hash entry exists and is strong.
+    Raises OracleUnusableError otherwise. Never generates, never validates,
+    never writes."""
+    from main.identity import content_hash
+
+    entry = _load_cache().get(content_hash(problem))
+    slug = problem.get("slug") or problem.get("title") or "<unnamed problem>"
+
+    if entry is None:
+        raise OracleUnusableError(
+            f"No cached oracle for '{slug}'. It must be validated "
+            f"(python -m main.warmup) before it can be graded.", "oracle_missing")
+    if isinstance(entry, list):
+        # Pre-migration slug-keyed entry: tests but no verdict.
+        raise OracleUnusableError(
+            f"'{slug}' has a legacy cache entry with no verdict.", "oracle_unvalidated")
+    if not isinstance(entry, dict) or "strong" not in entry:
+        raise OracleUnusableError(
+            f"'{slug}' has no validation verdict.", "oracle_unvalidated")
+    if not entry["strong"]:
+        raise OracleUnusableError(
+            f"'{slug}' has an oracle that did not clear mutation testing.",
+            "oracle_weak")
+
+    tests = entry.get("final_tests")
+    if not isinstance(tests, list) or not tests:
+        raise OracleUnusableError(
+            f"'{slug}' is marked strong but stores no tests.", "oracle_malformed")
+    for t in tests:
+        if not (isinstance(t, dict) and "input" in t and "expected" in t):
+            raise OracleUnusableError(
+                f"'{slug}' has a malformed cached test.", "oracle_malformed")
+    return tests

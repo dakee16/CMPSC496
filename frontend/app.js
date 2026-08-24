@@ -16,6 +16,8 @@ const MAX_ATTEMPTS = 3;
 
 let chunks = [];
 let currentChunkIndex = 0;
+let sessionId = null;      // server owns all grading state
+let submissionId = null;   // stable per button press, reused on HTTP retry
 let header = "";
 let acceptedAnswers = [];
 let activeTab = "leetcode";
@@ -215,7 +217,9 @@ startBtn.addEventListener("click", async function () {
         description: selectedProblem.description,
         // Uploaded problems carry their own ground truth; for curated ones this
         // is already present from /problems and the backend falls back to the DB.
-        solution: selectedProblem.solution || ""
+        solution: selectedProblem.solution || "",
+        // Identity is bound ONCE, here. It is never sent again per submission.
+        student_id: currentStudent ? currentStudent.id : null
       })
     });
 
@@ -223,7 +227,8 @@ startBtn.addEventListener("click", async function () {
     console.log("Got response from backend:", data);
 
     header = data.header;
-    chunks = data.chunks;
+    chunks = data.chunks;   // PUBLIC only: no references
+    sessionId = data.session_id;
     acceptedAnswers = [];
 
     problemSection.style.display = "none";
@@ -261,76 +266,90 @@ submitBtn.addEventListener("click", async function () {
   submitBtn.textContent = "Evaluating...";
 
   const studentCode = getEditableStudentCode();
+  // One id per press, reused if the request is retried, so a duplicate
+  // never double-counts an attempt or advances twice.
+  if (!submissionId) { submissionId = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random()); }
   console.log("student_code being sent:", studentCode);
   try {
     const response = await fetch(`${API_URL}/grade_chunk`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      // The server owns the solution, chunks, references, prefix and index.
+      // We send only an opaque session id, a stable submission id (so an HTTP
+      // retry is idempotent), our code, and the index we believe we're on.
       body: JSON.stringify({
-        problem: {
-          slug: selectedProblem.slug,
-          title: selectedProblem.title,
-          description: selectedProblem.description,
-          solution: selectedProblem.solution || ""
-        },
-        chunks: chunks,
-        index: currentChunkIndex,
+        session_id: sessionId,
+        submission_id: submissionId,
         student_code: studentCode,
-        accepted_prefix: acceptedAnswers
+        expected_index: currentChunkIndex
       })
     });
     const result = await response.json();
 
-    if (currentStudent) {
-      fetch(`${API_URL}/log_interaction`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          student_id: currentStudent.id,
-          slug: selectedProblem.slug,
-          chunk_index: currentChunkIndex,
-          attempt_number: attemptCount,
-          student_code: studentCode,
-          verdict: result.correct,
-          tier: result.tier,
-          reason: result.reason
-        })
-      }).catch(function (error) {
-        console.warn("Interaction logging failed:", error);
-      });
+    // Typed conflicts from the server. submissionId is deliberately NOT reset
+    // here: retrying must reuse the same id so the retry stays idempotent.
+    if (response.status === 409) {
+      const code = result.detail && result.detail.reason_code;
+      feedbackSection.style.display = "block";
+      if (code === "submission_in_progress") {
+        feedbackText.textContent = "⏳ Still grading your answer — press Submit again in a moment.";
+      } else if (code === "stale_index") {
+        feedbackText.textContent = "⚠️ This page is out of date. Reload to continue.";
+      } else {
+        feedbackText.textContent = "⚠️ The grader could not safely decide; try again.";
+      }
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Submit Answer";
+      return;
     }
+    if (!response.ok) {
+      feedbackSection.style.display = "block";
+      feedbackText.textContent = "⚠️ The grader could not safely decide; try again.";
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Submit Answer";
+      return;
+    }
+
+    // Interaction logging now happens server-side in /grade_chunk —
+    // the browser no longer reports its own verdicts.
 
     feedbackSection.style.display = "block";
 
-    if (result.correct == true) {
+    if (result.verdict === "indeterminate") {
+      // Our failure, not the student's. No attempt was consumed.
+      feedbackText.textContent = "⚠️ The grader could not safely decide; try again.";
+      nextBtn.disabled = true;
+    }
+    else if (result.verdict === "correct") {
       message = "✅ Correct! " + result.reason;
-      if (result.tier == "execution-adapted") {
-        message = "✅ Correct — your approach works! " + result.reason;
+      if (result.divergent) {
+        message = "✅ Correct — your approach differs from ours, but it works. " + result.reason;
       }
+      if (!result.deterministic) { message += "\n\n(Judged by review, not by running your code.)"; }
       feedbackText.textContent = message;
       acceptedAnswers.push(studentCode);
+      submissionId = null;                 // next press is a new submission
       nextBtn.disabled = false;
     }
     else {
-      nextBtn.disabled = true;
       message = "❌ " + result.reason;
-      if (result.failures && (result.failures.length > 0)) {
-        message += "\n\nFailing cases:";
-        for (const f of result.failures) {
-          message += `\n  input ${JSON.stringify(f.input)} → expected ${JSON.stringify(f.expected)}, got ${JSON.stringify(f.got)}`;
-        }
-      }
-      if (attemptCount >= MAX_ATTEMPTS && acceptedAnswers.length === currentChunkIndex) {
-        const ref = chunks[currentChunkIndex].reference || "";
-        message += "\n\n💡 Here's a reference answer for this part:\n" + ref;
-        acceptedAnswers.push(ref);
-        replaceEditableWithReference(ref);
+      if (!result.deterministic) { message += "\n\n(Judged by review, not by running your code.)"; }
+      // A reference is returned ONLY when the server decides the limit is hit.
+      if (typeof result.revealed_reference === "string") {
+        message += "\n\n💡 Here's a reference answer for this part:\n" + result.revealed_reference;
+        acceptedAnswers.push(result.revealed_reference);
+        replaceEditableWithReference(result.revealed_reference);
         nextBtn.disabled = false;
+      } else {
+        nextBtn.disabled = true;
       }
       feedbackText.textContent = message;
+      submissionId = null;
     }
+
+    // The server is authoritative for where we are and whether we're done.
+    if (typeof result.index === "number") { currentChunkIndex = result.index; }
+    attemptCount = result.attempts;
 
     submitBtn.disabled = false;
     submitBtn.textContent = "Submit Answer";
@@ -364,10 +383,7 @@ nextBtn.addEventListener("click", function () {
         headers: {
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({
-          student_id: currentStudent.id,
-          slug: selectedProblem.slug
-        })
+        body: JSON.stringify({ session_id: sessionId })
       })
         .then(function () {
           solvedSlugs.add(selectedProblem.slug);
