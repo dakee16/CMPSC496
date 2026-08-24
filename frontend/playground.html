@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>MicroTutor — Pipeline Playground</title>
+<title>MicroTutor, Pipeline Playground</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root{
@@ -85,7 +85,7 @@
 </head>
 <body>
 <header>
-  <h1>MicroTutor — watch the system think</h1>
+  <h1>MicroTutor: watch the system think</h1>
   <div class="sub">One coding problem, start to finish: how we build a safety net, break the
     problem into steps, prove every step matters, and grade a student by running code rather
     than asking for an opinion.</div>
@@ -166,7 +166,7 @@ function render(){
 function p1(){
   const p = DATA.problem || {};
   return `<p class="cap">Here's a coding problem a student needs to solve. Everything that
-    follows is the system getting ready to teach it — before any student sees it.</p>
+    follows is the system getting ready to teach it, before any student sees it.</p>
     <div class="card" style="flex:1 1 100%">
       <h4>${esc(p.difficulty || "PROBLEM")}</h4>
       <p style="font-size:1.05rem;font-weight:600;margin-bottom:8px">${esc(p.title)}</p>
@@ -182,8 +182,8 @@ function p2(){
   const pct = Math.round(o.kill_rate_direct*100);
   const col = o.strong ? "var(--good)" : "var(--bad)";
   return `<p class="cap">First we write test cases. But how do we know the tests are any
-    <em>good</em>? We play a game: we secretly break the correct solution in small ways —
-    each one a "cheater" — and see whether our tests notice. Tests that catch cheaters can be
+    <em>good</em>? We play a game: we secretly break the correct solution in small ways, mark
+    each one as a "cheater" and see whether our tests notice. Tests that catch cheaters can be
     trusted. Tests that let them through cannot.</p>
     <div class="grid">${(o.tests||[]).map((t,i)=>
       `<div class="chip" style="animation-delay:${i*60}ms">${esc(JSON.stringify(t.input))}
@@ -204,7 +204,7 @@ function p2(){
         <div style="font-size:.78rem;color:var(--muted);margin-top:9px">
           ${o.strong
             ? "These tests are strong enough to trust. The problem is cleared for students."
-            : `<b>Not trusted yet</b> — ${esc(o.weak_reason || "the safety net didn't clear the bar")}.
+            : `<b>Not trusted yet</b>, ${esc(o.weak_reason || "the safety net didn't clear the bar")}.
                This problem is held back from students until it improves.`}
         </div></div>
       <div class="verdict" style="background:${o.strong?"rgba(74,222,128,.16)":"rgba(248,113,113,.16)"};color:${col}">
@@ -219,7 +219,7 @@ function p3(){
     <div class="empty">No saved breakdown for this problem yet.<br>
       <span style="font-size:.8rem">Breakdowns are generated on first use and cached.</span></div>`;
   return `<p class="cap">The problem is split into ${c.length} smaller steps. A student answers
-    them one at a time instead of facing the whole thing at once — so a mistake gets caught
+    them one at a time instead of facing the whole thing at once, so a mistake gets caught
     early, while it's still fixable.</p>
     <div class="grid">${c.map((x,i)=>
       `<div class="card" style="animation-delay:${i*140}ms">
@@ -233,7 +233,7 @@ function p4(){
     matters.</p><div class="empty">Needs a saved breakdown first.</div>`;
   const bad = n.filter(x=>!x.broke);
   return `<p class="cap">Now we check that every step <em>earns its place</em>. We delete each
-    one and re-run the tests. If the answer breaks, that step was doing real work — good. If
+    one and re-run the tests. If the answer breaks, that step was doing real work, good. If
     everything still passes, that step was pointless, and we throw the whole breakdown away
     and start over.</p>
     <div>${n.map((x,i)=>
@@ -242,9 +242,9 @@ function p4(){
         <span class="n">${esc(x.step_id)}</span>
         <span style="flex:1;font-size:.86rem">${x.broke
           ? `removed it → the answer <b style="color:var(--good)">broke</b>
-             (only ${x.passed}/${x.total} tests still passed) — this step matters`
+             (only ${x.passed}/${x.total} tests still passed), this step matters`
           : `removed it → <b style="color:var(--bad)">everything still passed</b>
-             — this step was doing nothing`}</span></div>`).join("")}</div>
+            , this step was doing nothing`}</span></div>`).join("")}</div>
     <p class="cap" style="margin-top:16px">${bad.length
       ? `<b style="color:var(--bad)">Rejected.</b> ${bad.length} step(s) did nothing, so the whole breakdown is regenerated.`
       : `<b style="color:var(--good)">Accepted.</b> Every step is load-bearing.`}</p>`;
