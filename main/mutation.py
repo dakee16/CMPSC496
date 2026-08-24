@@ -72,6 +72,10 @@ _CMP_FLIP = {
     ast.Lt: ast.LtE, ast.LtE: ast.Lt,       # boundary / off-by-one
     ast.Gt: ast.GtE, ast.GtE: ast.Gt,
     ast.Eq: ast.NotEq, ast.NotEq: ast.Eq,   # negation
+    ast.In: ast.NotIn, ast.NotIn: ast.In,   # containment negation — the
+    # one comparison a hash-map/set-lookup solution (two-sum, contains-
+    # duplicate, ...) actually uses, so without this a solution with no
+    # <, >, +, -, *, // and no int/bool literals yields ZERO mutants.
 }
 _BOOL_FLIP = {ast.And: ast.Or, ast.Or: ast.And}
 _BIN_FLIP = {
@@ -83,6 +87,7 @@ _OP_SYMBOL = {
     ast.Lt: "<", ast.LtE: "<=", ast.Gt: ">", ast.GtE: ">=",
     ast.Eq: "==", ast.NotEq: "!=", ast.And: "and", ast.Or: "or",
     ast.Add: "+", ast.Sub: "-", ast.Mult: "*", ast.Div: "/", ast.FloorDiv: "//",
+    ast.In: "in", ast.NotIn: "not in",
 }
 
 
@@ -165,10 +170,14 @@ def _key(inp) -> str:
 
 
 def _candidate_inputs(problem: dict, original: str, mutant_code: str,
-                      n: int = CUTOFF_4_MAX_COUNTEREXAMPLE_CANDIDATES) -> list[list]:
+                      n: int = CUTOFF_4_MAX_COUNTEREXAMPLE_CANDIDATES,
+                      emit=None) -> list[list]:
     """Ask the LLM for up to n input argument-lists that might make the two
     programs disagree. INPUTS ONLY — the model never reports outputs, and its
-    opinion about them is never read."""
+    opinion about them is never read.
+
+    `emit`, when given, is called with progress-event dicts for live UIs.
+    It never changes behaviour — leaving it None is the production path."""
     resolved = get_resolved_entry(problem)
     name, params = resolved["entry_name"], resolved["params"]
     sig = f"{name}({', '.join(params)})" if name else problem.get("title", "")
@@ -187,12 +196,18 @@ def _candidate_inputs(problem: dict, original: str, mutant_code: str,
         f"Give {n} candidates, most likely first. Do NOT report outputs.\n"
         f'Return JSON only: {{"inputs": [[arg1, ...], ...]}}'
     )
+    if emit:
+        emit({"type": "llm_asking", "detail": f"asking model for up to {n} "
+              f"inputs that might make the two programs disagree"})
     raw = chat(GEN_MODEL, "You generate test inputs as strict JSON. No prose.",
                [{"role": "user", "content": prompt}], temperature=0.3, fmt="json")
     data = _first_json_obj(raw) or {}
     inputs = [i if isinstance(i, list) else [i]
               for i in data.get("inputs", []) if i is not None]
-    return inputs[:n]
+    inputs = inputs[:n]
+    if emit:
+        emit({"type": "llm_candidates", "inputs": inputs})
+    return inputs
 
 
 def _probe_inputs(tests: list) -> list[list]:
@@ -325,21 +340,72 @@ def _disagrees(code: str, entry: str | None, inputs: list, expected: list) -> bo
 
 
 def _counterexample_test(problem: dict, original: str, mutant_code: str,
-                         entry: str | None, seen: set, tests: list) -> dict | None:
+                         entry: str | None, seen: set, tests: list,
+                         emit=None) -> dict | None:
     """One last attempt to kill a survivor: free boundary probes first, then the
     model's suggested inputs. Either way the verdict comes from executing both
-    programs — the model only ever supplies inputs."""
-    found = _first_disagreement(original, mutant_code, entry, _probe_inputs(tests), seen)
+    programs — the model only ever supplies inputs.
+
+    `emit`, when given, narrates each phase for live UIs; None (the default,
+    and the production path) changes nothing."""
+    probes = _probe_inputs(tests)
+    if emit:
+        emit({"type": "probes", "inputs": probes,
+              "detail": "free deterministic boundary probes (no LLM cost)"})
+    found = _first_disagreement(original, mutant_code, entry, probes, seen)
     if found:
+        if emit:
+            emit({"type": "disagreement", "source": "probe",
+                  "input": found["input"], "expected": found["expected"]})
         return found
-    return _first_disagreement(original, mutant_code, entry,
-                               _candidate_inputs(problem, original, mutant_code), seen)
+    if emit:
+        emit({"type": "probes_exhausted",
+              "detail": "no probe made the programs disagree; asking the model"})
+    found = _first_disagreement(
+        original, mutant_code, entry,
+        _candidate_inputs(problem, original, mutant_code, emit=emit), seen)
+    if emit:
+        if found:
+            emit({"type": "disagreement", "source": "llm",
+                  "input": found["input"], "expected": found["expected"]})
+        else:
+            emit({"type": "search_empty",
+                  "detail": "none of the model's inputs made the programs "
+                            "disagree — this alone proves nothing"})
+    return found
 
 
 # ── one full pass ─────────────────────────────────────────────────────────
 
-def evaluate_oracle(problem: dict, oracle_tests: list) -> dict:
+def _detailed_disagreement(code: str, entry: str | None,
+                           inputs: list, expected: list) -> dict:
+    """Same verdict as _disagrees, plus per-test detail for live UIs.
+
+    Semantics MUST stay identical to _disagrees: a crash/hang where the
+    original ran counts as killed, and any normalised mismatch counts as
+    killed. Returns {"killed": bool, "crashed": bool, "error": str | None,
+    "per_test": [{"input", "expected", "got", "pass"}]}."""
+    if not inputs:
+        return {"killed": False, "crashed": False, "error": None, "per_test": []}
+    run = run_solution(code, inputs, entry_name=entry, timeout=_MUTANT_TIMEOUT)
+    if not run["ok"]:
+        return {"killed": True, "crashed": True, "error": run.get("error"),
+                "per_test": [{"input": i, "expected": e, "got": None,
+                              "pass": False} for i, e in zip(inputs, expected)]}
+    per_test, killed = [], False
+    for inp, exp, got in zip(inputs, expected, run["results"]):
+        ok = _norm(got) == _norm(exp)
+        killed = killed or not ok
+        per_test.append({"input": inp, "expected": exp, "got": got, "pass": ok})
+    return {"killed": killed, "crashed": False, "error": None, "per_test": per_test}
+
+
+def evaluate_oracle(problem: dict, oracle_tests: list, emit=None) -> dict:
     """Score `oracle_tests` against every mutant of the problem's solution.
+
+    `emit`, when given, is called with structured progress events so a live UI
+    can watch the pass happen (mutants, per-test results, retries, running
+    kill rate). Leaving it None — the production path — changes nothing.
 
     A mutant is killed when it disagrees with the ORIGINAL on any test, or
     crashes/hangs where the original did not. Every survivor then lands in
@@ -368,10 +434,16 @@ def evaluate_oracle(problem: dict, oracle_tests: list) -> dict:
     solution = problem.get("solution", "")
     entry = get_resolved_entry(problem)["entry_name"]
     mutants = generate_mutants(solution)
+    if emit:
+        emit({"type": "mutants", "total": len(mutants),
+              "mutants": [{"index": i, "label": m["label"], "code": m["code"]}
+                          for i, m in enumerate(mutants)]})
 
     tests = list(oracle_tests)              # working set grows; caller's list untouched
     base = run_solution(solution, [t["input"] for t in tests], entry_name=entry)
     if not base["ok"]:
+        if emit:
+            emit({"type": "base_run_failed", "error": base["error"]})
         return {"kill_rate": 0.0, "kill_rate_direct": 0.0, "strong": False,
                 "insufficient_mutants": len(mutants) < _MIN_MUTANTS,
                 "status": "error", "total_mutants": len(mutants), "killed": 0,
@@ -388,41 +460,95 @@ def evaluate_oracle(problem: dict, oracle_tests: list) -> dict:
     # pass below so `killed_direct` measures THIS suite, not one already
     # improved by an earlier mutant's counterexample (which would make the
     # number depend on mutant order).
+    inputs_p1 = [t["input"] for t in tests]
     for i, m in enumerate(mutants):
-        if _disagrees(m["code"], entry, [t["input"] for t in tests], expected):
-            status[i] = "killed"
+        if emit:
+            # Detailed path: single execution, verdict semantics identical to
+            # _disagrees (crash ⇒ killed, any normalised mismatch ⇒ killed).
+            d = _detailed_disagreement(m["code"], entry, inputs_p1, expected)
+            if d["killed"]:
+                status[i] = "killed"
+            done = i + 1
+            emit({"type": "mutant_result", "phase": 1, "index": i,
+                  "label": m["label"], "killed": d["killed"],
+                  "crashed": d["crashed"], "error": d["error"],
+                  "per_test": d["per_test"]})
+            emit({"type": "tally", "phase": 1, "processed": done,
+                  "total": len(mutants), "killed_so_far": status.count("killed"),
+                  "kill_rate_so_far": (status.count("killed") / done)})
+        else:
+            if _disagrees(m["code"], entry, inputs_p1, expected):
+                status[i] = "killed"
     killed_direct = status.count("killed")
+    if emit:
+        emit({"type": "phase1_done", "killed_direct": killed_direct,
+              "total": len(mutants),
+              "survivors": [i for i, s in enumerate(status) if not s]})
 
     # Phase 2 — one repair attempt per survivor.
     for i, m in enumerate(mutants):
         if status[i]:
             continue
+        # Per-mutant emit wrapper so every event carries its mutant's identity.
+        em = ((lambda d, _i=i, _l=m["label"]:
+               emit({**d, "index": _i, "label": _l})) if emit else None)
+        if em:
+            em({"type": "retry_start",
+                "detail": "survived the suite as handed in — one repair attempt"})
         # A test found for an earlier survivor may already cover this one — free.
         if _disagrees(m["code"], entry, [t["input"] for t in new_tests],
                       [t["expected"] for t in new_tests]):
             status[i] = "killed_on_retry"
+            if em:
+                em({"type": "killed_by_earlier_counterexample",
+                    "detail": "a test added for an earlier survivor already "
+                              "kills this one — free"})
+                em({"type": "mutant_final", "status": "killed_on_retry"})
             continue
         try:
-            found = _counterexample_test(problem, solution, m["code"], entry, seen, tests)
+            found = _counterexample_test(problem, solution, m["code"], entry,
+                                         seen, tests, emit=em)
         except Exception as e:
             # Model unreachable — we could not even ask. Never silently excluded:
             # an unanswered question counts against the oracle.
             print(f"  ⚠️  counterexample search failed ({type(e).__name__}); "
                   f"{m['label']} left UNRESOLVED")
             status[i] = "unresolved"
+            if em:
+                em({"type": "search_error", "error": f"{type(e).__name__}: {e}"})
+                em({"type": "mutant_final", "status": "unresolved"})
             continue
         if found:
             seen.add(_key(found["input"]))
             new_tests.append(found)
             status[i] = "killed_on_retry"
+            if em:
+                em({"type": "oracle_grown", "new_test": found,
+                    "n_tests": len(tests) + len(new_tests),
+                    "detail": "real disagreement found — added as a new oracle "
+                              "test, mutant killed on retry"})
+                em({"type": "mutant_final", "status": "killed_on_retry"})
         else:
             # The LLM-guided search came up empty. That alone is NOT evidence of
             # equivalence — it is just as likely a gap the search missed. Demand
             # positive proof from the broad deterministic sweep; anything less
             # stays UNRESOLVED and counts against us.
-            status[i] = ("proven_equivalent"
-                         if _proves_equivalent(solution, m["code"], entry, tests)
-                         else "unresolved")
+            if em:
+                em({"type": "equivalence_sweep_start",
+                    "sweep_size": _EQUIVALENCE_SWEEP_SIZE,
+                    "detail": "searched hard and found nothing — that is not "
+                              "proof of harmlessness. Running the broad "
+                              "deterministic sweep to demand positive evidence"})
+            equivalent = _proves_equivalent(solution, m["code"], entry, tests)
+            status[i] = "proven_equivalent" if equivalent else "unresolved"
+            if em:
+                em({"type": "equivalence_sweep_result", "equivalent": equivalent,
+                    "detail": ("exact agreement on every sweep input — proven "
+                               "equivalent, excluded from the score"
+                               if equivalent else
+                               "sweep could not prove equivalence — UNRESOLVED, "
+                               "counts AGAINST the oracle")})
+                em({"type": "mutant_final", "status": status[i]})
 
     results = [{"label": m["label"], "status": s} for m, s in zip(mutants, status)]
     killed = status.count("killed") + status.count("killed_on_retry")
@@ -450,22 +576,29 @@ def evaluate_oracle(problem: dict, oracle_tests: list) -> dict:
     insufficient = total < _MIN_MUTANTS
     strong = (not insufficient) and kill_rate_direct >= CUTOFF_1_KILL_RATE
 
-    return {"kill_rate": kill_rate,
-            "kill_rate_direct": kill_rate_direct,
-            "strong": strong,
-            "insufficient_mutants": insufficient,
-            "status": ("insufficient_mutants" if insufficient
-                       else "strong" if strong else "weak"),
-            "total_mutants": total, "killed": killed,
-            "killed_on_retry": killed_on_retry, "killed_direct": killed_direct,
-            "proven_equivalent": proven_equivalent, "unresolved": unresolved,
-            "new_tests": new_tests, "mutants": results, "error": None}
+    out = {"kill_rate": kill_rate,
+           "kill_rate_direct": kill_rate_direct,
+           "strong": strong,
+           "insufficient_mutants": insufficient,
+           "status": ("insufficient_mutants" if insufficient
+                      else "strong" if strong else "weak"),
+           "total_mutants": total, "killed": killed,
+           "killed_on_retry": killed_on_retry, "killed_direct": killed_direct,
+           "proven_equivalent": proven_equivalent, "unresolved": unresolved,
+           "new_tests": new_tests, "mutants": results, "error": None}
+    if emit:
+        emit({"type": "evaluation_done", **{k: out[k] for k in (
+            "kill_rate", "kill_rate_direct", "strong", "insufficient_mutants",
+            "status", "total_mutants", "killed", "killed_on_retry",
+            "killed_direct", "proven_equivalent", "unresolved")}})
+    return out
 
 
 # ── orchestrator ──────────────────────────────────────────────────────────
 
 def validate_oracle(problem: dict, initial_tests: list,
-                    max_rounds: int = CUTOFF_2_MAX_EXPAND_ROUNDS) -> dict:
+                    max_rounds: int = CUTOFF_2_MAX_EXPAND_ROUNDS,
+                    emit=None) -> dict:
     """Evaluate the oracle, and while it is still weak pull in a fresh batch of
     LLM-generated + ground-truth-verified tests and try again, up to
     max_rounds. Stops as soon as the oracle is STRONG.
@@ -476,8 +609,17 @@ def validate_oracle(problem: dict, initial_tests: list,
     result, rnd = None, 0
 
     for rnd in range(1, max_rounds + 1):
-        result = evaluate_oracle(problem, tests)
+        if emit:
+            emit({"type": "round_start", "round": rnd,
+                  "max_rounds": max_rounds, "n_tests": len(tests)})
+        result = evaluate_oracle(problem, tests, emit=emit)
         tests += result["new_tests"]
+        if emit:
+            emit({"type": "round_summary", "round": rnd,
+                  "kill_rate_direct": result["kill_rate_direct"],
+                  "kill_rate": result["kill_rate"],
+                  "cutoff": CUTOFF_1_KILL_RATE, "status": result["status"],
+                  "n_tests": len(tests)})
         print(f"  [mutation] round {rnd}: "
               f"kill_rate_direct={result['kill_rate_direct']:.2f} "
               f"(GATES vs {CUTOFF_1_KILL_RATE}) "
@@ -491,10 +633,22 @@ def validate_oracle(problem: dict, initial_tests: list,
             break
 
         seen = {_key(t["input"]) for t in tests}
+        if emit:
+            emit({"type": "expanding_suite", "round": rnd,
+                  "detail": "still weak — generating a fresh batch of "
+                            "ground-truth-verified tests and re-running"})
         fresh = [t for t in make_oracle_tests(problem) if _key(t["input"]) not in seen]
         if not fresh:
             print("  [mutation] no new tests available; stopping early")
+            if emit:
+                emit({"type": "expansion_empty",
+                      "detail": "no new distinct tests could be generated; "
+                                "stopping early"})
             break
         tests += fresh
+        if emit:
+            emit({"type": "suite_expanded", "added": len(fresh),
+                  "n_tests": len(tests),
+                  "new_tests": fresh})
 
     return {**result, "rounds": rnd, "final_tests": tests}

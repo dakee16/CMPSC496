@@ -887,5 +887,31 @@
     ],
     "confirmed": true,
     "slug": "dead"
+  },
+  "e9efc48cd7c33a0ee563ad775a89c808a86ea5b92f3453904d5d626807d779d3": {
+    "entry_name": "twoSum",
+    "params": [
+      "nums",
+      "target"
+    ],
+    "confirmed": false,
+    "slug": "two-sum"
+  },
+  "5de4c4ad8c1c795e086d7b438cbf1e4973742397878f24f672d8f8ef412f1f24": {
+    "entry_name": "twoSum",
+    "params": [
+      "nums",
+      "target"
+    ],
+    "confirmed": true,
+    "slug": "two-sum"
+  },
+  "f6dc4927a0ebc3631e888b549778570daab49e750254dda54700950a5b0a6506": {
+    "entry_name": "isPalindrome",
+    "params": [
+      "x"
+    ],
+    "confirmed": true,
+    "slug": "palindrome-number"
   }
 }

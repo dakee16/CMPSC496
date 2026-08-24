@@ -84,6 +84,16 @@ class MarkSolvedRequest(BaseModel):
     slug: str
 
 
+class LiveRunRequest(BaseModel):
+    # Either a curated slug (solution looked up in the DB) or a fully custom
+    # problem with the ground truth pasted in. Same rule as /decompose_chunks:
+    # no ground truth, no run.
+    slug: str
+    title: str | None = None
+    description: str | None = None
+    solution: str | None = None
+
+
 @app.get("/health")
 def health():
     return {"status": "ok", "message": "MicroTutor API running"}
@@ -360,6 +370,51 @@ def playground_detail(slug: str):
             "mutants": mutants, "breakdown": breakdown,
             "breakdown_source": source, "chunks": chunks,
             "necessity": necessity, "grading": grading, "note": None}
+
+
+# ── playground LIVE (real pipeline run, streamed) ─────────────────────────
+# The read-only endpoints above replay cache; this one runs the REAL pipeline
+# (fresh oracle generation, mutation testing + repair, verdict, decomposition,
+# Gate 1) and streams every step as a newline-delimited JSON event the moment
+# it happens. Served with fetch()+ReadableStream on the frontend — the
+# one-directional SSE pattern, delivered over POST because the ground-truth
+# solution rides in the request body (EventSource can only GET).
+#
+# COSTS REAL MONEY per click: same OpenAI usage as a warmup pass on one
+# problem. It also persists its verdict to tests/tests_cache.json exactly as
+# warmup would, so a live run is never wasted work.
+
+@app.post("/playground/live")
+def playground_live(req: LiveRunRequest):
+    from fastapi.responses import StreamingResponse
+
+    problem = {"slug": req.slug, "title": req.title or req.slug,
+               "description": req.description or "",
+               "solution": (req.solution or "").strip()}
+
+    # Same contract as /decompose_chunks: curated problems keep their ground
+    # truth in the DB; uploads carry it in the request. No ground truth = no
+    # oracle = nothing to watch — hard error, not a degraded run.
+    if not problem["solution"] or not problem["description"]:
+        row = _sb.table("problems").select(
+            "slug, title, description, solution").eq("slug", req.slug).execute().data
+        if row:
+            problem["solution"] = problem["solution"] or (row[0].get("solution") or "").strip()
+            problem["description"] = problem["description"] or (row[0].get("description") or "")
+            problem["title"] = req.title or row[0].get("title") or req.slug
+    if not problem["solution"]:
+        raise HTTPException(
+            status_code=400,
+            detail=(f"No reference solution for '{req.slug}'. A live run cannot "
+                    f"start without ground truth — oracle tests, mutation "
+                    f"validation and Gate 1 all depend on it. Supply `solution` "
+                    f"with the request."))
+
+    from main.live_playground import ndjson_stream
+    return StreamingResponse(
+        ndjson_stream(problem),
+        media_type="application/x-ndjson",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 @app.get("/problems")
