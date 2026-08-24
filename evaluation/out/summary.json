@@ -1,0 +1,2016 @@
+{
+  "schema_version": "1.0.0",
+  "total_cases": 535,
+  "unambiguous": 535,
+  "ambiguous_excluded": 0,
+  "accuracy": 0.643,
+  "false_acceptance_rate": 0.0,
+  "false_rejection_rate": 0.0112,
+  "indeterminate_rate": 0.3458,
+  "deterministic_coverage": 0.6542,
+  "attempts_wrongly_consumed": 0,
+  "system_errors": 0,
+  "confusion": {
+    "correct->correct": 55,
+    "incorrect->incorrect": 289,
+    "incorrect->indeterminate": 156,
+    "correct->indeterminate": 29,
+    "correct->incorrect": 6
+  },
+  "tier_distribution": {
+    "execution-reference": 32,
+    "execution-final": 162,
+    "system": 185,
+    "syntax": 104,
+    "policy": 52
+  },
+  "accuracy_by_category": {
+    "blank": {
+      "acc": 1.0,
+      "n": 52
+    },
+    "boundary_off_by_one": {
+      "acc": 0.3415,
+      "n": 41
+    },
+    "clean_logical_error": {
+      "acc": 0.2812,
+      "n": 32
+    },
+    "exact_reference": {
+      "acc": 0.9615,
+      "n": 52
+    },
+    "no_op": {
+      "acc": 0.4231,
+      "n": 52
+    },
+    "policy_violation": {
+      "acc": 1.0,
+      "n": 52
+    },
+    "renamed_variables": {
+      "acc": 0.1316,
+      "n": 38
+    },
+    "runtime_error": {
+      "acc": 0.4231,
+      "n": 52
+    },
+    "syntax_error": {
+      "acc": 1.0,
+      "n": 52
+    },
+    "timeout": {
+      "acc": 0.4231,
+      "n": 52
+    },
+    "wrong_after_divergent_prefix": {
+      "acc": 0.7333,
+      "n": 30
+    },
+    "wrong_after_revealed_prefix": {
+      "acc": 0.7333,
+      "n": 30
+    }
+  },
+  "latency_ms_by_tier": {
+    "execution-reference": {
+      "p50": 162.9,
+      "max": 176.3,
+      "n": 32
+    },
+    "execution-final": {
+      "p50": 165.0,
+      "max": 5173.1,
+      "n": 162
+    },
+    "system": {
+      "p50": 162.8,
+      "max": 5178.9,
+      "n": 185
+    },
+    "syntax": {
+      "p50": 109.1,
+      "max": 138.5,
+      "n": 104
+    },
+    "policy": {
+      "p50": 109.6,
+      "max": 113.9,
+      "n": 52
+    }
+  },
+  "misclassified": [
+    {
+      "case_id": "009ec21c22e6df94",
+      "slug": "find-first-and-last-position-of-element-in-sorted-array",
+      "chunk": 0,
+      "category": "timeout",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "0131efb6cc6b79ba",
+      "slug": "combinations",
+      "chunk": 0,
+      "category": "exact_reference",
+      "expected": "correct",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "harness_error"
+    },
+    {
+      "case_id": "02da7ea585357a0f",
+      "slug": "combinations",
+      "chunk": 0,
+      "category": "clean_logical_error",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "harness_error"
+    },
+    {
+      "case_id": "04983d4b7e7b848c",
+      "slug": "combinations",
+      "chunk": 0,
+      "category": "no_op",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "08dd574944a37f42",
+      "slug": "sqrtx",
+      "chunk": 0,
+      "category": "boundary_off_by_one",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "0a6c2b11c26c65c2",
+      "slug": "add-binary",
+      "chunk": 1,
+      "category": "renamed_variables",
+      "expected": "correct",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "0af55f65f66dc5b0",
+      "slug": "add-binary",
+      "chunk": 0,
+      "category": "timeout",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "0d6f4118ffd4a74e",
+      "slug": "letter-combinations-of-a-phone-number",
+      "chunk": 1,
+      "category": "wrong_after_divergent_prefix",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "0ebc034b8a26b167",
+      "slug": "permutation-sequence",
+      "chunk": 1,
+      "category": "renamed_variables",
+      "expected": "correct",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "0f26300b09129ff4",
+      "slug": "3sum",
+      "chunk": 1,
+      "category": "runtime_error",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "0f7ebeb2a83c538a",
+      "slug": "longest-palindromic-substring",
+      "chunk": 0,
+      "category": "runtime_error",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "0f925206f10f8634",
+      "slug": "roman-to-integer",
+      "chunk": 0,
+      "category": "boundary_off_by_one",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "110c76c852317d0f",
+      "slug": "edit-distance",
+      "chunk": 0,
+      "category": "clean_logical_error",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "112edcc3a74953bd",
+      "slug": "3sum",
+      "chunk": 0,
+      "category": "runtime_error",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "14eb6d446e56b73c",
+      "slug": "edit-distance",
+      "chunk": 0,
+      "category": "runtime_error",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "14f30aff58acc61a",
+      "slug": "3sum",
+      "chunk": 0,
+      "category": "no_op",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "153dea8ac1ecc4da",
+      "slug": "longest-common-prefix",
+      "chunk": 0,
+      "category": "timeout",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "1571081cd5c95866",
+      "slug": "find-first-and-last-position-of-element-in-sorted-array",
+      "chunk": 0,
+      "category": "renamed_variables",
+      "expected": "correct",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "15d8a446647354cc",
+      "slug": "add-binary",
+      "chunk": 1,
+      "category": "wrong_after_divergent_prefix",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "167f35be098b0325",
+      "slug": "sqrtx",
+      "chunk": 0,
+      "category": "timeout",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "16ae75eeb0dbef62",
+      "slug": "3sum",
+      "chunk": 1,
+      "category": "no_op",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "16bd6d520c0e981f",
+      "slug": "gray-code",
+      "chunk": 0,
+      "category": "timeout",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "1b023db0f1a8d965",
+      "slug": "edit-distance",
+      "chunk": 1,
+      "category": "boundary_off_by_one",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "1d3e0473edc7b508",
+      "slug": "median-of-two-sorted-arrays",
+      "chunk": 0,
+      "category": "boundary_off_by_one",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "1d7eefda4b0b8374",
+      "slug": "add-binary",
+      "chunk": 1,
+      "category": "timeout",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "1d7fabd780969032",
+      "slug": "edit-distance",
+      "chunk": 0,
+      "category": "no_op",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "1df38586e20c6b5c",
+      "slug": "gray-code",
+      "chunk": 0,
+      "category": "boundary_off_by_one",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "219b17b6f28e9736",
+      "slug": "search-a-2d-matrix",
+      "chunk": 0,
+      "category": "boundary_off_by_one",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "221f2f20c1c8d13a",
+      "slug": "edit-distance",
+      "chunk": 1,
+      "category": "clean_logical_error",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "2225480239c1233a",
+      "slug": "combinations",
+      "chunk": 0,
+      "category": "boundary_off_by_one",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "harness_error"
+    },
+    {
+      "case_id": "2405733692b20716",
+      "slug": "search-a-2d-matrix",
+      "chunk": 1,
+      "category": "renamed_variables",
+      "expected": "correct",
+      "actual": "incorrect",
+      "tier": "execution-final",
+      "reason_code": "final_runtime_error"
+    },
+    {
+      "case_id": "2591554bf95a87ae",
+      "slug": "container-with-most-water",
+      "chunk": 1,
+      "category": "wrong_after_revealed_prefix",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "25b4a3a687df03a2",
+      "slug": "powx-n",
+      "chunk": 0,
+      "category": "boundary_off_by_one",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "2764e92bfd834e57",
+      "slug": "permutation-sequence",
+      "chunk": 0,
+      "category": "clean_logical_error",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "2a89b94984151171",
+      "slug": "edit-distance",
+      "chunk": 1,
+      "category": "wrong_after_divergent_prefix",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "2bcb1f7b5497a4f3",
+      "slug": "generate-parentheses",
+      "chunk": 0,
+      "category": "clean_logical_error",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "2c2de4acee44d831",
+      "slug": "edit-distance",
+      "chunk": 1,
+      "category": "timeout",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "2cbab0b733289058",
+      "slug": "letter-combinations-of-a-phone-number",
+      "chunk": 0,
+      "category": "renamed_variables",
+      "expected": "correct",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "2e4a230ef037fa7c",
+      "slug": "permutation-sequence",
+      "chunk": 1,
+      "category": "no_op",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "3021f480472d89eb",
+      "slug": "container-with-most-water",
+      "chunk": 1,
+      "category": "renamed_variables",
+      "expected": "correct",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "30c373028d27ad32",
+      "slug": "unique-paths",
+      "chunk": 1,
+      "category": "wrong_after_revealed_prefix",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "32ed62e034e8b288",
+      "slug": "container-with-most-water",
+      "chunk": 0,
+      "category": "boundary_off_by_one",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "36ceabffc25b69fa",
+      "slug": "container-with-most-water",
+      "chunk": 1,
+      "category": "wrong_after_divergent_prefix",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "3a58cfe5ffa071d3",
+      "slug": "longest-palindromic-substring",
+      "chunk": 0,
+      "category": "clean_logical_error",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "3ae02594e9fb0c9f",
+      "slug": "3sum",
+      "chunk": 1,
+      "category": "clean_logical_error",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "3cf6fe6503b75db2",
+      "slug": "integer-to-roman",
+      "chunk": 0,
+      "category": "clean_logical_error",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "3fd1a2a702ab4fdf",
+      "slug": "palindrome-number",
+      "chunk": 0,
+      "category": "renamed_variables",
+      "expected": "correct",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "40084e714a5f2da9",
+      "slug": "jump-game",
+      "chunk": 0,
+      "category": "boundary_off_by_one",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "4012e56d0281b9c9",
+      "slug": "median-of-two-sorted-arrays",
+      "chunk": 0,
+      "category": "renamed_variables",
+      "expected": "correct",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "42a21ebfec0671c5",
+      "slug": "container-with-most-water",
+      "chunk": 1,
+      "category": "timeout",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "4303e36e4bcad2ec",
+      "slug": "zigzag-conversion",
+      "chunk": 0,
+      "category": "no_op",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "430b240529884b02",
+      "slug": "integer-to-roman",
+      "chunk": 0,
+      "category": "renamed_variables",
+      "expected": "correct",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "4343c02b3c6c809a",
+      "slug": "find-first-and-last-position-of-element-in-sorted-array",
+      "chunk": 0,
+      "category": "boundary_off_by_one",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "43da7a033913191e",
+      "slug": "container-with-most-water",
+      "chunk": 1,
+      "category": "clean_logical_error",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "440ad206b6756354",
+      "slug": "find-first-and-last-position-of-element-in-sorted-array",
+      "chunk": 1,
+      "category": "renamed_variables",
+      "expected": "correct",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "4683e2e2590f5eb7",
+      "slug": "search-a-2d-matrix",
+      "chunk": 0,
+      "category": "runtime_error",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "4725885b7d03baf5",
+      "slug": "add-binary",
+      "chunk": 1,
+      "category": "wrong_after_revealed_prefix",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "47b72d0d4ee3f5c7",
+      "slug": "permutation-sequence",
+      "chunk": 0,
+      "category": "runtime_error",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "47cf54f902b9056d",
+      "slug": "powx-n",
+      "chunk": 0,
+      "category": "timeout",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "4a2f813feccc0d97",
+      "slug": "letter-combinations-of-a-phone-number",
+      "chunk": 1,
+      "category": "wrong_after_revealed_prefix",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "4d4ae111f91eb078",
+      "slug": "sqrtx",
+      "chunk": 0,
+      "category": "no_op",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "5070f52a95eaf8f4",
+      "slug": "unique-paths",
+      "chunk": 0,
+      "category": "renamed_variables",
+      "expected": "correct",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "50f0242d0448b378",
+      "slug": "unique-paths",
+      "chunk": 0,
+      "category": "no_op",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "52ed4f1b00fdd645",
+      "slug": "3sum",
+      "chunk": 1,
+      "category": "timeout",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "53e929f4ce329be1",
+      "slug": "permutation-sequence",
+      "chunk": 0,
+      "category": "no_op",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "557d8cea84762056",
+      "slug": "3sum",
+      "chunk": 1,
+      "category": "wrong_after_revealed_prefix",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "567702765f80c1e8",
+      "slug": "edit-distance",
+      "chunk": 1,
+      "category": "runtime_error",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "5737076bfd8697d2",
+      "slug": "edit-distance",
+      "chunk": 0,
+      "category": "timeout",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "5b558fa56fc95d97",
+      "slug": "gray-code",
+      "chunk": 0,
+      "category": "renamed_variables",
+      "expected": "correct",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "5ebd18281ea13d7f",
+      "slug": "combinations",
+      "chunk": 0,
+      "category": "runtime_error",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "5fcdd3b38ced0c1b",
+      "slug": "find-first-and-last-position-of-element-in-sorted-array",
+      "chunk": 0,
+      "category": "runtime_error",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "61df0b8ab4dfa3f7",
+      "slug": "add-binary",
+      "chunk": 1,
+      "category": "runtime_error",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "62582eb7cef11e82",
+      "slug": "permutation-sequence",
+      "chunk": 1,
+      "category": "clean_logical_error",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "6397b9019285e2ee",
+      "slug": "find-first-and-last-position-of-element-in-sorted-array",
+      "chunk": 1,
+      "category": "boundary_off_by_one",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "66b098a9711d5dfd",
+      "slug": "unique-paths",
+      "chunk": 1,
+      "category": "runtime_error",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "66ce5f0c975e6995",
+      "slug": "unique-paths",
+      "chunk": 0,
+      "category": "clean_logical_error",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "6757242dec1dd418",
+      "slug": "median-of-two-sorted-arrays",
+      "chunk": 0,
+      "category": "no_op",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "68eee27bbb9926c1",
+      "slug": "combinations",
+      "chunk": 1,
+      "category": "exact_reference",
+      "expected": "correct",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "harness_error"
+    },
+    {
+      "case_id": "68efa28949e71cc3",
+      "slug": "unique-paths",
+      "chunk": 0,
+      "category": "boundary_off_by_one",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "69391bb5eab4875d",
+      "slug": "unique-paths",
+      "chunk": 1,
+      "category": "wrong_after_divergent_prefix",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "6bcb1e70f4760df3",
+      "slug": "permutation-sequence",
+      "chunk": 1,
+      "category": "wrong_after_revealed_prefix",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "6cf836022c0b8541",
+      "slug": "add-binary",
+      "chunk": 0,
+      "category": "no_op",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "6ffc289c51f75ba8",
+      "slug": "permutation-sequence",
+      "chunk": 1,
+      "category": "timeout",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "7175683370b74e65",
+      "slug": "longest-palindromic-substring",
+      "chunk": 0,
+      "category": "clean_logical_error",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "72f9047782716307",
+      "slug": "gray-code",
+      "chunk": 0,
+      "category": "runtime_error",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "74de1b58e191ed51",
+      "slug": "add-binary",
+      "chunk": 0,
+      "category": "renamed_variables",
+      "expected": "correct",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "75fc2fa5b591f812",
+      "slug": "letter-combinations-of-a-phone-number",
+      "chunk": 1,
+      "category": "runtime_error",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "7654c04e0470cd3e",
+      "slug": "add-binary",
+      "chunk": 1,
+      "category": "no_op",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "7735dd3c57362440",
+      "slug": "longest-common-prefix",
+      "chunk": 0,
+      "category": "runtime_error",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "77fc7b1e7818f6af",
+      "slug": "add-binary",
+      "chunk": 0,
+      "category": "boundary_off_by_one",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "79076da4011e673e",
+      "slug": "powx-n",
+      "chunk": 0,
+      "category": "no_op",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "795f2b41c6fb018e",
+      "slug": "jump-game",
+      "chunk": 0,
+      "category": "renamed_variables",
+      "expected": "correct",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "7972b645d1ba924c",
+      "slug": "3sum",
+      "chunk": 0,
+      "category": "timeout",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "79efc107d76b5cce",
+      "slug": "letter-combinations-of-a-phone-number",
+      "chunk": 0,
+      "category": "timeout",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "7a3ca2f42f24576d",
+      "slug": "palindrome-number",
+      "chunk": 0,
+      "category": "boundary_off_by_one",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "7a4ab265e7d539ab",
+      "slug": "zigzag-conversion",
+      "chunk": 0,
+      "category": "clean_logical_error",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "7c01c7fe13229354",
+      "slug": "container-with-most-water",
+      "chunk": 0,
+      "category": "renamed_variables",
+      "expected": "correct",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "7c605fabc85961bf",
+      "slug": "palindrome-number",
+      "chunk": 0,
+      "category": "boundary_off_by_one",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "7ceb982e868c906a",
+      "slug": "permutation-sequence",
+      "chunk": 0,
+      "category": "renamed_variables",
+      "expected": "correct",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "7d57b8c95dd2ef09",
+      "slug": "container-with-most-water",
+      "chunk": 0,
+      "category": "timeout",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "827ce0f6a5bfd06a",
+      "slug": "generate-parentheses",
+      "chunk": 0,
+      "category": "runtime_error",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "82a8dd0cb4813e23",
+      "slug": "integer-to-roman",
+      "chunk": 0,
+      "category": "runtime_error",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "8325ad96b3e60213",
+      "slug": "jump-game",
+      "chunk": 0,
+      "category": "boundary_off_by_one",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "84d9952300237bc9",
+      "slug": "3sum",
+      "chunk": 1,
+      "category": "wrong_after_divergent_prefix",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "84eb4482cbe6423d",
+      "slug": "unique-paths",
+      "chunk": 1,
+      "category": "boundary_off_by_one",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "869012ce70c99951",
+      "slug": "jump-game",
+      "chunk": 0,
+      "category": "runtime_error",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "8b398c13fbfb1f49",
+      "slug": "permutation-sequence",
+      "chunk": 1,
+      "category": "clean_logical_error",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "8c09b249f737b22d",
+      "slug": "combinations",
+      "chunk": 0,
+      "category": "timeout",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "8db3d861540043f9",
+      "slug": "letter-combinations-of-a-phone-number",
+      "chunk": 1,
+      "category": "renamed_variables",
+      "expected": "correct",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "8decf3a2f7fccc58",
+      "slug": "longest-palindromic-substring",
+      "chunk": 0,
+      "category": "timeout",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "96aaef0c8505001c",
+      "slug": "search-a-2d-matrix",
+      "chunk": 0,
+      "category": "no_op",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "96e272a92aabed49",
+      "slug": "roman-to-integer",
+      "chunk": 0,
+      "category": "runtime_error",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "980d19ecea527bcd",
+      "slug": "edit-distance",
+      "chunk": 1,
+      "category": "no_op",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "98eaed210c86ccda",
+      "slug": "letter-combinations-of-a-phone-number",
+      "chunk": 0,
+      "category": "runtime_error",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "9a2e15510236e96e",
+      "slug": "add-binary",
+      "chunk": 1,
+      "category": "clean_logical_error",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "9a368aedda5ab2f5",
+      "slug": "unique-paths",
+      "chunk": 1,
+      "category": "boundary_off_by_one",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "9d5de2e1a6bf8f6a",
+      "slug": "roman-to-integer",
+      "chunk": 0,
+      "category": "no_op",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "9d942002517e40e0",
+      "slug": "permutation-sequence",
+      "chunk": 1,
+      "category": "wrong_after_divergent_prefix",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "9e1894b518398fa9",
+      "slug": "3sum",
+      "chunk": 0,
+      "category": "renamed_variables",
+      "expected": "correct",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "9f0fb3ca898f67c4",
+      "slug": "unique-paths",
+      "chunk": 1,
+      "category": "timeout",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "a129e4f64ee09fd5",
+      "slug": "search-a-2d-matrix",
+      "chunk": 0,
+      "category": "clean_logical_error",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "a20bcb6c4d24ee58",
+      "slug": "roman-to-integer",
+      "chunk": 0,
+      "category": "renamed_variables",
+      "expected": "correct",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "a2f9e6dd0cadd03e",
+      "slug": "container-with-most-water",
+      "chunk": 0,
+      "category": "no_op",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "a5d8f1def41fb44c",
+      "slug": "container-with-most-water",
+      "chunk": 0,
+      "category": "clean_logical_error",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "a653315075b0d812",
+      "slug": "integer-to-roman",
+      "chunk": 0,
+      "category": "boundary_off_by_one",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "a68594579fa6727d",
+      "slug": "generate-parentheses",
+      "chunk": 0,
+      "category": "no_op",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "a8c48c1acc89eef7",
+      "slug": "zigzag-conversion",
+      "chunk": 0,
+      "category": "renamed_variables",
+      "expected": "correct",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "a8d6c67749c377c4",
+      "slug": "generate-parentheses",
+      "chunk": 0,
+      "category": "timeout",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "a97444f4c70a42ed",
+      "slug": "longest-common-prefix",
+      "chunk": 0,
+      "category": "renamed_variables",
+      "expected": "correct",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "ab2edb1b9d564ef5",
+      "slug": "longest-palindromic-substring",
+      "chunk": 0,
+      "category": "renamed_variables",
+      "expected": "correct",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "ab96f03fc986cccb",
+      "slug": "container-with-most-water",
+      "chunk": 1,
+      "category": "boundary_off_by_one",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "abe81dfa8dc71618",
+      "slug": "jump-game",
+      "chunk": 0,
+      "category": "timeout",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "ae5ad0361e00909f",
+      "slug": "palindrome-number",
+      "chunk": 0,
+      "category": "runtime_error",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "aea9c513851e8ae6",
+      "slug": "powx-n",
+      "chunk": 1,
+      "category": "renamed_variables",
+      "expected": "correct",
+      "actual": "incorrect",
+      "tier": "execution-final",
+      "reason_code": "final_runtime_error"
+    },
+    {
+      "case_id": "af118170ccf4be2b",
+      "slug": "3sum",
+      "chunk": 1,
+      "category": "clean_logical_error",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "b061ba3c3d462a7a",
+      "slug": "letter-combinations-of-a-phone-number",
+      "chunk": 0,
+      "category": "no_op",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "b1de47c185d7e0c8",
+      "slug": "zigzag-conversion",
+      "chunk": 0,
+      "category": "runtime_error",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "b2fcb41e81eb7952",
+      "slug": "generate-parentheses",
+      "chunk": 0,
+      "category": "renamed_variables",
+      "expected": "correct",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "b36faf5e149e73b6",
+      "slug": "sqrtx",
+      "chunk": 0,
+      "category": "renamed_variables",
+      "expected": "correct",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "b45fca958a517f93",
+      "slug": "unique-paths",
+      "chunk": 1,
+      "category": "no_op",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "b7f3cc0e14dbb499",
+      "slug": "add-binary",
+      "chunk": 2,
+      "category": "renamed_variables",
+      "expected": "correct",
+      "actual": "incorrect",
+      "tier": "execution-final",
+      "reason_code": "final_runtime_error"
+    },
+    {
+      "case_id": "b84423f0afac095c",
+      "slug": "jump-game",
+      "chunk": 0,
+      "category": "no_op",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "b91cf3e4629aa093",
+      "slug": "find-first-and-last-position-of-element-in-sorted-array",
+      "chunk": 1,
+      "category": "timeout",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "bad4be5afa9a6d09",
+      "slug": "integer-to-roman",
+      "chunk": 0,
+      "category": "timeout",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "bb3f6321d033c0b1",
+      "slug": "edit-distance",
+      "chunk": 0,
+      "category": "renamed_variables",
+      "expected": "correct",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "bc0bdcd9322b8b55",
+      "slug": "permutation-sequence",
+      "chunk": 0,
+      "category": "boundary_off_by_one",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "bd327eda99c5947a",
+      "slug": "integer-to-roman",
+      "chunk": 0,
+      "category": "no_op",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "bd4fab7fa796a369",
+      "slug": "search-a-2d-matrix",
+      "chunk": 0,
+      "category": "timeout",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "be92fe7def764eca",
+      "slug": "integer-to-roman",
+      "chunk": 1,
+      "category": "renamed_variables",
+      "expected": "correct",
+      "actual": "incorrect",
+      "tier": "execution-final",
+      "reason_code": "final_runtime_error"
+    },
+    {
+      "case_id": "c1fce3971b9d6b25",
+      "slug": "container-with-most-water",
+      "chunk": 0,
+      "category": "runtime_error",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "c2873b57e8b9a238",
+      "slug": "find-first-and-last-position-of-element-in-sorted-array",
+      "chunk": 1,
+      "category": "runtime_error",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "c2f51c374fc917fa",
+      "slug": "unique-paths",
+      "chunk": 0,
+      "category": "runtime_error",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "c37e3cfe61826121",
+      "slug": "roman-to-integer",
+      "chunk": 0,
+      "category": "clean_logical_error",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "c3c857acf32a0bd8",
+      "slug": "add-binary",
+      "chunk": 1,
+      "category": "clean_logical_error",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "c6bb21d8d0f4b95f",
+      "slug": "palindrome-number",
+      "chunk": 0,
+      "category": "no_op",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "ca977de845829b2c",
+      "slug": "sqrtx",
+      "chunk": 0,
+      "category": "boundary_off_by_one",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "cc612532de5ec8e2",
+      "slug": "permutation-sequence",
+      "chunk": 2,
+      "category": "renamed_variables",
+      "expected": "correct",
+      "actual": "incorrect",
+      "tier": "execution-final",
+      "reason_code": "final_runtime_error"
+    },
+    {
+      "case_id": "cde3f2578282fde0",
+      "slug": "search-a-2d-matrix",
+      "chunk": 0,
+      "category": "renamed_variables",
+      "expected": "correct",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "ce98514c206d9b8a",
+      "slug": "powx-n",
+      "chunk": 0,
+      "category": "renamed_variables",
+      "expected": "correct",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "cf4342427051f982",
+      "slug": "powx-n",
+      "chunk": 0,
+      "category": "clean_logical_error",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "d65f9b5b2bcc652d",
+      "slug": "edit-distance",
+      "chunk": 1,
+      "category": "wrong_after_revealed_prefix",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "da242df5ce0528dc",
+      "slug": "letter-combinations-of-a-phone-number",
+      "chunk": 1,
+      "category": "timeout",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "da3cb1189200f2bb",
+      "slug": "add-binary",
+      "chunk": 0,
+      "category": "runtime_error",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "da5cf32fc8aeaf27",
+      "slug": "longest-palindromic-substring",
+      "chunk": 0,
+      "category": "no_op",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "db247847cf56e35e",
+      "slug": "median-of-two-sorted-arrays",
+      "chunk": 1,
+      "category": "renamed_variables",
+      "expected": "correct",
+      "actual": "incorrect",
+      "tier": "execution-final",
+      "reason_code": "final_runtime_error"
+    },
+    {
+      "case_id": "dd314ae6935529ce",
+      "slug": "find-first-and-last-position-of-element-in-sorted-array",
+      "chunk": 1,
+      "category": "no_op",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "dd6cfbdec2cbb450",
+      "slug": "letter-combinations-of-a-phone-number",
+      "chunk": 1,
+      "category": "no_op",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "de90c7978ab21880",
+      "slug": "zigzag-conversion",
+      "chunk": 0,
+      "category": "timeout",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "df8adfd6dc303c48",
+      "slug": "sqrtx",
+      "chunk": 0,
+      "category": "runtime_error",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "e1d6c1378032d218",
+      "slug": "generate-parentheses",
+      "chunk": 0,
+      "category": "boundary_off_by_one",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "harness_error"
+    },
+    {
+      "case_id": "e2075b1a1f3f17c2",
+      "slug": "zigzag-conversion",
+      "chunk": 0,
+      "category": "clean_logical_error",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "e8e123a3e3a4a425",
+      "slug": "container-with-most-water",
+      "chunk": 1,
+      "category": "no_op",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "e93bccc065a823e6",
+      "slug": "edit-distance",
+      "chunk": 0,
+      "category": "clean_logical_error",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "eb33fd30baae1dda",
+      "slug": "find-first-and-last-position-of-element-in-sorted-array",
+      "chunk": 1,
+      "category": "wrong_after_divergent_prefix",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "eb442faa3282179f",
+      "slug": "container-with-most-water",
+      "chunk": 1,
+      "category": "runtime_error",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "ebfdeca7a20623c9",
+      "slug": "find-first-and-last-position-of-element-in-sorted-array",
+      "chunk": 0,
+      "category": "boundary_off_by_one",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "f0fe2dfd938cf36e",
+      "slug": "permutation-sequence",
+      "chunk": 1,
+      "category": "runtime_error",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "f265f1da9a51d5cd",
+      "slug": "median-of-two-sorted-arrays",
+      "chunk": 0,
+      "category": "runtime_error",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "f6abec61eb0b6d59",
+      "slug": "find-first-and-last-position-of-element-in-sorted-array",
+      "chunk": 1,
+      "category": "boundary_off_by_one",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "f7d2ce4ecdf30146",
+      "slug": "find-first-and-last-position-of-element-in-sorted-array",
+      "chunk": 1,
+      "category": "wrong_after_revealed_prefix",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "f961856736ced755",
+      "slug": "longest-common-prefix",
+      "chunk": 0,
+      "category": "no_op",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "fa1d4065cf227eda",
+      "slug": "permutation-sequence",
+      "chunk": 0,
+      "category": "timeout",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "fa26d40e8d30971e",
+      "slug": "combinations",
+      "chunk": 0,
+      "category": "renamed_variables",
+      "expected": "correct",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "fa6cc63fa87f49d3",
+      "slug": "find-first-and-last-position-of-element-in-sorted-array",
+      "chunk": 0,
+      "category": "no_op",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "fa910df20dabfce4",
+      "slug": "gray-code",
+      "chunk": 0,
+      "category": "boundary_off_by_one",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "fc42812ea7671362",
+      "slug": "gray-code",
+      "chunk": 0,
+      "category": "no_op",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "fd451bbc10e50232",
+      "slug": "unique-paths",
+      "chunk": 0,
+      "category": "timeout",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "fe0868391241a136",
+      "slug": "palindrome-number",
+      "chunk": 0,
+      "category": "timeout",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "ff1b6c6797508106",
+      "slug": "median-of-two-sorted-arrays",
+      "chunk": 0,
+      "category": "timeout",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "ffe68a0d508fac64",
+      "slug": "powx-n",
+      "chunk": 0,
+      "category": "runtime_error",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    },
+    {
+      "case_id": "fff4f2e6c2410ba8",
+      "slug": "roman-to-integer",
+      "chunk": 0,
+      "category": "timeout",
+      "expected": "incorrect",
+      "actual": "indeterminate",
+      "tier": "system",
+      "reason_code": "judge_unavailable"
+    }
+  ]
+}

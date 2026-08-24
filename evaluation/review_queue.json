@@ -1,0 +1,1274 @@
+{
+  "schema": "review-queue/1",
+  "items": [
+    {
+      "case_id": "rq-730e96cd7298b7",
+      "slug": "median-of-two-sorted-arrays",
+      "content_hash": "3af01c31974c963b6fb37c961b64d3b2bb2dfb219891fa07b2d635a9e23f92e7",
+      "chunk_index": 0,
+      "accepted_prefix": [],
+      "candidate_code": "pass",
+      "category": "adapter_bypass",
+      "expected": "incorrect",
+      "author_rationale": "no-op chunk; any adapter that still passes is doing the student's work and must be rejected by the knockout check",
+      "oracle_evidence": {
+        "outcome": "constructed",
+        "passed": "n/a"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-53aad8b55764a3",
+      "slug": "median-of-two-sorted-arrays",
+      "content_hash": "3af01c31974c963b6fb37c961b64d3b2bb2dfb219891fa07b2d635a9e23f92e7",
+      "chunk_index": 0,
+      "accepted_prefix": [],
+      "candidate_code": "# I think we need a loop here\npass",
+      "category": "ambiguous_tier4",
+      "expected": "ambiguous",
+      "author_rationale": "a comment plus a no-op states an approach without implementing it; forcing correct/incorrect would be arbitrary \u2014 the point is whether the grader abstains rather than guesses",
+      "oracle_evidence": {
+        "outcome": "n/a",
+        "passed": "n/a"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-e9ddc726fc67a0",
+      "slug": "letter-combinations-of-a-phone-number",
+      "content_hash": "9e49c050a8d355427fbaeb9c92e3a2c34a1a38ea038d53601c11a16bb54b2015",
+      "chunk_index": 2,
+      "accepted_prefix": [
+        {
+          "code": "digit_to_letters = {\n    '2': 'abc',\n    '3': 'def',\n    '4': 'ghi',\n    '5': 'jkl',\n    '6': 'mno',\n    '7': 'pqrs',\n    '8': 'tuv',\n    '9': 'wxyz'\n}",
+          "provenance": "student"
+        },
+        {
+          "code": "from itertools import product\ncombinations = [''.join(combo) for combo in product(*(digit_to_letters[digit] for digit in digits))]",
+          "provenance": "student"
+        }
+      ],
+      "candidate_code": "_alt = (combinations)\nreturn _alt",
+      "category": "alternate_implementation",
+      "expected": "correct",
+      "author_rationale": "same value via an explicit temporary; verified as a complete function by the direct executor",
+      "oracle_evidence": {
+        "outcome": "pass",
+        "passed": "10/10"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-0f7959b9aee5ce",
+      "slug": "letter-combinations-of-a-phone-number",
+      "content_hash": "9e49c050a8d355427fbaeb9c92e3a2c34a1a38ea038d53601c11a16bb54b2015",
+      "chunk_index": 1,
+      "accepted_prefix": [
+        {
+          "code": "digit_to_letters = {\n    '2': 'abc',\n    '3': 'def',\n    '4': 'ghi',\n    '5': 'jkl',\n    '6': 'mno',\n    '7': 'pqrs',\n    '8': 'tuv',\n    '9': 'wxyz'\n}",
+          "provenance": "student"
+        }
+      ],
+      "candidate_code": "pass",
+      "category": "adapter_bypass",
+      "expected": "incorrect",
+      "author_rationale": "no-op chunk; any adapter that still passes is doing the student's work and must be rejected by the knockout check",
+      "oracle_evidence": {
+        "outcome": "constructed",
+        "passed": "n/a"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-0756217ed7863f",
+      "slug": "letter-combinations-of-a-phone-number",
+      "content_hash": "9e49c050a8d355427fbaeb9c92e3a2c34a1a38ea038d53601c11a16bb54b2015",
+      "chunk_index": 0,
+      "accepted_prefix": [],
+      "candidate_code": "# I think we need a loop here\npass",
+      "category": "ambiguous_tier4",
+      "expected": "ambiguous",
+      "author_rationale": "a comment plus a no-op states an approach without implementing it; forcing correct/incorrect would be arbitrary \u2014 the point is whether the grader abstains rather than guesses",
+      "oracle_evidence": {
+        "outcome": "n/a",
+        "passed": "n/a"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-aabaaedda9f1be",
+      "slug": "longest-palindromic-substring",
+      "content_hash": "fd997dae84332800cdeff25fa45c614c4a69ed5b40710ac7eb41900c06f0d1cf",
+      "chunk_index": 1,
+      "accepted_prefix": [
+        {
+          "code": "longest_palindrome = \"\"\nfor i in range(len(s)):\n    for j in range(i, len(s)):\n        substring = s[i:j + 1]\n        if substring == substring[::-1] and len(substring) > len(longest_palindrome):\n            longest_palindrome = substring",
+          "provenance": "student"
+        }
+      ],
+      "candidate_code": "_alt = (longest_palindrome)\nreturn _alt",
+      "category": "alternate_implementation",
+      "expected": "correct",
+      "author_rationale": "same value via an explicit temporary; verified as a complete function by the direct executor",
+      "oracle_evidence": {
+        "outcome": "pass",
+        "passed": "10/10"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-3e23e4b812fb4c",
+      "slug": "longest-palindromic-substring",
+      "content_hash": "fd997dae84332800cdeff25fa45c614c4a69ed5b40710ac7eb41900c06f0d1cf",
+      "chunk_index": 0,
+      "accepted_prefix": [],
+      "candidate_code": "longest_palindrome_alt = \"\"\nfor i in range(len(s)):\n    for j in range(i, len(s)):\n        substring = s[i:j + 1]\n        if substring == substring[::-1] and len(substring) > len(longest_palindrome_alt):\n            longest_palindrome_alt = substring",
+      "category": "divergent_interface",
+      "expected": "ambiguous",
+      "author_rationale": "renames 'longest_palindrome' so the fixed reference tail cannot consume it; correctness depends on a calibrated adapter",
+      "oracle_evidence": {
+        "outcome": "runtime_error",
+        "passed": "0/10"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-dc323875dbaee8",
+      "slug": "longest-palindromic-substring",
+      "content_hash": "fd997dae84332800cdeff25fa45c614c4a69ed5b40710ac7eb41900c06f0d1cf",
+      "chunk_index": 0,
+      "accepted_prefix": [],
+      "candidate_code": "pass",
+      "category": "adapter_bypass",
+      "expected": "incorrect",
+      "author_rationale": "no-op chunk; any adapter that still passes is doing the student's work and must be rejected by the knockout check",
+      "oracle_evidence": {
+        "outcome": "constructed",
+        "passed": "n/a"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-880fa599c5672a",
+      "slug": "longest-palindromic-substring",
+      "content_hash": "fd997dae84332800cdeff25fa45c614c4a69ed5b40710ac7eb41900c06f0d1cf",
+      "chunk_index": 0,
+      "accepted_prefix": [],
+      "candidate_code": "# I think we need a loop here\npass",
+      "category": "ambiguous_tier4",
+      "expected": "ambiguous",
+      "author_rationale": "a comment plus a no-op states an approach without implementing it; forcing correct/incorrect would be arbitrary \u2014 the point is whether the grader abstains rather than guesses",
+      "oracle_evidence": {
+        "outcome": "n/a",
+        "passed": "n/a"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-e89c2df61377f6",
+      "slug": "palindrome-number",
+      "content_hash": "2e9c8415f3df0fa7a549e8b4e0bca0d835bf67440c2dbf53301f195a4804f019",
+      "chunk_index": 1,
+      "accepted_prefix": [
+        {
+          "code": "reversed_num = 0\noriginal = x\nwhile original > 0:\n    reversed_num = reversed_num * 10 + original % 10\n    original //= 10",
+          "provenance": "student"
+        }
+      ],
+      "candidate_code": "_alt = (reversed_num == x)\nreturn _alt",
+      "category": "alternate_implementation",
+      "expected": "correct",
+      "author_rationale": "same value via an explicit temporary; verified as a complete function by the direct executor",
+      "oracle_evidence": {
+        "outcome": "pass",
+        "passed": "10/10"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-1b9e54129deab9",
+      "slug": "palindrome-number",
+      "content_hash": "2e9c8415f3df0fa7a549e8b4e0bca0d835bf67440c2dbf53301f195a4804f019",
+      "chunk_index": 0,
+      "accepted_prefix": [],
+      "candidate_code": "reversed_num_alt = 0\noriginal = x\nwhile original > 0:\n    reversed_num_alt = reversed_num_alt * 10 + original % 10\n    original //= 10",
+      "category": "divergent_interface",
+      "expected": "ambiguous",
+      "author_rationale": "renames 'reversed_num' so the fixed reference tail cannot consume it; correctness depends on a calibrated adapter",
+      "oracle_evidence": {
+        "outcome": "runtime_error",
+        "passed": "0/10"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-0c775bc0a2001e",
+      "slug": "palindrome-number",
+      "content_hash": "2e9c8415f3df0fa7a549e8b4e0bca0d835bf67440c2dbf53301f195a4804f019",
+      "chunk_index": 0,
+      "accepted_prefix": [],
+      "candidate_code": "pass",
+      "category": "adapter_bypass",
+      "expected": "incorrect",
+      "author_rationale": "no-op chunk; any adapter that still passes is doing the student's work and must be rejected by the knockout check",
+      "oracle_evidence": {
+        "outcome": "constructed",
+        "passed": "n/a"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-3b0e43495e01e5",
+      "slug": "palindrome-number",
+      "content_hash": "2e9c8415f3df0fa7a549e8b4e0bca0d835bf67440c2dbf53301f195a4804f019",
+      "chunk_index": 0,
+      "accepted_prefix": [],
+      "candidate_code": "# I think we need a loop here\npass",
+      "category": "ambiguous_tier4",
+      "expected": "ambiguous",
+      "author_rationale": "a comment plus a no-op states an approach without implementing it; forcing correct/incorrect would be arbitrary \u2014 the point is whether the grader abstains rather than guesses",
+      "oracle_evidence": {
+        "outcome": "n/a",
+        "passed": "n/a"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-449c6b164a25ff",
+      "slug": "container-with-most-water",
+      "content_hash": "c175f32448eb41499dc262ce8e475b5362f96beaa68a6cf303391aa842751760",
+      "chunk_index": 2,
+      "accepted_prefix": [
+        {
+          "code": "left = 0\nright = len(height) - 1",
+          "provenance": "student"
+        },
+        {
+          "code": "max_area = 0\nwhile left < right:\n    width = right - left\n    current_height = min(height[left], height[right])\n    max_area = max(max_area, width * current_height)\n    if height[left] < height[right]:\n        left += 1\n    else:\n        right -= 1",
+          "provenance": "student"
+        }
+      ],
+      "candidate_code": "_alt = (max_area)\nreturn _alt",
+      "category": "alternate_implementation",
+      "expected": "correct",
+      "author_rationale": "same value via an explicit temporary; verified as a complete function by the direct executor",
+      "oracle_evidence": {
+        "outcome": "pass",
+        "passed": "10/10"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-d929bb4d99165a",
+      "slug": "container-with-most-water",
+      "content_hash": "c175f32448eb41499dc262ce8e475b5362f96beaa68a6cf303391aa842751760",
+      "chunk_index": 1,
+      "accepted_prefix": [
+        {
+          "code": "left = 0\nright = len(height) - 1",
+          "provenance": "student"
+        }
+      ],
+      "candidate_code": "max_area_alt = 0\nwhile left < right:\n    width = right - left\n    current_height = min(height[left], height[right])\n    max_area_alt = max(max_area_alt, width * current_height)\n    if height[left] < height[right]:\n        left += 1\n    else:\n        right -= 1",
+      "category": "divergent_interface",
+      "expected": "ambiguous",
+      "author_rationale": "renames 'max_area' so the fixed reference tail cannot consume it; correctness depends on a calibrated adapter",
+      "oracle_evidence": {
+        "outcome": "runtime_error",
+        "passed": "0/10"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-e4fc9d9cbd7616",
+      "slug": "container-with-most-water",
+      "content_hash": "c175f32448eb41499dc262ce8e475b5362f96beaa68a6cf303391aa842751760",
+      "chunk_index": 1,
+      "accepted_prefix": [
+        {
+          "code": "left = 0\nright = len(height) - 1",
+          "provenance": "student"
+        }
+      ],
+      "candidate_code": "pass",
+      "category": "adapter_bypass",
+      "expected": "incorrect",
+      "author_rationale": "no-op chunk; any adapter that still passes is doing the student's work and must be rejected by the knockout check",
+      "oracle_evidence": {
+        "outcome": "constructed",
+        "passed": "n/a"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-686a567905a8d1",
+      "slug": "container-with-most-water",
+      "content_hash": "c175f32448eb41499dc262ce8e475b5362f96beaa68a6cf303391aa842751760",
+      "chunk_index": 0,
+      "accepted_prefix": [],
+      "candidate_code": "# I think we need a loop here\npass",
+      "category": "ambiguous_tier4",
+      "expected": "ambiguous",
+      "author_rationale": "a comment plus a no-op states an approach without implementing it; forcing correct/incorrect would be arbitrary \u2014 the point is whether the grader abstains rather than guesses",
+      "oracle_evidence": {
+        "outcome": "n/a",
+        "passed": "n/a"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-03c69396ed92a8",
+      "slug": "roman-to-integer",
+      "content_hash": "d2c9c7896afcd5fd55147e25ca2fe440b18b291235240b01e3e4db7abf3feb2c",
+      "chunk_index": 0,
+      "accepted_prefix": [],
+      "candidate_code": "roman_map_alt = {'I': 1, 'V': 5, 'X': 10, 'L': 50, 'C': 100, 'D': 500, 'M': 1000}",
+      "category": "divergent_interface",
+      "expected": "ambiguous",
+      "author_rationale": "renames 'roman_map' so the fixed reference tail cannot consume it; correctness depends on a calibrated adapter",
+      "oracle_evidence": {
+        "outcome": "runtime_error",
+        "passed": "0/10"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-e5f10c49751fb7",
+      "slug": "roman-to-integer",
+      "content_hash": "d2c9c7896afcd5fd55147e25ca2fe440b18b291235240b01e3e4db7abf3feb2c",
+      "chunk_index": 0,
+      "accepted_prefix": [],
+      "candidate_code": "pass",
+      "category": "adapter_bypass",
+      "expected": "incorrect",
+      "author_rationale": "no-op chunk; any adapter that still passes is doing the student's work and must be rejected by the knockout check",
+      "oracle_evidence": {
+        "outcome": "constructed",
+        "passed": "n/a"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-04e76c5cad64ac",
+      "slug": "roman-to-integer",
+      "content_hash": "d2c9c7896afcd5fd55147e25ca2fe440b18b291235240b01e3e4db7abf3feb2c",
+      "chunk_index": 0,
+      "accepted_prefix": [],
+      "candidate_code": "# I think we need a loop here\npass",
+      "category": "ambiguous_tier4",
+      "expected": "ambiguous",
+      "author_rationale": "a comment plus a no-op states an approach without implementing it; forcing correct/incorrect would be arbitrary \u2014 the point is whether the grader abstains rather than guesses",
+      "oracle_evidence": {
+        "outcome": "n/a",
+        "passed": "n/a"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-fdc866c1829179",
+      "slug": "3sum",
+      "content_hash": "caa58924a9755a82be2043a95058e880ef896893587fecc7f9ec1363f4172f37",
+      "chunk_index": 2,
+      "accepted_prefix": [
+        {
+          "code": "result = []",
+          "provenance": "student"
+        },
+        {
+          "code": "nums.sort()\nfor i in range(len(nums) - 2):\n    if i > 0 and nums[i] == nums[i - 1]:\n        continue\n    left, right = i + 1, len(nums) - 1\n    while left < right:\n        total = nums[i] + nums[left] + nums[right]\n        if total < 0:\n            left += 1\n        elif total > 0:\n            right -= 1\n        else:\n            result.append([nums[i], nums[left], nums[right]])\n            while left < right and nums[left] == nums[left + 1]:\n                left += 1\n            while left < right and nums[right] == nums[right - 1]:\n                right -= 1\n            left += 1\n            right -= 1",
+          "provenance": "student"
+        }
+      ],
+      "candidate_code": "_alt = (result)\nreturn _alt",
+      "category": "alternate_implementation",
+      "expected": "correct",
+      "author_rationale": "same value via an explicit temporary; verified as a complete function by the direct executor",
+      "oracle_evidence": {
+        "outcome": "pass",
+        "passed": "10/10"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-fe1071bec25b4c",
+      "slug": "3sum",
+      "content_hash": "caa58924a9755a82be2043a95058e880ef896893587fecc7f9ec1363f4172f37",
+      "chunk_index": 1,
+      "accepted_prefix": [
+        {
+          "code": "result = []",
+          "provenance": "student"
+        }
+      ],
+      "candidate_code": "pass",
+      "category": "adapter_bypass",
+      "expected": "incorrect",
+      "author_rationale": "no-op chunk; any adapter that still passes is doing the student's work and must be rejected by the knockout check",
+      "oracle_evidence": {
+        "outcome": "constructed",
+        "passed": "n/a"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-8af25a6b969540",
+      "slug": "3sum",
+      "content_hash": "caa58924a9755a82be2043a95058e880ef896893587fecc7f9ec1363f4172f37",
+      "chunk_index": 0,
+      "accepted_prefix": [],
+      "candidate_code": "# I think we need a loop here\npass",
+      "category": "ambiguous_tier4",
+      "expected": "ambiguous",
+      "author_rationale": "a comment plus a no-op states an approach without implementing it; forcing correct/incorrect would be arbitrary \u2014 the point is whether the grader abstains rather than guesses",
+      "oracle_evidence": {
+        "outcome": "n/a",
+        "passed": "n/a"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-2745e148bedb87",
+      "slug": "generate-parentheses",
+      "content_hash": "d658e187147631ca23950d4192cff14c1453b608cfaa63bd716eb79b41f83469",
+      "chunk_index": 0,
+      "accepted_prefix": [],
+      "candidate_code": "result_alt = []\ndef backtrack(current, open_count, close_count):\n    if len(current) == 2 * n:\n        result_alt.append(current)\n        return\n    if open_count < n:\n        backtrack(current + '(', open_count + 1, close_count)\n    if close_count < open_count:\n        backtrack(current + ')', open_count, close_count + 1)",
+      "category": "divergent_interface",
+      "expected": "ambiguous",
+      "author_rationale": "renames 'result' so the fixed reference tail cannot consume it; correctness depends on a calibrated adapter",
+      "oracle_evidence": {
+        "outcome": "runtime_error",
+        "passed": "0/10"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-36b3fb81b25885",
+      "slug": "generate-parentheses",
+      "content_hash": "d658e187147631ca23950d4192cff14c1453b608cfaa63bd716eb79b41f83469",
+      "chunk_index": 0,
+      "accepted_prefix": [],
+      "candidate_code": "pass",
+      "category": "adapter_bypass",
+      "expected": "incorrect",
+      "author_rationale": "no-op chunk; any adapter that still passes is doing the student's work and must be rejected by the knockout check",
+      "oracle_evidence": {
+        "outcome": "constructed",
+        "passed": "n/a"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-cb3034e094c81b",
+      "slug": "generate-parentheses",
+      "content_hash": "d658e187147631ca23950d4192cff14c1453b608cfaa63bd716eb79b41f83469",
+      "chunk_index": 0,
+      "accepted_prefix": [],
+      "candidate_code": "# I think we need a loop here\npass",
+      "category": "ambiguous_tier4",
+      "expected": "ambiguous",
+      "author_rationale": "a comment plus a no-op states an approach without implementing it; forcing correct/incorrect would be arbitrary \u2014 the point is whether the grader abstains rather than guesses",
+      "oracle_evidence": {
+        "outcome": "n/a",
+        "passed": "n/a"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-52b10240d999b7",
+      "slug": "powx-n",
+      "content_hash": "d92f34b5fcd14c00b1d52f9006756fb85d73b5975a6afccb3147f025125011ea",
+      "chunk_index": 0,
+      "accepted_prefix": [],
+      "candidate_code": "pass",
+      "category": "adapter_bypass",
+      "expected": "incorrect",
+      "author_rationale": "no-op chunk; any adapter that still passes is doing the student's work and must be rejected by the knockout check",
+      "oracle_evidence": {
+        "outcome": "constructed",
+        "passed": "n/a"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-662d3ab513c158",
+      "slug": "powx-n",
+      "content_hash": "d92f34b5fcd14c00b1d52f9006756fb85d73b5975a6afccb3147f025125011ea",
+      "chunk_index": 0,
+      "accepted_prefix": [],
+      "candidate_code": "# I think we need a loop here\npass",
+      "category": "ambiguous_tier4",
+      "expected": "ambiguous",
+      "author_rationale": "a comment plus a no-op states an approach without implementing it; forcing correct/incorrect would be arbitrary \u2014 the point is whether the grader abstains rather than guesses",
+      "oracle_evidence": {
+        "outcome": "n/a",
+        "passed": "n/a"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-982a2529bd9267",
+      "slug": "permutation-sequence",
+      "content_hash": "09c5c11d5d0b6de898cc962fd34c98984d12b0f1440ef2b8d4a1df2b6e89f744",
+      "chunk_index": 1,
+      "accepted_prefix": [
+        {
+          "code": "numbers = list(range(1, n + 1))",
+          "provenance": "student"
+        }
+      ],
+      "candidate_code": "factorials_alt = [1] * (n + 1)\nfor i in range(2, n + 1):\n    factorials_alt[i] = factorials_alt[i - 1] * i",
+      "category": "divergent_interface",
+      "expected": "ambiguous",
+      "author_rationale": "renames 'factorials' so the fixed reference tail cannot consume it; correctness depends on a calibrated adapter",
+      "oracle_evidence": {
+        "outcome": "runtime_error",
+        "passed": "0/11"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-d6565c329d5c2a",
+      "slug": "permutation-sequence",
+      "content_hash": "09c5c11d5d0b6de898cc962fd34c98984d12b0f1440ef2b8d4a1df2b6e89f744",
+      "chunk_index": 1,
+      "accepted_prefix": [
+        {
+          "code": "numbers = list(range(1, n + 1))",
+          "provenance": "student"
+        }
+      ],
+      "candidate_code": "pass",
+      "category": "adapter_bypass",
+      "expected": "incorrect",
+      "author_rationale": "no-op chunk; any adapter that still passes is doing the student's work and must be rejected by the knockout check",
+      "oracle_evidence": {
+        "outcome": "constructed",
+        "passed": "n/a"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-98941fe06b82b7",
+      "slug": "permutation-sequence",
+      "content_hash": "09c5c11d5d0b6de898cc962fd34c98984d12b0f1440ef2b8d4a1df2b6e89f744",
+      "chunk_index": 0,
+      "accepted_prefix": [],
+      "candidate_code": "# I think we need a loop here\npass",
+      "category": "ambiguous_tier4",
+      "expected": "ambiguous",
+      "author_rationale": "a comment plus a no-op states an approach without implementing it; forcing correct/incorrect would be arbitrary \u2014 the point is whether the grader abstains rather than guesses",
+      "oracle_evidence": {
+        "outcome": "n/a",
+        "passed": "n/a"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-d69d02353897b9",
+      "slug": "unique-paths",
+      "content_hash": "fc5103c1a58cba9cf9fb46de9d4ccf2c7192c2027bf9d318a922a7f5ce23a57f",
+      "chunk_index": 2,
+      "accepted_prefix": [
+        {
+          "code": "dp = [[0] * n for _ in range(m)]\nfor i in range(m):\n    dp[i][0] = 1\nfor j in range(n):\n    dp[0][j] = 1",
+          "provenance": "student"
+        },
+        {
+          "code": "for i in range(1, m):\n    for j in range(1, n):\n        dp[i][j] = dp[i - 1][j] + dp[i][j - 1]",
+          "provenance": "student"
+        }
+      ],
+      "candidate_code": "_alt = (dp[m - 1][n - 1])\nreturn _alt",
+      "category": "alternate_implementation",
+      "expected": "correct",
+      "author_rationale": "same value via an explicit temporary; verified as a complete function by the direct executor",
+      "oracle_evidence": {
+        "outcome": "pass",
+        "passed": "10/10"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-c2f6be9e755edd",
+      "slug": "unique-paths",
+      "content_hash": "fc5103c1a58cba9cf9fb46de9d4ccf2c7192c2027bf9d318a922a7f5ce23a57f",
+      "chunk_index": 1,
+      "accepted_prefix": [
+        {
+          "code": "dp = [[0] * n for _ in range(m)]\nfor i in range(m):\n    dp[i][0] = 1\nfor j in range(n):\n    dp[0][j] = 1",
+          "provenance": "student"
+        }
+      ],
+      "candidate_code": "pass",
+      "category": "adapter_bypass",
+      "expected": "incorrect",
+      "author_rationale": "no-op chunk; any adapter that still passes is doing the student's work and must be rejected by the knockout check",
+      "oracle_evidence": {
+        "outcome": "constructed",
+        "passed": "n/a"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-4b8d3717ecec05",
+      "slug": "unique-paths",
+      "content_hash": "fc5103c1a58cba9cf9fb46de9d4ccf2c7192c2027bf9d318a922a7f5ce23a57f",
+      "chunk_index": 0,
+      "accepted_prefix": [],
+      "candidate_code": "# I think we need a loop here\npass",
+      "category": "ambiguous_tier4",
+      "expected": "ambiguous",
+      "author_rationale": "a comment plus a no-op states an approach without implementing it; forcing correct/incorrect would be arbitrary \u2014 the point is whether the grader abstains rather than guesses",
+      "oracle_evidence": {
+        "outcome": "n/a",
+        "passed": "n/a"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-da587bf7279d1e",
+      "slug": "add-binary",
+      "content_hash": "a4981fa6f4f7e0a52b7e7c1a37ea0c78427679f3f941c264c21e7671faec4317",
+      "chunk_index": 1,
+      "accepted_prefix": [
+        {
+          "code": "result = ''\ncarry = 0",
+          "provenance": "student"
+        }
+      ],
+      "candidate_code": "pass",
+      "category": "adapter_bypass",
+      "expected": "incorrect",
+      "author_rationale": "no-op chunk; any adapter that still passes is doing the student's work and must be rejected by the knockout check",
+      "oracle_evidence": {
+        "outcome": "constructed",
+        "passed": "n/a"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-09299613698330",
+      "slug": "add-binary",
+      "content_hash": "a4981fa6f4f7e0a52b7e7c1a37ea0c78427679f3f941c264c21e7671faec4317",
+      "chunk_index": 0,
+      "accepted_prefix": [],
+      "candidate_code": "# I think we need a loop here\npass",
+      "category": "ambiguous_tier4",
+      "expected": "ambiguous",
+      "author_rationale": "a comment plus a no-op states an approach without implementing it; forcing correct/incorrect would be arbitrary \u2014 the point is whether the grader abstains rather than guesses",
+      "oracle_evidence": {
+        "outcome": "n/a",
+        "passed": "n/a"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-d2263727dc1bdc",
+      "slug": "sqrtx",
+      "content_hash": "bdb5c99ead22875319993ee9d2172bbfb1e46774a00e7ae4f5fa072031b5707d",
+      "chunk_index": 1,
+      "accepted_prefix": [
+        {
+          "code": "if x < 2:\n    return x\nleft, right = 2, x // 2\nwhile left <= right:\n    mid = left + (right - left) // 2\n    if mid * mid == x:\n        return mid\n    elif mid * mid < x:\n        left = mid + 1\n    else:\n        right = mid - 1",
+          "provenance": "student"
+        }
+      ],
+      "candidate_code": "_alt = (right)\nreturn _alt",
+      "category": "alternate_implementation",
+      "expected": "correct",
+      "author_rationale": "same value via an explicit temporary; verified as a complete function by the direct executor",
+      "oracle_evidence": {
+        "outcome": "pass",
+        "passed": "12/12"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-2ba1d21d448d81",
+      "slug": "sqrtx",
+      "content_hash": "bdb5c99ead22875319993ee9d2172bbfb1e46774a00e7ae4f5fa072031b5707d",
+      "chunk_index": 0,
+      "accepted_prefix": [],
+      "candidate_code": "pass",
+      "category": "adapter_bypass",
+      "expected": "incorrect",
+      "author_rationale": "no-op chunk; any adapter that still passes is doing the student's work and must be rejected by the knockout check",
+      "oracle_evidence": {
+        "outcome": "constructed",
+        "passed": "n/a"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-f5debb97af41e8",
+      "slug": "sqrtx",
+      "content_hash": "bdb5c99ead22875319993ee9d2172bbfb1e46774a00e7ae4f5fa072031b5707d",
+      "chunk_index": 0,
+      "accepted_prefix": [],
+      "candidate_code": "# I think we need a loop here\npass",
+      "category": "ambiguous_tier4",
+      "expected": "ambiguous",
+      "author_rationale": "a comment plus a no-op states an approach without implementing it; forcing correct/incorrect would be arbitrary \u2014 the point is whether the grader abstains rather than guesses",
+      "oracle_evidence": {
+        "outcome": "n/a",
+        "passed": "n/a"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-656874692b50e3",
+      "slug": "edit-distance",
+      "content_hash": "dc06b642cd45610075daed9f6eae8fd5afefea1f56846a4273c05afc9e4ae222",
+      "chunk_index": 2,
+      "accepted_prefix": [
+        {
+          "code": "dp = [[0] * (len(word2) + 1) for _ in range(len(word1) + 1)]\nfor i in range(len(word1) + 1):\n    dp[i][0] = i\nfor j in range(len(word2) + 1):\n    dp[0][j] = j",
+          "provenance": "student"
+        },
+        {
+          "code": "for i in range(1, len(word1) + 1):\n    for j in range(1, len(word2) + 1):\n        if word1[i - 1] == word2[j - 1]:\n            dp[i][j] = dp[i - 1][j - 1]\n        else:\n            dp[i][j] = 1 + min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1])",
+          "provenance": "student"
+        }
+      ],
+      "candidate_code": "_alt = (dp[len(word1)][len(word2)])\nreturn _alt",
+      "category": "alternate_implementation",
+      "expected": "correct",
+      "author_rationale": "same value via an explicit temporary; verified as a complete function by the direct executor",
+      "oracle_evidence": {
+        "outcome": "pass",
+        "passed": "11/11"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-fca5bce4ec0878",
+      "slug": "edit-distance",
+      "content_hash": "dc06b642cd45610075daed9f6eae8fd5afefea1f56846a4273c05afc9e4ae222",
+      "chunk_index": 1,
+      "accepted_prefix": [
+        {
+          "code": "dp = [[0] * (len(word2) + 1) for _ in range(len(word1) + 1)]\nfor i in range(len(word1) + 1):\n    dp[i][0] = i\nfor j in range(len(word2) + 1):\n    dp[0][j] = j",
+          "provenance": "student"
+        }
+      ],
+      "candidate_code": "pass",
+      "category": "adapter_bypass",
+      "expected": "incorrect",
+      "author_rationale": "no-op chunk; any adapter that still passes is doing the student's work and must be rejected by the knockout check",
+      "oracle_evidence": {
+        "outcome": "constructed",
+        "passed": "n/a"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-17cd7c846efeea",
+      "slug": "edit-distance",
+      "content_hash": "dc06b642cd45610075daed9f6eae8fd5afefea1f56846a4273c05afc9e4ae222",
+      "chunk_index": 0,
+      "accepted_prefix": [],
+      "candidate_code": "# I think we need a loop here\npass",
+      "category": "ambiguous_tier4",
+      "expected": "ambiguous",
+      "author_rationale": "a comment plus a no-op states an approach without implementing it; forcing correct/incorrect would be arbitrary \u2014 the point is whether the grader abstains rather than guesses",
+      "oracle_evidence": {
+        "outcome": "n/a",
+        "passed": "n/a"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-1b692d3cffff19",
+      "slug": "search-a-2d-matrix",
+      "content_hash": "0f3b37346694d52a0ca5721d8e16c0a13a19d3241c247f0fd8ae1a22503b43de",
+      "chunk_index": 0,
+      "accepted_prefix": [],
+      "candidate_code": "rows_alt = len(matrix)\nif rows_alt == 0:\n    return False\ncols = len(matrix[0])\nleft, right = 0, rows_alt - 1\nwhile left <= right:\n    mid = (left + right) // 2\n    if matrix[mid][0] <= target <= matrix[mid][cols - 1]:\n        break\n    elif target < matrix[mid][0]:\n        right = mid - 1\n    else:\n        left = mid + 1\nif left > right:\n    return False",
+      "category": "divergent_interface",
+      "expected": "correct",
+      "author_rationale": "renames 'rows' so the fixed reference tail cannot consume it; correctness depends on a calibrated adapter",
+      "oracle_evidence": {
+        "outcome": "pass",
+        "passed": "12/12"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-b8d6ba4dee1845",
+      "slug": "search-a-2d-matrix",
+      "content_hash": "0f3b37346694d52a0ca5721d8e16c0a13a19d3241c247f0fd8ae1a22503b43de",
+      "chunk_index": 0,
+      "accepted_prefix": [],
+      "candidate_code": "pass",
+      "category": "adapter_bypass",
+      "expected": "incorrect",
+      "author_rationale": "no-op chunk; any adapter that still passes is doing the student's work and must be rejected by the knockout check",
+      "oracle_evidence": {
+        "outcome": "constructed",
+        "passed": "n/a"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-d383df6e4fc2b5",
+      "slug": "search-a-2d-matrix",
+      "content_hash": "0f3b37346694d52a0ca5721d8e16c0a13a19d3241c247f0fd8ae1a22503b43de",
+      "chunk_index": 0,
+      "accepted_prefix": [],
+      "candidate_code": "# I think we need a loop here\npass",
+      "category": "ambiguous_tier4",
+      "expected": "ambiguous",
+      "author_rationale": "a comment plus a no-op states an approach without implementing it; forcing correct/incorrect would be arbitrary \u2014 the point is whether the grader abstains rather than guesses",
+      "oracle_evidence": {
+        "outcome": "n/a",
+        "passed": "n/a"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-6b639b03f8e4b4",
+      "slug": "combinations",
+      "content_hash": "bee16473da71b0768c147c763b45a51ace9dcc1f8cb021a4812851062da3aeba",
+      "chunk_index": 1,
+      "accepted_prefix": [
+        {
+          "code": "from itertools import combinations\nresult = list(combinations(range(1, n + 1), k))",
+          "provenance": "student"
+        }
+      ],
+      "candidate_code": "_alt = (result)\nreturn _alt",
+      "category": "alternate_implementation",
+      "expected": "correct",
+      "author_rationale": "same value via an explicit temporary; verified as a complete function by the direct executor",
+      "oracle_evidence": {
+        "outcome": "pass",
+        "passed": "10/10"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-6b1c904a9c6d6e",
+      "slug": "combinations",
+      "content_hash": "bee16473da71b0768c147c763b45a51ace9dcc1f8cb021a4812851062da3aeba",
+      "chunk_index": 0,
+      "accepted_prefix": [],
+      "candidate_code": "pass",
+      "category": "adapter_bypass",
+      "expected": "incorrect",
+      "author_rationale": "no-op chunk; any adapter that still passes is doing the student's work and must be rejected by the knockout check",
+      "oracle_evidence": {
+        "outcome": "constructed",
+        "passed": "n/a"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-8aeae127e2b5b1",
+      "slug": "combinations",
+      "content_hash": "bee16473da71b0768c147c763b45a51ace9dcc1f8cb021a4812851062da3aeba",
+      "chunk_index": 0,
+      "accepted_prefix": [],
+      "candidate_code": "# I think we need a loop here\npass",
+      "category": "ambiguous_tier4",
+      "expected": "ambiguous",
+      "author_rationale": "a comment plus a no-op states an approach without implementing it; forcing correct/incorrect would be arbitrary \u2014 the point is whether the grader abstains rather than guesses",
+      "oracle_evidence": {
+        "outcome": "n/a",
+        "passed": "n/a"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-f2c57ffc5116b0",
+      "slug": "gray-code",
+      "content_hash": "05c7644fd0808e6ce7b8531b0ed97483b1d23549b31ef189e93b08ae06e4f795",
+      "chunk_index": 1,
+      "accepted_prefix": [
+        {
+          "code": "result = []\nfor i in range(1 << n):\n    result.append(i ^ (i >> 1))",
+          "provenance": "student"
+        }
+      ],
+      "candidate_code": "_alt = (result)\nreturn _alt",
+      "category": "alternate_implementation",
+      "expected": "correct",
+      "author_rationale": "same value via an explicit temporary; verified as a complete function by the direct executor",
+      "oracle_evidence": {
+        "outcome": "pass",
+        "passed": "10/10"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-bb15fe4951471e",
+      "slug": "gray-code",
+      "content_hash": "05c7644fd0808e6ce7b8531b0ed97483b1d23549b31ef189e93b08ae06e4f795",
+      "chunk_index": 0,
+      "accepted_prefix": [],
+      "candidate_code": "result_alt = []\nfor i in range(1 << n):\n    result_alt.append(i ^ (i >> 1))",
+      "category": "divergent_interface",
+      "expected": "ambiguous",
+      "author_rationale": "renames 'result' so the fixed reference tail cannot consume it; correctness depends on a calibrated adapter",
+      "oracle_evidence": {
+        "outcome": "runtime_error",
+        "passed": "0/10"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-c83f7b79672a56",
+      "slug": "gray-code",
+      "content_hash": "05c7644fd0808e6ce7b8531b0ed97483b1d23549b31ef189e93b08ae06e4f795",
+      "chunk_index": 0,
+      "accepted_prefix": [],
+      "candidate_code": "pass",
+      "category": "adapter_bypass",
+      "expected": "incorrect",
+      "author_rationale": "no-op chunk; any adapter that still passes is doing the student's work and must be rejected by the knockout check",
+      "oracle_evidence": {
+        "outcome": "constructed",
+        "passed": "n/a"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-d875c95f2d19ab",
+      "slug": "gray-code",
+      "content_hash": "05c7644fd0808e6ce7b8531b0ed97483b1d23549b31ef189e93b08ae06e4f795",
+      "chunk_index": 0,
+      "accepted_prefix": [],
+      "candidate_code": "# I think we need a loop here\npass",
+      "category": "ambiguous_tier4",
+      "expected": "ambiguous",
+      "author_rationale": "a comment plus a no-op states an approach without implementing it; forcing correct/incorrect would be arbitrary \u2014 the point is whether the grader abstains rather than guesses",
+      "oracle_evidence": {
+        "outcome": "n/a",
+        "passed": "n/a"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-097734ddb7124d",
+      "slug": "zigzag-conversion",
+      "content_hash": "eb5d7f80c108ccdab98150171777f0e80757124305729d6c1c21b08e25c283e4",
+      "chunk_index": 1,
+      "accepted_prefix": [
+        {
+          "code": "if numRows == 1:\n    return s\nrows = [''] * min(numRows, len(s))\ncurrent_row = 0\ngoing_down = False\nfor char in s:\n    rows[current_row] += char\n    if current_row == 0 or current_row == numRows - 1:\n        going_down = not going_down\n    current_row += 1 if going_down else -1",
+          "provenance": "student"
+        }
+      ],
+      "candidate_code": "_alt = (''.join(rows))\nreturn _alt",
+      "category": "alternate_implementation",
+      "expected": "correct",
+      "author_rationale": "same value via an explicit temporary; verified as a complete function by the direct executor",
+      "oracle_evidence": {
+        "outcome": "pass",
+        "passed": "10/10"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-d515cc274e08e1",
+      "slug": "zigzag-conversion",
+      "content_hash": "eb5d7f80c108ccdab98150171777f0e80757124305729d6c1c21b08e25c283e4",
+      "chunk_index": 0,
+      "accepted_prefix": [],
+      "candidate_code": "pass",
+      "category": "adapter_bypass",
+      "expected": "incorrect",
+      "author_rationale": "no-op chunk; any adapter that still passes is doing the student's work and must be rejected by the knockout check",
+      "oracle_evidence": {
+        "outcome": "constructed",
+        "passed": "n/a"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-8ee7c0d6f2dbc6",
+      "slug": "zigzag-conversion",
+      "content_hash": "eb5d7f80c108ccdab98150171777f0e80757124305729d6c1c21b08e25c283e4",
+      "chunk_index": 0,
+      "accepted_prefix": [],
+      "candidate_code": "# I think we need a loop here\npass",
+      "category": "ambiguous_tier4",
+      "expected": "ambiguous",
+      "author_rationale": "a comment plus a no-op states an approach without implementing it; forcing correct/incorrect would be arbitrary \u2014 the point is whether the grader abstains rather than guesses",
+      "oracle_evidence": {
+        "outcome": "n/a",
+        "passed": "n/a"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-076e4e333cb52d",
+      "slug": "integer-to-roman",
+      "content_hash": "6c2b6df55d7b114357b9f6f319266994e8ed6afd44e737da7333c11111bb84fb",
+      "chunk_index": 0,
+      "accepted_prefix": [],
+      "candidate_code": "value_map_alt = [(1000, 'M'), (900, 'CM'), (500, 'D'), (400, 'CD'), (100, 'C'), (90, 'XC'), (50, 'L'), (40, 'XL'), (10, 'X'), (9, 'IX'), (5, 'V'), (4, 'IV'), (1, 'I')]",
+      "category": "divergent_interface",
+      "expected": "ambiguous",
+      "author_rationale": "renames 'value_map' so the fixed reference tail cannot consume it; correctness depends on a calibrated adapter",
+      "oracle_evidence": {
+        "outcome": "runtime_error",
+        "passed": "0/11"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-c02035e0166e5d",
+      "slug": "integer-to-roman",
+      "content_hash": "6c2b6df55d7b114357b9f6f319266994e8ed6afd44e737da7333c11111bb84fb",
+      "chunk_index": 0,
+      "accepted_prefix": [],
+      "candidate_code": "pass",
+      "category": "adapter_bypass",
+      "expected": "incorrect",
+      "author_rationale": "no-op chunk; any adapter that still passes is doing the student's work and must be rejected by the knockout check",
+      "oracle_evidence": {
+        "outcome": "constructed",
+        "passed": "n/a"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-d39eda0ad2ce5c",
+      "slug": "integer-to-roman",
+      "content_hash": "6c2b6df55d7b114357b9f6f319266994e8ed6afd44e737da7333c11111bb84fb",
+      "chunk_index": 0,
+      "accepted_prefix": [],
+      "candidate_code": "# I think we need a loop here\npass",
+      "category": "ambiguous_tier4",
+      "expected": "ambiguous",
+      "author_rationale": "a comment plus a no-op states an approach without implementing it; forcing correct/incorrect would be arbitrary \u2014 the point is whether the grader abstains rather than guesses",
+      "oracle_evidence": {
+        "outcome": "n/a",
+        "passed": "n/a"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-dc247e659eab43",
+      "slug": "longest-common-prefix",
+      "content_hash": "ec76d620684baa7be75f5cd4f1e2268a288712b85c42b6fd2b0e27264d27ea96",
+      "chunk_index": 0,
+      "accepted_prefix": [],
+      "candidate_code": "min_length_alt = min(len(s) for s in strs)",
+      "category": "divergent_interface",
+      "expected": "ambiguous",
+      "author_rationale": "renames 'min_length' so the fixed reference tail cannot consume it; correctness depends on a calibrated adapter",
+      "oracle_evidence": {
+        "outcome": "runtime_error",
+        "passed": "0/25"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-3437c977b00bba",
+      "slug": "longest-common-prefix",
+      "content_hash": "ec76d620684baa7be75f5cd4f1e2268a288712b85c42b6fd2b0e27264d27ea96",
+      "chunk_index": 0,
+      "accepted_prefix": [],
+      "candidate_code": "pass",
+      "category": "adapter_bypass",
+      "expected": "incorrect",
+      "author_rationale": "no-op chunk; any adapter that still passes is doing the student's work and must be rejected by the knockout check",
+      "oracle_evidence": {
+        "outcome": "constructed",
+        "passed": "n/a"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-df6f44d4699ed9",
+      "slug": "longest-common-prefix",
+      "content_hash": "ec76d620684baa7be75f5cd4f1e2268a288712b85c42b6fd2b0e27264d27ea96",
+      "chunk_index": 0,
+      "accepted_prefix": [],
+      "candidate_code": "# I think we need a loop here\npass",
+      "category": "ambiguous_tier4",
+      "expected": "ambiguous",
+      "author_rationale": "a comment plus a no-op states an approach without implementing it; forcing correct/incorrect would be arbitrary \u2014 the point is whether the grader abstains rather than guesses",
+      "oracle_evidence": {
+        "outcome": "n/a",
+        "passed": "n/a"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-b5f66576f9afaa",
+      "slug": "find-first-and-last-position-of-element-in-sorted-array",
+      "content_hash": "d2ca574a536a5bd33fb24e77a28f023631b9df727b82d85d96be15271e26469f",
+      "chunk_index": 1,
+      "accepted_prefix": [
+        {
+          "code": "left, right = 0, len(nums) - 1\nfirst_index = -1\nwhile left <= right:\n    mid = left + (right - left) // 2\n    if nums[mid] == target:\n        first_index = mid\n        right = mid - 1\n    elif nums[mid] < target:\n        left = mid + 1\n    else:\n        right = mid - 1",
+          "provenance": "student"
+        }
+      ],
+      "candidate_code": "pass",
+      "category": "adapter_bypass",
+      "expected": "incorrect",
+      "author_rationale": "no-op chunk; any adapter that still passes is doing the student's work and must be rejected by the knockout check",
+      "oracle_evidence": {
+        "outcome": "constructed",
+        "passed": "n/a"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-9287e693e09056",
+      "slug": "find-first-and-last-position-of-element-in-sorted-array",
+      "content_hash": "d2ca574a536a5bd33fb24e77a28f023631b9df727b82d85d96be15271e26469f",
+      "chunk_index": 0,
+      "accepted_prefix": [],
+      "candidate_code": "# I think we need a loop here\npass",
+      "category": "ambiguous_tier4",
+      "expected": "ambiguous",
+      "author_rationale": "a comment plus a no-op states an approach without implementing it; forcing correct/incorrect would be arbitrary \u2014 the point is whether the grader abstains rather than guesses",
+      "oracle_evidence": {
+        "outcome": "n/a",
+        "passed": "n/a"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-eb41c9c32daed5",
+      "slug": "jump-game",
+      "content_hash": "f65063297112cf6950f3042a5d0aabb869060e5b4e56c2fa7482c989498b5ba4",
+      "chunk_index": 1,
+      "accepted_prefix": [
+        {
+          "code": "max_reachable = 0\nfor i in range(len(nums)):\n    if i > max_reachable:\n        return False\n    max_reachable = max(max_reachable, i + nums[i])",
+          "provenance": "student"
+        }
+      ],
+      "candidate_code": "_alt = (max_reachable >= len(nums) - 1)\nreturn _alt",
+      "category": "alternate_implementation",
+      "expected": "correct",
+      "author_rationale": "same value via an explicit temporary; verified as a complete function by the direct executor",
+      "oracle_evidence": {
+        "outcome": "pass",
+        "passed": "10/10"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-92582e8f512c7a",
+      "slug": "jump-game",
+      "content_hash": "f65063297112cf6950f3042a5d0aabb869060e5b4e56c2fa7482c989498b5ba4",
+      "chunk_index": 0,
+      "accepted_prefix": [],
+      "candidate_code": "max_reachable_alt = 0\nfor i in range(len(nums)):\n    if i > max_reachable_alt:\n        return False\n    max_reachable_alt = max(max_reachable_alt, i + nums[i])",
+      "category": "divergent_interface",
+      "expected": "ambiguous",
+      "author_rationale": "renames 'max_reachable' so the fixed reference tail cannot consume it; correctness depends on a calibrated adapter",
+      "oracle_evidence": {
+        "outcome": "runtime_error",
+        "passed": "5/10"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-f73422b951985c",
+      "slug": "jump-game",
+      "content_hash": "f65063297112cf6950f3042a5d0aabb869060e5b4e56c2fa7482c989498b5ba4",
+      "chunk_index": 0,
+      "accepted_prefix": [],
+      "candidate_code": "pass",
+      "category": "adapter_bypass",
+      "expected": "incorrect",
+      "author_rationale": "no-op chunk; any adapter that still passes is doing the student's work and must be rejected by the knockout check",
+      "oracle_evidence": {
+        "outcome": "constructed",
+        "passed": "n/a"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    },
+    {
+      "case_id": "rq-42941d1308d04c",
+      "slug": "jump-game",
+      "content_hash": "f65063297112cf6950f3042a5d0aabb869060e5b4e56c2fa7482c989498b5ba4",
+      "chunk_index": 0,
+      "accepted_prefix": [],
+      "candidate_code": "# I think we need a loop here\npass",
+      "category": "ambiguous_tier4",
+      "expected": "ambiguous",
+      "author_rationale": "a comment plus a no-op states an approach without implementing it; forcing correct/incorrect would be arbitrary \u2014 the point is whether the grader abstains rather than guesses",
+      "oracle_evidence": {
+        "outcome": "n/a",
+        "passed": "n/a"
+      },
+      "reviewer_status": "pending",
+      "reviewer_notes": ""
+    }
+  ]
+}

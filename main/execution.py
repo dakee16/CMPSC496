@@ -41,7 +41,15 @@ _BANNED_ATTRS = {
     "__getattribute__", "__dict__", "__class__",
 }
 
-_MAX_OUTPUT_BYTES = 64 * 1024        # student print() cannot exhaust the parent
+# Bound on OUR result payload, not on student print(): the child already
+# redirects student stdout/stderr to devnull, so a print() flood never reaches
+# the parent. At 64KB this capped nothing harmful and silently TRUNCATED
+# legitimate results (combine(n,k) emits ~6.9MB of valid JSON), producing a
+# JSONDecodeError that surfaced as harness_error on a child that exited 0.
+# Still bounded so a pathological result cannot exhaust the parent.
+_MAX_OUTPUT_BYTES = 4 * 1024 * 1024
+# Problems whose oracle results exceed the cap are UNSUPPORTED rather than a
+# reason to weaken limits for everyone.
 _DEFAULT_TIMEOUT = 6.0
 _MEM_BYTES = 512 * 1024 * 1024
 _CPU_SECONDS = 5
@@ -113,6 +121,23 @@ def resolve_entry(ns, entry_name, helpers=()):
              if not k.startswith("__") and callable(v) and hasattr(v, "__code__")]
     return funcs[-1] if funcs else None
 
+def norm(x):
+    if isinstance(x, (list, tuple)):
+        return [norm(i) for i in x]
+    return x
+
+def brief(v, cap=160):
+    """Bounded diagnostic: never ship the whole value back to the parent."""
+    t = type(v).__name__
+    try:
+        n = len(v)
+    except Exception:
+        n = None
+    r = repr(v)
+    if len(r) > cap:
+        r = r[:cap] + "...<truncated>"
+    return {"repr": r, "type": t, "len": n}
+
 def main():
     payload = json.load(open(sys.argv[1]))
     limits(payload["mem"], payload["cpu"])
@@ -135,6 +160,27 @@ def main():
     fn = resolve_entry(ns, payload.get("entry_name"), helpers)
     if fn is None:
         emit({"status": "no_entry"}); return
+    tests = payload.get("tests")
+    if tests is not None:
+        # COMPARE IN-CHILD. A correct 6.9MB return value must never cross the
+        # IPC boundary: only a compact verdict does. The old protocol shipped
+        # the entire result back and drowned in its own serialization.
+        passed, failures, raised = 0, [], False
+        for i, t in enumerate(tests):
+            try:
+                got = fn(*t["input"])
+            except Exception as e:
+                raised = True
+                failures.append({"index": i, "error": repr(e)[:200]})
+                continue
+            if norm(got) == norm(t["expected"]):
+                passed += 1
+            elif len(failures) < 5:
+                failures.append({"index": i, "got": brief(got),
+                                 "expected": brief(t["expected"])})
+        emit({"status": "compared", "passed": passed, "total": len(tests),
+              "failures": failures, "raised": raised})
+        return
     results, raised = [], False
     for args in payload["inputs"]:
         try:
@@ -156,7 +202,8 @@ def _sanitized_env() -> dict:
 
 
 def run_student_code(code: str, inputs: list, entry_name: str | None = None,
-                     timeout: float = _DEFAULT_TIMEOUT) -> tuple[str, list, str | None]:
+                     timeout: float = _DEFAULT_TIMEOUT,
+                     tests: list | None = None) -> tuple[str, list, str | None]:
     """Execute untrusted `code`. Returns (status, results, internal_error).
 
     status is one of: ok | policy | syntax | exec_error | no_entry | timeout |
@@ -176,7 +223,7 @@ def run_student_code(code: str, inputs: list, entry_name: str | None = None,
     try:
         with open(payload_path, "w") as f:
             json.dump({"code": code, "inputs": inputs, "entry_name": entry_name,
-                       "mem": _MEM_BYTES, "cpu": _CPU_SECONDS}, f)
+                       "tests": tests, "mem": _MEM_BYTES, "cpu": _CPU_SECONDS}, f)
         proc = subprocess.run(
             [sys.executable, "-I", "-S", "-c", _STUDENT_HARNESS, payload_path],
             capture_output=True, text=True, timeout=timeout,
@@ -188,15 +235,24 @@ def run_student_code(code: str, inputs: list, entry_name: str | None = None,
     finally:
         shutil.rmtree(workdir, ignore_errors=True)
 
-    out = (proc.stdout or "")[:_MAX_OUTPUT_BYTES].strip()
+    raw_out = proc.stdout or ""
+    if len(raw_out) > _MAX_OUTPUT_BYTES:
+        # Typed, explicit — never a silent truncation that looks like a parse bug.
+        return ("harness_error", [],
+                f"result payload {len(raw_out):,}B exceeds {_MAX_OUTPUT_BYTES:,}B "
+                f"cap; problem unsupported at this execution budget")
+    out = raw_out.strip()
     if not out:
         # Killed by a resource limit (OOM/CPU) leaves no output. That is the
         # student's program dying, not our harness failing.
         if proc.returncode and proc.returncode < 0:
-            # Killed by a signal with no output: RLIMIT_CPU (SIGXCPU/SIGKILL)
-            # fires before the wall-clock timeout, so this is a runaway
-            # program, not a crash and not our failure.
-            return "timeout", [], f"killed by signal {-proc.returncode}"
+            sig = -proc.returncode
+            # SIGXCPU/SIGKILL = a resource ceiling the student's own program hit.
+            # Any OTHER signal is an unknown termination: that is OUR problem and
+            # must stay harness_error/indeterminate, never consuming an attempt.
+            if sig in (9, 24):
+                return "timeout", [], f"killed by signal {sig} (resource limit)"
+            return "harness_error", [], f"child terminated by signal {sig}"
         return ("exec_error", [], (proc.stderr or "no output")[:200]) if proc.returncode \
             else ("harness_error", [], "empty harness output")
     try:
@@ -205,6 +261,8 @@ def run_student_code(code: str, inputs: list, entry_name: str | None = None,
         return "harness_error", [], "unparseable harness output"
 
     st = data.get("status")
+    if st == "compared":
+        return "compared", [data], None
     if st == "ok":
         return "ok", data.get("results", []), None
     if st == "exec_error":
@@ -224,17 +282,18 @@ def classify_run(code: str, tests: list, entry_name: str | None = None,
                  timeout: float = _DEFAULT_TIMEOUT) -> ExecutionResult:
     """Run untrusted code against oracle tests and return a CLASSIFIED result.
 
-    The old pipeline collapsed everything into ok/fraction/error, so a harness
-    failure was indistinguishable from a wrong answer — and infrastructure
-    trouble read as evidence against the student. These outcomes stay separate."""
-    status, results, err = run_student_code(
-        code, [t["input"] for t in tests], entry_name=entry_name, timeout=timeout)
+    Comparison happens INSIDE the child; only a bounded control message crosses
+    the IPC boundary. A legitimately huge return value therefore passes as long
+    as its computation stays inside the CPU/memory/wall budget. JSON only —
+    never pickle."""
+    status, payload, err = run_student_code(
+        code, [t["input"] for t in tests], entry_name=entry_name,
+        timeout=timeout, tests=tests)
 
     if status == "policy":
         return ExecutionResult(outcome="policy_violation", total=len(tests),
                                internal_error=err)
     if status == "syntax":
-        # Surfaced as a distinct tier by the caller, not as a run failure.
         return ExecutionResult(outcome="runtime_error", total=len(tests),
                                internal_error=f"syntax: {err}")
     if status == "timeout":
@@ -242,23 +301,15 @@ def classify_run(code: str, tests: list, entry_name: str | None = None,
     if status in ("exec_error", "no_entry"):
         return ExecutionResult(outcome="runtime_error", total=len(tests),
                                internal_error=err)
-    if status != "ok":
+    if status != "compared":
         return ExecutionResult(outcome="harness_error", total=len(tests),
-                               internal_error=err)
+                               internal_error=err or f"unexpected status {status!r}")
 
-    passed, failures, raised = 0, [], False
-    for t, got in zip(tests, results):
-        if isinstance(got, dict) and "__error__" in got:
-            raised = True
-            failures.append({"input": t["input"], "expected": t["expected"],
-                             "got": got["__error__"]})
-        elif _norm(got) == _norm(t["expected"]):
-            passed += 1
-        else:
-            failures.append({"input": t["input"], "expected": t["expected"], "got": got})
-
-    if passed == len(tests) and tests:
-        return ExecutionResult(outcome="pass", passed=passed, total=len(tests))
+    d = payload[0]
+    passed, total = d.get("passed", 0), d.get("total", len(tests))
+    failures = d.get("failures", [])
+    if passed == total and total:
+        return ExecutionResult(outcome="pass", passed=passed, total=total)
     return ExecutionResult(
-        outcome="runtime_error" if raised else "wrong_output",
-        passed=passed, total=len(tests), failures=failures[:5])
+        outcome="runtime_error" if d.get("raised") else "wrong_output",
+        passed=passed, total=total, failures=failures[:5])
