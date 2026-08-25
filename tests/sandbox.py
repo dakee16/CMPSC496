@@ -292,7 +292,14 @@ def make_oracle_tests(problem: dict, n: int = 12) -> list[dict]:
     return tests
 
 
-_CACHE_PATH = os.path.join(os.path.dirname(__file__), "tests_cache.json")
+# Oracle data now lives under data/oracles/ and is owned by main.oracle_store.
+from main.oracle_store import (OracleUnusableError, cache_path,  # noqa: E402
+                               entry_tests as _entry_tests,
+                               is_validated as _is_validated,
+                               load_cache as _load_cache_impl,
+                               load_strong_cached_oracle,
+                               save_cache as _save_cache_impl)
+_CACHE_PATH = cache_path()
 
 # A cache entry is:
 #   {"final_tests": [{"input", "expected"}, ...],   # the suite, possibly grown
@@ -304,33 +311,15 @@ _CACHE_PATH = os.path.join(os.path.dirname(__file__), "tests_cache.json")
 
 
 def _load_cache() -> dict:
-    if os.path.exists(_CACHE_PATH):
-        try:
-            return json.load(open(_CACHE_PATH))
-        except Exception:
-            pass
-    return {}
+    """Delegates to main.oracle_store (backend-owned data)."""
+    return _load_cache_impl()
 
 
 def _save_cache(cache: dict) -> None:
-    try:
-        json.dump(cache, open(_CACHE_PATH, "w"), indent=2)
-    except Exception:
-        pass
+    """Delegates to main.oracle_store (backend-owned data)."""
+    _save_cache_impl(cache)
 
 
-def _entry_tests(entry) -> list[dict]:
-    """The test list out of a cache entry, old format (bare list) or new."""
-    if isinstance(entry, list):
-        return entry
-    if isinstance(entry, dict):
-        return entry.get("final_tests", [])
-    return []
-
-
-def _is_validated(entry) -> bool:
-    """A prior validation left a verdict here — don't spend another pass."""
-    return isinstance(entry, dict) and "strong" in entry
 
 
 def get_oracle_tests(problem: dict, n: int = 10) -> list[dict]:

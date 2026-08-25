@@ -17,10 +17,21 @@ import re
 from .execution import classify_run
 from .identity import get_resolved_entry
 from .ollama_client import OPENAI_MODEL, chat
+from . import trace
 from .schemas import GradeResult
 from .sessions import MAX_ATTEMPTS, accepted_prefix, problem_of
 
 MAX_ADAPT_TRIES = 2
+
+
+def _trace(fn, *a, **k):
+    """Call a tracing hook defensively. Telemetry must never be able to change
+    a verdict, so the failure is swallowed AT THE SEAM as well as inside the
+    sink — a caller that patches or wraps a hook cannot break grading."""
+    try:
+        fn(*a, **k)
+    except Exception:
+        pass
 
 
 def _indent(code: str) -> str:
@@ -162,7 +173,7 @@ def _ask_judge(payload: str, role: str):
             float(d.get("confidence", 0.0)), str(d.get("evidence_category", ""))[:60])
 
 
-def _tier4(problem, chunk, upto, student_code, why, evidence) -> GradeResult:
+def _tier4(problem, chunk, upto, student_code, why, evidence, corr=None) -> GradeResult:
     payload = (f"PROBLEM:\n{(problem.get('description') or '')[:600]}\n\n"
                f"STEP ASKED:\n{chunk['prompt']}\n\n"
                f"ACCEPTED SO FAR:\n{upto}\n\n"
@@ -170,20 +181,27 @@ def _tier4(problem, chunk, upto, student_code, why, evidence) -> GradeResult:
                f"PRIVATE REFERENCE FOR THIS STEP:\n{chunk.get('reference','')}\n\n"
                f"EXECUTION EVIDENCE: {evidence}\nWHY EXECUTION WAS INCONCLUSIVE: {why}")
     try:
-        a_ok, a_reason, a_conf, a_cat = _ask_judge(payload, "primary judge")
-        b_ok, b_reason, b_conf, b_cat = _ask_judge(
-            payload + f"\n\nPRIMARY JUDGMENT: correct={a_ok} reason={a_reason}",
-            "independent verifier")
+        with trace.model_call(corr, OPENAI_MODEL, "judge", role="primary"):
+            a_ok, a_reason, a_conf, a_cat = _ask_judge(payload, "primary judge")
+        _trace(trace.record_judge, corr, OPENAI_MODEL, "primary", a_ok, a_conf)
+        with trace.model_call(corr, OPENAI_MODEL, "judge", role="verifier"):
+            b_ok, b_reason, b_conf, b_cat = _ask_judge(
+                payload + f"\n\nPRIMARY JUDGMENT: correct={a_ok} reason={a_reason}",
+                "independent verifier")
+        _trace(trace.record_judge, corr, OPENAI_MODEL, "verifier", b_ok, b_conf)
     except Exception as e:
+        _trace(trace.record_route, corr, "system", "indeterminate")
         return _system("judge_unavailable", repr(e)[:200])
 
     if a_ok != b_ok or min(a_conf, b_conf) < 0.6:
+        _trace(trace.record_route, corr, "llm-judge", "indeterminate")
         return _ok("indeterminate", "llm-judge",
                    "This one needs a closer look — we couldn't decide "
                    "confidently, so your attempt was not used.",
                    "judge_disagreement", deterministic=False,
                    consume_attempt=False,
                    internal_detail=f"a={a_ok}/{a_conf} b={b_ok}/{b_conf}")
+    _trace(trace.record_route, corr, "llm-judge", "correct" if a_ok else "incorrect")
     return _ok("correct" if a_ok else "incorrect", "llm-judge", a_reason,
                f"judge_{a_cat or 'agreed'}", deterministic=False)
 
@@ -191,11 +209,16 @@ def _tier4(problem, chunk, upto, student_code, why, evidence) -> GradeResult:
 # ── the state machine ────────────────────────────────────────────────────
 
 def grade_submission(session: dict, student_code: str,
-                     oracle_loader=None) -> GradeResult:
+                     oracle_loader=None, case_id: str | None = None) -> GradeResult:
     """Grade one submission against a SERVER-OWNED session. The only entry
     point; routes must add no grading logic of their own."""
-    from tests.sandbox import OracleUnusableError, load_strong_cached_oracle
+    import uuid
+    from .oracle_store import OracleUnusableError, load_strong_cached_oracle
     loader = oracle_loader or load_strong_cached_oracle
+    # Correlation id per grading ATTEMPT. Idempotent replays never reach here —
+    # begin_submission() returns the stored result first — so a retry cannot
+    # produce a duplicate completed-attempt trace.
+    corr = case_id or f"grade-{uuid.uuid4().hex[:12]}"
 
     chunks, idx = session["chunks"], session["index"]
     if idx >= len(chunks):
@@ -275,11 +298,11 @@ def grade_submission(session: dict, student_code: str,
     # variable names. That is not the student's fault, so we do NOT convict
     # here — we try a calibrated adapter instead.
     return _tier3(problem, session, chunk, header, prefix, student_code, upto,
-                  ref_tail, tests, entry, res)
+                  ref_tail, tests, entry, res, corr)
 
 
 def _tier3(problem, session, chunk, header, prefix, student_code, upto,
-           ref_tail, tests, entry, ref_res) -> GradeResult:
+           ref_tail, tests, entry, ref_res, corr=None) -> GradeResult:
     """Adapt the tail to the student's interface — but only a CALIBRATED
     adapter may influence a verdict."""
     idx = session["index"]
@@ -291,20 +314,24 @@ def _tier3(problem, session, chunk, header, prefix, student_code, upto,
     trusted_names = _names(trusted_prefix, ast.Store) | prefix_names
     evidence = f"reference-tail {ref_res.outcome} ({ref_res.passed}/{ref_res.total})"
 
-    for _ in range(MAX_ADAPT_TRIES):
+    for attempt in range(1, MAX_ADAPT_TRIES + 1):
         try:
-            tail, aliases = _request_adaptation(
-                problem, header, upto, ref_tail, current_outputs)
+            with trace.model_call(corr, OPENAI_MODEL, "adapter", attempt=attempt):
+                tail, aliases = _request_adaptation(
+                    problem, header, upto, ref_tail, current_outputs)   # noqa: E501
         except Exception:
+            _trace(trace.record_adapter, corr, OPENAI_MODEL, attempt, "malformed")
             break                                   # model trouble -> Tier 4
         alias_lines = _valid_aliases(aliases, current_outputs | prefix_names,
                                      trusted_names)
         if alias_lines is None or not _tail_is_sane(
                 tail, current_outputs, problem.get("solution", "")):
+            _trace(trace.record_adapter, corr, OPENAI_MODEL, attempt, "unsafe")
             continue
 
         # CALIBRATION — prove the adapter on trusted work first.
         if not _calibrate(header, trusted_prefix, alias_lines, tail, tests, entry):
+            _trace(trace.record_adapter, corr, OPENAI_MODEL, attempt, "calibration_failed")
             continue                                # uncalibrated: prove nothing
 
         # The alias bridge belongs to CALIBRATION only. It maps the trusted
@@ -318,7 +345,10 @@ def _tier3(problem, session, chunk, header, prefix, student_code, upto,
             ko = classify_run(_assemble(header, prefix, "pass", tail),
                               tests, entry_name=entry)
             if ko.outcome == "pass":
+                _trace(trace.record_adapter, corr, OPENAI_MODEL, attempt, "bypass_rejected")
                 continue                            # bypassing adapter: reject
+            _trace(trace.record_adapter, corr, OPENAI_MODEL, attempt, "accepted")
+            _trace(trace.record_route, corr, "execution-adapted", "correct")
             return _ok("correct", "execution-adapted",
                        "Correct — your approach differs from ours, but it works.",
                        "adapted_pass", execution_outcome="pass", divergent=True)
@@ -334,4 +364,5 @@ def _tier3(problem, session, chunk, header, prefix, student_code, upto,
         break     # crash/timeout: ownership ambiguous -> Tier 4
 
     return _tier4(problem, chunk, upto, student_code,
-                  "no calibrated adapter produced attributable evidence", evidence)
+                  "no calibrated adapter produced attributable evidence", evidence,
+                  corr)

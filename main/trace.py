@@ -55,7 +55,9 @@ def model_call(case_id, model, kind, **fields):
     finally:
         try:
             tin, tout = box.get("input_tokens"), box.get("output_tokens")
-            record(case_id=case_id, model=model, kind=kind,
+            # Distinct kind for the TIMING event so it is never confused with
+            # the outcome event that follows it.
+            record(case_id=case_id, model=model, kind=f"{kind}_call",
                    latency_ms=round((time.perf_counter() - t0) * 1000, 2),
                    input_tokens=tin, output_tokens=tout,
                    estimated_cost_usd=_estimate(model, tin, tout),
