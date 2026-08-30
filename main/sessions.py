@@ -22,6 +22,12 @@ _DEFAULT_DB = os.path.join(
 SESSION_TTL_HOURS = 12
 MAX_ATTEMPTS = 2          # second failure reveals the reference
 
+# How long a submission may sit RESERVED (claimed, no result) before another
+# attempt with the same id may reclaim it. Must exceed the slowest realistic
+# grade — Tier 3/4 can run several subprocess executions plus model calls —
+# so a genuine concurrent twin is never mistaken for a dead one.
+SUBMISSION_GRACE_SECONDS = 180
+
 
 class SessionError(RuntimeError):
     """Session could not be used. `reason_code` distinguishes the cases so the
@@ -34,6 +40,20 @@ class SessionError(RuntimeError):
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _is_stale(created_at: str) -> bool:
+    """True if a reservation is old enough that its owner is presumed dead.
+
+    An unparseable timestamp is treated as NOT stale: reclaiming on a parse
+    failure could double-grade a live submission, which is worse than making
+    the student wait."""
+    try:
+        age = (datetime.now(timezone.utc)
+               - datetime.fromisoformat(created_at)).total_seconds()
+    except Exception:
+        return False
+    return age > SUBMISSION_GRACE_SECONDS
 
 
 def _connect(db_path: str | None = None) -> sqlite3.Connection:
@@ -193,17 +213,33 @@ def begin_submission(session_id: str, submission_id: str,
         if r is None:
             conn.execute("ROLLBACK")
             raise SessionError("Unknown session.", "session_not_found")
-        prior = conn.execute("SELECT result_json FROM submissions WHERE session_id=?"
-                             " AND submission_id=?",
+        prior = conn.execute("SELECT result_json, created_at FROM submissions"
+                             " WHERE session_id=? AND submission_id=?",
                              (session_id, submission_id)).fetchone()
         if prior is not None:
-            conn.execute("COMMIT")
             if prior["result_json"]:
+                conn.execute("COMMIT")
                 return ({**json.loads(prior["result_json"]), "idempotent_replay": True},
                         _row_to_session(r))
-            # Row claimed but no result yet: a concurrent twin of this exact
-            # submission is still grading. Returning None here would grade it a
-            # SECOND time and double-advance the session.
+            # Row claimed but no result yet. Two very different situations:
+            #
+            #   * a concurrent twin of this exact submission is still grading —
+            #     returning None would grade it a SECOND time and double-advance;
+            #   * the attempt that claimed it DIED (grader error, CAS conflict,
+            #     killed process) without writing a result or releasing the row.
+            #
+            # Without the staleness check that second reservation is PERMANENT:
+            # every retry of this submission id 409s "still being graded"
+            # forever, so the student can neither advance nor retry. Age is what
+            # separates the two. release_submission() makes the recoverable
+            # failure paths instant; this is the backstop for the ones that
+            # cannot run cleanup at all.
+            if _is_stale(prior["created_at"]):
+                conn.execute("UPDATE submissions SET created_at=? WHERE session_id=?"
+                             " AND submission_id=?", (_now(), session_id, submission_id))
+                conn.execute("COMMIT")
+                return None, _row_to_session(r)
+            conn.execute("COMMIT")
             return {"__in_flight__": True}, _row_to_session(r)
         conn.execute("INSERT INTO submissions (session_id, submission_id, result_json,"
                      " created_at) VALUES (?,?,NULL,?)",
@@ -218,6 +254,30 @@ def begin_submission(session_id: str, submission_id: str,
         return {"__in_flight__": True}, load_session(session_id, db_path)
     except SessionError:
         raise
+    finally:
+        try: conn.close()
+        except Exception: pass
+
+
+def release_submission(session_id: str, submission_id: str,
+                       db_path: str | None = None) -> None:
+    """Give back a reservation that never produced a result.
+
+    Called when grading failed or the commit lost its compare-and-swap, so the
+    student can retry the SAME submission id immediately instead of waiting out
+    SUBMISSION_GRACE_SECONDS. Only ever deletes an UNFINISHED row — a graded
+    result must survive, or idempotency would be lost and a retry would grade
+    and advance the session twice. Never raises: this runs on a failure path
+    and must not replace the original error."""
+    try:
+        conn = _connect(db_path)
+    except Exception:
+        return
+    try:
+        conn.execute("DELETE FROM submissions WHERE session_id=? AND submission_id=?"
+                     " AND result_json IS NULL", (session_id, submission_id))
+    except Exception:
+        pass
     finally:
         try: conn.close()
         except Exception: pass

@@ -16,7 +16,7 @@ import re
 
 from .execution import classify_run
 from .identity import get_resolved_entry
-from .ollama_client import OPENAI_MODEL, chat
+from .ollama_client import GRADING_MODEL, chat
 from . import trace
 from .schemas import GradeResult
 from .sessions import MAX_ATTEMPTS, accepted_prefix, problem_of
@@ -78,6 +78,21 @@ def _system(reason_code: str, detail: str | None = None) -> GradeResult:
                deterministic=False, consume_attempt=False, internal_detail=detail)
 
 
+def _provider_down(reason_code: str, detail: str | None = None) -> GradeResult:
+    """The model provider did not answer.
+
+    Identical guarantees to _system() — indeterminate, no attempt consumed —
+    but it NAMES the cause. "The grader could not decide" reads as a fault in
+    the student's answer; an outage is not, and a student whose answer may well
+    be correct deserves to know the difference. `detail` stays internal; only
+    the sentence below ever reaches the browser."""
+    return _ok("indeterminate", "system",
+               "OpenAI is down — the service we use to check this step isn't "
+               "responding right now. Your attempt was NOT used. Please try "
+               "again in a moment.", reason_code,
+               deterministic=False, consume_attempt=False, internal_detail=detail)
+
+
 # ── Tier 3: calibrated adaptation ────────────────────────────────────────
 
 _ADAPT_SYSTEM = (
@@ -98,7 +113,7 @@ def _request_adaptation(problem, header, upto, reference_tail, student_outputs):
             f"Names the student's code produced: {sorted(student_outputs) or 'none'}\n\n"
             "Rewrite the remaining logic so it builds on the student's names. "
             "Do not restate their work and do not recompute the answer from scratch.")
-    raw = chat(OPENAI_MODEL, _ADAPT_SYSTEM, [{"role": "user", "content": user}],
+    raw = chat(GRADING_MODEL, _ADAPT_SYSTEM, [{"role": "user", "content": user}],
                temperature=0, fmt="json")
     data = json.loads(raw)
     return data.get("adapted_tail", ""), data.get("aliases", []) or []
@@ -166,7 +181,7 @@ _JUDGE_SYSTEM = (
 
 
 def _ask_judge(payload: str, role: str):
-    raw = chat(OPENAI_MODEL, _JUDGE_SYSTEM + f"\nYou are the {role}.",
+    raw = chat(GRADING_MODEL, _JUDGE_SYSTEM + f"\nYou are the {role}.",
                [{"role": "user", "content": payload}], temperature=0, fmt="json")
     d = json.loads(raw)
     return (bool(d["correct"]), str(d.get("reason", ""))[:300],
@@ -181,17 +196,19 @@ def _tier4(problem, chunk, upto, student_code, why, evidence, corr=None) -> Grad
                f"PRIVATE REFERENCE FOR THIS STEP:\n{chunk.get('reference','')}\n\n"
                f"EXECUTION EVIDENCE: {evidence}\nWHY EXECUTION WAS INCONCLUSIVE: {why}")
     try:
-        with trace.model_call(corr, OPENAI_MODEL, "judge", role="primary"):
+        with trace.model_call(corr, GRADING_MODEL, "judge", role="primary"):
             a_ok, a_reason, a_conf, a_cat = _ask_judge(payload, "primary judge")
-        _trace(trace.record_judge, corr, OPENAI_MODEL, "primary", a_ok, a_conf)
-        with trace.model_call(corr, OPENAI_MODEL, "judge", role="verifier"):
+        _trace(trace.record_judge, corr, GRADING_MODEL, "primary", a_ok, a_conf)
+        with trace.model_call(corr, GRADING_MODEL, "judge", role="verifier"):
             b_ok, b_reason, b_conf, b_cat = _ask_judge(
                 payload + f"\n\nPRIMARY JUDGMENT: correct={a_ok} reason={a_reason}",
                 "independent verifier")
-        _trace(trace.record_judge, corr, OPENAI_MODEL, "verifier", b_ok, b_conf)
+        _trace(trace.record_judge, corr, GRADING_MODEL, "verifier", b_ok, b_conf)
     except Exception as e:
+        # This try wraps ONLY the two model calls, so anything landing here is
+        # a provider failure — unreachable, timed out, or malformed output.
         _trace(trace.record_route, corr, "system", "indeterminate")
-        return _system("judge_unavailable", repr(e)[:200])
+        return _provider_down("judge_unavailable", repr(e)[:200])
 
     if a_ok != b_ok or min(a_conf, b_conf) < 0.6:
         _trace(trace.record_route, corr, "llm-judge", "indeterminate")
@@ -316,22 +333,22 @@ def _tier3(problem, session, chunk, header, prefix, student_code, upto,
 
     for attempt in range(1, MAX_ADAPT_TRIES + 1):
         try:
-            with trace.model_call(corr, OPENAI_MODEL, "adapter", attempt=attempt):
+            with trace.model_call(corr, GRADING_MODEL, "adapter", attempt=attempt):
                 tail, aliases = _request_adaptation(
                     problem, header, upto, ref_tail, current_outputs)   # noqa: E501
         except Exception:
-            _trace(trace.record_adapter, corr, OPENAI_MODEL, attempt, "malformed")
+            _trace(trace.record_adapter, corr, GRADING_MODEL, attempt, "malformed")
             break                                   # model trouble -> Tier 4
         alias_lines = _valid_aliases(aliases, current_outputs | prefix_names,
                                      trusted_names)
         if alias_lines is None or not _tail_is_sane(
                 tail, current_outputs, problem.get("solution", "")):
-            _trace(trace.record_adapter, corr, OPENAI_MODEL, attempt, "unsafe")
+            _trace(trace.record_adapter, corr, GRADING_MODEL, attempt, "unsafe")
             continue
 
         # CALIBRATION — prove the adapter on trusted work first.
         if not _calibrate(header, trusted_prefix, alias_lines, tail, tests, entry):
-            _trace(trace.record_adapter, corr, OPENAI_MODEL, attempt, "calibration_failed")
+            _trace(trace.record_adapter, corr, GRADING_MODEL, attempt, "calibration_failed")
             continue                                # uncalibrated: prove nothing
 
         # The alias bridge belongs to CALIBRATION only. It maps the trusted
@@ -345,9 +362,9 @@ def _tier3(problem, session, chunk, header, prefix, student_code, upto,
             ko = classify_run(_assemble(header, prefix, "pass", tail),
                               tests, entry_name=entry)
             if ko.outcome == "pass":
-                _trace(trace.record_adapter, corr, OPENAI_MODEL, attempt, "bypass_rejected")
+                _trace(trace.record_adapter, corr, GRADING_MODEL, attempt, "bypass_rejected")
                 continue                            # bypassing adapter: reject
-            _trace(trace.record_adapter, corr, OPENAI_MODEL, attempt, "accepted")
+            _trace(trace.record_adapter, corr, GRADING_MODEL, attempt, "accepted")
             _trace(trace.record_route, corr, "execution-adapted", "correct")
             return _ok("correct", "execution-adapted",
                        "Correct — your approach differs from ours, but it works.",

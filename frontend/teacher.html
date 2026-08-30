@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MicroTutor — Instructor</title>
+<style>
+  :root{--bg:#f6f7f9;--card:#fff;--ink:#14181f;--muted:#5b6472;--line:#e3e6ec;
+        --accent:#1e4d8c;--ok:#1a7f4b;--okbg:#e9f7ef;--bad:#a3341f;--badbg:#fdeeea;
+        --warn:#8a6d1f;--warnbg:#fff8e6}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+  header{background:var(--card);border-bottom:1px solid var(--line);padding:14px 24px;
+         display:flex;align-items:center;gap:14px}
+  header a{color:var(--muted);text-decoration:none;font-size:14px}
+  header h1{font-size:17px;margin:0;flex:1}
+  main{max-width:920px;margin:0 auto;padding:28px 24px 60px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;
+        padding:22px;margin-bottom:20px}
+  h2{font-size:16px;margin:0 0 4px}
+  .hint{color:var(--muted);font-size:13.5px;margin:0 0 16px}
+  button{font:inherit;border:0;border-radius:8px;padding:9px 16px;cursor:pointer;
+         background:var(--accent);color:#fff}
+  button:disabled{opacity:.5;cursor:default}
+  button.ghost{background:transparent;color:var(--accent);border:1px solid var(--line)}
+  input[type=text]{font:inherit;padding:8px 11px;border:1px solid var(--line);
+                   border-radius:8px;width:200px}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  pre.tmpl{background:#12161d;color:#d6dde8;padding:15px;border-radius:9px;
+           overflow:auto;font-size:12.5px;line-height:1.5;max-height:280px}
+  .prog{height:6px;background:var(--line);border-radius:99px;overflow:hidden;margin:16px 0 10px}
+  .prog>i{display:block;height:100%;width:0;background:var(--accent);transition:width .3s}
+  ul.items{list-style:none;padding:0;margin:0}
+  ul.items li{display:flex;gap:11px;align-items:flex-start;padding:10px 12px;
+              border:1px solid var(--line);border-radius:9px;margin-bottom:8px;
+              background:#fcfcfd;font-size:14px}
+  .badge{flex:none;font-size:11.5px;font-weight:600;padding:2px 8px;border-radius:99px;
+         margin-top:1px}
+  .b-ok{background:var(--okbg);color:var(--ok)}
+  .b-bad{background:var(--badbg);color:var(--bad)}
+  .b-run{background:#eef2f8;color:var(--accent)}
+  .items .why{color:var(--muted);font-size:13px;margin-top:3px}
+  .summary{padding:13px 15px;border-radius:9px;margin-top:14px;font-size:14px}
+  .s-ok{background:var(--okbg);color:var(--ok)}
+  .s-warn{background:var(--warnbg);color:var(--warn)}
+  .s-bad{background:var(--badbg);color:var(--bad)}
+  .muted{color:var(--muted)}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  td,th{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line)}
+  th{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+  code{background:#eef0f4;padding:1px 5px;border-radius:4px;font-size:12.5px}
+</style>
+</head>
+<body>
+<header>
+  <a href="home.html">&larr; Home</a>
+  <h1>Instructor</h1>
+  <span class="muted" style="font-size:13px">demo mode — no login</span>
+</header>
+
+<main>
+  <div class="card">
+    <h2>Upload an assignment</h2>
+    <p class="hint">
+      A plain Python file. Each problem is one function: its <strong>docstring is the
+      problem statement students see</strong>, its body is your solution, which students
+      never see. To keep helper functions with a problem, put a
+      <code>#&nbsp;---&nbsp;problem:&nbsp;slug&nbsp;---</code> line above them.
+    </p>
+    <details style="margin-bottom:16px">
+      <summary style="cursor:pointer;font-size:14px">Show the format</summary>
+      <pre class="tmpl" id="tmpl">loading…</pre>
+      <button class="ghost" id="dl" style="margin-top:10px">Download this template</button>
+    </details>
+    <div class="row">
+      <input type="text" id="teacher" value="demo-teacher" aria-label="Instructor name">
+      <input type="file" id="file" accept=".py,text/x-python">
+      <button id="go" disabled>Upload &amp; prepare</button>
+    </div>
+    <p class="hint" style="margin:12px 0 0">
+      Preparing writes test cases, checks they are strong enough to grade against,
+      and splits each problem into steps. Expect a minute or two per problem. This
+      happens once, now, so students never wait for it or run into a failure.
+    </p>
+  </div>
+
+  <div class="card" id="run" hidden>
+    <h2 id="runTitle">Preparing…</h2>
+    <div class="prog"><i id="bar"></i></div>
+    <ul class="items" id="items"></ul>
+    <div id="summary"></div>
+  </div>
+
+  <div class="card">
+    <h2>Your assignments</h2>
+    <p class="hint">Only problems marked ready are visible to students.</p>
+    <table><thead><tr><th>Assignment</th><th>Ready</th><th>Created</th></tr></thead>
+      <tbody id="alist"><tr><td colspan="3" class="muted">loading…</td></tr></tbody></table>
+  </div>
+</main>
+
+<script>
+const API = "http://localhost:8000";
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+let TEMPLATE = "";
+
+fetch(`${API}/assignment_template`).then(r => r.json()).then(d => {
+  TEMPLATE = d.content;
+  $("tmpl").textContent = d.content;
+}).catch(() => { $("tmpl").textContent = "(could not reach the server)"; });
+
+$("dl").onclick = () => {
+  const b = new Blob([TEMPLATE], {type: "text/x-python"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(b); a.download = "assignment.py"; a.click();
+  URL.revokeObjectURL(a.href);
+};
+
+$("file").onchange = () => { $("go").disabled = !$("file").files.length; };
+
+$("go").onclick = async () => {
+  const f = $("file").files[0];
+  if (!f) return;
+  $("go").disabled = true;
+  $("run").hidden = false;
+  $("items").innerHTML = ""; $("summary").innerHTML = "";
+  $("bar").style.width = "0%";
+  $("runTitle").textContent = "Reading file…";
+
+  const content = await f.text();
+  let resp;
+  try {
+    resp = await fetch(`${API}/teacher/assignments`, {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({filename: f.name, content,
+                            teacher_name: $("teacher").value || "demo-teacher"})
+    });
+  } catch (e) { return fail("Could not reach the server. Is the backend running?"); }
+  if (!resp.ok) {
+    let msg = "Upload failed.";
+    try { const j = await resp.json(); msg = (j.detail && j.detail.message) || msg; } catch {}
+    return fail(msg);
+  }
+
+  // NDJSON: one event per line, rendered the moment it arrives, so a multi-minute
+  // preparation shows progress instead of looking like a hang.
+  const reader = resp.body.getReader(), dec = new TextDecoder();
+  let buf = "", rows = {};
+  for (;;) {
+    const {value, done} = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, {stream: true});
+    const lines = buf.split("\n"); buf = lines.pop();
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      let ev; try { ev = JSON.parse(line); } catch { continue; }
+      handle(ev, rows);
+    }
+  }
+  $("go").disabled = false;
+  loadAssignments();
+};
+
+function fail(msg){
+  $("run").hidden = false;
+  $("runTitle").textContent = "Upload failed";
+  $("summary").innerHTML = `<div class="summary s-bad">${esc(msg)}</div>`;
+  $("go").disabled = false;
+}
+
+function handle(ev, rows){
+  if (ev.event === "parsed") {
+    $("runTitle").textContent = `${ev.name} — ${ev.n_problems} problem(s)`;
+    (ev.parse_errors || []).forEach(e =>
+      addRow(rows, e.slug, "bad", e.slug, "Couldn't read this one: " + e.error));
+  } else if (ev.event === "preparing") {
+    addRow(rows, ev.slug, "run", ev.title || ev.slug, "preparing…");
+    $("bar").style.width = `${Math.round((ev.index - 1) / ev.total * 100)}%`;
+  } else if (ev.event === "prepared") {
+    $("bar").style.width = `${Math.round(ev.index / ev.total * 100)}%`;
+    if (ev.ready) setRow(rows, ev.slug, "ok", `Ready — ${ev.chunks} steps, ${ev.n_tests} tests`);
+    else          setRow(rows, ev.slug, "bad", ev.error || "could not be prepared");
+  } else if (ev.event === "done") {
+    $("bar").style.width = "100%";
+    $("runTitle").textContent = "Preparation finished";
+    const cls = ev.failed === 0 ? "s-ok" : (ev.ready === 0 ? "s-bad" : "s-warn");
+    let msg = `<strong>${ev.ready} of ${ev.total} ready for students.</strong>`;
+    if (ev.failed) msg += ` ${ev.failed} need attention — students will not see those.
+      Fix the problem statement and re-upload, or split that problem into steps yourself.`;
+    $("summary").innerHTML = `<div class="summary ${cls}">${msg}</div>`;
+  }
+}
+
+function addRow(rows, slug, state, title, why){
+  const li = document.createElement("li");
+  li.innerHTML = `<span class="badge"></span><div><strong></strong><div class="why"></div></div>`;
+  $("items").appendChild(li);
+  rows[slug] = li;
+  li.querySelector("strong").textContent = title;
+  setRow(rows, slug, state, why);
+}
+function setRow(rows, slug, state, why){
+  const li = rows[slug]; if (!li) return;
+  const b = li.querySelector(".badge");
+  b.className = "badge " + (state === "ok" ? "b-ok" : state === "bad" ? "b-bad" : "b-run");
+  b.textContent = state === "ok" ? "ready" : state === "bad" ? "needs work" : "working";
+  li.querySelector(".why").textContent = why || "";
+}
+
+async function loadAssignments(){
+  try {
+    const d = await (await fetch(`${API}/assignments`)).json();
+    const tb = $("alist");
+    if (!d.assignments || !d.assignments.length) {
+      tb.innerHTML = `<tr><td colspan="3" class="muted">Nothing uploaded yet.</td></tr>`;
+      return;
+    }
+    tb.innerHTML = d.assignments.map(a => `<tr>
+      <td>${esc(a.name)}</td>
+      <td>${a.ready} / ${a.total}</td>
+      <td class="muted">${new Date(a.created_at).toLocaleString()}</td></tr>`).join("");
+  } catch {
+    $("alist").innerHTML = `<tr><td colspan="3" class="muted">Could not reach the server.</td></tr>`;
+  }
+}
+loadAssignments();
+</script>
+</body>
+</html>

@@ -920,5 +920,37 @@
     ],
     "confirmed": true,
     "slug": "find-first-and-last-position-of-element-in-sorted-array"
+  },
+  "b7fb85e0ac980b36035ba783e45199406bad79c8aacd07d91a5f5224a249198b": {
+    "entry_name": "sum_list",
+    "params": [
+      "nums"
+    ],
+    "confirmed": true,
+    "slug": "sum-list"
+  },
+  "db4e8a4331e2923ff7a63e926d145aa0f025e845798340093fab84fe360c18a6": {
+    "entry_name": "count_vowels",
+    "params": [
+      "s"
+    ],
+    "confirmed": true,
+    "slug": "count-vowels"
+  },
+  "788715c5004cb45d82e980b033e7138ce40bdbdb8deeca6fc5ac1716088c0e1d": {
+    "entry_name": "is_leap_year",
+    "params": [
+      "year"
+    ],
+    "confirmed": true,
+    "slug": "is-leap-year"
+  },
+  "ce5441f46d5544d85da5cb3d5dc562e25ed880c799b7e9d0d38d5801126b7b88": {
+    "entry_name": "second_largest",
+    "params": [
+      "nums"
+    ],
+    "confirmed": true,
+    "slug": "second-largest"
   }
 }

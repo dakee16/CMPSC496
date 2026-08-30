@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MicroTutor — Student</title>
+<style>
+  :root{--bg:#f6f7f9;--card:#fff;--ink:#14181f;--muted:#5b6472;--line:#e3e6ec;
+        --accent:#1e4d8c;--ok:#1a7f4b;--okbg:#e9f7ef;--bad:#a3341f;--badbg:#fdeeea;
+        --warn:#8a6d1f;--warnbg:#fff8e6;--info:#2a5b8f;--infobg:#eaf1fa}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+  header{background:var(--card);border-bottom:1px solid var(--line);padding:14px 24px;
+         display:flex;align-items:center;gap:14px}
+  header a{color:var(--muted);text-decoration:none;font-size:14px}
+  header h1{font-size:17px;margin:0;flex:1}
+  main{max-width:860px;margin:0 auto;padding:28px 24px 60px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;
+        padding:22px;margin-bottom:20px}
+  h2{font-size:16px;margin:0 0 4px}
+  .hint{color:var(--muted);font-size:13.5px;margin:0 0 14px}
+  .muted{color:var(--muted)}
+  button{font:inherit;border:0;border-radius:8px;padding:9px 16px;cursor:pointer;
+         background:var(--accent);color:#fff}
+  button:disabled{opacity:.5;cursor:default}
+  button.ghost{background:transparent;color:var(--accent);border:1px solid var(--line)}
+  input[type=text]{font:inherit;padding:8px 11px;border:1px solid var(--line);
+                   border-radius:8px;width:180px}
+  ul.pick{list-style:none;padding:0;margin:0}
+  ul.pick li{border:1px solid var(--line);border-radius:9px;margin-bottom:8px;
+             background:#fcfcfd;overflow:hidden}
+  ul.pick button{width:100%;text-align:left;background:transparent;color:inherit;
+                 padding:12px 14px;display:flex;gap:10px;align-items:baseline}
+  ul.pick button:hover{background:#f2f5fa}
+  .pill{font-size:11.5px;padding:2px 8px;border-radius:99px;background:#eef0f4;
+        color:var(--muted);flex:none;margin-left:auto}
+  .statement{white-space:pre-wrap;background:#fbfbfc;border:1px solid var(--line);
+             border-radius:9px;padding:14px;font-size:14.5px}
+  .steps{display:flex;gap:6px;margin:0 0 16px;flex-wrap:wrap}
+  .step{font-size:12px;padding:3px 10px;border-radius:99px;background:#eef0f4;color:var(--muted)}
+  .step.done{background:var(--okbg);color:var(--ok)}
+  .step.now{background:var(--accent);color:#fff}
+  .prompt{font-size:15.5px;margin:0 0 4px}
+  textarea{width:100%;min-height:150px;font:13.5px/1.6 ui-monospace,SFMono-Regular,
+           Menlo,Consolas,monospace;padding:12px;border:1px solid var(--line);
+           border-radius:9px;resize:vertical;tab-size:4}
+  .msg{padding:13px 15px;border-radius:9px;margin-top:14px;font-size:14px;white-space:pre-wrap}
+  .m-ok{background:var(--okbg);color:var(--ok)}
+  .m-bad{background:var(--badbg);color:var(--bad)}
+  .m-warn{background:var(--warnbg);color:var(--warn)}
+  .m-info{background:var(--infobg);color:var(--info)}
+  pre.ref{background:#12161d;color:#d6dde8;padding:13px;border-radius:8px;
+          overflow:auto;font-size:13px;margin:10px 0 0}
+  .accepted{background:#f7f8fa;border:1px solid var(--line);border-radius:9px;
+            padding:12px;font:13px/1.6 ui-monospace,Menlo,monospace;white-space:pre-wrap;
+            color:#3d4756;margin-bottom:14px}
+</style>
+</head>
+<body>
+<header>
+  <a href="home.html">&larr; Home</a>
+  <h1>Student</h1>
+  <span class="muted" style="font-size:13px">demo mode — no login</span>
+</header>
+
+<main>
+  <div class="card" id="cAssign">
+    <h2>Choose an assignment</h2>
+    <p class="hint">Your name is only used to record your progress.</p>
+    <div style="margin-bottom:14px">
+      <input type="text" id="who" placeholder="Your name" value="demo-student">
+    </div>
+    <ul class="pick" id="assignments"><li class="muted" style="padding:12px">loading…</li></ul>
+  </div>
+
+  <div class="card" id="cProblem" hidden>
+    <h2 id="assignName"></h2>
+    <p class="hint">Pick a problem to work through.</p>
+    <ul class="pick" id="problems"></ul>
+    <button class="ghost" id="backA">Back to assignments</button>
+  </div>
+
+  <div class="card" id="cSolve" hidden>
+    <h2 id="probTitle"></h2>
+    <div class="statement" id="statement"></div>
+    <div style="margin-top:18px" class="steps" id="steps"></div>
+    <div id="acceptedWrap" hidden>
+      <p class="hint" style="margin:0 0 6px">Your solution so far</p>
+      <div class="accepted" id="accepted"></div>
+    </div>
+    <p class="prompt" id="prompt"></p>
+    <textarea id="code" spellcheck="false" placeholder="Write just this step…"></textarea>
+    <div style="margin-top:12px;display:flex;gap:10px">
+      <button id="submit">Submit step</button>
+      <button class="ghost" id="backP">Pick another problem</button>
+    </div>
+    <div id="msg"></div>
+  </div>
+</main>
+
+<script>
+const API = "http://localhost:8000";
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+
+let sessionId = null, chunks = [], idx = 0, accepted = [];
+
+async function loadAssignments(){
+  try {
+    const d = await (await fetch(`${API}/assignments`)).json();
+    const list = (d.assignments || []).filter(a => a.ready > 0);
+    $("assignments").innerHTML = list.length
+      ? list.map(a => `<li><button data-id="${a.id}" data-name="${esc(a.name)}">
+          <span>${esc(a.name)}</span>
+          <span class="pill">${a.ready} problem${a.ready === 1 ? "" : "s"}</span>
+        </button></li>`).join("")
+      : `<li class="muted" style="padding:12px">No assignments are ready yet.
+         Ask your instructor to upload one.</li>`;
+    $("assignments").querySelectorAll("button").forEach(b =>
+      b.onclick = () => openAssignment(b.dataset.id, b.dataset.name));
+  } catch {
+    $("assignments").innerHTML =
+      `<li class="muted" style="padding:12px">Could not reach the server.</li>`;
+  }
+}
+
+async function openAssignment(id, name){
+  $("assignName").textContent = name;
+  $("cAssign").hidden = true; $("cProblem").hidden = false; $("cSolve").hidden = true;
+  const d = await (await fetch(`${API}/assignments/${id}/problems`)).json();
+  const ps = d.problems || [];
+  $("problems").innerHTML = ps.length
+    ? ps.map((p, i) => `<li><button data-i="${i}">
+        <span>${esc(p.title || p.slug)}</span>
+        ${p.difficulty ? `<span class="pill">${esc(p.difficulty)}</span>` : ""}
+      </button></li>`).join("")
+    : `<li class="muted" style="padding:12px">No problems ready in this assignment.</li>`;
+  $("problems").querySelectorAll("button").forEach(b =>
+    b.onclick = () => start(ps[+b.dataset.i]));
+}
+
+async function start(p){
+  $("cProblem").hidden = true; $("cSolve").hidden = false;
+  $("probTitle").textContent = p.title || p.slug;
+  $("statement").textContent = p.description || "";
+  $("code").style.display = ""; $("submit").style.display = "";
+  $("msg").innerHTML = `<div class="msg m-info">Getting this problem ready…</div>`;
+  $("submit").disabled = true;
+  accepted = []; idx = 0;
+
+  // No `solution` is sent. The server reads the reference from the database;
+  // the browser never holds it.
+  let r;
+  try {
+    r = await fetch(`${API}/decompose_chunks`, {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({slug: p.slug, title: p.title,
+                            description: p.description,
+                            student_id: ($("who").value || "demo-student")})
+    });
+  } catch { return show("bad", "Could not reach the server."); }
+  if (!r.ok) return show("bad", "This problem could not be started. Try another one.");
+
+  const d = await r.json();
+  sessionId = d.session_id; chunks = d.chunks || [];
+  $("msg").innerHTML = ""; $("submit").disabled = false;
+  render();
+}
+
+function render(){
+  $("steps").innerHTML = chunks.map((c, i) =>
+    `<span class="step ${i < idx ? "done" : i === idx ? "now" : ""}">Step ${i + 1}</span>`).join("");
+  const cur = chunks[idx];
+  $("prompt").textContent = cur ? cur.prompt : "";
+  $("acceptedWrap").hidden = accepted.length === 0;
+  $("accepted").textContent = accepted.join("\n");
+  $("code").value = ""; $("code").focus();
+}
+
+function show(kind, text, extra){
+  $("msg").innerHTML = `<div class="msg m-${kind}">${esc(text)}</div>` + (extra || "");
+}
+
+$("submit").onclick = async () => {
+  const code = $("code").value;
+  if (!code.trim()) return show("warn", "Write something first.");
+  $("submit").disabled = true;
+  // Stable per submission, so a retry of the same answer is never graded twice.
+  const submissionId = `${sessionId}:${idx}:${Date.now()}`;
+  let r;
+  try {
+    r = await fetch(`${API}/grade_chunk`, {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({session_id: sessionId, submission_id: submissionId,
+                            student_code: code, expected_index: idx})
+    });
+  } catch {
+    $("submit").disabled = false;
+    return show("bad", "Could not reach the server. Your attempt was not used.");
+  }
+  $("submit").disabled = false;
+
+  if (!r.ok) {
+    let m = "Something went wrong. Your attempt was not used.";
+    try { const j = await r.json(); if (j.detail && j.detail.message) m = j.detail.message; } catch {}
+    return show("warn", m);
+  }
+
+  const res = await r.json();
+
+  // Covers the OpenAI-down case; the server guarantees no attempt was spent.
+  if (res.verdict === "indeterminate") return show("warn", res.reason);
+
+  if (res.verdict === "correct") {
+    accepted.push(code);
+    idx = res.index;
+    if (res.completed) return finish(res);
+    render();
+    show("ok", res.reason);
+    return;
+  }
+
+  if (typeof res.revealed_reference === "string") {
+    accepted.push(res.revealed_reference);
+    idx = res.index;
+    if (res.completed) return finish(res);
+    render();
+    show("warn", res.reason + "\n\nHere is this step so you can keep going:",
+         `<pre class="ref">${esc(res.revealed_reference)}</pre>`);
+    return;
+  }
+  show("bad", res.reason + `\n\nAttempt ${res.attempts} of 2.`);
+};
+
+async function finish(res){
+  $("steps").innerHTML = chunks.map(() => `<span class="step done">done</span>`).join("");
+  $("prompt").textContent = "";
+  $("code").style.display = "none"; $("submit").style.display = "none";
+  $("acceptedWrap").hidden = false;
+  $("accepted").textContent = accepted.join("\n");
+  show(res.solved_independently ? "ok" : "warn",
+       res.solved_independently
+         ? "Solved — every step on your own. Nice work."
+         : "Problem complete. Some steps used the shown answer, so this is recorded as solved with help.");
+  try {
+    await fetch(`${API}/mark_solved`, {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({session_id: sessionId})
+    });
+  } catch {}
+}
+
+$("backA").onclick = () => { $("cProblem").hidden = true; $("cAssign").hidden = false; };
+$("backP").onclick = () => { $("cSolve").hidden = true; $("cProblem").hidden = false; };
+
+// Tab inserts spaces rather than moving focus — this is a code box.
+$("code").addEventListener("keydown", e => {
+  if (e.key !== "Tab") return;
+  e.preventDefault();
+  const t = e.target, s = t.selectionStart;
+  t.value = t.value.slice(0, s) + "    " + t.value.slice(t.selectionEnd);
+  t.selectionStart = t.selectionEnd = s + 4;
+});
+
+loadAssignments();
+</script>
+</body>
+</html>

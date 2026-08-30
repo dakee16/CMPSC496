@@ -30,11 +30,26 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# PLACEHOLDER — cost-conscious starting point, NOT a final choice. The real
-# model decision is a product call pending the token-cost measurement pass
-# (separate future task). Every system-role call site references this constant,
-# so switching models is a one-line change right here.
-OPENAI_MODEL = "gpt-4o-mini"
+# Default system-role model. Oracle test-input generation and the research
+# agents read this; the two cost-sensitive paths below override it.
+OPENAI_MODEL = os.environ.get("MICROTUTOR_MODEL", "gpt-4o-mini")
+
+# DECOMPOSITION and GRADING are split because they have opposite cost shapes.
+#
+#   Decomposition runs ONCE per problem, at teacher-upload time, and its result
+#   is reused by every student who ever solves that problem. Measured on 20
+#   previously undecomposed problems at max_tries=5: gpt-4o-mini succeeded 9/20
+#   (45%) at 7.9 calls per success; gpt-4o succeeded 16/20 (80%) at 2.5 calls
+#   per success, first-try on 13 of those 16. Per success gpt-4o costs ~5x more
+#   ($0.0119 vs $0.0022) — about 10c to prepare a 10-problem assignment — and
+#   nearly doubles how much of a teacher's upload is usable.
+#
+#   Grading runs on EVERY student attempt that reaches Tier 3/4, so its cost
+#   scales with class size x attempts. It stays on the cheap model: what makes
+#   grading trustworthy is the gates around it (calibration, the anti-bypass
+#   knockout, dual-judge agreement), not raw model strength.
+DECOMPOSE_MODEL = os.environ.get("MICROTUTOR_DECOMPOSE_MODEL", "gpt-4o")
+GRADING_MODEL = os.environ.get("MICROTUTOR_GRADING_MODEL", OPENAI_MODEL)
 
 OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions"
 OLLAMA_CHAT_URL = "http://localhost:11434/api/chat"

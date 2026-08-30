@@ -44,6 +44,43 @@ def set_supabase(client):
     _SB = client
 
 
+_UUID_RE = __import__("re").compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", 2)
+
+
+def resolve_student(value: str | None) -> str | None:
+    """Turn whatever the demo sent into a real students.id UUID.
+
+    students.id, student_interactions.student_id and solved.student_id are all
+    uuid columns, but the demo role picker has no login and sends a typed NAME.
+    Inserting that raised `invalid input syntax for type uuid` on every write,
+    which the logging path then swallowed — progress silently vanished.
+
+    A UUID passes through untouched. A name is looked up, and created on a miss,
+    so a demo student keeps the same id across sessions and their history adds
+    up. TEMPORARY: real identity arrives with PSU-email auth, at which point the
+    JWT subject replaces this entirely."""
+    name = (value or "").strip()
+    if not name:
+        return None
+    if _UUID_RE.match(name):
+        return name
+    sb = get_supabase()
+    try:
+        hit = sb.table("students").select("id").eq("username", name).limit(1).execute().data
+        if hit:
+            return hit[0]["id"]
+        # No password: a demo row cannot be logged into, only referenced.
+        made = sb.table("students").insert(
+            {"username": name, "password_hash": "!demo-no-login"}).execute().data
+        return made[0]["id"] if made else None
+    except Exception as e:
+        # Identity is optional — anonymous sessions are valid. Never fail a
+        # student's request because we could not name them.
+        print(f"  ⚠️  could not resolve student {name!r}: {e}")
+        return None
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],          # allow any frontend origin (for dev)
@@ -187,16 +224,17 @@ def decompose_chunks_route(req: DecomposeRequest):
         # reference, the solution, or oracle data again.
         from main.identity import content_hash
         from main.sessions import create_session
+        # Identity is bound ONCE, here, and resolved to a real students.id so
+        # every later write (interactions, solved) has a valid uuid.
         public = create_session(problem, result, content_hash(problem),
-                                student_id=getattr(req, "student_id", None))
+                                student_id=resolve_student(
+                                    getattr(req, "student_id", None)))
 
-        # Pre-warm oracle tests (guaranteed to have a solution by this point).
-        try:
-            from tests.sandbox import get_oracle_tests
-            get_oracle_tests(problem)  # generates + caches, result discarded
-            print(f"  ✅ Oracle pre-warmed for {problem.get('slug')}")
-        except Exception as e:
-            print(f"  ⚠️  Oracle pre-warm failed: {e}")
+        # NO oracle pre-warm here. get_oracle_tests() is the WRITE path: on a
+        # miss it generates inputs and runs mutation testing, minutes of paid
+        # work triggered by a student pressing Start. Preparation now happens
+        # once at teacher-upload time (main/publish.py), and a problem that did
+        # not survive it is never offered to a student in the first place.
         return public          # session_id, decomposition_id, header, PUBLIC chunks
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=f"Decomposition unavailable: {e}")
@@ -240,9 +278,14 @@ def grade_chunk_route(req: ChunkRequest):
         return prior                            # stored result, graded once
 
     # Graded with NO write transaction held, so a slow grade blocks nobody.
+    from main.sessions import release_submission
     try:
         result = grade_submission(session, req.student_code)
     except Exception as e:                      # never let our fault convict
+        # Hand the reservation back. Without this the row stays claimed with no
+        # result, and every retry of this submission id 409s "still being
+        # graded" forever — the student can neither advance nor retry.
+        release_submission(req.session_id, req.submission_id)
         raise HTTPException(status_code=503, detail={
             "reason_code": "grader_unavailable", "message": str(e)[:200]})
 
@@ -265,6 +308,9 @@ def grade_chunk_route(req: ChunkRequest):
             accept_code=accept_code, provenance=provenance,
             consume_attempt=result.consume_attempt)
     except SessionError as e:
+        # Same reasoning as the grader failure above: the CAS lost, nothing was
+        # recorded, so the reservation must not outlive the attempt.
+        release_submission(req.session_id, req.submission_id)
         raise HTTPException(status_code=409, detail={
             "reason_code": e.reason_code, "message": str(e)})
 
@@ -272,8 +318,13 @@ def grade_chunk_route(req: ChunkRequest):
     bound_student = session.get("student_id")
     if bound_student and result.verdict != "indeterminate":
         try:
-            get_supabase().table("interactions").insert({
-                "student_id": bound_student, "slug": session["slug"],
+            # student_interactions, NOT interactions. `interactions` is the OLD
+            # research table (step_id/agent_level/answer/hint_shown/score) from
+            # the weak/normal/strong agent experiment; it has no attempt_number,
+            # so every insert here failed with PGRST204 and was swallowed by the
+            # except below — this path had been logging nothing at all.
+            get_supabase().table("student_interactions").insert({
+                "student_id": bound_student, "problem_slug": session["slug"],
                 "chunk_index": session["index"], "attempt_number": state["attempts"],
                 "student_code": (req.student_code or "")[:4000],
                 "verdict": result.verdict == "correct", "tier": result.tier,
@@ -334,10 +385,13 @@ def playground_detail(slug: str):
         raise HTTPException(status_code=404, detail=f"Problem '{slug}' not found.")
     problem = row[0]
     solution = problem.get("solution") or ""
+    # The solution is needed BELOW to recompute mutants, but it must not be
+    # returned. Everything sent back is built from `public_problem`.
+    public_problem = {k: v for k, v in problem.items() if k != "solution"}
 
     cached = _load_cache().get(content_hash(problem))
     if not (isinstance(cached, dict) and "strong" in cached):
-        return {"problem": problem, "oracle": None, "mutants": [],
+        return {"problem": public_problem, "oracle": None, "mutants": [],
                 "chunks": None, "necessity": [], "grading": None,
                 "note": "not yet validated"}
 
@@ -420,7 +474,13 @@ def playground_detail(slug: str):
             weak_reason = (f"{round(cached.get('kill_rate_direct', 0.0) * 100)}% of cheaters "
                            f"caught is below the {round(CUTOFF_1_KILL_RATE * 100)}% bar")
 
-    return {"problem": problem,
+    # Chunk PROMPTS are public; chunk REFERENCES are the answer to each step and
+    # never leave the server. The showcase only ever needed the prompts and the
+    # knockout result, so dropping the references costs it nothing.
+    if chunks:
+        chunks = [{k: v for k, v in c.items() if k != "reference"} for c in chunks]
+
+    return {"problem": public_problem,
             "oracle": {"n_tests": len(tests), "tests": tests[:6],
                        "kill_rate_direct": cached.get("kill_rate_direct", 0.0),
                        "kill_rate": cached.get("kill_rate", 0.0),
@@ -492,13 +552,20 @@ def list_problems(limit: int = 100, difficulty: str = None):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# PUBLIC problem columns. `solution` is deliberately absent and must stay that
+# way: this route is unauthenticated and the student UI calls it on every
+# problem click, so selecting `solution` here handed the reference answer to
+# anyone who asked. /decompose_chunks reads the solution server-side from the
+# database instead — the browser never needs to carry it.
+_PUBLIC_PROBLEM_COLS = "id, slug, title, difficulty, description, topic_tags"
+
+
 @app.get("/problems/{slug}")
 def get_problem(slug: str):
-    """Fetch a single problem by slug from Supabase."""
+    """Fetch a single problem by slug. PUBLIC fields only — never the solution."""
     try:
         res = get_supabase().table("problems").select(
-            "id, slug, title, difficulty, description, topic_tags, solution"
-        ).eq("slug", slug).single().execute()
+            _PUBLIC_PROBLEM_COLS).eq("slug", slug).single().execute()
         if not res.data:
             raise HTTPException(status_code=404, detail=f"Problem '{slug}' not found.")
         return res.data
@@ -506,6 +573,178 @@ def get_problem(slug: str):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── assignments: teacher upload, student browse ──────────────────────────
+# The trust boundary runs straight through this section. Teacher routes may see
+# solutions and preparation errors; student routes may see neither, and may only
+# ever list problems that are `ready` — an unready problem cannot be graded, so
+# offering one would dead-end the student.
+
+class AssignmentUpload(BaseModel, extra="forbid"):
+    """The file arrives as text, not multipart: the browser can read it with
+    FileReader, which avoids adding python-multipart as a dependency."""
+    filename: str = "assignment.py"
+    content: str
+    teacher_name: str = "demo-teacher"
+
+
+class ManualSplitRequest(BaseModel, extra="forbid"):
+    slug: str
+    header: str
+    chunks: list[dict]
+
+
+@app.get("/assignment_template")
+def assignment_template():
+    """A starter file a teacher can download, edit and re-upload."""
+    from main.assignments import TEMPLATE
+    return {"filename": "assignment.py", "content": TEMPLATE}
+
+
+@app.post("/teacher/assignments")
+def upload_assignment(req: AssignmentUpload):
+    """Parse an assignment file and PREPARE every problem, streaming progress.
+
+    Preparation (oracle generation, mutation validation, decomposition) is
+    minutes of work, so this streams NDJSON as each problem finishes instead of
+    holding the connection silent. Same one-directional pattern as
+    /playground/live, delivered over POST because the file rides in the body."""
+    import json as _json
+    from fastapi.responses import StreamingResponse
+    from main.assignments import AssignmentParseError, parse_assignment_file
+    from main.publish import prepare_assignment_stream
+
+    try:
+        parsed = parse_assignment_file(req.content, req.filename)
+    except AssignmentParseError as e:
+        raise HTTPException(status_code=400, detail={
+            "reason_code": "unparseable_assignment", "message": str(e)})
+
+    sb = get_supabase()
+    row = sb.table("assignments").insert({
+        "name": parsed["name"], "teacher_name": req.teacher_name,
+        "source_file": req.filename}).execute().data
+    assignment_id = row[0]["id"]
+
+    def events():
+        yield _json.dumps({"event": "parsed", "assignment_id": assignment_id,
+                           "name": parsed["name"],
+                           "n_problems": len(parsed["problems"]),
+                           "parse_errors": parsed["errors"]}) + "\n"
+        # Problems the FILE got wrong never reach preparation; record them so the
+        # teacher sees one combined list rather than two.
+        for bad in parsed["errors"]:
+            try:
+                sb.table("problems").upsert({
+                    "slug": bad["slug"], "title": bad["slug"],
+                    "description": "", "solution": "",
+                    "assignment_id": assignment_id, "ready": False,
+                    "prepare_error": bad["error"]},
+                    on_conflict="assignment_id,slug").execute()
+            except Exception:
+                pass
+
+        for ev in prepare_assignment_stream(parsed["problems"]):
+            if ev.get("event") == "prepared":
+                src = next((p for p in parsed["problems"]
+                            if p["slug"] == ev["slug"]), None)
+                if src:
+                    try:
+                        sb.table("problems").upsert({
+                            "slug": src["slug"], "title": src["title"],
+                            "description": src["description"],
+                            "solution": src["solution"],
+                            "assignment_id": assignment_id,
+                            "ready": bool(ev["ready"]),
+                            "prepare_error": ev.get("error")},
+                            on_conflict="assignment_id,slug").execute()
+                    except Exception as e:
+                        # A problem that did not SAVE is not ready, whatever
+                        # preparation decided. Reporting it as ready while the
+                        # row is missing is exactly how an assignment showed
+                        # green badges and still sat at 0 / 0 — the failure has
+                        # to reach the teacher, not a swallowed warning field.
+                        ev = {**ev, "ready": False,
+                              "error": f"prepared, but could not be saved: {e}"[:300]}
+            yield _json.dumps(ev) + "\n"
+
+    return StreamingResponse(events(), media_type="application/x-ndjson",
+                             headers={"Cache-Control": "no-cache",
+                                      "X-Accel-Buffering": "no"})
+
+
+@app.get("/assignments")
+def list_assignments():
+    """Assignments with a ready-count. Safe for students AND teachers."""
+    sb = get_supabase()
+    rows = sb.table("assignments").select(
+        "id, name, teacher_name, created_at").order(
+        "created_at", desc=True).execute().data or []
+    probs = sb.table("problems").select(
+        "assignment_id, ready").not_.is_("assignment_id", "null").execute().data or []
+    counts = {}
+    for p in probs:
+        c = counts.setdefault(p["assignment_id"], {"total": 0, "ready": 0})
+        c["total"] += 1
+        c["ready"] += 1 if p["ready"] else 0
+    return {"assignments": [
+        {**a, **counts.get(a["id"], {"total": 0, "ready": 0})} for a in rows]}
+
+
+@app.get("/assignments/{assignment_id}/problems")
+def assignment_problems(assignment_id: str):
+    """STUDENT view. Ready problems only, public columns only.
+
+    No solution, no prepare_error, and nothing that isn't ready — a student must
+    never be handed a problem the grader cannot actually grade."""
+    res = get_supabase().table("problems").select(
+        _PUBLIC_PROBLEM_COLS).eq("assignment_id", assignment_id).eq(
+        "ready", True).execute()
+    return {"problems": res.data or [], "count": len(res.data or [])}
+
+
+@app.get("/teacher/assignments/{assignment_id}/problems")
+def teacher_assignment_problems(assignment_id: str):
+    """TEACHER view. Every problem including the ones that failed, with reasons.
+
+    Still no solution: the teacher already has it in their own file, and not
+    sending it keeps one fewer copy of the answer key moving over the wire."""
+    res = get_supabase().table("problems").select(
+        _PUBLIC_PROBLEM_COLS + ", ready, prepare_error").eq(
+        "assignment_id", assignment_id).execute()
+    rows = res.data or []
+    return {"problems": rows,
+            "ready": sum(1 for r in rows if r["ready"]),
+            "failed": sum(1 for r in rows if not r["ready"]),
+            "count": len(rows)}
+
+
+@app.post("/teacher/split")
+def manual_split(req: ManualSplitRequest):
+    """Teacher-authored decomposition for a problem the model could not split.
+
+    Goes through the SAME serve gate as a generated one — a hand-written split
+    can still contain a step that does no work, which would let a student skip
+    it and be marked correct."""
+    from main.publish import save_manual_decomposition
+
+    sb = get_supabase()
+    row = sb.table("problems").select(
+        "slug, title, description, solution").eq("slug", req.slug).execute().data
+    if not row:
+        raise HTTPException(status_code=404, detail=f"Problem '{req.slug}' not found.")
+    problem = row[0]
+    try:
+        out = save_manual_decomposition(problem, req.header, req.chunks)
+    except Exception as e:
+        # A gate rejection is teacher feedback, not a server fault.
+        raise HTTPException(status_code=400, detail={
+            "reason_code": "split_rejected",
+            "message": str(e).splitlines()[0][:300]})
+    sb.table("problems").update(
+        {"ready": True, "prepare_error": None}).eq("slug", req.slug).execute()
+    return out
     
 
 
