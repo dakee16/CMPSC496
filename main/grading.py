@@ -61,6 +61,114 @@ def _names(code: str, ctx) -> set:
             if isinstance(n, ast.Name) and isinstance(n.ctx, ctx)}
 
 
+# Builtins a coding exercise may reference without defining them first. Kept
+# deliberately small: a bare name that is not here and not in scope is far more
+# often a typo or the wrong parameter name than a builtin the student meant.
+_SAFE_BUILTINS = frozenset({
+    "abs", "all", "any", "ascii", "bin", "bool", "bytearray", "bytes",
+    "callable", "chr", "complex", "dict", "divmod", "enumerate", "filter",
+    "float", "format", "frozenset", "hash", "hex", "int", "isinstance",
+    "issubclass", "iter", "len", "list", "map", "max", "min", "next", "object",
+    "oct", "ord", "pow", "print", "range", "repr", "reversed", "round", "set",
+    "slice", "sorted", "str", "sum", "tuple", "zip",
+    "True", "False", "None", "NotImplemented", "Ellipsis", "__name__",
+    # typing aliases the execution harness injects into the run namespace
+    "List", "Dict", "Optional", "Tuple", "Set", "Any", "Union", "Callable",
+    "Iterable", "Iterator",
+})
+
+# These ARE in _SAFE_BUILTINS so `list(map(...))` etc. are fine, but using one
+# as a bare value (`max(list)`, `list.pop(...)`) is almost always a student
+# reaching for the input list and typing the type name instead.
+_BUILTIN_TYPE_NAMES = frozenset({"list", "dict", "set", "tuple", "frozenset"})
+
+
+def _bound_names(tree) -> set:
+    """Every name the parsed body BINDS - assignment targets, loop and
+    comprehension targets, `with ... as`, walrus, function/class defs and their
+    parameters, `except ... as`, `global`/`nonlocal`, and import aliases."""
+    bound = set()
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store):
+            bound.add(n.id)
+        elif isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            bound.add(n.name)
+        elif isinstance(n, ast.ExceptHandler) and n.name:
+            bound.add(n.name)
+        elif isinstance(n, (ast.Global, ast.Nonlocal)):
+            bound.update(n.names)
+        elif isinstance(n, ast.Import):
+            for a in n.names:
+                bound.add((a.asname or a.name).split(".")[0])
+        elif isinstance(n, ast.ImportFrom):
+            for a in n.names:
+                bound.add(a.asname or a.name)
+    for n in ast.walk(tree):
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+            a = n.args
+            for grp in (a.posonlyargs, a.args, a.kwonlyargs):
+                bound.update(x.arg for x in grp)
+            if a.vararg:
+                bound.add(a.vararg.arg)
+            if a.kwarg:
+                bound.add(a.kwarg.arg)
+    return bound
+
+
+def _bare_builtin_types(tree) -> set:
+    """Builtin type names read as a plain value rather than called: `list` in
+    `max(list)` or `list.pop(...)`, but NOT `list` in `list(map(...))`."""
+    parent = {c: p for p in ast.walk(tree) for c in ast.iter_child_nodes(p)}
+    bad = set()
+    for n in ast.walk(tree):
+        if (isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load)
+                and n.id in _BUILTIN_TYPE_NAMES):
+            par = parent.get(n)
+            if not (isinstance(par, ast.Call) and par.func is n):
+                bad.add(n.id)
+    return bad
+
+
+def _scope_violation(student_code: str, in_scope: set) -> tuple[str, str] | None:
+    """Deterministic pre-LLM gate: every name this step READS must resolve to
+    something real - a function parameter, a variable an earlier accepted step
+    produced, or a safe builtin. A step that reads an undefined name (a typo, or
+    the wrong parameter name) is the student's own error and is failed here,
+    before any model is consulted. Without this, the resulting NameError surfaces
+    later as `ownership ambiguous` and is handed to the LLM judge, which grades
+    intent and green-lights nonsense like `max(list)`.
+
+    Returns (student_message, reason_code) on a violation, else None. A parse
+    failure returns None - syntax is classified elsewhere."""
+    try:
+        tree = _parse_body(student_code)
+    except SyntaxError:
+        return None
+    bound = _bound_names(tree)
+    reads = {n.id for n in ast.walk(tree)
+             if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load)}
+    # `x += 1` reads x before writing it; the AST marks the target Store-only.
+    for n in ast.walk(tree):
+        if isinstance(n, ast.AugAssign) and isinstance(n.target, ast.Name):
+            reads.add(n.target.id)
+
+    unknown = sorted(x for x in (reads - bound)
+                     if x not in in_scope and x not in _SAFE_BUILTINS)
+    if unknown:
+        shown = ", ".join(f"`{u}`" for u in unknown[:3])
+        return (f"This step uses {shown}, which isn't defined. Use the "
+                f"function's parameters or a value from an earlier step.",
+                "undefined_name")
+
+    bare = sorted(x for x in _bare_builtin_types(tree)
+                  if x not in bound and x not in in_scope)
+    if bare:
+        return (f"This step uses `{bare[0]}` as a value, but that is Python's "
+                f"built-in type. Did you mean one of the function's parameters?",
+                "builtin_type_as_value")
+    return None
+
+
 def _ok(verdict, tier, reason, code, **kw) -> GradeResult:
     # Deterministic by default: every path here except the LLM judge and the
     # system failures reaches its verdict by actually running code. Those two
@@ -258,7 +366,8 @@ def grade_submission(session: dict, student_code: str,
     except Exception as e:
         return _system("oracle_load_failed", repr(e)[:200])
 
-    entry = get_resolved_entry(problem)["entry_name"]
+    resolved = get_resolved_entry(problem)
+    entry = resolved["entry_name"]
     prefix = "\n".join(accepted_prefix(session))
     student_code = (student_code or "").strip()
 
@@ -276,6 +385,14 @@ def grade_submission(session: dict, student_code: str,
         return _ok("incorrect", "syntax",
                    f"Your code doesn't parse: {probe.internal_error[7:].strip()}.",
                    "syntax_error")
+
+    # ── SCOPE GATE - names the step READS must already exist. Deterministic,
+    #    runs before any execution tier or LLM. Catches the wrong parameter
+    #    name / typo that would otherwise crash and be excused as our fault. ──
+    in_scope = _names(prefix, ast.Store) | set(resolved["params"])
+    scope = _scope_violation(student_code, in_scope)
+    if scope is not None:
+        return _ok("incorrect", "syntax", scope[0], scope[1])
 
     # ── LAST CHUNK - whole function, no borrowed tail ──
     if is_last:
@@ -384,3 +501,42 @@ def _tier3(problem, session, chunk, header, prefix, student_code, upto,
     return _tier4(problem, chunk, upto, student_code,
                   "no calibrated adapter produced attributable evidence", evidence,
                   corr)
+
+
+if __name__ == "__main__":
+    # Self-check for the deterministic scope gate. Pure - no oracle, no model.
+    # Run with:  python -m main.grading
+    params = {"nums"}
+
+    flagged = [
+        ("max_element = max(list)", params, "builtin_type_as_value"),
+        ("list.pop(list.index(top))", params | {"top"}, "builtin_type_as_value"),
+        ("x = dict", params, "builtin_type_as_value"),
+        ("total = arr[0]", params, "undefined_name"),
+        ("return maxx", params, "undefined_name"),
+        ("total += n", params, "undefined_name"),        # n never bound
+    ]
+    for code, scope, expect_code in flagged:
+        got = _scope_violation(code, set(scope))
+        assert got is not None and got[1] == expect_code, (code, got)
+
+    clean = [
+        ("first = max(nums)", params),
+        ("return max(nums)", params),
+        ("seen = list(map(int, nums))", params),          # list(...) is a call
+        ("d = dict()", params),
+        ("total = 0", params),
+        ("total = total + n\nn = 1", params),             # bound within the step
+        ("for i in range(len(nums)):\n    total += nums[i]", params | {"total"}),
+        ("out = [x for x in nums if x > 0]", params),
+        ("import math\nr = math.sqrt(nums[0])", params),
+        ("return sorted(nums)[-2]", params),
+    ]
+    for code, scope in clean:
+        got = _scope_violation(code, set(scope))
+        assert got is None, (code, got)
+
+    # A syntax fragment is classified elsewhere, not here.
+    assert _scope_violation("elif x:", params) is None
+
+    print("grading.py scope-gate self-check OK")

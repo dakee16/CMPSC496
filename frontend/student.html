@@ -129,6 +129,8 @@
         </div>
 
         <div class="card">
+          <p class="hint" style="margin-bottom:6px">You are completing this function:</p>
+          <pre class="code" id="sig" style="margin-bottom:14px"></pre>
           <p class="prompt" id="prompt"></p>
           <textarea id="code"></textarea>
           <div class="row" style="margin-top:13px">
@@ -169,7 +171,7 @@ const S = requireSession("student");
 mountHeader({active: "Practice", wide: true});
 const $ = id => document.getElementById(id);
 
-let sessionId = null, chunks = [], idx = 0, accepted = [], editor = null;
+let sessionId = null, chunks = [], idx = 0, accepted = [], editor = null, header = "";
 // The tutor is scoped to whatever is open on the LEFT. No problem, no chat.
 let openProblem = null, chatLog = [], chatBusy = false;
 
@@ -216,6 +218,8 @@ async function start(p){
   $("probTitle").textContent = p.title || p.slug;
   $("statement").textContent = p.description || "";
   $("spine").innerHTML = "";
+  $("sig").textContent = "";
+  header = "";
   $("soFarCard").hidden = true;
   $("submit").style.display = ""; $("backP").style.display = "";
   $("msg").innerHTML = `<div class="banner info">Getting this problem ready...</div>`;
@@ -238,7 +242,8 @@ async function start(p){
   if (!r.ok) return show("bad", "This problem could not be started. Try another one.");
 
   const d = await r.json();
-  sessionId = d.session_id; chunks = d.chunks || [];
+  sessionId = d.session_id; chunks = d.chunks || []; header = d.header || "";
+  $("sig").textContent = header || "def solve(...):";
   $("msg").innerHTML = ""; $("submit").disabled = false;
   ensureEditor();
   if (editor) editor.getWrapperElement().style.display = "";
@@ -268,7 +273,8 @@ function render(){
   const cur = chunks[idx];
   $("prompt").textContent = cur ? cur.prompt : "";
   $("soFarCard").hidden = accepted.length === 0;
-  $("soFar").textContent = accepted.map(a => a.code).join("\n");
+  const body = accepted.map(a => a.code.split("\n").map(l => "    " + l).join("\n"));
+  $("soFar").textContent = [header, ...body].filter(Boolean).join("\n");
   $("attempts").textContent = "";
   if (editor) { editor.setValue(""); editor.refresh(); editor.focus(); }
 }
