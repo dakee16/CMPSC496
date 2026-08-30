@@ -1,5 +1,5 @@
 """
-execution.py — hardened execution path for UNTRUSTED student code.
+execution.py - hardened execution path for UNTRUSTED student code.
 
 Deliberately separate from tests/sandbox.py:run_solution(), which stays the
 trusted runner for ground-truth solutions and mutation testing. That runner
@@ -62,7 +62,7 @@ class PolicyViolation(Exception):
 def check_policy(code: str) -> None:
     """AST safety policy. Raises PolicyViolation with a student-safe message.
 
-    Runs BEFORE execution — a refused program is never executed at all."""
+    Runs BEFORE execution - a refused program is never executed at all."""
     try:
         tree = ast.parse(code)
     except SyntaxError:
@@ -237,7 +237,7 @@ def run_student_code(code: str, inputs: list, entry_name: str | None = None,
 
     raw_out = proc.stdout or ""
     if len(raw_out) > _MAX_OUTPUT_BYTES:
-        # Typed, explicit — never a silent truncation that looks like a parse bug.
+        # Typed, explicit - never a silent truncation that looks like a parse bug.
         return ("harness_error", [],
                 f"result payload {len(raw_out):,}B exceeds {_MAX_OUTPUT_BYTES:,}B "
                 f"cap; problem unsupported at this execution budget")
@@ -284,7 +284,7 @@ def classify_run(code: str, tests: list, entry_name: str | None = None,
 
     Comparison happens INSIDE the child; only a bounded control message crosses
     the IPC boundary. A legitimately huge return value therefore passes as long
-    as its computation stays inside the CPU/memory/wall budget. JSON only —
+    as its computation stays inside the CPU/memory/wall budget. JSON only -
     never pickle."""
     status, payload, err = run_student_code(
         code, [t["input"] for t in tests], entry_name=entry_name,

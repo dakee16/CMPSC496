@@ -1,5 +1,5 @@
 """
-live_playground.py — a REAL pipeline run, narrated live for the browser.
+live_playground.py - a REAL pipeline run, narrated live for the browser.
 
 This is the opposite of the read-only showcase endpoints in api_server.py:
 those replay cache and never call a model; this one runs the actual pipeline
@@ -12,12 +12,12 @@ Design rules, in the same spirit as the rest of the codebase:
      same functions production uses (make_oracle_tests, validate_oracle,
      decompose_into_chunks, check_necessity). This module only orchestrates
      and narrates. If the pipeline and the playground ever disagree, the
-     playground is wrong by definition — and this structure makes that
+     playground is wrong by definition - and this structure makes that
      impossible.
   2. The verdict is persisted to tests/tests_cache.json in EXACTLY the format
      get_oracle_tests writes, so a live run leaves the system in the same
      state a warmup run would.
-  3. `emit` callbacks never change behaviour — they only report it.
+  3. `emit` callbacks never change behaviour - they only report it.
 
 Costs: a live run makes real LLM calls (oracle input generation, one
 counterexample search per surviving mutant per round, and the decomposition
@@ -39,7 +39,7 @@ from .mutation import CUTOFF_1_KILL_RATE, validate_oracle
 
 # One live run at a time. Two reasons: (1) sys.stdout is process-global, so
 # two concurrent runs would fight over it; (2) each run makes real, billed
-# LLM calls — accidental parallel runs are pure waste. FastAPI's default
+# LLM calls - accidental parallel runs are pure waste. FastAPI's default
 # threadpool would otherwise happily run several at once.
 _RUN_LOCK = threading.Lock()
 
@@ -50,7 +50,7 @@ class _ThreadLineStream(io.TextIOBase):
 
     contextlib.redirect_stdout is process-wide, which is wrong here: while a
     run streamed, prints from other request handlers (or the caller itself)
-    would get swallowed into this run's feed — verified live, including a
+    would get swallowed into this run's feed - verified live, including a
     feedback loop when the consumer of the stream itself printed. Routing by
     thread id confines capture to the pipeline that owns it.
 
@@ -108,7 +108,7 @@ def _persist_verdict(problem: dict, report: dict) -> None:
 
 
 def _pipeline(problem: dict, emit) -> None:
-    """The run itself. Raises nothing to the caller — every failure becomes an
+    """The run itself. Raises nothing to the caller - every failure becomes an
     event, because a demo that dies silently teaches nothing."""
     slug = problem.get("slug") or problem.get("title") or "<unnamed>"
 
@@ -123,9 +123,9 @@ def _pipeline(problem: dict, emit) -> None:
     emit({"type": "entry", "entry_name": resolved.get("entry_name"),
           "params": resolved.get("params", [])})
 
-    # ── oracle generation (always fresh — the whole point is to WATCH it) ──
+    # ── oracle generation (always fresh - the whole point is to WATCH it) ──
     emit({"type": "stage", "name": "oracle_gen",
-          "label": "Generating oracle tests — model proposes INPUTS only, "
+          "label": "Generating oracle tests - model proposes INPUTS only, "
                    "the ground truth computes every expected output"})
     tests = make_oracle_tests(problem)
     if not tests:
@@ -140,7 +140,7 @@ def _pipeline(problem: dict, emit) -> None:
 
     # ── mutation testing + repair, fully narrated ─────────────────────────
     emit({"type": "stage", "name": "mutation",
-          "label": f"Mutation testing — deterministically breaking the ground "
+          "label": f"Mutation testing - deterministically breaking the ground "
                    f"truth one edit at a time and checking the oracle notices "
                    f"(STRONG needs kill_rate_direct ≥ {CUTOFF_1_KILL_RATE})"})
     report = validate_oracle(problem, tests, emit=emit)
@@ -154,7 +154,7 @@ def _pipeline(problem: dict, emit) -> None:
           "insufficient_mutants": report.get("insufficient_mutants", False),
           "rounds": report.get("rounds", 1),
           "n_tests": len(report["final_tests"]),
-          "detail": "verdict persisted to tests/tests_cache.json — the live "
+          "detail": "verdict persisted to tests/tests_cache.json - the live "
                     "run leaves the same state a warmup pass would"})
 
     # ── decomposition + Gate 1 ────────────────────────────────────────────
@@ -164,7 +164,7 @@ def _pipeline(problem: dict, emit) -> None:
                              OracleNotStrongError, decompose_into_chunks)
 
     emit({"type": "stage", "name": "decomposition",
-          "label": "Decomposing into 2-3 chunks — exactly the path a student "
+          "label": "Decomposing into 2-3 chunks - exactly the path a student "
                    "request takes, including every retry and gate"})
     try:
         result = decompose_into_chunks(problem)
@@ -187,7 +187,7 @@ def _pipeline(problem: dict, emit) -> None:
     # Gate 1; re-running it here is deterministic, model-free and sub-second,
     # and gives the UI the per-chunk knockout detail the return value omits.
     emit({"type": "stage", "name": "necessity",
-          "label": "Gate 1 (necessity) — knocking each chunk out in turn; a "
+          "label": "Gate 1 (necessity) - knocking each chunk out in turn; a "
                    "load-bearing chunk's removal must break the assembly"})
     nec = check_necessity(result["header"], chunks, problem)
     emit({"type": "necessity", "status": nec["status"],
@@ -214,7 +214,7 @@ def live_run(problem: dict):
         acquired = _RUN_LOCK.acquire(timeout=1.0)
         if not acquired:
             emit({"type": "error",
-                  "message": "Another live run is already in progress — one at "
+                  "message": "Another live run is already in progress - one at "
                              "a time (each run bills real LLM calls)."})
             q.put(_DONE)
             return

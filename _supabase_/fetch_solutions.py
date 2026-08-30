@@ -63,7 +63,7 @@ def generate_solution(title: str, description: str, hints: list, template: str) 
         f"Hints:\n{hints_text}\n\n"
         f"Python function template to complete:\n{template}\n\n"
         "Write a clean, correct, complete Python solution. "
-        "Return ONLY the Python code — no explanation, no markdown fences."
+        "Return ONLY the Python code - no explanation, no markdown fences."
     )
     raw = chat(MODEL, "You are an expert competitive programmer. Return only clean Python code, no markdown.", [{"role": "user", "content": prompt}], temperature=0.1)
     raw = re.sub(r'```[\w]*\n?', '', raw)
@@ -106,7 +106,7 @@ def main():
         )
 
         if not solution:
-            print(f"  ⚠️  Empty solution — skipping.")
+            print(f"  ⚠️  Empty solution - skipping.")
             continue
 
         # Save to Supabase

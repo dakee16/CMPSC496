@@ -18,19 +18,19 @@ RULES:
   a loop or if that sits in the function body is 2. And so on.
 - The canonical lines, stacked in order at their indent depths, MUST form a
   correct, runnable program. Never place a guaranteed-return before code that
-  still needs to run — that creates dead code and is invalid.
-- For class definition steps, the correct one-line answer is ONLY the class 
+  still needs to run - that creates dead code and is invalid.
+- For class definition steps, the correct one-line answer is ONLY the class
   header line: `class ClassName:` or `class ClassName(BaseClass):`.
-  NEVER ask students to put attributes in the class parentheses — that is 
+  NEVER ask students to put attributes in the class parentheses - that is
   not valid Python. Attributes belong in __init__, not the class header.
-  Rubric for a class definition step must be: `class ClassName:` or 
-  `class ClassName(BaseClass):` — nothing else.
-- For any step whose code belongs INSIDE a function, loop, or conditional 
+  Rubric for a class definition step must be: `class ClassName:` or
+  `class ClassName(BaseClass):` - nothing else.
+- For any step whose code belongs INSIDE a function, loop, or conditional
   block, the rubric MUST show the answer with correct indentation.
-  Example: rubric for "initialize variable inside function" must be 
+  Example: rubric for "initialize variable inside function" must be
   `    num_to_index = {}` (with 4 spaces), not `num_to_index = {}`.
 
-EXAMPLE — given this problem:
+EXAMPLE - given this problem:
 "Implement sum_digits(num) that returns the sum of digits of a positive integer using % 10 and // 10."
 
 Good decomposition:
@@ -40,7 +40,7 @@ Good decomposition:
       "step_id": "Step 1",
       "prompt": "Declare the function signature for sum_digits that takes an integer num as its parameter.",
       "expected_type": "code",
-      "rubric": "def sum_digits(num): or def sum_digits(num): pass — just the def line with optional pass. Type annotations are also acceptable e.g. def sum_digits(num: int) -> int: pass"
+      "rubric": "def sum_digits(num): or def sum_digits(num): pass - just the def line with optional pass. Type annotations are also acceptable e.g. def sum_digits(num: int) -> int: pass"
     },
     {
       "step_id": "Step 2",
@@ -52,7 +52,7 @@ Good decomposition:
       "step_id": "Step 3",
       "prompt": "Write a while loop that continues as long as num is greater than 0.",
       "expected_type": "code",
-      "rubric": "while num > 0: — just the loop header line, no body required."
+      "rubric": "while num > 0: - just the loop header line, no body required."
     },
     {
       "step_id": "Step 4",
@@ -96,51 +96,51 @@ EVAL_SYSTEM = """
 PERSONA: You are a strict but fair grader for ONE micro-step in a programming tutor.
 
 RULES:
-- Output JSON only — no markdown, no prose outside the JSON object.
+- Output JSON only - no markdown, no prose outside the JSON object.
 - Schema: {"correct": true/false, "short_reason": "...", "correct_answer": "..."}
 - Grade ONLY what this specific step asks for using the rubric provided.
 - Do NOT evaluate the full function or surrounding logic.
 
 SIGNATURE RULES:
 - Accept any correct function signature even with type annotations.
-  e.g. def foo(x: int) -> int: pass is the same as def foo(x): pass — both are correct.
+  e.g. def foo(x: int) -> int: pass is the same as def foo(x): pass - both are correct.
 - Accept pass, ... (ellipsis), or empty body for signature steps.
 
 CODE GRADING RULES:
 - Ignore whitespace and spacing around operators (e.g. a+b and a + b are identical).
-  
+
 - If the student answer matches the rubric semantically, mark correct=true.
-  IGNORE indentation completely — leading whitespace is stripped before you
+  IGNORE indentation completely - leading whitespace is stripped before you
   see it and is handled by the reconstructor. NEVER mark an answer wrong for
   indentation, and NEVER mention indentation in short_reason.
 - CRITICAL: if the student answer matches the rubric exactly (same tokens, same logic), you MUST mark correct=true.
   Do NOT invent reasons to mark it wrong.
 - Accept `else:` as equivalent to explicit elif when it is the only remaining branch.
 - For loop/condition headers: accept the header line alone, body is NOT required.
-- VARIABLE NAMES: Student-chosen variable names are acceptable as long as 
-  the structure and logic are correct. For example, `for index, number in 
+- VARIABLE NAMES: Student-chosen variable names are acceptable as long as
+  the structure and logic are correct. For example, `for index, number in
   enumerate(nums):` is identical to `for i, num in enumerate(nums):`.
   NEVER reject an answer solely because variable names differ from the rubric.
-- HALLUCINATION PREVENTION: Before stating a reason, verify it is actually 
-  true. If the student answer contains a colon, NEVER say "missing colon". 
-  If the answer has correct syntax, NEVER say "syntax error". Only state 
+- HALLUCINATION PREVENTION: Before stating a reason, verify it is actually
+  true. If the student answer contains a colon, NEVER say "missing colon".
+  If the answer has correct syntax, NEVER say "syntax error". Only state
   errors you can directly observe in the answer text.
-- AUGMENTED ASSIGNMENT: x = x // 10 and x //= 10 are identical — accept both.
-  x = x + 1 and x += 1 are identical — accept both. Same for all operators.
-- ANSWER ISOLATION: Grade ONLY the last line of the student answer if multiple 
+- AUGMENTED ASSIGNMENT: x = x // 10 and x //= 10 are identical - accept both.
+  x = x + 1 and x += 1 are identical - accept both. Same for all operators.
+- ANSWER ISOLATION: Grade ONLY the last line of the student answer if multiple
   lines are shown. The earlier lines are prior context already validated.
-- HALLUCINATION CHECK: Read the student answer character by character before 
-  stating what it contains. NEVER claim a function or operator is present 
+- HALLUCINATION CHECK: Read the student answer character by character before
+  stating what it contains. NEVER claim a function or operator is present
   unless you can see it explicitly in the answer text.
-- If STUDENT ANSWER is "__BLANK__", mark correct=false, 
-  short_reason="No answer provided.", and correct_answer must 
+- If STUDENT ANSWER is "__BLANK__", mark correct=false,
+  short_reason="No answer provided.", and correct_answer must
   contain the actual correct answer for this step based on the rubric.
 
-CONTEXT RULE: 
-- If the student uses a variable name or structure that differs 
-  from the rubric but matches what was validated in PRIOR CONTEXT, accept it 
-  as correct. 
-- For example if prior context shows `mydict = {}` was accepted, 
+CONTEXT RULE:
+- If the student uses a variable name or structure that differs
+  from the rubric but matches what was validated in PRIOR CONTEXT, accept it
+  as correct.
+- For example if prior context shows `mydict = {}` was accepted,
   then `complement in mydict` is correct even if the rubric says `seen`.
   Always check PRIOR CONTEXT before marking a name mismatch as wrong.
 
@@ -153,14 +153,14 @@ CORRECT ANSWER RULES:
 - NEVER include placeholder comments like # code here, # body here, # add logic.
 - NEVER reveal the full function solution.
 - correct_answer must be valid, runnable Python.
-- NEVER call .count() on dict_values — use list(d.values()).count(v) instead.
+- NEVER call .count() on dict_values - use list(d.values()).count(v) instead.
 - When correct=true, correct_answer may be null.
 """
 
 
 CHUNK_DECOMPOSE_SYSTEM = """\
 ALWAYS produce 2 or 3 chunks. A single chunk covering the entire solution is
-NEVER acceptable — the whole point is to break the problem into distinct parts
+NEVER acceptable - the whole point is to break the problem into distinct parts
 the student solves one at a time. If you cannot find a natural split, split at
 the point where the main computation begins vs. where the result is returned.
 
@@ -170,7 +170,7 @@ METHOD to achieve it. The student must still have real work to figure out.
   GOOD (states a goal, hides the method):
     "Write code that builds the reverse of the number's digits as a new value."
     "Using the lookup, find and return the indices of the two numbers that sum to target."
-  BAD (instructions / leak the method — NEVER do this):
+  BAD (instructions / leak the method - NEVER do this):
     "Initialize reversed_num to 0 and original to x."          (pure setup)
     "Create a dictionary mapping each number to its index."    (names the structure AND method)
     "Use a loop to extract each digit and build up the result." (dictates HOW)

@@ -1,13 +1,13 @@
 """
-gates.py — validation gates a decomposition must clear before it is served.
+gates.py - validation gates a decomposition must clear before it is served.
 
 These run at DECOMPOSITION time, on reference material, never on a student's
 answer. Nothing here belongs in the grading path.
 
-Gate 1 — necessity. Full-assembly validation only proves the chunks work
+Gate 1 - necessity. Full-assembly validation only proves the chunks work
 TOGETHER. It cannot tell you whether each chunk actually carries weight. On
 Palindrome Number a chunk handling negatives (`if x < 0: return False`) becomes
-dead weight the moment a later chunk compares against a reversed `abs(x)` — the
+dead weight the moment a later chunk compares against a reversed `abs(x)` - the
 negative case is absorbed downstream, so a student could answer "pass" for that
 chunk and still be marked correct. That defeats chunking: an early mistake must
 be caught, not silently absorbed.
@@ -15,7 +15,7 @@ be caught, not silently absorbed.
 The check is a knockout. Replace chunk i's reference with a no-op, reassemble
 with every other chunk untouched, and run the oracle. A load-bearing chunk's
 removal BREAKS the assembly. If the assembly still passes, chunk i was never
-load-bearing and the whole decomposition is rejected — not patched — exactly as
+load-bearing and the whole decomposition is rejected - not patched - exactly as
 a full-assembly gate failure is.
 
 Note the gate is only as sharp as the oracle behind it: a knockout can only be
@@ -34,7 +34,7 @@ _NOOP = "pass"
 _MIN_CHUNKS = 2
 
 # References that do nothing. Such a chunk cannot possibly be load-bearing, so
-# it would fail necessity anyway — catching it here gives a precise error
+# it would fail necessity anyway - catching it here gives a precise error
 # instead of a confusing knockout result.
 _NOOP_REFERENCES = {"", "pass", "...", "None", "return"}
 
@@ -50,7 +50,7 @@ def assert_serveable(problem: dict, decomposition: dict) -> dict:
     """THE serve boundary. Nothing reaches a student except through here.
 
     Gating used to live inside one generator, so every other path that produced
-    a decomposition — the best-effort fallback, replan — served ungated. The
+    a decomposition - the best-effort fallback, replan - served ungated. The
     shared mechanism was the status string "skipped" meaning "accept" in those
     places while meaning "block" inside decompose_into_chunks. This function is
     the single place that meaning is decided, and here "skipped"/no-oracle is
@@ -58,7 +58,7 @@ def assert_serveable(problem: dict, decomposition: dict) -> dict:
 
     Enforced in order, raising a typed exception on the first failure:
       a. the oracle exists (NoOracleTestsError) and is STRONG
-         (OracleNotStrongError) — STRONG per is_oracle_strong, which now keys
+         (OracleNotStrongError) - STRONG per is_oracle_strong, which now keys
          off kill_rate_direct; never reimplemented here
       b. at least _MIN_CHUNKS chunks (DecompositionUnavailableError)
       c. no chunk reference is a no-op (DecompositionUnavailableError)
@@ -66,7 +66,7 @@ def assert_serveable(problem: dict, decomposition: dict) -> dict:
 
     Returns `decomposition` unchanged so callers can `return assert_serveable(...)`."""
     # Local import: run_phase1 imports this module, so a top-level import here
-    # would be circular — same reason as the assemble_references import below.
+    # would be circular - same reason as the assemble_references import below.
     from .run_phase1 import (DecompositionUnavailableError, NoOracleTestsError,
                              OracleNotStrongError)
 
@@ -115,7 +115,7 @@ def assert_serveable(problem: dict, decomposition: dict) -> dict:
 
 def _knock_out(chunk):
     """A copy of `chunk` with its reference replaced by a no-op. Never mutates
-    the original — the caller's chunks must survive the check untouched."""
+    the original - the caller's chunks must survive the check untouched."""
     if hasattr(chunk, "model_copy"):                 # pydantic StepItem
         return chunk.model_copy(update={"reference": _NOOP})
     import copy
@@ -153,12 +153,12 @@ def check_necessity(header: str, chunks: list, problem: dict) -> dict:
       "fail"             at least one chunk was not load-bearing
       "skipped"          no oracle tests exist at all (matches _gate_code's
                          long-standing policy for non-JSON-input problems)
-      "oracle_not_strong"  PRECONDITION FAILURE — see below
+      "oracle_not_strong"  PRECONDITION FAILURE - see below
 
     The precondition matters. A knockout can only be detected by a test that
     exercises the removed chunk's code path, so a weak oracle produces FALSE
     REJECTIONS: a genuinely necessary chunk looks redundant simply because
-    nothing tests the case it handles. Measured example — knocking out the
+    nothing tests the case it handles. Measured example - knocking out the
     negative-number chunk of the real Palindrome decomposition fails exactly
     ONE oracle test; against the old all-positive suite that correct
     decomposition would have been thrown away. So Gate 1 refuses to render a
@@ -172,16 +172,16 @@ def check_necessity(header: str, chunks: list, problem: dict) -> dict:
     tests = get_oracle_tests(problem)
     if not tests:
         return {"status": "skipped", "passed": True, "per_chunk": [],
-                "summary": "no oracle tests available — necessity could not be checked"}
+                "summary": "no oracle tests available - necessity could not be checked"}
 
     # get_oracle_tests above already validated on a miss, so this reads the
     # stored verdict. False here means the oracle was validated and came back
-    # WEAK — regenerating the decomposition cannot fix that.
+    # WEAK - regenerating the decomposition cannot fix that.
     if not is_oracle_strong(problem):
         slug = problem.get("slug") or problem.get("title", "<unnamed problem>")
         return {"status": "oracle_not_strong", "passed": False, "per_chunk": [],
                 "summary": (
-                    f"CANNOT EVALUATE — the oracle for '{slug}' is not "
+                    f"CANNOT EVALUATE - the oracle for '{slug}' is not "
                     f"mutation-validated strong, so a knockout result would be "
                     f"unreliable: a necessary chunk can look redundant when no "
                     f"test exercises its code path. Strengthen the oracle "
@@ -206,7 +206,7 @@ def check_necessity(header: str, chunks: list, problem: dict) -> dict:
 
     named = ", ".join(s for s, _ in dead)
     summary = (
-        f"NECESSITY FAILURE — {named} {'is' if len(dead) == 1 else 'are'} not "
+        f"NECESSITY FAILURE - {named} {'is' if len(dead) == 1 else 'are'} not "
         f"load-bearing. Replacing "
         f"{'its' if len(dead) == 1 else 'their'} reference with `pass` still "
         f"passes every oracle test, which means a student could skip "

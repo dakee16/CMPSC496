@@ -1,5 +1,5 @@
 """
-research_agent.py — simulated 3-agent research pipeline over the new chunk-based
+research_agent.py - simulated 3-agent research pipeline over the new chunk-based
 tutoring system. Same architecture as the live tutor (chunks, 4-tier grader, oracle
 gate, pool) but with weak/normal/strong Qwen agents typing instead of a human.
 
@@ -143,7 +143,7 @@ def main():
         print('═'*70)
 
         if already_done(slug):
-            print(f"  ⏭️  Already processed — skipping.")
+            print(f"  ⏭️  Already processed - skipping.")
             skipped += 1
             continue
 
@@ -156,7 +156,7 @@ def main():
             continue
 
         if not chunks_result.get("chunks"):
-            print(f"  ⚠️  No chunks produced — skipping.")
+            print(f"  ⚠️  No chunks produced - skipping.")
             failed += 1
             continue
 
@@ -171,7 +171,7 @@ def main():
         print(f"\n  ✅ {slug} done. ({processed} processed, {skipped} skipped, {failed} failed)")
 
     total_min = (time.time() - start_time) / 60
-    print(f"\n{'═'*70}\nRUN COMPLETE — {processed} problems in {total_min:.1f} min "
+    print(f"\n{'═'*70}\nRUN COMPLETE - {processed} problems in {total_min:.1f} min "
           f"({skipped} skipped, {failed} failed)\n{'═'*70}")
 
 

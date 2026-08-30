@@ -1,5 +1,5 @@
 """
-mutation.py — mutation testing to measure oracle test-suite strength.
+mutation.py - mutation testing to measure oracle test-suite strength.
 
 An oracle suite is only as good as the wrong answers it can reject. Today the
 inputs are LLM-generated and the expected values come from running the
@@ -7,16 +7,16 @@ ground-truth solution, so nothing proves the suite would catch a WRONG student
 answer: if every cached Palindrome Number test happens to expect True, a
 student submitting `return True` scores 100%.
 
-This module measures that gap directly. It builds "mutants" — mechanical,
-single-point edits of the ground-truth solution — and checks whether the oracle
+This module measures that gap directly. It builds "mutants" - mechanical,
+single-point edits of the ground-truth solution - and checks whether the oracle
 notices. A mutant the oracle cannot tell apart from the original is a concrete
 hole in the suite.
 
 Two hard rules:
   1. Mutant generation is pure `ast` and never calls a model. It grades our own
      machinery, so it must be exactly repeatable.
-  2. The LLM is used in exactly ONE place — proposing candidate INPUTS for a
-     mutant that survived — and never gets a say in whether two outputs differ.
+  2. The LLM is used in exactly ONE place - proposing candidate INPUTS for a
+     mutant that survived - and never gets a say in whether two outputs differ.
      That is always decided by executing both programs and comparing results.
 """
 import ast
@@ -58,7 +58,7 @@ _MAX_PROBE_INPUTS = 12
 _EQUIVALENCE_SWEEP_SIZE = 200
 
 # PLACEHOLDER, calibratable. Below this many mutants a solution is too trivial
-# for the kill rate to mean anything — two-sum once scored STRONG off 2 mutants.
+# for the kill rate to mean anything - two-sum once scored STRONG off 2 mutants.
 # Such a result is flagged insufficient_mutants and is never strong.
 _MIN_MUTANTS = 3
 
@@ -72,7 +72,7 @@ _CMP_FLIP = {
     ast.Lt: ast.LtE, ast.LtE: ast.Lt,       # boundary / off-by-one
     ast.Gt: ast.GtE, ast.GtE: ast.Gt,
     ast.Eq: ast.NotEq, ast.NotEq: ast.Eq,   # negation
-    ast.In: ast.NotIn, ast.NotIn: ast.In,   # containment negation — the
+    ast.In: ast.NotIn, ast.NotIn: ast.In,   # containment negation - the
     # one comparison a hash-map/set-lookup solution (two-sum, contains-
     # duplicate, ...) actually uses, so without this a solution with no
     # <, >, +, -, *, // and no int/bool literals yields ZERO mutants.
@@ -95,7 +95,7 @@ def _sites(tree: ast.AST) -> list[tuple[int, str, str]]:
     """Find every mutable point as (walk_index, kind, label).
 
     Positions are indices into `ast.walk`, whose order is deterministic for a
-    given tree — and `copy.deepcopy` preserves that order — so an index found
+    given tree - and `copy.deepcopy` preserves that order - so an index found
     on the original tree addresses the same node in any copy of it."""
     found = []
     for i, node in enumerate(ast.walk(tree)):
@@ -139,7 +139,7 @@ def _apply(node: ast.AST, kind: str) -> None:
 def generate_mutants(solution_code: str) -> list[dict]:
     """Mechanical single-point edits of `solution_code`, one mutant per site.
 
-    Pure AST rewriting — deterministic, no model call, no side effects on the
+    Pure AST rewriting - deterministic, no model call, no side effects on the
     input. Covers comparison flips (< <= > >= == !=), and/or flips, arithmetic
     flips (+ - * / //), int/float bumps (+1) and boolean literal flips.
     Returns [{"code": mutant_source, "label": "line 3: < -> <="}, ...]."""
@@ -173,11 +173,11 @@ def _candidate_inputs(problem: dict, original: str, mutant_code: str,
                       n: int = CUTOFF_4_MAX_COUNTEREXAMPLE_CANDIDATES,
                       emit=None) -> list[list]:
     """Ask the LLM for up to n input argument-lists that might make the two
-    programs disagree. INPUTS ONLY — the model never reports outputs, and its
+    programs disagree. INPUTS ONLY - the model never reports outputs, and its
     opinion about them is never read.
 
     `emit`, when given, is called with progress-event dicts for live UIs.
-    It never changes behaviour — leaving it None is the production path."""
+    It never changes behaviour - leaving it None is the production path."""
     resolved = get_resolved_entry(problem)
     name, params = resolved["entry_name"], resolved["params"]
     sig = f"{name}({', '.join(params)})" if name else problem.get("title", "")
@@ -188,7 +188,7 @@ def _candidate_inputs(problem: dict, original: str, mutant_code: str,
         f"PROGRAM A (correct):\n{original}\n\n"
         f"PROGRAM B (a single-point edit of A):\n{mutant_code}\n\n"
         f"Find inputs where A and B return DIFFERENT values. Look at exactly "
-        f"what the edit changed and target the code path it sits on — a "
+        f"what the edit changed and target the code path it sits on - a "
         f"boundary value, a sign change, an empty or single-element case.\n"
         f"Every input must still satisfy the problem's stated constraints.\n"
         f"Each input is a JSON array of the {len(params)} positional "
@@ -215,7 +215,7 @@ def _probe_inputs(tests: list) -> list[list]:
     pushed to 0/±1/its neighbours, a list or string emptied, a bool flipped.
 
     Free, deterministic, and it catches the off-by-one and sign mutants the
-    model reliably fails to think of — so `likely_equivalent` is only reached
+    model reliably fails to think of - so `likely_equivalent` is only reached
     after these have been tried too."""
     out = []
     for inp in [t["input"] for t in tests][:2]:
@@ -234,7 +234,7 @@ def _probe_inputs(tests: list) -> list[list]:
 
 
 def _sweep_inputs(tests: list, n: int = _EQUIVALENCE_SWEEP_SIZE) -> list[list]:
-    """A broad, deterministic, type-directed input sweep — no LLM involved.
+    """A broad, deterministic, type-directed input sweep - no LLM involved.
 
     Shapes are taken from the inputs we already have, then each argument is
     varied far more widely than _probe_inputs does: signs, zeros, boundaries,
@@ -280,7 +280,7 @@ def _sweep_inputs(tests: list, n: int = _EQUIVALENCE_SWEEP_SIZE) -> list[list]:
         guard += 1
         cand = [rng.choice(p) for p in pools]
         out.append(cand)
-    # Dedupe but keep order — deterministic either way.
+    # Dedupe but keep order - deterministic either way.
     return list({_key(c): c for c in out}.values())[:n]
 
 
@@ -289,7 +289,7 @@ def _proves_equivalent(original: str, mutant_code: str, entry: str | None,
     """POSITIVE evidence that a mutation changed nothing.
 
     Runs both programs across the broad deterministic sweep and requires exact
-    agreement on EVERY input — including agreeing on which inputs raise. Only
+    agreement on EVERY input - including agreeing on which inputs raise. Only
     that earns exclusion from the denominator. A sweep that cannot run (either
     program failing to execute at all) proves nothing and returns False."""
     inputs = _sweep_inputs(tests)
@@ -344,7 +344,7 @@ def _counterexample_test(problem: dict, original: str, mutant_code: str,
                          emit=None) -> dict | None:
     """One last attempt to kill a survivor: free boundary probes first, then the
     model's suggested inputs. Either way the verdict comes from executing both
-    programs — the model only ever supplies inputs.
+    programs - the model only ever supplies inputs.
 
     `emit`, when given, narrates each phase for live UIs; None (the default,
     and the production path) changes nothing."""
@@ -371,7 +371,7 @@ def _counterexample_test(problem: dict, original: str, mutant_code: str,
         else:
             emit({"type": "search_empty",
                   "detail": "none of the model's inputs made the programs "
-                            "disagree — this alone proves nothing"})
+                            "disagree - this alone proves nothing"})
     return found
 
 
@@ -405,7 +405,7 @@ def evaluate_oracle(problem: dict, oracle_tests: list, emit=None) -> dict:
 
     `emit`, when given, is called with structured progress events so a live UI
     can watch the pass happen (mutants, per-test results, retries, running
-    kill rate). Leaving it None — the production path — changes nothing.
+    kill rate). Leaving it None - the production path - changes nothing.
 
     A mutant is killed when it disagrees with the ORIGINAL on any test, or
     crashes/hangs where the original did not. Every survivor then lands in
@@ -429,7 +429,7 @@ def evaluate_oracle(problem: dict, oracle_tests: list, emit=None) -> dict:
 
     A solution yielding fewer than _MIN_MUTANTS mutants is reported
     insufficient_mutants and is never strong, however the ratio comes out.
-    `kill_rate_direct` is the same ratio BEFORE counterexample repair — the
+    `kill_rate_direct` is the same ratio BEFORE counterexample repair - the
     strength of the suite exactly as handed in, for comparing two suites."""
     solution = problem.get("solution", "")
     entry = get_resolved_entry(problem)["entry_name"]
@@ -456,7 +456,7 @@ def evaluate_oracle(problem: dict, oracle_tests: list, emit=None) -> dict:
     status = [None] * len(mutants)
     new_tests = []
 
-    # Phase 1 — the oracle exactly as handed in. Kept separate from the repair
+    # Phase 1 - the oracle exactly as handed in. Kept separate from the repair
     # pass below so `killed_direct` measures THIS suite, not one already
     # improved by an earlier mutant's counterexample (which would make the
     # number depend on mutant order).
@@ -485,7 +485,7 @@ def evaluate_oracle(problem: dict, oracle_tests: list, emit=None) -> dict:
               "total": len(mutants),
               "survivors": [i for i, s in enumerate(status) if not s]})
 
-    # Phase 2 — one repair attempt per survivor.
+    # Phase 2 - one repair attempt per survivor.
     for i, m in enumerate(mutants):
         if status[i]:
             continue
@@ -494,22 +494,22 @@ def evaluate_oracle(problem: dict, oracle_tests: list, emit=None) -> dict:
                emit({**d, "index": _i, "label": _l})) if emit else None)
         if em:
             em({"type": "retry_start",
-                "detail": "survived the suite as handed in — one repair attempt"})
-        # A test found for an earlier survivor may already cover this one — free.
+                "detail": "survived the suite as handed in - one repair attempt"})
+        # A test found for an earlier survivor may already cover this one - free.
         if _disagrees(m["code"], entry, [t["input"] for t in new_tests],
                       [t["expected"] for t in new_tests]):
             status[i] = "killed_on_retry"
             if em:
                 em({"type": "killed_by_earlier_counterexample",
                     "detail": "a test added for an earlier survivor already "
-                              "kills this one — free"})
+                              "kills this one - free"})
                 em({"type": "mutant_final", "status": "killed_on_retry"})
             continue
         try:
             found = _counterexample_test(problem, solution, m["code"], entry,
                                          seen, tests, emit=em)
         except Exception as e:
-            # Model unreachable — we could not even ask. Never silently excluded:
+            # Model unreachable - we could not even ask. Never silently excluded:
             # an unanswered question counts against the oracle.
             print(f"  ⚠️  counterexample search failed ({type(e).__name__}); "
                   f"{m['label']} left UNRESOLVED")
@@ -525,28 +525,28 @@ def evaluate_oracle(problem: dict, oracle_tests: list, emit=None) -> dict:
             if em:
                 em({"type": "oracle_grown", "new_test": found,
                     "n_tests": len(tests) + len(new_tests),
-                    "detail": "real disagreement found — added as a new oracle "
+                    "detail": "real disagreement found - added as a new oracle "
                               "test, mutant killed on retry"})
                 em({"type": "mutant_final", "status": "killed_on_retry"})
         else:
             # The LLM-guided search came up empty. That alone is NOT evidence of
-            # equivalence — it is just as likely a gap the search missed. Demand
+            # equivalence - it is just as likely a gap the search missed. Demand
             # positive proof from the broad deterministic sweep; anything less
             # stays UNRESOLVED and counts against us.
             if em:
                 em({"type": "equivalence_sweep_start",
                     "sweep_size": _EQUIVALENCE_SWEEP_SIZE,
-                    "detail": "searched hard and found nothing — that is not "
+                    "detail": "searched hard and found nothing - that is not "
                               "proof of harmlessness. Running the broad "
                               "deterministic sweep to demand positive evidence"})
             equivalent = _proves_equivalent(solution, m["code"], entry, tests)
             status[i] = "proven_equivalent" if equivalent else "unresolved"
             if em:
                 em({"type": "equivalence_sweep_result", "equivalent": equivalent,
-                    "detail": ("exact agreement on every sweep input — proven "
+                    "detail": ("exact agreement on every sweep input - proven "
                                "equivalent, excluded from the score"
                                if equivalent else
-                               "sweep could not prove equivalence — UNRESOLVED, "
+                               "sweep could not prove equivalence - UNRESOLVED, "
                                "counts AGAINST the oracle")})
                 em({"type": "mutant_final", "status": status[i]})
 
@@ -558,7 +558,7 @@ def evaluate_oracle(problem: dict, oracle_tests: list, emit=None) -> dict:
     total = len(mutants)
 
     # Only PROVEN equivalence leaves the denominator. Unresolved survivors stay
-    # in it and drag the rate down — when in doubt, it counts against us.
+    # in it and drag the rate down - when in doubt, it counts against us.
     denom = total - proven_equivalent
     kill_rate = killed / denom if denom else 0.0
 
@@ -566,8 +566,8 @@ def evaluate_oracle(problem: dict, oracle_tests: list, emit=None) -> dict:
     # credits the suite for counterexamples the search had to add during this
     # very pass, which is how the all-True palindrome oracle scored 1.00 STRONG
     # while missing every negative input. kill_rate_direct is the suite exactly
-    # as it entered this pass. A repaired suite still improves — the new tests
-    # are kept — but it earns STRONG only on a LATER pass, once those tests are
+    # as it entered this pass. A repaired suite still improves - the new tests
+    # are kept - but it earns STRONG only on a LATER pass, once those tests are
     # part of the suite it starts with. STRONG is always about the as-handed-in
     # suite. (No mutants ⇒ 0.0, never a free perfect score.)
     kill_rate_direct = killed_direct / denom if denom else 0.0
@@ -604,7 +604,7 @@ def validate_oracle(problem: dict, initial_tests: list,
     max_rounds. Stops as soon as the oracle is STRONG.
 
     Returns the final evaluation plus `rounds` and `final_tests` (the full
-    grown suite — persist this to keep the improvement)."""
+    grown suite - persist this to keep the improvement)."""
     tests = list(initial_tests)
     result, rnd = None, 0
 
@@ -635,7 +635,7 @@ def validate_oracle(problem: dict, initial_tests: list,
         seen = {_key(t["input"]) for t in tests}
         if emit:
             emit({"type": "expanding_suite", "round": rnd,
-                  "detail": "still weak — generating a fresh batch of "
+                  "detail": "still weak - generating a fresh batch of "
                             "ground-truth-verified tests and re-running"})
         fresh = [t for t in make_oracle_tests(problem) if _key(t["input"]) not in seen]
         if not fresh:

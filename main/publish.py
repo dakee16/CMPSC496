@@ -1,11 +1,11 @@
 """
-publish.py — prepare a teacher's problems BEFORE any student sees them.
+publish.py - prepare a teacher's problems BEFORE any student sees them.
 
 This is the fix for the failure that used to land in a student's face. Oracle
 generation, mutation validation and decomposition all used to run when a STUDENT
 pressed Start: slow, paid, and roughly a coin-flip on whether it worked, with an
 HTTP 500 as the failure mode. All of it now happens once, at upload, in front of
-the teacher — who can actually do something about it.
+the teacher - who can actually do something about it.
 
 Two consequences worth stating plainly:
 
@@ -25,7 +25,7 @@ from .schemas import StepItem
 
 
 def _reason(exc: Exception) -> str:
-    """A teacher-readable sentence. Never a traceback — this reaches a UI."""
+    """A teacher-readable sentence. Never a traceback - this reaches a UI."""
     from .run_phase1 import (DecompositionUnavailableError, NoOracleTestsError,
                              OracleNotStrongError)
     if isinstance(exc, OracleNotStrongError):
@@ -67,7 +67,7 @@ def prepare_problem(problem: dict) -> dict:
     if not resolved.get("entry_name"):
         return fail("could not find the function to test")
     if not resolved.get("confirmed"):
-        return fail("the solution could not be run — check that it executes")
+        return fail("the solution could not be run - check that it executes")
 
     # ORACLE. The slow part: generate inputs, compute expected outputs from the
     # teacher's own solution, then mutation-test the resulting suite.
@@ -118,7 +118,7 @@ def save_manual_decomposition(problem: dict, header: str,
                               chunks: list[dict]) -> dict:
     """Teacher-authored split, for a problem auto-decomposition could not do.
 
-    Goes through assert_serveable — THE SAME GATE as a generated one. A
+    Goes through assert_serveable - THE SAME GATE as a generated one. A
     hand-written decomposition is not automatically trustworthy: it can still
     contain a chunk that does no work, which would let a student skip a step and
     still be marked correct. Raises on rejection so the teacher sees why."""

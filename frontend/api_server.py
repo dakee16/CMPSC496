@@ -1,5 +1,5 @@
 """
-api_server.py — FastAPI bridge between Next.js web UI and local LLM pipeline.
+api_server.py - FastAPI bridge between Next.js web UI and local LLM pipeline.
 Place this file in your microprog_phase1/ folder and run:
     pip install fastapi uvicorn
     uvicorn api_server:app --port 8000 --reload
@@ -54,7 +54,7 @@ def resolve_student(value: str | None) -> str | None:
     students.id, student_interactions.student_id and solved.student_id are all
     uuid columns, but the demo role picker has no login and sends a typed NAME.
     Inserting that raised `invalid input syntax for type uuid` on every write,
-    which the logging path then swallowed — progress silently vanished.
+    which the logging path then swallowed - progress silently vanished.
 
     A UUID passes through untouched. A name is looked up, and created on a miss,
     so a demo student keeps the same id across sessions and their history adds
@@ -75,7 +75,7 @@ def resolve_student(value: str | None) -> str | None:
             {"username": name, "password_hash": "!demo-no-login"}).execute().data
         return made[0]["id"] if made else None
     except Exception as e:
-        # Identity is optional — anonymous sessions are valid. Never fail a
+        # Identity is optional - anonymous sessions are valid. Never fail a
         # student's request because we could not name them.
         print(f"  ⚠️  could not resolve student {name!r}: {e}")
         return None
@@ -96,11 +96,11 @@ class DecomposeRequest(BaseModel):
     description: str
     # Uploaded problems carry the professor's reference solution in the request;
     # curated ones are looked up in the DB by slug. Either way a solution is
-    # REQUIRED before the pipeline runs — see decompose_chunks_route.
+    # REQUIRED before the pipeline runs - see decompose_chunks_route.
     title: str | None = None
     solution: str | None = None
     # Identity is bound ONCE, here, when the session begins. /grade_chunk never
-    # accepts it again — it must not be changeable mid-session.
+    # accepts it again - it must not be changeable mid-session.
     student_id: str | None = None
 
 
@@ -108,12 +108,12 @@ class EvaluateRequest(BaseModel):
     step: dict
     answer: str
     context: str = ""
-    
+
 class ReplanRequest(BaseModel):
     slug: str
     description: str
     accepted_steps: list[dict]
-    
+
 class ChunkRequest(BaseModel, extra="forbid"):
     """The client is NOT authoritative. It may send only an opaque session id,
     a stable submission id, its code, and (optionally) the index it believes it
@@ -140,7 +140,7 @@ class LogInteractionRequest(BaseModel):
 
 class MarkSolvedRequest(BaseModel, extra="forbid"):
     """Only a completed grading session may claim a solve. Student, slug and
-    independence are DERIVED from it — the client cannot assert any of them."""
+    independence are DERIVED from it - the client cannot assert any of them."""
     session_id: str
 
 
@@ -172,7 +172,7 @@ def health():
 @app.post("/evaluate")
 def evaluate(req: EvaluateRequest):
     """DISABLED. This was the old step-based, LLM-ONLY answer evaluator: it
-    judged a student's answer with no execution, no oracle and no gates — a
+    judged a student's answer with no execution, no oracle and no gates - a
     second answer-checking implementation with different behavior. It has no
     callers. All answer checking goes through /grade_chunk."""
     raise HTTPException(status_code=410, detail={
@@ -184,7 +184,7 @@ def evaluate(req: EvaluateRequest):
 def replan(req: ReplanRequest):
     """DISABLED. This route served ungated material: it built a problem dict
     with no solution, so get_oracle_tests() returned [] and replan_from_prefix()
-    accepted status "skipped" as success — no oracle-strength check and no
+    accepted status "skipped" as success - no oracle-strength check and no
     necessity gate. It is closed rather than left open while it is rebuilt
     behind the same serve boundary as /decompose_chunks."""
     raise HTTPException(status_code=410, detail={
@@ -209,13 +209,13 @@ def decompose_chunks_route(req: DecomposeRequest):
                 problem["solution"] = (full.get("solution") or "").strip()
 
         # No ground truth means no oracle, which means no mutation validation and
-        # no Gate 1 — the decomposition would be served unvalidated. That silent
+        # no Gate 1 - the decomposition would be served unvalidated. That silent
         # degradation is exactly what uploads used to do; it is now a hard error.
         if not problem["solution"]:
             raise HTTPException(
                 status_code=400,
                 detail=(f"No reference solution for '{req.slug}'. A problem cannot "
-                        f"be decomposed without ground truth — oracle tests, "
+                        f"be decomposed without ground truth - oracle tests, "
                         f"mutation validation and the necessity gate all depend "
                         f"on it. Supply `solution` with the request."))
 
@@ -244,7 +244,7 @@ def decompose_chunks_route(req: DecomposeRequest):
 def grade_chunk_route(req: ChunkRequest):
     """Grade one submission against a SERVER-OWNED session.
 
-    All grading logic lives in main.grading.grade_submission — this route only
+    All grading logic lives in main.grading.grade_submission - this route only
     loads the session, enforces request-level preconditions, applies the
     attempt/reveal policy, and strips private material from the response."""
     from main.grading import grade_submission
@@ -262,7 +262,7 @@ def grade_chunk_route(req: ChunkRequest):
     if req.expected_index is not None and req.expected_index != session["index"]:
         raise HTTPException(status_code=409, detail={
             "reason_code": "stale_index",
-            "message": "Your page is out of date — reload to continue.",
+            "message": "Your page is out of date - reload to continue.",
             "index": session["index"]})
 
     # Reserve first. A concurrent twin of this exact submission is told to
@@ -273,7 +273,7 @@ def grade_chunk_route(req: ChunkRequest):
         if prior.get("__in_flight__"):
             raise HTTPException(status_code=409, detail={
                 "reason_code": "submission_in_progress",
-                "message": "This answer is still being graded — retry with the "
+                "message": "This answer is still being graded - retry with the "
                            "same submission id."})
         return prior                            # stored result, graded once
 
@@ -284,7 +284,7 @@ def grade_chunk_route(req: ChunkRequest):
     except Exception as e:                      # never let our fault convict
         # Hand the reservation back. Without this the row stays claimed with no
         # result, and every retry of this submission id 409s "still being
-        # graded" forever — the student can neither advance nor retry.
+        # graded" forever - the student can neither advance nor retry.
         release_submission(req.session_id, req.submission_id)
         raise HTTPException(status_code=503, detail={
             "reason_code": "grader_unavailable", "message": str(e)[:200]})
@@ -314,7 +314,7 @@ def grade_chunk_route(req: ChunkRequest):
         raise HTTPException(status_code=409, detail={
             "reason_code": e.reason_code, "message": str(e)})
 
-    # Log authoritatively here — the browser no longer reports its own verdicts.
+    # Log authoritatively here - the browser no longer reports its own verdicts.
     bound_student = session.get("student_id")
     if bound_student and result.verdict != "indeterminate":
         try:
@@ -322,7 +322,7 @@ def grade_chunk_route(req: ChunkRequest):
             # research table (step_id/agent_level/answer/hint_shown/score) from
             # the weak/normal/strong agent experiment; it has no attempt_number,
             # so every insert here failed with PGRST204 and was swallowed by the
-            # except below — this path had been logging nothing at all.
+            # except below - this path had been logging nothing at all.
             get_supabase().table("student_interactions").insert({
                 "student_id": bound_student, "problem_slug": session["slug"],
                 "chunk_index": session["index"], "attempt_number": state["attempts"],
@@ -349,7 +349,7 @@ def grade_chunk_route(req: ChunkRequest):
 
 # ── playground (read-only showcase) ───────────────────────────────────────
 # These serve the step-through demo in frontend/playground.html. They REPLAY
-# cached results and never trigger validation, decomposition, or any LLM call —
+# cached results and never trigger validation, decomposition, or any LLM call
 # a demo must not stall for minutes on a click. The only things computed on read
 # are the AST mutants and their knockouts, which are deterministic, model-free
 # and sub-second; they are recomputed because evaluate_oracle's per-mutant
@@ -398,7 +398,7 @@ def playground_detail(slug: str):
     tests = cached.get("final_tests", [])
     entry = get_resolved_entry(problem)["entry_name"]
 
-    # Stage 2 — prefer the breakdown persisted at validation time; only fall
+    # Stage 2 - prefer the breakdown persisted at validation time; only fall
     # back to recomputing for entries written before it was stored.
     breakdown = cached.get("breakdown")
     if isinstance(breakdown, dict) and breakdown.get("mutants"):
@@ -420,7 +420,7 @@ def playground_detail(slug: str):
                             "status": "killed" if caught else "survived"})
         source = "recomputed"
 
-    # Stages 3/4 — pooled decomposition, if one exists.
+    # Stages 3/4 - pooled decomposition, if one exists.
     chunks, necessity = None, []
     pool_path = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
                               "main", "chunk_pool.json")
@@ -445,30 +445,30 @@ def playground_detail(slug: str):
                     "broke": (not res["ok"]) or res["fraction"] < 1.0,
                     "passed": res.get("passed", 0), "total": res.get("total", 0)})
 
-    # Stage 5 — a right and a wrong submission, decided by EXECUTION only.
+    # Stage 5 - a right and a wrong submission, decided by EXECUTION only.
     grading = None
     if tests:
         wrong = "def _f(*a, **k):\n    return None"
         ok = passes_tests(solution, tests, entry_name=entry)
         bad = passes_tests(wrong, tests, entry_name="_f")
         grading = {
-            "correct": {"tier": "Tier 2 — executed against the oracle",
+            "correct": {"tier": "Tier 2 - executed against the oracle",
                         "verdict": ok["ok"] and ok["fraction"] == 1.0,
                         "passed": ok.get("passed", 0), "total": ok.get("total", 0)},
-            "incorrect": {"tier": "Tier 2 — executed against the oracle",
+            "incorrect": {"tier": "Tier 2 - executed against the oracle",
                           "verdict": bad["ok"] and bad["fraction"] == 1.0,
                           "passed": bad.get("passed", 0), "total": bad.get("total", 0)},
         }
 
     # Why is it weak? Without this the UI can show "100% caught" beside a WEAK
-    # badge — true but self-contradictory-looking — when the real reason is that
+    # badge - true but self-contradictory-looking - when the real reason is that
     # the solution yielded too few mutants to judge at all.
     from main.mutation import _MIN_MUTANTS, CUTOFF_1_KILL_RATE
     weak_reason = None
     if not cached["strong"]:
         if len(mutants) < _MIN_MUTANTS:
             weak_reason = (f"only {len(mutants)} way(s) to break this solution could be "
-                           f"found — too few to judge the tests fairly "
+                           f"found - too few to judge the tests fairly "
                            f"(need at least {_MIN_MUTANTS})")
         else:
             weak_reason = (f"{round(cached.get('kill_rate_direct', 0.0) * 100)}% of cheaters "
@@ -496,7 +496,7 @@ def playground_detail(slug: str):
 # The read-only endpoints above replay cache; this one runs the REAL pipeline
 # (fresh oracle generation, mutation testing + repair, verdict, decomposition,
 # Gate 1) and streams every step as a newline-delimited JSON event the moment
-# it happens. Served with fetch()+ReadableStream on the frontend — the
+# it happens. Served with fetch()+ReadableStream on the frontend - the
 # one-directional SSE pattern, delivered over POST because the ground-truth
 # solution rides in the request body (EventSource can only GET).
 #
@@ -514,7 +514,7 @@ def playground_live(req: LiveRunRequest):
 
     # Same contract as /decompose_chunks: curated problems keep their ground
     # truth in the DB; uploads carry it in the request. No ground truth = no
-    # oracle = nothing to watch — hard error, not a degraded run.
+    # oracle = nothing to watch - hard error, not a degraded run.
     if not problem["solution"] or not problem["description"]:
         row = get_supabase().table("problems").select(
             "slug, title, description, solution").eq("slug", req.slug).execute().data
@@ -526,7 +526,7 @@ def playground_live(req: LiveRunRequest):
         raise HTTPException(
             status_code=400,
             detail=(f"No reference solution for '{req.slug}'. A live run cannot "
-                    f"start without ground truth — oracle tests, mutation "
+                    f"start without ground truth - oracle tests, mutation "
                     f"validation and Gate 1 all depend on it. Supply `solution` "
                     f"with the request."))
 
@@ -556,13 +556,13 @@ def list_problems(limit: int = 100, difficulty: str = None):
 # way: this route is unauthenticated and the student UI calls it on every
 # problem click, so selecting `solution` here handed the reference answer to
 # anyone who asked. /decompose_chunks reads the solution server-side from the
-# database instead — the browser never needs to carry it.
+# database instead - the browser never needs to carry it.
 _PUBLIC_PROBLEM_COLS = "id, slug, title, difficulty, description, topic_tags"
 
 
 @app.get("/problems/{slug}")
 def get_problem(slug: str):
-    """Fetch a single problem by slug. PUBLIC fields only — never the solution."""
+    """Fetch a single problem by slug. PUBLIC fields only - never the solution."""
     try:
         res = get_supabase().table("problems").select(
             _PUBLIC_PROBLEM_COLS).eq("slug", slug).single().execute()
@@ -578,7 +578,7 @@ def get_problem(slug: str):
 # ── assignments: teacher upload, student browse ──────────────────────────
 # The trust boundary runs straight through this section. Teacher routes may see
 # solutions and preparation errors; student routes may see neither, and may only
-# ever list problems that are `ready` — an unready problem cannot be graded, so
+# ever list problems that are `ready` - an unready problem cannot be graded, so
 # offering one would dead-end the student.
 
 class AssignmentUpload(BaseModel, extra="forbid"):
@@ -663,7 +663,7 @@ def upload_assignment(req: AssignmentUpload):
                         # A problem that did not SAVE is not ready, whatever
                         # preparation decided. Reporting it as ready while the
                         # row is missing is exactly how an assignment showed
-                        # green badges and still sat at 0 / 0 — the failure has
+                        # green badges and still sat at 0 / 0 - the failure has
                         # to reach the teacher, not a swallowed warning field.
                         ev = {**ev, "ready": False,
                               "error": f"prepared, but could not be saved: {e}"[:300]}
@@ -696,7 +696,7 @@ def list_assignments():
 def assignment_problems(assignment_id: str):
     """STUDENT view. Ready problems only, public columns only.
 
-    No solution, no prepare_error, and nothing that isn't ready — a student must
+    No solution, no prepare_error, and nothing that isn't ready - a student must
     never be handed a problem the grader cannot actually grade."""
     res = get_supabase().table("problems").select(
         _PUBLIC_PROBLEM_COLS).eq("assignment_id", assignment_id).eq(
@@ -724,7 +724,7 @@ def teacher_assignment_problems(assignment_id: str):
 def manual_split(req: ManualSplitRequest):
     """Teacher-authored decomposition for a problem the model could not split.
 
-    Goes through the SAME serve gate as a generated one — a hand-written split
+    Goes through the SAME serve gate as a generated one - a hand-written split
     can still contain a step that does no work, which would let a student skip
     it and be marked correct."""
     from main.publish import save_manual_decomposition
@@ -745,7 +745,7 @@ def manual_split(req: ManualSplitRequest):
     sb.table("problems").update(
         {"ready": True, "prepare_error": None}).eq("slug", req.slug).execute()
     return out
-    
+
 
 
 @app.post("/register")
@@ -784,7 +784,7 @@ def login(req: AuthRequest):
 
 @app.get("/solved/{student_id}")
 def get_solved(student_id: str):
-     
+
     result = get_supabase().table("solved").select("problem_slug").eq("student_id", student_id).execute()
     slugs = [r["problem_slug"] for r in (result.data or [])]
     return {"slugs": slugs}

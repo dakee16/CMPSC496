@@ -1,7 +1,7 @@
 <div align="center">
 
 ```
-███╗   ███╗██╗ ██████╗██████╗  ██████╗ ████████╗██╗   ██╗████████╗ ██████╗ ██████╗ 
+███╗   ███╗██╗ ██████╗██████╗  ██████╗ ████████╗██╗   ██╗████████╗ ██████╗ ██████╗
 ████╗ ████║██║██╔════╝██╔══██╗██╔═══██╗╚══██╔══╝██║   ██║╚══██╔══╝██╔═══██╗██╔══██╗
 ██╔████╔██║██║██║     ██████╔╝██║   ██║   ██║   ██║   ██║   ██║   ██║   ██║██████╔╝
 ██║╚██╔╝██║██║██║     ██╔══██╗██║   ██║   ██║   ██║   ██║   ██║   ██║   ██║██╔══██╗
@@ -11,7 +11,7 @@
 
 # 🤖 AI-Powered Micro-Programming Tutor
 
-**An agentic LLM system that teaches code one step at a time — and learns from itself**
+**An agentic LLM system that teaches code one step at a time - and learns from itself**
 
 [![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
 [![Ollama](https://img.shields.io/badge/Ollama-Local_LLM-black?style=for-the-badge&logo=ollama&logoColor=white)](https://ollama.ai)
@@ -29,7 +29,7 @@
 
 Most AI tools just **give you the answer**. This one doesn't.
 
-`MicroTutor` is an agentic AI tutoring system that breaks programming problems into **ordered micro-steps**, evaluates each step independently, provides targeted hints on failure, and simulates multiple AI students at different skill levels — all running **completely offline** on your machine.
+`MicroTutor` is an agentic AI tutoring system that breaks programming problems into **ordered micro-steps**, evaluates each step independently, provides targeted hints on failure, and simulates multiple AI students at different skill levels - all running **completely offline** on your machine.
 
 No OpenAI. No internet. No cheating.
 
@@ -112,13 +112,13 @@ EVERYTHING LOGGED TO SUPABASE
 ## 🗃️ Database Schema
 
 ```sql
-problems      — 100 LeetCode problems with ground truth solutions
+problems - 100 LeetCode problems with ground truth solutions
     id · slug · title · difficulty · description · topic_tags · solution
 
-steps         — decomposed micro-steps per problem
+steps - decomposed micro-steps per problem
     id · problem_id · step_number · prompt · expected_type · rubric
 
-interactions  — every agent answer, grade, hint, and final score
+interactions - every agent answer, grade, hint, and final score
     id · step_id · agent_level · attempt · answer · correct
        · hint_shown · final_answer · score · created_at
 ```
@@ -131,7 +131,7 @@ interactions  — every agent answer, grade, hint, and final score
 |-------|------|
 | Language | Python 3.11+ |
 | LLM Runtime | Ollama (fully local) |
-| Models | Qwen2.5 — 0.5b, 1.5b, 7b |
+| Models | Qwen2.5 - 0.5b, 1.5b, 7b |
 | Database | Supabase (PostgreSQL) |
 | Validation | Pydantic |
 | Problems | LeetCode GraphQL API (500 problems) |
@@ -166,7 +166,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-> **Run everything through `.venv`** — use `.venv/bin/python` (or activate the venv
+> **Run everything through `.venv`** - use `.venv/bin/python` (or activate the venv
 > first), never a bare/global `python`. A global interpreter is missing `supabase`
 > and will fail on import.
 
@@ -248,7 +248,7 @@ python run_phase1.py
 ```
 microprog-ai-tutor/
 │
-├── run_phase1.py          # 🧠 Main orchestrator — decompose, evaluate, score
+├── run_phase1.py          # 🧠 Main orchestrator - decompose, evaluate, score
 ├── student_agent.py       # 🎓 Three AI students (weak / normal / strong)
 ├── prompts.py             # 📝 System prompts for decomposer and evaluator
 ├── schemas.py             # 🔷 Pydantic models (StepItem, EvalResult, etc.)
@@ -268,7 +268,7 @@ microprog-ai-tutor/
 Zero latency cost, no API keys, no data leaving the machine. Critical for a research system running 500 × 10 steps × 3 agents = **15,000+ LLM calls**.
 
 ### Why rubric-grounded evaluation?
-Early versions let the evaluator reason freely — it hallucinated wrong reasons and invented incorrect reference answers. Passing the rubric directly into every eval call reduced false negatives by ~18%.
+Early versions let the evaluator reason freely - it hallucinated wrong reasons and invented incorrect reference answers. Passing the rubric directly into every eval call reduced false negatives by ~18%.
 
 ### Why three agents?
 A single agent at one temperature doesn't represent the full student ability distribution. Three models at different parameter sizes and temperatures simulate realistic variation in beginner, intermediate, and advanced learners.
@@ -277,7 +277,7 @@ A single agent at one temperature doesn't represent the full student ability dis
 Individual step answers (single lines) look nothing like a complete function. Scoring `max_length = 0` against a full solution always returns 0. The reconstructor assembles all step answers into a coherent function first.
 
 ### Why reset context per question?
-Early tests showed `validated_context` carrying hailstone sequence facts into dictionary inversion problems — causing the evaluator to hallucinate wrong reasons. Per-question context isolation eliminated cross-contamination entirely.
+Early tests showed `validated_context` carrying hailstone sequence facts into dictionary inversion problems - causing the evaluator to hallucinate wrong reasons. Per-question context isolation eliminated cross-contamination entirely.
 
 ---
 
@@ -340,12 +340,12 @@ This project is part of **CMPSC 496 Independent Research** at Penn State Univers
 
 ## 🗺️ Roadmap
 
-- [x] Phase 1 — Core tutoring loop with 3 agents
-- [x] Supabase integration — problems, steps, interactions
+- [x] Phase 1 - Core tutoring loop with 3 agents
+- [x] Supabase integration - problems, steps, interactions
 - [x] LeetCode problem ingestion (500 problems)
 - [x] Ground truth solution generation
 - [x] Final answer reconstruction + scoring
-- [ ] Phase 2 — Web UI for human student interaction
+- [ ] Phase 2 - Web UI for human student interaction
 - [ ] Code execution sandbox for deterministic grading
 - [ ] Analytics dashboard
 - [ ] Fine-tune small model on collected interaction data
@@ -354,14 +354,14 @@ This project is part of **CMPSC 496 Independent Research** at Penn State Univers
 
 ## 👤 Author
 
-**Daksh Mainee**  
-B.S. Computer Science & AI · Penn State University  
-dzm6085@psu.edu  
+**Daksh Mainee**
+B.S. Computer Science & AI · Penn State University
+dzm6085@psu.edu
 
 ---
 
 <div align="center">
 
-*Built with 🧠 local LLMs, ☕ caffeine, and a firm belief that AI should teach — not just answer.*
+*Built with 🧠 local LLMs, ☕ caffeine, and a firm belief that AI should teach - not just answer.*
 
 </div>

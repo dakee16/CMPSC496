@@ -1,14 +1,14 @@
 """
-grader.py — in-context grading for chunk-based decomposition.
+grader.py - in-context grading for chunk-based decomposition.
 
 grade_chunk() evaluates a student's multi-line answer to ONE sub-question,
 given the surrounding chunks and the student's accepted prefix. Tiers run
 cheapest-and-most-certain first.
 
-  Tier 1  syntactic  — does prefix + student chunk compile?
-  Tier 2  execution  — does header + prefix + student chunk + reference tail
+  Tier 1  syntactic - does prefix + student chunk compile?
+  Tier 2  execution - does header + prefix + student chunk + reference tail
                        pass the main oracle tests? (approach-agnostic)
-  (Tiers 3+4 — interface-adaptive retry and LLM judge — added next.)
+  (Tiers 3+4 - interface-adaptive retry and LLM judge - added next.)
 """
 import ast
 import re
@@ -63,7 +63,7 @@ def grade_chunk(problem: dict, chunks: list[StepItem], index: int,
     Keeps the old outward dict shape that research_agent.py expects, but has no
     grading logic of its own: it builds a session-shaped record and delegates to
     main.grading.grade_submission(). Two implementations produced inconsistent
-    research and UI verdicts — notably a different (single-judge) Tier 4 and a
+    research and UI verdicts - notably a different (single-judge) Tier 4 and a
     now-removed in-process exec() path. There is only one engine now.
     """
     from main.grading import grade_submission

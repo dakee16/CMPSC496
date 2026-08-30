@@ -1,16 +1,16 @@
 """
-ollama_client.py — the single chat() entry point for every LLM call.
+ollama_client.py - the single chat() entry point for every LLM call.
 
 The module name is now a misnomer, kept deliberately: seven modules import
 `chat` from here, and renaming buys nothing. What changed is that chat() routes
 to TWO backends, chosen by the `model` string it is handed:
 
-  * OpenAI — every SYSTEM-ROLE call (decomposition, oracle-input generation,
+  * OpenAI - every SYSTEM-ROLE call (decomposition, oracle-input generation,
     interface adaptation, judgment). These go in front of students on graded
     homework, and local-model flakiness has been a repeated source of bad
     reference solutions and malformed structured output.
 
-  * Ollama — any model given as an Ollama tag ("name:tag", e.g.
+  * Ollama - any model given as an Ollama tag ("name:tag", e.g.
     "qwen2.5:0.5b-instruct"). research/student_agent.py simulates weak/normal/
     strong students by MODEL CAPACITY (0.5B/1.5B/7B Qwen) for an already
     submitted paper. It imports this same chat(), so sending its tags to OpenAI
@@ -19,7 +19,7 @@ to TWO backends, chosen by the `model` string it is handed:
 
 The design principle is unchanged: the model proposes, deterministic validation
 (execution, oracle tests, mutation testing) decides. A better model means fewer
-mistakes for validation to catch — never more trust in the model.
+mistakes for validation to catch - never more trust in the model.
 """
 import os
 import time
@@ -41,7 +41,7 @@ OPENAI_MODEL = os.environ.get("MICROTUTOR_MODEL", "gpt-4o-mini")
 #   previously undecomposed problems at max_tries=5: gpt-4o-mini succeeded 9/20
 #   (45%) at 7.9 calls per success; gpt-4o succeeded 16/20 (80%) at 2.5 calls
 #   per success, first-try on 13 of those 16. Per success gpt-4o costs ~5x more
-#   ($0.0119 vs $0.0022) — about 10c to prepare a 10-problem assignment — and
+#   ($0.0119 vs $0.0022) - about 10c to prepare a 10-problem assignment - and
 #   nearly doubles how much of a teacher's upload is usable.
 #
 #   Grading runs on EVERY student attempt that reaches Tier 3/4, so its cost
@@ -57,7 +57,7 @@ OLLAMA_CHAT_URL = "http://localhost:11434/api/chat"
 _MAX_RETRIES = 3          # hosted API: rate limits and 5xx are routine
 _RETRY_DELAY = 1.5        # seconds, doubled each attempt
 _TIMEOUT = 120
-# Transient by nature — worth another attempt. Everything else (401 bad key,
+# Transient by nature - worth another attempt. Everything else (401 bad key,
 # 400 malformed request, 404 unknown model) is a bug, so it surfaces at once.
 _RETRY_STATUS = {408, 409, 429, 500, 502, 503, 504}
 
@@ -65,7 +65,7 @@ _RETRY_STATUS = {408, 409, 429, 500, 502, 503, 504}
 def _is_ollama_tag(model: str) -> bool:
     """Ollama models are "name:tag" (qwen2.5:7b-instruct); OpenAI model names
     never contain a colon (gpt-4o-mini, o3). That colon is the whole routing
-    rule — see the student-simulation note in the module docstring."""
+    rule - see the student-simulation note in the module docstring."""
     return ":" in model
 
 
@@ -129,7 +129,7 @@ def _openai_chat(model: str, system: str, messages: List[Dict[str, str]],
 
 def _ollama_chat(model: str, system: str, messages: List[Dict[str, str]],
                  temperature: float, fmt: Optional[str]) -> str:
-    """Unchanged local path — student simulation depends on it."""
+    """Unchanged local path - student simulation depends on it."""
     payload: Dict = {
         "model": model,
         "messages": [{"role": "system", "content": system}] + messages,
@@ -167,7 +167,7 @@ def chat(
 ) -> str:
     """Send a system+messages exchange and return the assistant's text.
 
-    Signature is unchanged from the Ollama-only version — every existing call
+    Signature is unchanged from the Ollama-only version - every existing call
     site works untouched. `fmt="json"` means "guarantee parseable JSON back":
     Ollama's `format` field, OpenAI's response_format={"type":"json_object"}.
     The backend is picked from `model` (see _is_ollama_tag)."""

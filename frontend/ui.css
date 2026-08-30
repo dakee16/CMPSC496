@@ -1,0 +1,266 @@
+/* ============================================================
+   MicroTutor shared UI: midnight glass
+   ------------------------------------------------------------
+   Tokens mirror style.css so these pages sit in the same world as
+   index.html. They are restated rather than imported because
+   style.css also carries page specific rules keyed to index.html
+   ids, and pulling that in would style things twice.
+   ============================================================ */
+:root{
+  --indigo-600:#6366f1;
+  --indigo-500:#818cf8;
+  --indigo-400:#a5b4fc;
+  --indigo-50:#1e1b4b;
+
+  --page-bg:#0a0e27;
+  --card-bg:#151a36;
+  --card-bg-soft:#1a1f3d;
+  --card-border:#252a4a;
+
+  --text-bright:#f1f5f9;
+  --text-muted:#94a3b8;
+  --text-dim:#64748b;
+
+  --green-bg:rgba(34,197,94,.15);  --green-text:#4ade80;
+  --amber-bg:rgba(245,158,11,.15); --amber-text:#fbbf24;
+  --red-bg:rgba(239,68,68,.15);    --red-text:#f87171;
+
+  --shadow-md:0 4px 12px rgba(0,0,0,.4);
+  --shadow-lg:0 12px 32px rgba(0,0,0,.5);
+  --radius:12px;
+  --transition:all .18s ease;
+
+  /* Glass. The border is a hairline of indigo haze; the inset
+     highlight is what makes a panel read as a lit edge rather than
+     a flat translucent rectangle. */
+  --glass-bg:rgba(21,26,54,.55);
+  --glass-bg-strong:rgba(21,26,54,.78);
+  --glass-line:rgba(165,180,252,.14);
+  --glass-lift:inset 0 1px 0 rgba(255,255,255,.07);
+  --blur:blur(20px) saturate(160%);
+}
+
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+
+body{
+  margin:0;
+  min-height:100vh;
+  background:var(--page-bg);
+  color:var(--text-bright);
+  font-family:'Inter',system-ui,-apple-system,sans-serif;
+  font-size:15px;
+  line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+}
+
+/* Aurora behind the glass. Without something moving back here the
+   blur has nothing to refract and panels read as flat fills. */
+body::before{
+  content:"";
+  position:fixed; inset:-30vmax;
+  z-index:-1;
+  background:
+    radial-gradient(38vmax 38vmax at 18% 12%, rgba(99,102,241,.30), transparent 62%),
+    radial-gradient(32vmax 32vmax at 82% 22%, rgba(129,140,248,.20), transparent 62%),
+    radial-gradient(42vmax 42vmax at 62% 88%, rgba(49,46,129,.42), transparent 62%);
+  filter:blur(28px);
+  animation:drift 34s ease-in-out infinite alternate;
+}
+@keyframes drift{
+  0%{transform:translate3d(0,0,0) scale(1)}
+  50%{transform:translate3d(2.5%,-2%,0) scale(1.06)}
+  100%{transform:translate3d(-2%,2.5%,0) scale(1.02)}
+}
+
+/* ---------- floating header ---------- */
+.hdr{
+  position:fixed; top:18px; left:50%;
+  transform:translateX(-50%);
+  z-index:60;
+  width:min(1180px,calc(100vw - 32px));
+  display:flex; align-items:center; gap:14px;
+  padding:10px 12px 10px 20px;
+  border-radius:999px;
+  background:var(--glass-bg-strong);
+  border:1px solid var(--glass-line);
+  box-shadow:var(--shadow-lg),var(--glass-lift);
+  backdrop-filter:var(--blur);
+  -webkit-backdrop-filter:var(--blur);
+  transition:padding .28s cubic-bezier(.4,0,.2,1),
+             top .28s cubic-bezier(.4,0,.2,1),
+             box-shadow .28s ease;
+}
+.hdr.condensed{top:10px; padding:6px 10px 6px 16px; box-shadow:var(--shadow-md),var(--glass-lift)}
+.hdr.wide{width:min(1500px,calc(100vw - 32px))}
+
+.brand{
+  display:flex; align-items:center; gap:9px;
+  font-weight:700; letter-spacing:-.02em; font-size:15px;
+  color:var(--text-bright); text-decoration:none; white-space:nowrap;
+}
+.brand .dot{
+  width:9px; height:9px; border-radius:50%;
+  background:var(--indigo-500);
+  box-shadow:0 0 0 4px rgba(99,102,241,.18);
+}
+.hdr .spacer{flex:1}
+
+/* Nav pills: the highlight slides under whichever one is active. */
+.navpills{position:relative; display:flex; gap:2px; padding:3px;
+          border-radius:999px; background:rgba(10,14,39,.5);
+          border:1px solid rgba(165,180,252,.08)}
+.navpills a{
+  position:relative; z-index:1;
+  padding:6px 15px; border-radius:999px;
+  font-size:13.5px; font-weight:500;
+  color:var(--text-muted); text-decoration:none;
+  transition:color .2s ease; white-space:nowrap;
+}
+.navpills a:hover{color:var(--text-bright)}
+.navpills a.on{color:#fff}
+.navpills .glider{
+  position:absolute; z-index:0; top:3px; bottom:3px; left:0; width:0;
+  border-radius:999px;
+  background:linear-gradient(135deg,var(--indigo-600),#4f46e5);
+  box-shadow:0 3px 12px rgba(99,102,241,.4);
+  transition:transform .32s cubic-bezier(.4,0,.2,1), width .32s cubic-bezier(.4,0,.2,1);
+}
+.who{display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text-muted);
+     padding-left:4px; white-space:nowrap}
+.avatar{width:26px; height:26px; border-radius:50%; display:grid; place-items:center;
+        font-size:11px; font-weight:700; color:#fff;
+        background:linear-gradient(135deg,var(--indigo-500),#4f46e5)}
+
+/* ---------- layout ---------- */
+.page{max-width:1180px; margin:0 auto; padding:104px 16px 64px}
+.page.wide{max-width:1500px}
+
+.card{
+  background:var(--glass-bg);
+  border:1px solid var(--glass-line);
+  border-radius:18px;
+  box-shadow:var(--shadow-md),var(--glass-lift);
+  backdrop-filter:var(--blur);
+  -webkit-backdrop-filter:var(--blur);
+  padding:24px;
+  margin-bottom:18px;
+}
+.card.tight{padding:18px}
+
+h1{font-size:30px; line-height:1.2; letter-spacing:-.03em; margin:0 0 8px; font-weight:700}
+h2{font-size:17px; letter-spacing:-.01em; margin:0 0 4px; font-weight:600}
+.sub{color:var(--text-muted); margin:0 0 20px; font-size:14px}
+.hint{color:var(--text-dim); font-size:13px; margin:0 0 14px}
+.muted{color:var(--text-muted)}
+.eyebrow{font-size:11px; font-weight:600; letter-spacing:.13em; text-transform:uppercase;
+         color:var(--indigo-400); margin:0 0 8px}
+
+/* ---------- controls ---------- */
+button{
+  font:inherit; font-weight:600; font-size:14px;
+  border:0; border-radius:10px; padding:10px 18px; cursor:pointer;
+  color:#fff; background:linear-gradient(135deg,var(--indigo-600),#4f46e5);
+  box-shadow:0 4px 14px rgba(99,102,241,.3);
+  transition:var(--transition);
+}
+button:hover:not(:disabled){transform:translateY(-1px); box-shadow:0 7px 20px rgba(99,102,241,.42)}
+button:active:not(:disabled){transform:translateY(0)}
+button:disabled{opacity:.45; cursor:not-allowed; box-shadow:none}
+button.ghost{
+  background:rgba(165,180,252,.07); color:var(--indigo-400);
+  border:1px solid var(--glass-line); box-shadow:none;
+}
+button.ghost:hover:not(:disabled){background:rgba(165,180,252,.13); color:var(--text-bright)}
+
+input[type=text],input[type=password],select,textarea{
+  font:inherit; font-size:14px;
+  padding:10px 13px; border-radius:10px;
+  background:rgba(10,14,39,.55);
+  border:1px solid var(--card-border);
+  color:var(--text-bright);
+  transition:var(--transition);
+  width:100%;
+}
+input::placeholder,textarea::placeholder{color:var(--text-dim)}
+input:focus,select:focus,textarea:focus{
+  outline:none; border-color:var(--indigo-500);
+  box-shadow:0 0 0 3px rgba(99,102,241,.18);
+}
+label{display:block; font-size:12.5px; font-weight:600; color:var(--text-muted);
+      margin:0 0 6px; letter-spacing:.01em}
+.field{margin-bottom:14px}
+.row{display:flex; gap:10px; align-items:center; flex-wrap:wrap}
+
+:focus-visible{outline:2px solid var(--indigo-400); outline-offset:2px}
+
+/* ---------- pills, banners ---------- */
+.pill{font-size:11.5px; font-weight:600; padding:3px 10px; border-radius:999px;
+      background:rgba(165,180,252,.1); color:var(--indigo-400); white-space:nowrap}
+.pill.ok{background:var(--green-bg); color:var(--green-text)}
+.pill.bad{background:var(--red-bg); color:var(--red-text)}
+.pill.warn{background:var(--amber-bg); color:var(--amber-text)}
+
+.banner{padding:13px 16px; border-radius:12px; font-size:14px; margin-top:14px;
+        white-space:pre-wrap; border:1px solid transparent}
+.banner.ok{background:var(--green-bg); color:var(--green-text); border-color:rgba(74,222,128,.22)}
+.banner.bad{background:var(--red-bg); color:var(--red-text); border-color:rgba(248,113,113,.22)}
+.banner.warn{background:var(--amber-bg); color:var(--amber-text); border-color:rgba(251,191,36,.22)}
+.banner.info{background:rgba(99,102,241,.12); color:var(--indigo-400); border-color:rgba(129,140,248,.22)}
+
+/* ---------- lists ---------- */
+ul.pick{list-style:none; padding:0; margin:0; display:grid; gap:9px}
+ul.pick button{
+  width:100%; text-align:left; display:flex; align-items:center; gap:12px;
+  padding:14px 16px; border-radius:13px;
+  background:rgba(26,31,61,.55); color:var(--text-bright);
+  border:1px solid var(--glass-line); box-shadow:none; font-weight:500;
+}
+ul.pick button:hover{
+  background:rgba(99,102,241,.13); border-color:rgba(129,140,248,.35);
+  transform:translateX(3px); box-shadow:none;
+}
+ul.pick .pill{margin-left:auto}
+
+table{width:100%; border-collapse:collapse; font-size:14px}
+th{font-size:11px; text-transform:uppercase; letter-spacing:.1em; color:var(--text-dim);
+   text-align:left; padding:8px 6px; border-bottom:1px solid var(--card-border); font-weight:600}
+td{padding:11px 6px; border-bottom:1px solid rgba(37,42,74,.5); color:var(--text-muted)}
+td:first-child{color:var(--text-bright); font-weight:500}
+
+code{background:rgba(10,14,39,.6); padding:2px 6px; border-radius:5px;
+     font-family:'SF Mono',Monaco,'Cascadia Code',monospace; font-size:12.5px;
+     color:var(--indigo-400)}
+pre.code{
+  background:rgba(10,14,39,.75); border:1px solid var(--card-border);
+  border-radius:12px; padding:15px; overflow:auto;
+  font-family:'SF Mono',Monaco,'Cascadia Code',monospace;
+  font-size:12.5px; line-height:1.65; color:#d6dde8; margin:0;
+}
+
+/* ---------- CodeMirror, seated into the glass ---------- */
+.CodeMirror{
+  height:auto; min-height:190px;
+  border-radius:12px; border:1px solid var(--card-border);
+  background:rgba(10,14,39,.75) !important;
+  font-family:'SF Mono',Monaco,'Cascadia Code',monospace;
+  font-size:13px; line-height:1.65;
+  padding:8px 4px;
+  transition:var(--transition);
+}
+.CodeMirror-focused{border-color:var(--indigo-500); box-shadow:0 0 0 3px rgba(99,102,241,.16)}
+.CodeMirror-gutters{background:transparent !important; border-right:1px solid rgba(37,42,74,.7)}
+.CodeMirror-linenumber{color:var(--text-dim)}
+.CodeMirror-cursor{border-left:2px solid var(--indigo-400)}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none !important; transition:none !important}
+  html{scroll-behavior:auto}
+}
+
+@media (max-width:720px){
+  .page{padding:96px 12px 48px}
+  h1{font-size:24px}
+  .navpills a{padding:6px 11px; font-size:13px}
+  .who span.nm{display:none}
+}

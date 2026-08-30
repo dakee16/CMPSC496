@@ -3,108 +3,173 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>MicroTutor — Student</title>
+<title>MicroTutor: Practice</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="ui.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/dracula.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/python/python.min.js"></script>
 <style>
-  :root{--bg:#f6f7f9;--card:#fff;--ink:#14181f;--muted:#5b6472;--line:#e3e6ec;
-        --accent:#1e4d8c;--ok:#1a7f4b;--okbg:#e9f7ef;--bad:#a3341f;--badbg:#fdeeea;
-        --warn:#8a6d1f;--warnbg:#fff8e6;--info:#2a5b8f;--infobg:#eaf1fa}
-  *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--ink);
-       font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
-  header{background:var(--card);border-bottom:1px solid var(--line);padding:14px 24px;
-         display:flex;align-items:center;gap:14px}
-  header a{color:var(--muted);text-decoration:none;font-size:14px}
-  header h1{font-size:17px;margin:0;flex:1}
-  main{max-width:860px;margin:0 auto;padding:28px 24px 60px}
-  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;
-        padding:22px;margin-bottom:20px}
-  h2{font-size:16px;margin:0 0 4px}
-  .hint{color:var(--muted);font-size:13.5px;margin:0 0 14px}
-  .muted{color:var(--muted)}
-  button{font:inherit;border:0;border-radius:8px;padding:9px 16px;cursor:pointer;
-         background:var(--accent);color:#fff}
-  button:disabled{opacity:.5;cursor:default}
-  button.ghost{background:transparent;color:var(--accent);border:1px solid var(--line)}
-  input[type=text]{font:inherit;padding:8px 11px;border:1px solid var(--line);
-                   border-radius:8px;width:180px}
-  ul.pick{list-style:none;padding:0;margin:0}
-  ul.pick li{border:1px solid var(--line);border-radius:9px;margin-bottom:8px;
-             background:#fcfcfd;overflow:hidden}
-  ul.pick button{width:100%;text-align:left;background:transparent;color:inherit;
-                 padding:12px 14px;display:flex;gap:10px;align-items:baseline}
-  ul.pick button:hover{background:#f2f5fa}
-  .pill{font-size:11.5px;padding:2px 8px;border-radius:99px;background:#eef0f4;
-        color:var(--muted);flex:none;margin-left:auto}
-  .statement{white-space:pre-wrap;background:#fbfbfc;border:1px solid var(--line);
-             border-radius:9px;padding:14px;font-size:14.5px}
-  .steps{display:flex;gap:6px;margin:0 0 16px;flex-wrap:wrap}
-  .step{font-size:12px;padding:3px 10px;border-radius:99px;background:#eef0f4;color:var(--muted)}
-  .step.done{background:var(--okbg);color:var(--ok)}
-  .step.now{background:var(--accent);color:#fff}
-  .prompt{font-size:15.5px;margin:0 0 4px}
-  textarea{width:100%;min-height:150px;font:13.5px/1.6 ui-monospace,SFMono-Regular,
-           Menlo,Consolas,monospace;padding:12px;border:1px solid var(--line);
-           border-radius:9px;resize:vertical;tab-size:4}
-  .msg{padding:13px 15px;border-radius:9px;margin-top:14px;font-size:14px;white-space:pre-wrap}
-  .m-ok{background:var(--okbg);color:var(--ok)}
-  .m-bad{background:var(--badbg);color:var(--bad)}
-  .m-warn{background:var(--warnbg);color:var(--warn)}
-  .m-info{background:var(--infobg);color:var(--info)}
-  pre.ref{background:#12161d;color:#d6dde8;padding:13px;border-radius:8px;
-          overflow:auto;font-size:13px;margin:10px 0 0}
-  .accepted{background:#f7f8fa;border:1px solid var(--line);border-radius:9px;
-            padding:12px;font:13px/1.6 ui-monospace,Menlo,monospace;white-space:pre-wrap;
-            color:#3d4756;margin-bottom:14px}
+  /* Split view: solving on the left because it is the task, tutor on
+     the right where a companion belongs. */
+  .split{display:grid; grid-template-columns:minmax(0,1fr) 372px; gap:16px; align-items:start}
+  .col{max-height:calc(100vh - 132px); overflow:auto; padding-right:2px}
+  .col::-webkit-scrollbar{width:8px}
+  .col::-webkit-scrollbar-thumb{background:rgba(165,180,252,.16); border-radius:99px}
+  @media (max-width:1080px){
+    .split{grid-template-columns:1fr}
+    .col{max-height:none; overflow:visible}
+    .chatcol{position:static}
+    .chat{height:520px}
+  }
+
+  .statement{white-space:pre-wrap; background:rgba(10,14,39,.42);
+             border:1px solid var(--card-border); border-radius:12px;
+             padding:15px; font-size:14.5px; color:var(--text-muted); line-height:1.65}
+
+  /* ---- signature: the step spine ----
+     Order is real here. Step 3 cannot be attempted before step 2, so
+     numbering carries information rather than decorating. Each node
+     also records HOW it was completed, which is the distinction the
+     whole product turns on. */
+  .spine{list-style:none; margin:18px 0 0; padding:0; position:relative}
+  .spine::before{content:""; position:absolute; left:13px; top:12px; bottom:12px;
+                 width:2px; background:rgba(37,42,74,.9); border-radius:2px}
+  .spine li{position:relative; padding:0 0 14px 40px; min-height:28px}
+  .spine li:last-child{padding-bottom:0}
+  .node{position:absolute; left:0; top:0; width:28px; height:28px; border-radius:50%;
+        display:grid; place-items:center; font-size:12px; font-weight:700;
+        background:var(--card-bg-soft); color:var(--text-dim);
+        border:2px solid var(--card-border); transition:var(--transition)}
+  .spine li.now .node{border-color:var(--indigo-500); color:#fff;
+        background:linear-gradient(135deg,var(--indigo-600),#4f46e5);
+        box-shadow:0 0 0 5px rgba(99,102,241,.16)}
+  .spine li.own .node{border-color:rgba(74,222,128,.55); color:var(--green-text);
+        background:var(--green-bg)}
+  .spine li.helped .node{border-color:rgba(251,191,36,.55); color:var(--amber-text);
+        background:var(--amber-bg)}
+  .stitle{font-size:13.5px; color:var(--text-dim); line-height:1.5; padding-top:5px}
+  .spine li.now .stitle{color:var(--text-bright); font-weight:500}
+  .spine li.own .stitle,.spine li.helped .stitle{color:var(--text-muted)}
+  .stag{margin-left:7px}
+
+  .prompt{font-size:15.5px; font-weight:500; color:var(--text-bright); margin:0 0 12px}
+  .attempts{font-size:12.5px; color:var(--text-dim); margin:10px 0 0}
+
+  /* ---- chat ---- */
+  .chatcol{position:sticky; top:96px}
+  .chat{display:flex; flex-direction:column; height:calc(100vh - 132px);
+        padding:0; overflow:hidden; margin-bottom:0}
+  .chead{display:flex; align-items:center; gap:9px; padding:15px 18px;
+         border-bottom:1px solid var(--glass-line)}
+  .chead .dot{width:7px;height:7px;border-radius:50%;background:var(--green-text);
+              box-shadow:0 0 0 3px rgba(74,222,128,.16)}
+  .chead h2{margin:0; font-size:14.5px}
+  .clog{flex:1; overflow:auto; padding:16px 18px; display:flex; flex-direction:column; gap:11px}
+  .clog::-webkit-scrollbar{width:7px}
+  .clog::-webkit-scrollbar-thumb{background:rgba(165,180,252,.16); border-radius:99px}
+  .bub{max-width:88%; padding:10px 13px; border-radius:14px; font-size:13.5px;
+       line-height:1.55; white-space:pre-wrap; animation:pop .22s ease both}
+  @keyframes pop{from{opacity:0; transform:translateY(5px)} to{opacity:1; transform:none}}
+  .bub.bot{align-self:flex-start; background:rgba(26,31,61,.75);
+           border:1px solid var(--glass-line); border-bottom-left-radius:5px;
+           color:var(--text-muted)}
+  .bub.me{align-self:flex-end; color:#fff; border-bottom-right-radius:5px;
+          background:linear-gradient(135deg,var(--indigo-600),#4f46e5)}
+  .cfoot{padding:12px 14px; border-top:1px solid var(--glass-line); display:flex; gap:8px}
+  .cfoot input{flex:1}
+  .cfoot button{padding:10px 15px}
+  .chips{display:flex; gap:6px; flex-wrap:wrap; padding:0 18px 12px}
+  .chip{font-size:12px; padding:5px 11px; border-radius:999px; cursor:pointer;
+        background:rgba(165,180,252,.08); border:1px solid var(--glass-line);
+        color:var(--indigo-400); transition:var(--transition)}
+  .chip:hover{background:rgba(99,102,241,.18); color:var(--text-bright)}
 </style>
 </head>
 <body>
-<header>
-  <a href="home.html">&larr; Home</a>
-  <h1>Student</h1>
-  <span class="muted" style="font-size:13px">demo mode — no login</span>
-</header>
+<main class="page wide" id="page">
 
-<main>
-  <div class="card" id="cAssign">
-    <h2>Choose an assignment</h2>
-    <p class="hint">Your name is only used to record your progress.</p>
-    <div style="margin-bottom:14px">
-      <input type="text" id="who" placeholder="Your name" value="demo-student">
+  <section id="cAssign">
+    <p class="eyebrow">Practice</p>
+    <h1>Choose an assignment</h1>
+    <p class="sub">Only problems your instructor has prepared appear here.</p>
+    <div class="card">
+      <ul class="pick" id="assignments"><li class="muted">loading...</li></ul>
     </div>
-    <ul class="pick" id="assignments"><li class="muted" style="padding:12px">loading…</li></ul>
-  </div>
+  </section>
 
-  <div class="card" id="cProblem" hidden>
-    <h2 id="assignName"></h2>
-    <p class="hint">Pick a problem to work through.</p>
-    <ul class="pick" id="problems"></ul>
-    <button class="ghost" id="backA">Back to assignments</button>
-  </div>
+  <section id="cProblem" hidden>
+    <p class="eyebrow">Assignment</p>
+    <h1 id="assignName"></h1>
+    <p class="sub">Pick a problem to work through.</p>
+    <div class="card">
+      <ul class="pick" id="problems"></ul>
+      <button class="ghost" id="backA" style="margin-top:14px">All assignments</button>
+    </div>
+  </section>
 
-  <div class="card" id="cSolve" hidden>
-    <h2 id="probTitle"></h2>
-    <div class="statement" id="statement"></div>
-    <div style="margin-top:18px" class="steps" id="steps"></div>
-    <div id="acceptedWrap" hidden>
-      <p class="hint" style="margin:0 0 6px">Your solution so far</p>
-      <div class="accepted" id="accepted"></div>
+  <section id="cSolve" hidden>
+    <div class="split">
+      <div class="col">
+        <p class="eyebrow" id="crumb2">Problem</p>
+        <h1 id="probTitle" style="margin-bottom:14px"></h1>
+
+        <div class="card">
+          <div class="statement" id="statement"></div>
+          <ol class="spine" id="spine"></ol>
+        </div>
+
+        <div class="card" id="soFarCard" hidden>
+          <h2>Your solution so far</h2>
+          <p class="hint">Steps you have finished, in order.</p>
+          <pre class="code" id="soFar"></pre>
+        </div>
+
+        <div class="card">
+          <p class="prompt" id="prompt"></p>
+          <textarea id="code"></textarea>
+          <div class="row" style="margin-top:13px">
+            <button id="submit">Submit step</button>
+            <button class="ghost" id="backP">Another problem</button>
+          </div>
+          <p class="attempts" id="attempts"></p>
+          <div id="msg"></div>
+        </div>
+      </div>
+
+      <div class="chatcol">
+        <div class="card chat">
+          <div class="chead">
+            <span class="dot"></span>
+            <h2>Tutor</h2>
+            <span class="pill" style="margin-left:auto">preview</span>
+          </div>
+          <div class="clog" id="clog"></div>
+          <div class="chips" id="chips">
+            <span class="chip">I am stuck</span>
+            <span class="chip">Explain this step</span>
+            <span class="chip">Why is my answer wrong</span>
+          </div>
+          <form class="cfoot" id="cform">
+            <input type="text" id="cinput" placeholder="Ask about this step" autocomplete="off">
+            <button type="submit">Send</button>
+          </form>
+        </div>
+      </div>
     </div>
-    <p class="prompt" id="prompt"></p>
-    <textarea id="code" spellcheck="false" placeholder="Write just this step…"></textarea>
-    <div style="margin-top:12px;display:flex;gap:10px">
-      <button id="submit">Submit step</button>
-      <button class="ghost" id="backP">Pick another problem</button>
-    </div>
-    <div id="msg"></div>
-  </div>
+  </section>
 </main>
 
+<script src="ui.js"></script>
 <script>
-const API = "http://localhost:8000";
+const S = requireSession("student");
+mountHeader({active: "Practice", wide: true});
 const $ = id => document.getElementById(id);
-const esc = s => String(s).replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
 
-let sessionId = null, chunks = [], idx = 0, accepted = [];
+let sessionId = null, chunks = [], idx = 0, accepted = [], editor = null;
 
 async function loadAssignments(){
   try {
@@ -115,19 +180,23 @@ async function loadAssignments(){
           <span>${esc(a.name)}</span>
           <span class="pill">${a.ready} problem${a.ready === 1 ? "" : "s"}</span>
         </button></li>`).join("")
-      : `<li class="muted" style="padding:12px">No assignments are ready yet.
-         Ask your instructor to upload one.</li>`;
+      : `<li class="muted">No assignments are ready yet. Ask your instructor to upload one.</li>`;
     $("assignments").querySelectorAll("button").forEach(b =>
       b.onclick = () => openAssignment(b.dataset.id, b.dataset.name));
   } catch {
-    $("assignments").innerHTML =
-      `<li class="muted" style="padding:12px">Could not reach the server.</li>`;
+    $("assignments").innerHTML = `<li class="muted">Could not reach the server.</li>`;
   }
+}
+
+function view(which){
+  ["cAssign","cProblem","cSolve"].forEach(id => $(id).hidden = id !== which);
+  scrollTo({top: 0, behavior: "smooth"});
 }
 
 async function openAssignment(id, name){
   $("assignName").textContent = name;
-  $("cAssign").hidden = true; $("cProblem").hidden = false; $("cSolve").hidden = true;
+  $("crumb2").textContent = name;
+  view("cProblem");
   const d = await (await fetch(`${API}/assignments/${id}/problems`)).json();
   const ps = d.problems || [];
   $("problems").innerHTML = ps.length
@@ -135,29 +204,32 @@ async function openAssignment(id, name){
         <span>${esc(p.title || p.slug)}</span>
         ${p.difficulty ? `<span class="pill">${esc(p.difficulty)}</span>` : ""}
       </button></li>`).join("")
-    : `<li class="muted" style="padding:12px">No problems ready in this assignment.</li>`;
+    : `<li class="muted">No problems ready in this assignment.</li>`;
   $("problems").querySelectorAll("button").forEach(b =>
     b.onclick = () => start(ps[+b.dataset.i]));
 }
 
 async function start(p){
-  $("cProblem").hidden = true; $("cSolve").hidden = false;
+  view("cSolve");
   $("probTitle").textContent = p.title || p.slug;
   $("statement").textContent = p.description || "";
-  $("code").style.display = ""; $("submit").style.display = "";
-  $("msg").innerHTML = `<div class="msg m-info">Getting this problem ready…</div>`;
+  $("spine").innerHTML = "";
+  $("soFarCard").hidden = true;
+  $("submit").style.display = ""; $("backP").style.display = "";
+  $("msg").innerHTML = `<div class="banner info">Getting this problem ready...</div>`;
   $("submit").disabled = true;
+  $("attempts").textContent = "";
   accepted = []; idx = 0;
+  resetChat(p.title || p.slug);
 
-  // No `solution` is sent. The server reads the reference from the database;
-  // the browser never holds it.
+  // No solution is sent. The server reads the reference from the
+  // database, so the browser never holds it.
   let r;
   try {
     r = await fetch(`${API}/decompose_chunks`, {
       method: "POST", headers: {"Content-Type": "application/json"},
       body: JSON.stringify({slug: p.slug, title: p.title,
-                            description: p.description,
-                            student_id: ($("who").value || "demo-student")})
+                            description: p.description, student_id: S.name})
     });
   } catch { return show("bad", "Could not reach the server."); }
   if (!r.ok) return show("bad", "This problem could not be started. Try another one.");
@@ -165,25 +237,45 @@ async function start(p){
   const d = await r.json();
   sessionId = d.session_id; chunks = d.chunks || [];
   $("msg").innerHTML = ""; $("submit").disabled = false;
+  ensureEditor();
+  if (editor) editor.getWrapperElement().style.display = "";
   render();
 }
 
+function ensureEditor(){
+  if (editor) return;
+  editor = CodeMirror.fromTextArea($("code"), {
+    mode: "python", theme: "dracula", lineNumbers: true,
+    indentUnit: 4, tabSize: 4, indentWithTabs: false, lineWrapping: true,
+  });
+  editor.setSize(null, 210);
+}
+
 function render(){
-  $("steps").innerHTML = chunks.map((c, i) =>
-    `<span class="step ${i < idx ? "done" : i === idx ? "now" : ""}">Step ${i + 1}</span>`).join("");
+  $("spine").innerHTML = chunks.map((c, i) => {
+    const done = accepted[i];
+    const cls = i === idx ? "now" : done ? (done.how === "revealed" ? "helped" : "own") : "";
+    const mark = done ? (done.how === "revealed" ? "!" : "&#10003;") : (i + 1);
+    const tag = done && done.how === "revealed"
+      ? `<span class="pill warn stag">shown</span>` : "";
+    return `<li class="${cls}"><span class="node">${mark}</span>
+      <div class="stitle">${esc(c.prompt)}${tag}</div></li>`;
+  }).join("");
+
   const cur = chunks[idx];
   $("prompt").textContent = cur ? cur.prompt : "";
-  $("acceptedWrap").hidden = accepted.length === 0;
-  $("accepted").textContent = accepted.join("\n");
-  $("code").value = ""; $("code").focus();
+  $("soFarCard").hidden = accepted.length === 0;
+  $("soFar").textContent = accepted.map(a => a.code).join("\n");
+  $("attempts").textContent = "";
+  if (editor) { editor.setValue(""); editor.refresh(); editor.focus(); }
 }
 
 function show(kind, text, extra){
-  $("msg").innerHTML = `<div class="msg m-${kind}">${esc(text)}</div>` + (extra || "");
+  $("msg").innerHTML = `<div class="banner ${kind}">${esc(text)}</div>` + (extra || "");
 }
 
 $("submit").onclick = async () => {
-  const code = $("code").value;
+  const code = editor ? editor.getValue() : "";
   if (!code.trim()) return show("warn", "Write something first.");
   $("submit").disabled = true;
   // Stable per submission, so a retry of the same answer is never graded twice.
@@ -209,11 +301,11 @@ $("submit").onclick = async () => {
 
   const res = await r.json();
 
-  // Covers the OpenAI-down case; the server guarantees no attempt was spent.
+  // Covers the OpenAI outage case. The server guarantees no attempt was spent.
   if (res.verdict === "indeterminate") return show("warn", res.reason);
 
   if (res.verdict === "correct") {
-    accepted.push(code);
+    accepted[idx] = {code, how: "own"};
     idx = res.index;
     if (res.completed) return finish(res);
     render();
@@ -222,26 +314,27 @@ $("submit").onclick = async () => {
   }
 
   if (typeof res.revealed_reference === "string") {
-    accepted.push(res.revealed_reference);
+    accepted[idx] = {code: res.revealed_reference, how: "revealed"};
     idx = res.index;
     if (res.completed) return finish(res);
     render();
     show("warn", res.reason + "\n\nHere is this step so you can keep going:",
-         `<pre class="ref">${esc(res.revealed_reference)}</pre>`);
+         `<pre class="code" style="margin-top:11px">${esc(res.revealed_reference)}</pre>`);
     return;
   }
-  show("bad", res.reason + `\n\nAttempt ${res.attempts} of 2.`);
+  show("bad", res.reason);
+  $("attempts").textContent = `Attempt ${res.attempts} of 2.`;
 };
 
 async function finish(res){
-  $("steps").innerHTML = chunks.map(() => `<span class="step done">done</span>`).join("");
+  render();
   $("prompt").textContent = "";
-  $("code").style.display = "none"; $("submit").style.display = "none";
-  $("acceptedWrap").hidden = false;
-  $("accepted").textContent = accepted.join("\n");
+  if (editor) editor.getWrapperElement().style.display = "none";
+  $("submit").style.display = "none";
+  $("soFarCard").hidden = false;
   show(res.solved_independently ? "ok" : "warn",
        res.solved_independently
-         ? "Solved — every step on your own. Nice work."
+         ? "Solved. Every step on your own, nice work."
          : "Problem complete. Some steps used the shown answer, so this is recorded as solved with help.");
   try {
     await fetch(`${API}/mark_solved`, {
@@ -251,16 +344,40 @@ async function finish(res){
   } catch {}
 }
 
-$("backA").onclick = () => { $("cProblem").hidden = true; $("cAssign").hidden = false; };
-$("backP").onclick = () => { $("cSolve").hidden = true; $("cProblem").hidden = false; };
+$("backA").onclick = () => view("cAssign");
+$("backP").onclick = () => {
+  if (editor) editor.getWrapperElement().style.display = "";
+  view("cProblem");
+};
 
-// Tab inserts spaces rather than moving focus — this is a code box.
-$("code").addEventListener("keydown", e => {
-  if (e.key !== "Tab") return;
+/* ---------- chat panel, interface only ----------
+   Deliberately not wired to anything yet. It answers with one honest
+   line rather than a canned pep talk, so the placeholder is never
+   mistaken for a working tutor. */
+function bubble(who, text){
+  const b = document.createElement("div");
+  b.className = "bub " + who;
+  b.textContent = text;
+  $("clog").appendChild(b);
+  $("clog").scrollTop = $("clog").scrollHeight;
+}
+function resetChat(title){
+  $("clog").innerHTML = "";
+  bubble("bot", `Working on ${title}. Ask about the current step and I will help you think it through.`);
+}
+$("cform").addEventListener("submit", e => {
   e.preventDefault();
-  const t = e.target, s = t.selectionStart;
-  t.value = t.value.slice(0, s) + "    " + t.value.slice(t.selectionEnd);
-  t.selectionStart = t.selectionEnd = s + 4;
+  const t = $("cinput").value.trim();
+  if (!t) return;
+  bubble("me", t);
+  $("cinput").value = "";
+  setTimeout(() => bubble("bot",
+    "The tutor is not connected yet. This panel is the interface only."), 320);
+});
+$("chips").addEventListener("click", e => {
+  if (!e.target.classList.contains("chip")) return;
+  $("cinput").value = e.target.textContent;
+  $("cinput").focus();
 });
 
 loadAssignments();

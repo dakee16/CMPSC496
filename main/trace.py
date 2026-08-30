@@ -1,7 +1,7 @@
 """Private structured traces for model invocations.
 
 PRIVATE BY CONSTRUCTION: nothing here is ever returned from an API route. The
-grading engine must not depend on it — every entry point swallows its own
+grading engine must not depend on it - every entry point swallows its own
 errors, because a telemetry failure must never change a student's verdict.
 
 Cost is reported ONLY when pricing is explicitly configured. An unconfigured

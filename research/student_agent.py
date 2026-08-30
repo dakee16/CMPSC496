@@ -12,20 +12,20 @@ AGENTS = {
     "strong": STRONG_MODEL,
 }
 
-UNIFIED_TEMPERATURE = 0.3   # Same temp across all agents — isolates model size as the variable
+UNIFIED_TEMPERATURE = 0.3   # Same temp across all agents - isolates model size as the variable
 
 STUDENT_SYSTEM = """\
 You are a CS student answering ONE sub-question of a larger programming problem.
 
 RULES:
 - Write Python code that answers ONLY the current sub-question.
-- Do NOT write the function header (def line) — assume it exists above your code.
+- Do NOT write the function header (def line) - assume it exists above your code.
 - Your answer may be multiple lines if the sub-question needs them.
 - Do NOT wrap your answer in markdown, backticks, or quotes.
 - Do NOT prefix with "Answer:", "Here:", or any label.
 - Do NOT add explanations or trailing commentary after the code.
 - Build on any variables the previous chunks produced (shown as your accepted code so far).
-- You are still learning — sometimes you make mistakes or miss edge cases.
+- You are still learning - sometimes you make mistakes or miss edge cases.
 """
 
 

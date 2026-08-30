@@ -1,5 +1,5 @@
 """
-grading.py — the answer-checking state machine.
+grading.py - the answer-checking state machine.
 
 One orchestration function, grade_submission(), owns every verdict. Routes must
 not re-implement any part of it.
@@ -8,7 +8,7 @@ Two rules shape the whole design:
   * Execution decides, opinion is last. A verdict is deterministic only when a
     real run attributed the fault to the student.
   * Our failure is never evidence about the student. Infrastructure trouble
-    returns `indeterminate` and costs no attempt — it never defaults to wrong.
+    returns `indeterminate` and costs no attempt - it never defaults to wrong.
 """
 import ast
 import json
@@ -27,7 +27,7 @@ MAX_ADAPT_TRIES = 2
 def _trace(fn, *a, **k):
     """Call a tracing hook defensively. Telemetry must never be able to change
     a verdict, so the failure is swallowed AT THE SEAM as well as inside the
-    sink — a caller that patches or wraps a hook cannot break grading."""
+    sink - a caller that patches or wraps a hook cannot break grading."""
     try:
         fn(*a, **k)
     except Exception:
@@ -48,7 +48,7 @@ def _parse_body(code: str):
 
     Parsing it standalone raises SyntaxError on any `return`, which silently
     made _tail_is_sane reject every valid adapter and made _names return an
-    empty set — quietly disabling the clobber and anti-bypass checks."""
+    empty set - quietly disabling the clobber and anti-bypass checks."""
     return ast.parse("def _w():\n" + _indent(code))
 
 
@@ -74,20 +74,21 @@ def _system(reason_code: str, detail: str | None = None) -> GradeResult:
     """Our fault. Never consumes an attempt, never convicts."""
     return _ok("indeterminate", "system",
                "The grader could not safely decide this one. Your attempt was "
-               "not used — please try again.", reason_code,
+               "not used - please try again.", reason_code,
                deterministic=False, consume_attempt=False, internal_detail=detail)
 
 
 def _provider_down(reason_code: str, detail: str | None = None) -> GradeResult:
     """The model provider did not answer.
 
-    Identical guarantees to _system() — indeterminate, no attempt consumed —
-    but it NAMES the cause. "The grader could not decide" reads as a fault in
+    Identical guarantees to _system(), namely indeterminate with no attempt
+    consumed, but it NAMES the cause. "The grader could not decide" reads as
+    a fault in
     the student's answer; an outage is not, and a student whose answer may well
     be correct deserves to know the difference. `detail` stays internal; only
     the sentence below ever reaches the browser."""
     return _ok("indeterminate", "system",
-               "OpenAI is down — the service we use to check this step isn't "
+               "OpenAI is down - the service we use to check this step isn't "
                "responding right now. Your attempt was NOT used. Please try "
                "again in a moment.", reason_code,
                deterministic=False, consume_attempt=False, internal_detail=detail)
@@ -98,7 +99,7 @@ def _provider_down(reason_code: str, detail: str | None = None) -> GradeResult:
 _ADAPT_SYSTEM = (
     "You complete a partially written Python function. Return STRICT JSON only: "
     '{"adapted_tail": "<remaining body lines>", "aliases": [{"target": "n", "source": "m"}]}. '
-    "adapted_tail is body code only — no def line, no imports, no markdown. "
+    "adapted_tail is body code only - no def line, no imports, no markdown. "
     "aliases map a name the tail needs (target) to a name the earlier code already "
     "produced (source). Identifiers only, no expressions.")
 
@@ -164,7 +165,7 @@ def _tail_is_sane(tail: str, current_outputs: set, solution: str) -> bool:
 
 def _calibrate(header, trusted_prefix, alias_lines, tail, tests, entry):
     """An adapter must prove itself on TRUSTED work before it may judge a
-    student. A random LLM tail that fails proves nothing about the student —
+    student. A random LLM tail that fails proves nothing about the student:
     it may simply be a broken tail. Only a tail that passes here has earned
     the right to produce a verdict."""
     cand = _assemble(header, trusted_prefix, "\n".join(alias_lines), tail)
@@ -206,14 +207,14 @@ def _tier4(problem, chunk, upto, student_code, why, evidence, corr=None) -> Grad
         _trace(trace.record_judge, corr, GRADING_MODEL, "verifier", b_ok, b_conf)
     except Exception as e:
         # This try wraps ONLY the two model calls, so anything landing here is
-        # a provider failure — unreachable, timed out, or malformed output.
+        # a provider failure - unreachable, timed out, or malformed output.
         _trace(trace.record_route, corr, "system", "indeterminate")
         return _provider_down("judge_unavailable", repr(e)[:200])
 
     if a_ok != b_ok or min(a_conf, b_conf) < 0.6:
         _trace(trace.record_route, corr, "llm-judge", "indeterminate")
         return _ok("indeterminate", "llm-judge",
-                   "This one needs a closer look — we couldn't decide "
+                   "This one needs a closer look - we couldn't decide "
                    "confidently, so your attempt was not used.",
                    "judge_disagreement", deterministic=False,
                    consume_attempt=False,
@@ -232,8 +233,8 @@ def grade_submission(session: dict, student_code: str,
     import uuid
     from .oracle_store import OracleUnusableError, load_strong_cached_oracle
     loader = oracle_loader or load_strong_cached_oracle
-    # Correlation id per grading ATTEMPT. Idempotent replays never reach here —
-    # begin_submission() returns the stored result first — so a retry cannot
+    # Correlation id per grading ATTEMPT. Idempotent replays never reach here
+    # begin_submission() returns the stored result first - so a retry cannot
     # produce a duplicate completed-attempt trace.
     corr = case_id or f"grade-{uuid.uuid4().hex[:12]}"
 
@@ -245,7 +246,7 @@ def grade_submission(session: dict, student_code: str,
     header = session["header"]
     is_last = idx == len(chunks) - 1
 
-    # PRECONDITION — a STRONG cached oracle, read-only. Grading must never
+    # PRECONDITION - a STRONG cached oracle, read-only. Grading must never
     # generate one, and must never proceed without one.
     try:
         tests = loader(problem)
@@ -261,14 +262,14 @@ def grade_submission(session: dict, student_code: str,
     prefix = "\n".join(accepted_prefix(session))
     student_code = (student_code or "").strip()
 
-    # ── TIER 1 — static policy + compile. No LLM here, ever. ──
+    # ── TIER 1 - static policy + compile. No LLM here, ever. ──
     if not student_code:
         return _ok("incorrect", "syntax", "No answer submitted.", "blank_answer")
     upto = "\n".join(b for b in (prefix, student_code) if b.strip())
     probe = classify_run(_assemble(header, upto), [], entry_name=entry)
     if probe.outcome == "policy_violation":
         return _ok("incorrect", "policy",
-                   f"That answer uses something not allowed here — "
+                   f"That answer uses something not allowed here - "
                    f"{probe.internal_error}.", "policy_violation",
                    execution_outcome="policy_violation")
     if (probe.internal_error or "").startswith("syntax:"):
@@ -276,12 +277,12 @@ def grade_submission(session: dict, student_code: str,
                    f"Your code doesn't parse: {probe.internal_error[7:].strip()}.",
                    "syntax_error")
 
-    # ── LAST CHUNK — whole function, no borrowed tail ──
+    # ── LAST CHUNK - whole function, no borrowed tail ──
     if is_last:
         res = classify_run(_assemble(header, upto), tests, entry_name=entry)
         if res.outcome == "pass":
             return _ok("correct", "execution-final",
-                       "Correct — your full solution passes every test.",
+                       "Correct - your full solution passes every test.",
                        "final_pass", execution_outcome="pass",
                        divergent=False)
         if res.outcome == "harness_error":
@@ -289,20 +290,20 @@ def grade_submission(session: dict, student_code: str,
         msg = {"wrong_output": "Your solution runs but gives the wrong answer on "
                                "at least one case.",
                "runtime_error": "Your solution crashes while running.",
-               "timeout": "Your solution took too long — it may loop forever.",
+               "timeout": "Your solution took too long - it may loop forever.",
                "policy_violation": "That answer uses something not allowed here."}
         return _ok("incorrect", "execution-final",
                    msg.get(res.outcome, "Your solution didn't pass."),
                    f"final_{res.outcome}", execution_outcome=res.outcome,
                    failures=res.failures)
 
-    # ── NON-LAST — trusted reference tail ──
+    # ── NON-LAST - trusted reference tail ──
     ref_tail = "\n".join((chunks[j].get("reference") or "")
                          for j in range(idx + 1, len(chunks)))
     res = classify_run(_assemble(header, upto, ref_tail), tests, entry_name=entry)
     if res.outcome == "pass":
         return _ok("correct", "execution-reference",
-                   "Correct — your step works with the rest of the solution.",
+                   "Correct - your step works with the rest of the solution.",
                    "reference_pass", execution_outcome="pass")
     if res.outcome == "harness_error":
         return _system("harness_error", res.internal_error)
@@ -313,14 +314,14 @@ def grade_submission(session: dict, student_code: str,
 
     # A fixed reference tail can fail purely because it expected different
     # variable names. That is not the student's fault, so we do NOT convict
-    # here — we try a calibrated adapter instead.
+    # here - we try a calibrated adapter instead.
     return _tier3(problem, session, chunk, header, prefix, student_code, upto,
                   ref_tail, tests, entry, res, corr)
 
 
 def _tier3(problem, session, chunk, header, prefix, student_code, upto,
            ref_tail, tests, entry, ref_res, corr=None) -> GradeResult:
-    """Adapt the tail to the student's interface — but only a CALIBRATED
+    """Adapt the tail to the student's interface - but only a CALIBRATED
     adapter may influence a verdict."""
     idx = session["index"]
     trusted_prefix = "\n".join((session["chunks"][j].get("reference") or "")
@@ -346,7 +347,7 @@ def _tier3(problem, session, chunk, header, prefix, student_code, upto,
             _trace(trace.record_adapter, corr, GRADING_MODEL, attempt, "unsafe")
             continue
 
-        # CALIBRATION — prove the adapter on trusted work first.
+        # CALIBRATION - prove the adapter on trusted work first.
         if not _calibrate(header, trusted_prefix, alias_lines, tail, tests, entry):
             _trace(trace.record_adapter, corr, GRADING_MODEL, attempt, "calibration_failed")
             continue                                # uncalibrated: prove nothing
@@ -357,7 +358,7 @@ def _tier3(problem, session, chunk, header, prefix, student_code, upto,
         # undefined reference name and raise NameError on every run.
         cand = classify_run(_assemble(header, upto, tail), tests, entry_name=entry)
         if cand.outcome == "pass":
-            # ANTI-BYPASS — knock out ONLY the student chunk; if it still
+            # ANTI-BYPASS - knock out ONLY the student chunk; if it still
             # passes, the tail was doing the student's work for them.
             ko = classify_run(_assemble(header, prefix, "pass", tail),
                               tests, entry_name=entry)
@@ -367,7 +368,7 @@ def _tier3(problem, session, chunk, header, prefix, student_code, upto,
             _trace(trace.record_adapter, corr, GRADING_MODEL, attempt, "accepted")
             _trace(trace.record_route, corr, "execution-adapted", "correct")
             return _ok("correct", "execution-adapted",
-                       "Correct — your approach differs from ours, but it works.",
+                       "Correct - your approach differs from ours, but it works.",
                        "adapted_pass", execution_outcome="pass", divergent=True)
         if cand.outcome == "wrong_output":
             # Calibrated tail + clean run + wrong answers => the student's step

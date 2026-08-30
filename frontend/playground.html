@@ -189,7 +189,7 @@ function p2(){
       `<div class="chip" style="animation-delay:${i*60}ms">${esc(JSON.stringify(t.input))}
        → ${esc(JSON.stringify(t.expected))}</div>`).join("")}
       ${o.n_tests>6?`<div class="chip" style="color:var(--dim)">+${o.n_tests-6} more</div>`:""}</div>
-    <p class="cap" style="margin:18px 0 10px">${m.length} cheaters tried —
+    <p class="cap" style="margin:18px 0 10px">${m.length} cheaters tried -
       <b style="color:var(--good)">${caught} caught</b>,
       <b style="color:var(--bad)">${m.length-caught} slipped through</b>:</p>
     <div class="grid">${m.map((x,i)=>
@@ -214,7 +214,7 @@ function p2(){
 
 function p3(){
   const c = DATA.chunks;
-  if(!c || !c.length) return `<p class="cap">The problem gets split into 2–3 smaller steps,
+  if(!c || !c.length) return `<p class="cap">The problem gets split into 2 - 3 smaller steps,
     so a student builds the answer a piece at a time.</p>
     <div class="empty">No saved breakdown for this problem yet.<br>
       <span style="font-size:.8rem">Breakdowns are generated on first use and cached.</span></div>`;
@@ -271,7 +271,7 @@ function p5(){
           ${i===3?`<span class="pill" style="background:rgba(251,191,36,.14);color:var(--opinion)">not needed</span>`:""}
         </div>`).join("")}
     </div>`;
-  return `<p class="cap">Finally, a student submits an answer. It falls through four checks —
+  return `<p class="cap">Finally, a student submits an answer. It falls through four checks -
     and notice where it stops. The verdict comes from <b>actually running the code</b>, not
     from an opinion. The language model is only ever the last resort, and here it isn't needed
     at all. That's the whole point of the system.</p>

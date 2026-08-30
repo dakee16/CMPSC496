@@ -1,10 +1,10 @@
 """
-warmup.py — offline oracle precompute.
+warmup.py - offline oracle precompute.
 
 tests.sandbox.get_oracle_tests() mutation-tests an oracle the first time anyone
 asks for it, and that pass can include LLM counterexample search for surviving
 mutants. That cost belongs offline. The architecture promises students only ever
-hit the grading path and never wait through a retry loop — but grader.py:178 and
+hit the grading path and never wait through a retry loop - but grader.py:178 and
 run_phase1.py:221 both route into get_oracle_tests(), so today the first student
 to touch a problem pays for its validation inline.
 
@@ -33,7 +33,7 @@ SB = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_KEY"])
 def load_problems() -> list[dict]:
     """Every problem with its ground-truth solution.
 
-    Same query research/research_agent.py uses — note that its copy is currently
+    Same query research/research_agent.py uses - note that its copy is currently
     pinned to a 3-slug TEMP slice, so this deliberately re-states the full-set
     version rather than importing it. Warm-up wants everything."""
     res = SB.table("problems").select(
@@ -52,7 +52,7 @@ def _clear_stale_verdicts() -> int:
     Needed whenever the scoring basis changes (e.g. STRONG moving from the
     post-repair kill_rate to kill_rate_direct): old verdicts were computed under
     a formula that no longer applies. Clearing rather than deleting the cache is
-    deliberate — final_tests are still a perfectly good starting suite, and
+    deliberate - final_tests are still a perfectly good starting suite, and
     re-validating from them is both cheaper and fairer than regenerating.
 
     Clearing beats a force flag here because the authoritative skip lives inside
@@ -74,7 +74,7 @@ def warm_up_oracles(problems: list[dict] | None = None,
     """Force oracle validation for every problem, so no student ever triggers it.
 
     Calling get_oracle_tests() is the whole mechanism: the validation wiring
-    already lives there. This adds no validation logic of its own — it iterates,
+    already lives there. This adds no validation logic of its own - it iterates,
     skips what is already done, and keeps one bad problem from killing the run.
 
     force=True first strips every cached verdict (keeping the tests), so each
@@ -97,7 +97,7 @@ def warm_up_oracles(problems: list[dict] | None = None,
         slug = problem.get("slug", "?")
         head = f"  [{i}/{len(problems)}] {slug}"
 
-        # Pure cache read — never triggers a validation pass. Keyed by content,
+        # Pure cache read - never triggers a validation pass. Keyed by content,
         # so two problems sharing a slug can't be mistaken for each other.
         cached = _load_cache().get(content_hash(problem))
         if _is_validated(cached) and cached["strong"]:
@@ -109,7 +109,7 @@ def warm_up_oracles(problems: list[dict] | None = None,
         # validates once and only once, so re-calling it would do nothing.
         if _is_validated(cached):
             summary["already_weak"] += 1
-            print(f"{head}: SKIP (already validated, still WEAK — needs a look)")
+            print(f"{head}: SKIP (already validated, still WEAK - needs a look)")
             continue
 
         t0 = time.time()
@@ -117,15 +117,15 @@ def warm_up_oracles(problems: list[dict] | None = None,
             tests = get_oracle_tests(problem)
         except Exception as e:
             summary["failed"].append({"slug": slug, "error": f"{type(e).__name__}: {e}"})
-            print(f"{head}: FAILED — {type(e).__name__}: {e}")
+            print(f"{head}: FAILED - {type(e).__name__}: {e}")
             continue
 
         if not tests:
             # No executable ground truth (linked-list/tree inputs, in-place
-            # mutators, unimportable annotations). Neither strong nor weak —
+            # mutators, unimportable annotations). Neither strong nor weak -
             # there is simply nothing to score. Reported, never crashes the run.
             summary["blocked"].append({"slug": slug, "reason": "no usable oracle tests"})
-            print(f"{head}: BLOCKED — no usable oracle tests "
+            print(f"{head}: BLOCKED - no usable oracle tests "
                   f"({time.time() - t0:.1f}s)")
             continue
 
@@ -137,7 +137,7 @@ def warm_up_oracles(problems: list[dict] | None = None,
         if entry.get("insufficient_mutants"):
             summary["blocked"].append({"slug": slug,
                                        "reason": "insufficient mutants to score"})
-            print(f"{head}: BLOCKED — solution too trivial to mutate "
+            print(f"{head}: BLOCKED - solution too trivial to mutate "
                   f"({time.time() - t0:.1f}s)")
             continue
         summary["newly_validated"] += 1
@@ -171,5 +171,5 @@ if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print("\n\n⏸️  Paused. Rerun to resume — validated oracles stay cached.")
+        print("\n\n⏸️  Paused. Rerun to resume - validated oracles stay cached.")
         sys.exit(0)

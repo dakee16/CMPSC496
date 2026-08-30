@@ -1,5 +1,5 @@
 """
-sandbox.py — deterministic execution grading for MicroTutor.
+sandbox.py - deterministic execution grading for MicroTutor.
 
 Runs a Python solution against (input, expected) test cases in an isolated
 subprocess with a timeout. Resolves the entry point whether the code is a
@@ -59,7 +59,7 @@ def main():
             resource.setrlimit(resource.RLIMIT_CPU, (5, 5))
         except Exception:
             pass
-    # exec() runs the payload's code against THIS dict as its globals — a
+    # exec() runs the payload's code against THIS dict as its globals - a
     # bare `import typing` at the top of this harness script would NOT be
     # visible inside exec(), since that import lives in the harness's own
     # module globals, not in `ns`. Reference solutions routinely use type
@@ -143,8 +143,8 @@ def passes_tests(code: str, tests: list, entry_name: str | None = None,
     return {"ok": True, "passed": passed, "total": total,
             "fraction": passed / total if total else 0.0,
             "failures": failures[:5], "error": None}
-    
-    
+
+
 # ── oracle test generation: LLM makes INPUTS, ground-truth makes EXPECTED ──
 
 def _extract_signature(solution: str) -> tuple[str | None, list[str]]:
@@ -189,7 +189,7 @@ def _first_json_obj(text: str) -> dict | None:
 
 def generate_test_inputs(problem: dict, n: int = 10) -> list[list]:
     """Ask the LLM for n diverse input argument-lists (edge cases included).
-    INPUTS ONLY — never expected outputs. Retries once if the model returns junk."""
+    INPUTS ONLY - never expected outputs. Retries once if the model returns junk."""
     # Local import: main.identity imports this module, so a top-level import
     # here would be circular.
     from main.identity import get_resolved_entry
@@ -328,7 +328,7 @@ def get_oracle_tests(problem: dict, n: int = 10) -> list[dict]:
     validate_oracle, which may GROW the suite with counterexamples that kill
     surviving mutants; the grown suite and its verdict are persisted together.
 
-    Validation runs at most once per problem — an entry that already carries a
+    Validation runs at most once per problem - an entry that already carries a
     verdict is returned as-is, weak or strong. Always returns a plain list of
     tests, so existing callers are unaffected."""
     from main.identity import content_hash
@@ -362,7 +362,7 @@ def get_oracle_tests(problem: dict, n: int = 10) -> list[dict]:
         "validated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         # Per-mutant breakdown, so a verdict stays auditable after the fact and
         # the showcase can replay it instead of recomputing. Labels + statuses
-        # only — never mutant source, which would bloat the cache for nothing.
+        # only - never mutant source, which would bloat the cache for nothing.
         # ADDITIVE: entries written before this existed have no "breakdown"
         # key, and readers must treat that as "not available", not an error.
         "breakdown": {
@@ -391,7 +391,7 @@ def is_oracle_strong(problem: dict) -> bool:
 
     Reads the cached verdict, running validation once to populate it if it is
     missing. Takes the problem dict, not a slug: the cache is keyed by content
-    now, and a slug can no longer identify an entry — that ambiguity is exactly
+    now, and a slug can no longer identify an entry - that ambiguity is exactly
     the collision this change removes."""
     from main.identity import content_hash
     slug = problem.get("slug", "")
@@ -447,7 +447,7 @@ def load_strong_cached_oracle(problem: dict) -> list[dict]:
 
     get_oracle_tests() is the WRITE path: on a miss it generates tests, runs
     mutation testing and can block for minutes. That is correct for warm-up and
-    fatal for grading — a student pressing Submit must never trigger it, and a
+    fatal for grading - a student pressing Submit must never trigger it, and a
     weak or absent oracle must never be silently accepted as a basis for a
     verdict. This function only ever reads the cache.
 

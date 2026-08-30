@@ -13,7 +13,7 @@ class StepItem(BaseModel):
     rubric: Optional[str] = None
     canonical: Optional[str] = None   # ONE runnable line for this step
     indent: int = 0                   # block depth (0=def, 1=body, 2=inside loop/if)
-    reference: Optional[str] = None 
+    reference: Optional[str] = None
 
 class DecomposeOutput(BaseModel):
     steps: List[StepItem]
@@ -23,11 +23,11 @@ class EvalResult(BaseModel):
     correct: bool
     short_reason: str
     correct_answer: Optional[str] = None
-    divergent: bool = False   # correct, but NOT the canonical line — offer replan
+    divergent: bool = False   # correct, but NOT the canonical line - offer replan
 
 # ── answer-checking types ────────────────────────────────────────────────
 # Grading verdicts were previously a bare {"correct": bool, "tier": str} dict,
-# which could not express "we could not tell" — so infrastructure failure was
+# which could not express "we could not tell" - so infrastructure failure was
 # indistinguishable from a wrong student. These types make that distinction
 # representable, and make every verdict carry its provenance.
 
@@ -65,7 +65,7 @@ class ExecutionResult(BaseModel):
     outcome: ExecutionOutcome
     passed: int = 0
     total: int = 0
-    # Internal only — never serialised to the browser.
+    # Internal only - never serialised to the browser.
     failures: List[dict] = []
     internal_error: Optional[str] = None
 
@@ -84,7 +84,7 @@ class GradeResult(BaseModel):
     # Internal diagnostics; stripped at the API boundary.
     failures: List[dict] = []
     internal_detail: Optional[str] = None
-    # Correct, but not the canonical approach — the caller may offer a replan.
+    # Correct, but not the canonical approach - the caller may offer a replan.
     divergent: bool = False
     # Infrastructure failure must not cost the student an attempt.
     consume_attempt: bool = True

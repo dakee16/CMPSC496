@@ -82,7 +82,7 @@ def _normalize(line: str) -> str | None:
 
 def ast_equivalent(a: str, b: str) -> bool:
     """True if a and b are logically identical modulo surface form. False if
-    either won't parse or they differ — caller falls through to execution/LLM."""
+    either won't parse or they differ - caller falls through to execution/LLM."""
     na = _normalize(a)
     nb = _normalize(b)
     return na is not None and na == nb

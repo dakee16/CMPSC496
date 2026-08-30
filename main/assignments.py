@@ -1,10 +1,10 @@
 """
-assignments.py — parse a teacher's assignment file into problems.
+assignments.py - parse a teacher's assignment file into problems.
 
 THE FORMAT is a plain Python file, because that is what a CS instructor writes
 anyway when they make a solution key:
 
-    \"\"\"Week 3 — Loops and Strings\"\"\"          <- assignment name
+    \"\"\"Week 3 - Loops and Strings\"\"\"          <- assignment name
 
     # --- problem: palindrome-number ---        <- slug marker
     def is_palindrome(x: int) -> bool:
@@ -18,7 +18,7 @@ anyway when they make a solution key:
 Why a .py file rather than JSON or YAML: the teacher's own editor checks the
 syntax before they upload, multi-line code needs no escaping, and there is no
 new dependency. The docstring/body split maps exactly onto the two things the
-backend needs and must keep apart — the public statement and the private
+backend needs and must keep apart - the public statement and the private
 solution.
 
 ENTRY POINT: within one problem block the LAST top-level function is the entry
@@ -27,7 +27,7 @@ _mirror_resolve(), which mirrors the execution harness, so all three agree on
 which function is "the problem".
 
 This module is PURE: it parses text and returns dicts. No I/O, no database
-writes, no model calls — so it can be tested on its own.
+writes, no model calls - so it can be tested on its own.
 """
 import ast
 import re
@@ -83,7 +83,7 @@ def _problem_from_block(slug: str | None, src: str, index: int) -> dict:
             raise ValueError(
                 "class-based solutions are not supported in an assignment file; "
                 "write a plain top-level function instead")
-        raise ValueError("no function found — each problem needs one")
+        raise ValueError("no function found - each problem needs one")
 
     entry = funcs[-1]                    # helpers first, entry point last
     doc = ast.get_docstring(entry)
@@ -107,7 +107,7 @@ def parse_assignment_file(text: str, filename: str = "assignment.py") -> dict:
 
     Returns {"name", "problems": [...], "errors": [{"slug", "error"}]}.
 
-    A malformed PROBLEM never fails the whole upload — it lands in `errors` so
+    A malformed PROBLEM never fails the whole upload - it lands in `errors` so
     the teacher is told exactly which one to fix while the rest proceed. Only an
     unusable FILE raises."""
     if not text or not text.strip():
@@ -132,7 +132,7 @@ def parse_assignment_file(text: str, filename: str = "assignment.py") -> dict:
             blocks.append((m.group(1), text[m.end():end]))
     else:
         # No markers: every top-level function is its own problem. Forgiving for
-        # a simple file, but it cannot group helpers — hence the hint below.
+        # a simple file, but it cannot group helpers - hence the hint below.
         tree = ast.parse(text)
         lines = text.splitlines(keepends=True)
         funcs = [n for n in tree.body if isinstance(n, ast.FunctionDef)]
@@ -166,16 +166,16 @@ def parse_assignment_file(text: str, filename: str = "assignment.py") -> dict:
     return {"name": name, "problems": problems, "errors": errors}
 
 
-# The starter file a teacher downloads. It MUST survive preparation itself —
+# The starter file a teacher downloads. It MUST survive preparation itself
 # the first thing a teacher does is upload this, and an example that fails the
 # oracle-strength gate would look like the product is broken.
 #
 # That gate needs at least _MIN_MUTANTS (3) distinct ways to break the solution,
 # or it cannot tell a strong test suite from a lucky one. A one-liner like
-# `sum(nums)` yields ONE mutant and is correctly rejected as ungradeable — so
+# `sum(nums)` yields ONE mutant and is correctly rejected as ungradeable - so
 # both examples below deliberately carry several comparisons and constants.
 # Measured with main.mutation.generate_mutants: 11 and 6 respectively.
-TEMPLATE = '''"""Week 1 — Warm-up"""
+TEMPLATE = '''"""Week 1 - Warm-up"""
 
 # --- problem: is-leap-year ---
 def is_leap_year(year):
@@ -217,7 +217,7 @@ def second_largest(nums):
 if __name__ == "__main__":
     # Self-check: the shapes that matter, including the failure modes.
     r = parse_assignment_file(TEMPLATE, "week1.py")
-    assert r["name"] == "Week 1 — Warm-up", r["name"]
+    assert r["name"] == "Week 1 - Warm-up", r["name"]
     assert [p["slug"] for p in r["problems"]] == ["is-leap-year", "second-largest"]
     assert r["problems"][0]["description"].startswith("Given a year")
     assert "year % 400" in r["problems"][0]["solution"]

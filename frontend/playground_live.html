@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>MicroTutor — LIVE Pipeline Run</title>
+<title>MicroTutor - LIVE Pipeline Run</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root{
@@ -116,11 +116,11 @@
 </head>
 <body>
 <header>
-  <h1>⚡ MicroTutor — Live Pipeline Run</h1>
+  <h1>⚡ MicroTutor - Live Pipeline Run</h1>
   <div class="sub">Pick a problem (or paste your own), hit RUN, and watch the real pipeline work:
   fresh oracle generation → mutants one by one → per-test results → free probes → AI-suggested
   counterexamples → oracle repairs → verdict → decomposition → Gate 1. Nothing is replayed from
-  cache — every event streams the moment it happens.</div>
+  cache - every event streams the moment it happens.</div>
 </header>
 
 <div class="wrap">
@@ -139,14 +139,14 @@
     <div>
       <h2>3 · Go</h2>
       <button class="run" id="runbtn" onclick="run()">▶ RUN LIVE</button>
-      <div class="cost">⚠ real OpenAI calls — same cost as one warmup pass</div>
+      <div class="cost">⚠ real OpenAI calls - same cost as one warmup pass</div>
     </div>
   </div>
 
   <div class="panel feed" id="feed">
     <div class="placeholder">Choose a problem on the left and hit RUN.<br>
-      The full run — oracle, every mutant, every AI-suggested input, the growing
-      kill rate, the verdict, the decomposition, Gate 1 — will appear here live.</div>
+      The full run - oracle, every mutant, every AI-suggested input, the growing
+      kill rate, the verdict, the decomposition, Gate 1 - will appear here live.</div>
   </div>
 </div>
 
@@ -169,7 +169,7 @@ async function loadProblems(){
     });
   }catch(e){
     document.getElementById("plist").innerHTML =
-      `<div class="prob"><span class="d">couldn't load — is the API on :8000?</span></div>`;
+      `<div class="prob"><span class="d">couldn't load - is the API on :8000?</span></div>`;
   }
 }
 async function pick(slug, el){
@@ -218,15 +218,15 @@ const H = {
   entry: e => el(`<div class="card"><h3>Entry point</h3>
     <span class="t">${esc(e.entry_name)}(${(e.params||[]).map(esc).join(", ")})</span></div>`),
 
-  oracle_tests: e => el(`<div class="card"><h3>Oracle tests — model proposed the INPUTS,
+  oracle_tests: e => el(`<div class="card"><h3>Oracle tests - model proposed the INPUTS,
     the ground truth computed every expected value (${e.tests.length})</h3>
     <div class="tests">${e.tests.map(t=>testChip(t)).join("")}</div></div>`),
 
   round_start: e => el(`<div class="card"><h3>Mutation round ${e.round} of ${e.max_rounds}
-    — suite has ${e.n_tests} tests</h3></div>`),
+ - suite has ${e.n_tests} tests</h3></div>`),
 
   mutants: e => el(`<div class="card"><h3>${e.total} mutants generated
-    (deterministic single-point breaks of the ground truth — no model involved)</h3>
+    (deterministic single-point breaks of the ground truth - no model involved)</h3>
     <div class="tests">${e.mutants.map(m=>`<span class="t">#${m.index+1} · ${esc(m.label)}</span>`).join("")}</div></div>`),
 
   mutant_result: e => {
@@ -234,14 +234,14 @@ const H = {
     const badge = e.killed ? `<span class="badge k">KILLED</span>` : `<span class="badge s">SURVIVED</span>`;
     const per = (e.per_test||[]).map(t=>
       `<span class="t ${t.pass?'pass':'fail'}">${J(t.input)} → got ${J(t.got)} ${t.pass?'✓':'✗ (want '+J(t.expected)+')'}</span>`).join("");
-    const extra = e.crashed ? `<div class="mut-detail">💥 crashed/hung where the original ran (${esc(e.error||"")}) — that itself counts as caught</div>` : "";
+    const extra = e.crashed ? `<div class="mut-detail">💥 crashed/hung where the original ran (${esc(e.error||"")}) - that itself counts as caught</div>` : "";
     curMutants[e.index] = el(
       `<div class="mutant ${cls}">
-        <div class="mhead"><span class="mlabel">Mutant #${e.index+1} — ${esc(e.label)}</span>${badge}</div>
+        <div class="mhead"><span class="mlabel">Mutant #${e.index+1} - ${esc(e.label)}</span>${badge}</div>
         ${extra}
         <div class="mut-detail">${e.killed
-          ? "at least one oracle test disagreed with the original — the suite caught this break"
-          : "every oracle test agreed with the broken version — the suite as handed in missed this"}</div>
+          ? "at least one oracle test disagreed with the original - the suite caught this break"
+          : "every oracle test agreed with the broken version - the suite as handed in missed this"}</div>
         <div class="tests" style="margin-top:8px">${per}</div>
         <div class="subs"></div>
       </div>`);
@@ -259,22 +259,22 @@ const H = {
     const d = document.createElement("div"); d.className = "sub-ev "+cls; d.innerHTML = html;
     (host||feed).appendChild(d); d.scrollIntoView({behavior:"smooth",block:"end"});
   },
-  retry_start: e => H._sub(e,"warn",`<b>Repair attempt</b> — ${esc(e.detail)}`),
+  retry_start: e => H._sub(e,"warn",`<b>Repair attempt</b> - ${esc(e.detail)}`),
   killed_by_earlier_counterexample: e => H._sub(e,"good",`<b>Free kill:</b> ${esc(e.detail)}`),
   probes: e => H._sub(e,"", `<b>Free boundary probes</b> (${e.inputs.length}, no LLM):
     ${e.inputs.map(i=>`<span class="t">${J(i)}</span>`).join(" ")}`),
   probes_exhausted: e => H._sub(e,"warn",`${esc(e.detail)}`),
-  llm_asking: e => H._sub(e,"cyan",`<b>Asking the AI</b> — ${esc(e.detail)}`),
-  llm_candidates: e => H._sub(e,"cyan",`<b>AI-suggested inputs</b> (inputs ONLY — it never
+  llm_asking: e => H._sub(e,"cyan",`<b>Asking the AI</b> - ${esc(e.detail)}`),
+  llm_candidates: e => H._sub(e,"cyan",`<b>AI-suggested inputs</b> (inputs ONLY - it never
     decides correctness): ${e.inputs.map(i=>`<span class="t">${J(i)}</span>`).join(" ")}`),
   disagreement: e => H._sub(e,"good",`<b>DISAGREEMENT FOUND</b> via ${e.source==="probe"?"free probe":"AI input"}:
     on ${J(e.input)} the real answer is ${J(e.expected)} but the mutant says otherwise`),
   search_empty: e => H._sub(e,"warn",`${esc(e.detail)}`),
-  search_error: e => H._sub(e,"bad",`<b>Search failed:</b> ${esc(e.error)} — left UNRESOLVED, counts against the oracle`),
+  search_error: e => H._sub(e,"bad",`<b>Search failed:</b> ${esc(e.error)} - left UNRESOLVED, counts against the oracle`),
   oracle_grown: e => { H._sub(e,"good",`<b>Oracle grows</b> → now ${e.n_tests} tests.
     New test: <span class="t new">${J(e.new_test.input)} → ${J(e.new_test.expected)}</span>`); },
   equivalence_sweep_start: e => H._sub(e,"cyan",`<b>Equivalence sweep</b> (${e.sweep_size} deterministic inputs): ${esc(e.detail)}`),
-  equivalence_sweep_result: e => H._sub(e, e.equivalent?"cyan":"bad", `<b>${e.equivalent?"PROVEN EQUIVALENT":"UNRESOLVED"}</b> — ${esc(e.detail)}`),
+  equivalence_sweep_result: e => H._sub(e, e.equivalent?"cyan":"bad", `<b>${e.equivalent?"PROVEN EQUIVALENT":"UNRESOLVED"}</b> - ${esc(e.detail)}`),
   mutant_final: e => {
     const m = curMutants[e.index]; if(!m) return;
     const inner = m.querySelector(".mutant"); if(!inner) return;
@@ -283,7 +283,7 @@ const H = {
     inner.classList.add(map[e.status]||"survived");
     const b = inner.querySelector(".badge");
     const lab = {killed:["k","KILLED"], killed_on_retry:["r","KILLED ON RETRY"],
-                 proven_equivalent:["e","PROVEN EQUIVALENT"], unresolved:["s","UNRESOLVED — COUNTS AGAINST"]};
+                 proven_equivalent:["e","PROVEN EQUIVALENT"], unresolved:["s","UNRESOLVED - COUNTS AGAINST"]};
     const [c,t] = lab[e.status]||["s",e.status]; b.className = "badge "+c; b.textContent = t;
   },
 
@@ -310,19 +310,19 @@ const H = {
       ${e.insufficient_mutants?' · <b style="color:var(--warn)">too few mutants to judge</b>':''}
       <br><small style="color:var(--dim)">${esc(e.detail)}</small></span></div>`),
 
-  chunks: e => el(`<div class="card"><h3>Decomposition — ${e.chunks.length} chunks</h3>
+  chunks: e => el(`<div class="card"><h3>Decomposition - ${e.chunks.length} chunks</h3>
     <pre>${esc(e.header)}</pre>
     ${e.chunks.map(c=>`<div class="chunk ev"><div class="sid">${esc(c.step_id)}</div>
       <div class="pr">${esc(c.prompt)}</div><pre>${esc(c.reference)}</pre></div>`).join("")}</div>`),
 
-  necessity: e => el(`<div class="card"><h3>Gate 1 — necessity (knock each chunk out, oracle must notice)</h3>
+  necessity: e => el(`<div class="card"><h3>Gate 1 - necessity (knock each chunk out, oracle must notice)</h3>
     ${(e.per_chunk||[]).map(c=>`<div class="nec ${c.necessary?'ok':'no'}">
-      <span class="dot"></span><b>${esc(c.step_id)}</b>&nbsp;— ${esc(c.outcome)}
+      <span class="dot"></span><b>${esc(c.step_id)}</b>&nbsp; - ${esc(c.outcome)}
       ${c.necessary?'→ load-bearing ✓':'→ NOT load-bearing ✗'}</div>`).join("")}
     <div class="vnums" style="margin-top:8px">${esc((e.summary||"").split("\n")[0])}</div></div>`),
 
   base_run_failed: e => el(`<div class="blocked"><h3>Ground truth failed to run</h3><p>${esc(e.error)}</p></div>`),
-  blocked: e => el(`<div class="blocked"><h3>⛔ REFUSED at ${esc(e.at)} — ${esc(e.error_type)}</h3>
+  blocked: e => el(`<div class="blocked"><h3>⛔ REFUSED at ${esc(e.at)} - ${esc(e.error_type)}</h3>
     <p>${esc(e.message)}</p>
     <p style="margin-top:8px;color:var(--muted)">This is the system working as designed:
     it refuses to serve anything it could not verify.</p></div>`),
@@ -337,7 +337,7 @@ async function run(){
   const slug = document.getElementById("slug").value.trim();
   const sol  = document.getElementById("sol").value;
   if(!slug){ alert("Give the problem a slug (any short id)."); return; }
-  if(!sol.trim()){ alert("Paste the ground truth solution — the pipeline cannot run without it."); return; }
+  if(!sol.trim()){ alert("Paste the ground truth solution - the pipeline cannot run without it."); return; }
 
   running = true; curMutants = {}; meterEl = null;
   document.getElementById("runbtn").disabled = true;
@@ -352,7 +352,7 @@ async function run(){
     resp = await fetch(`${API}/playground/live`, {
       method:"POST", headers:{"Content-Type":"application/json"}, body});
   }catch(err){
-    H.error({message:"Could not reach the API on :8000 — is uvicorn running?"});
+    H.error({message:"Could not reach the API on :8000 - is uvicorn running?"});
     running=false; document.getElementById("runbtn").disabled=false; return;
   }
   if(!resp.ok){

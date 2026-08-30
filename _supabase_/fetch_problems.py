@@ -1,5 +1,5 @@
 """
-fetch_problems.py — Scrape 500 free LeetCode problems via GraphQL.
+fetch_problems.py - Scrape 500 free LeetCode problems via GraphQL.
 Outputs problems_raw.json for upload_to_supabase.py to ingest.
 """
 import json

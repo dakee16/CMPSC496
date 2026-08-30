@@ -85,7 +85,7 @@ const storedSession = localStorage.getItem("microtutor_student");
 
 
 //
-// AUTH TOGGLE EVEN LISTENER 
+// AUTH TOGGLE EVEN LISTENER
 //
 
 authToggle.addEventListener("click", function (e) {
@@ -108,7 +108,7 @@ authToggle.addEventListener("click", function (e) {
 });
 
 //
-// AUTH SUBMIT EVEN LISTENER 
+// AUTH SUBMIT EVEN LISTENER
 //
 
 authSubmitBtn.addEventListener("click", async function () {
@@ -163,7 +163,7 @@ authSubmitBtn.addEventListener("click", async function () {
 });
 
 //
-// LOGOUT BUTTON 
+// LOGOUT BUTTON
 //
 
 
@@ -198,12 +198,12 @@ authPassword.addEventListener("keydown", function (e) {
 });
 
 //
-// START BUTTON EVEN LISTENER 
+// START BUTTON EVEN LISTENER
 //
 
 startBtn.addEventListener("click", async function () {
 
-  console.log("Start clicked — calling backend...");
+  console.log("Start clicked - calling backend...");
   startBtn.textContent = "Calling Backend...";
   startBtn.disabled = true;
 
@@ -255,7 +255,7 @@ startBtn.addEventListener("click", async function () {
 });
 
 //
-// SUBMIT BUTTON EVEN LISTENER 
+// SUBMIT BUTTON EVEN LISTENER
 //
 
 submitBtn.addEventListener("click", async function () {
@@ -292,7 +292,7 @@ submitBtn.addEventListener("click", async function () {
       const code = result.detail && result.detail.reason_code;
       feedbackSection.style.display = "block";
       if (code === "submission_in_progress") {
-        feedbackText.textContent = "⏳ Still grading your answer — press Submit again in a moment.";
+        feedbackText.textContent = "⏳ Still grading your answer - press Submit again in a moment.";
       } else if (code === "stale_index") {
         feedbackText.textContent = "⚠️ This page is out of date. Reload to continue.";
       } else {
@@ -310,7 +310,7 @@ submitBtn.addEventListener("click", async function () {
       return;
     }
 
-    // Interaction logging now happens server-side in /grade_chunk —
+    // Interaction logging now happens server-side in /grade_chunk -
     // the browser no longer reports its own verdicts.
 
     feedbackSection.style.display = "block";
@@ -323,7 +323,7 @@ submitBtn.addEventListener("click", async function () {
     else if (result.verdict === "correct") {
       message = "✅ Correct! " + result.reason;
       if (result.divergent) {
-        message = "✅ Correct — your approach differs from ours, but it works. " + result.reason;
+        message = "✅ Correct - your approach differs from ours, but it works. " + result.reason;
       }
       if (!result.deterministic) { message += "\n\n(Judged by review, not by running your code.)"; }
       feedbackText.textContent = message;
@@ -362,7 +362,7 @@ submitBtn.addEventListener("click", async function () {
 });
 
 //
-// NEXT BUTTON EVEN LISTENER 
+// NEXT BUTTON EVEN LISTENER
 //
 
 nextBtn.addEventListener("click", function () {
@@ -462,7 +462,7 @@ fileInput.addEventListener("change", function (event) {
     console.log("Parsed problems:", problems);
 
     if (problems.length === 0) {
-      alert("No problems found — check the file format (Problem N: / Description: / Solution:). " +
+      alert("No problems found - check the file format (Problem N: / Description: / Solution:). " +
             "Every problem needs a reference solution; ones without a Solution: section are skipped.");
       return;
     }
@@ -486,7 +486,7 @@ fileInput.addEventListener("change", function (event) {
   reader.readAsText(file);
 });
 
-// EDIT CODE BUTTON — placeholder.
+// EDIT CODE BUTTON - placeholder.
 editCodeBtn.addEventListener("click", function () {
   alert("Edit Code coming soon.");
 });
@@ -613,8 +613,8 @@ function buildFinalSolution() {
   return header + "\n" + indentedAnswers.join("\n");
 }
 
-// 
-// FUNCTION FOR THE TAB SELECT BUTTONS 
+//
+// FUNCTION FOR THE TAB SELECT BUTTONS
 //
 
 
@@ -654,9 +654,9 @@ tabButtons.forEach(function (clicked_button) {
   });
 });
 
-// 
+//
 // LOAD PROBLEMS ON PAGE LOAD
-// 
+//
 
 async function loadProblems() {
   try {
@@ -694,7 +694,7 @@ async function loadProblems() {
   }
 }
 
-// 
+//
 // HELPER FUNCTION TO FORMAT THE PROBLEM DESCRIPTION
 //
 
@@ -714,7 +714,7 @@ function formatDescription(text) {
 }
 
 //
-// HELPER FUNCTION FOR SLUGIFY 
+// HELPER FUNCTION FOR SLUGIFY
 //
 
 function slugify(title) {
@@ -764,7 +764,7 @@ function parseProblems(rawText) {
       return problem;
     })
     // No reference solution means no oracle, no mutation validation and no
-    // necessity gate — reject it here rather than serve an unvalidated problem.
+    // necessity gate - reject it here rather than serve an unvalidated problem.
     .filter(p => p && p.title && p.description && p.solution);
 }
 

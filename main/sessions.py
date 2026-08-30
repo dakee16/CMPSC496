@@ -1,5 +1,5 @@
 """
-sessions.py — server-owned grading sessions (SQLite, stdlib only).
+sessions.py - server-owned grading sessions (SQLite, stdlib only).
 
 The browser used to be authoritative: /decompose_chunks handed it every hidden
 reference, and /grade_chunk accepted the problem, solution, chunks, accepted
@@ -24,7 +24,7 @@ MAX_ATTEMPTS = 2          # second failure reveals the reference
 
 # How long a submission may sit RESERVED (claimed, no result) before another
 # attempt with the same id may reclaim it. Must exceed the slowest realistic
-# grade — Tier 3/4 can run several subprocess executions plus model calls —
+# grade - Tier 3/4 can run several subprocess executions plus model calls
 # so a genuine concurrent twin is never mistaken for a dead one.
 SUBMISSION_GRACE_SECONDS = 180
 
@@ -88,7 +88,7 @@ def _connect(db_path: str | None = None) -> sqlite3.Connection:
             revision          INTEGER NOT NULL DEFAULT 0
         )""")
     # Idempotency is persisted per (session, submission) rather than only
-    # remembering the latest submission — a retry of an older id must still
+    # remembering the latest submission - a retry of an older id must still
     # replay its own stored result instead of being graded again.
     conn.execute("""
         CREATE TABLE IF NOT EXISTS submissions (
@@ -173,7 +173,7 @@ def load_session(session_id: str, db_path: str | None = None) -> dict:
 
 
 def problem_of(session: dict) -> dict:
-    """Rebuild the authoritative problem dict from the session — never the
+    """Rebuild the authoritative problem dict from the session - never the
     client's copy."""
     return {"slug": session["slug"], "title": session["title"],
             "description": session["description"], "solution": session["solution"]}
@@ -202,8 +202,8 @@ def begin_submission(session_id: str, submission_id: str,
     """Reserve a submission. Returns (stored_result_or_None, session).
 
     Deliberately SHORT: it claims the (session, submission) row and reads the
-    current revision, then returns. Grading — which runs subprocesses and may
-    call an LLM — happens with NO write transaction held, so a slow grade never
+    current revision, then returns. Grading - which runs subprocesses and may
+    call an LLM - happens with NO write transaction held, so a slow grade never
     blocks another request. commit_outcome() then does a compare-and-swap."""
     conn = _connect(db_path)
     try:
@@ -223,7 +223,7 @@ def begin_submission(session_id: str, submission_id: str,
                         _row_to_session(r))
             # Row claimed but no result yet. Two very different situations:
             #
-            #   * a concurrent twin of this exact submission is still grading —
+            #   * a concurrent twin of this exact submission is still grading
             #     returning None would grade it a SECOND time and double-advance;
             #   * the attempt that claimed it DIED (grader error, CAS conflict,
             #     killed process) without writing a result or releasing the row.
@@ -265,7 +265,7 @@ def release_submission(session_id: str, submission_id: str,
 
     Called when grading failed or the commit lost its compare-and-swap, so the
     student can retry the SAME submission id immediately instead of waiting out
-    SUBMISSION_GRACE_SECONDS. Only ever deletes an UNFINISHED row — a graded
+    SUBMISSION_GRACE_SECONDS. Only ever deletes an UNFINISHED row - a graded
     result must survive, or idempotency would be lost and a retry would grade
     and advance the session twice. Never raises: this runs on a failure path
     and must not replace the original error."""

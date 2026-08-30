@@ -1,12 +1,12 @@
 """
-oracle_store.py — READ-ONLY access to validated oracle data.
+oracle_store.py - READ-ONLY access to validated oracle data.
 
 Relocated out of tests/ because it is backend runtime, not test scaffolding:
 the grading path depends on it. The cached data now lives under data/oracles/.
 
 The contract that matters: grading may READ a STRONG oracle and may never
 generate, validate or modify one. Oracle authoring belongs to the warm-up /
-problem-publishing workflow, never to a student request — a student pressing
+problem-publishing workflow, never to a student request - a student pressing
 Submit must not be able to trigger minutes of mutation testing, and a weak or
 absent oracle must never be silently accepted as a basis for a verdict.
 """

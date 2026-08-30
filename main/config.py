@@ -1,5 +1,5 @@
 """
-config.py — typed, startup-validated configuration.
+config.py - typed, startup-validated configuration.
 
 Two rules shape this file:
   * Production NEVER silently degrades. Anonymous identity and the local
@@ -68,7 +68,7 @@ class AuthConfig:
     # matching how this project already stores per-user metadata.
     role_claim_path: str = "app_metadata.role"
     instructor_roles: tuple[str, ...] = ("instructor", "admin")
-    allow_anonymous: bool = False          # DEV ONLY — refused in production
+    allow_anonymous: bool = False          # DEV ONLY - refused in production
 
 
 @dataclass(frozen=True)
@@ -134,7 +134,7 @@ class Config:
 
 
 def load(env: dict | None = None) -> Config:
-    """Build the config from the environment. Pure — no I/O beyond os.environ."""
+    """Build the config from the environment. Pure - no I/O beyond os.environ."""
     e = env if env is not None else os.environ
     prev = None
     if env is not None:                    # allow injection for callers/tests
