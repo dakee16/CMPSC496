@@ -145,16 +145,16 @@
           <div class="chead">
             <span class="dot"></span>
             <h2>Tutor</h2>
-            <span class="pill" style="margin-left:auto">preview</span>
+            <span class="pill" style="margin-left:auto">Socratic</span>
           </div>
           <div class="clog" id="clog"></div>
           <div class="chips" id="chips">
+            <span class="chip">Explain this problem simply</span>
+            <span class="chip">Here is my approach…</span>
             <span class="chip">I am stuck</span>
-            <span class="chip">Explain this step</span>
-            <span class="chip">Why is my answer wrong</span>
           </div>
           <form class="cfoot" id="cform">
-            <input type="text" id="cinput" placeholder="Ask about this step" autocomplete="off">
+            <input type="text" id="cinput" placeholder="Explain your thinking, or ask about the problem" autocomplete="off">
             <button type="submit">Send</button>
           </form>
         </div>
@@ -170,6 +170,8 @@ mountHeader({active: "Practice", wide: true});
 const $ = id => document.getElementById(id);
 
 let sessionId = null, chunks = [], idx = 0, accepted = [], editor = null;
+// The tutor is scoped to whatever is open on the LEFT. No problem, no chat.
+let openProblem = null, chatLog = [], chatBusy = false;
 
 async function loadAssignments(){
   try {
@@ -220,6 +222,7 @@ async function start(p){
   $("submit").disabled = true;
   $("attempts").textContent = "";
   accepted = []; idx = 0;
+  openProblem = p;
   resetChat(p.title || p.slug);
 
   // No solution is sent. The server reads the reference from the
@@ -350,34 +353,71 @@ $("backP").onclick = () => {
   view("cProblem");
 };
 
-/* ---------- chat panel, interface only ----------
-   Deliberately not wired to anything yet. It answers with one honest
-   line rather than a canned pep talk, so the placeholder is never
-   mistaken for a working tutor. */
+/* ---------- Socratic tutor ----------
+   Explains the problem, then makes the student defend an approach. It is
+   never sent the solution, the chunk references or the oracle, so it cannot
+   leak an answer even if a student talks it into trying. */
 function bubble(who, text){
   const b = document.createElement("div");
   b.className = "bub " + who;
   b.textContent = text;
   $("clog").appendChild(b);
   $("clog").scrollTop = $("clog").scrollHeight;
+  return b;
 }
 function resetChat(title){
   $("clog").innerHTML = "";
-  bubble("bot", `Working on ${title}. Ask about the current step and I will help you think it through.`);
+  chatLog = [];
+  bubble("bot", `We are on ${title}. Ask me to explain it, or tell me how you `
+               + `are thinking of approaching it — I will not give you the answer.`);
+}
+async function sendToTutor(text){
+  if (chatBusy) return;
+  if (!openProblem){
+    bubble("bot", "Open a problem on the left first — I can only help with the one you are working on.");
+    return;
+  }
+  chatBusy = true;
+  bubble("me", text);
+  chatLog.push({role: "user", content: text});
+  const thinking = bubble("bot", "…");
+  try {
+    const r = await fetch(`${API}/tutor_chat`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        slug: openProblem.slug,
+        messages: chatLog,
+        chunk_prompt: chunks[idx] ? chunks[idx].prompt : null
+      })
+    });
+    const data = await r.json();
+    if (!r.ok){
+      thinking.textContent = (data.detail && data.detail.message)
+        || "The tutor is unavailable right now. Try again shortly.";
+      chatLog.pop();                       // do not poison the next turn
+      return;
+    }
+    thinking.textContent = data.reply;
+    chatLog.push({role: "assistant", content: data.reply});
+  } catch (e) {
+    thinking.textContent = "Could not reach the tutor. Check your connection.";
+    chatLog.pop();
+  } finally {
+    chatBusy = false;
+    $("cinput").focus();
+  }
 }
 $("cform").addEventListener("submit", e => {
   e.preventDefault();
   const t = $("cinput").value.trim();
   if (!t) return;
-  bubble("me", t);
   $("cinput").value = "";
-  setTimeout(() => bubble("bot",
-    "The tutor is not connected yet. This panel is the interface only."), 320);
+  sendToTutor(t);
 });
 $("chips").addEventListener("click", e => {
   if (!e.target.classList.contains("chip")) return;
-  $("cinput").value = e.target.textContent;
-  $("cinput").focus();
+  sendToTutor(e.target.textContent);
 });
 
 loadAssignments();

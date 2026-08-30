@@ -138,6 +138,14 @@ class LogInteractionRequest(BaseModel):
     tier: str
     reason: str
 
+class TutorChatRequest(BaseModel, extra="forbid"):
+    """The tutor is given the problem SLUG, never a solution. The server looks
+    up only the public fields; the reference solution never enters this path."""
+    slug: str
+    messages: list[dict] = []
+    chunk_prompt: str | None = None
+
+
 class MarkSolvedRequest(BaseModel, extra="forbid"):
     """Only a completed grading session may claim a solve. Student, slug and
     independence are DERIVED from it - the client cannot assert any of them."""
@@ -788,6 +796,39 @@ def get_solved(student_id: str):
     result = get_supabase().table("solved").select("problem_slug").eq("student_id", student_id).execute()
     slugs = [r["problem_slug"] for r in (result.data or [])]
     return {"slugs": slugs}
+
+
+@app.post("/tutor_chat")
+def tutor_chat(req: TutorChatRequest):
+    """Socratic tutor for the problem currently open on the student page.
+
+    Deliberately NOT session-bound: it never grades, never advances a session,
+    never consumes an attempt, and never sees a solution, a chunk reference or
+    an oracle test. It only reads the public title/description the student can
+    already see."""
+    from main.tutor import MAX_TURNS, reply
+
+    if len(req.messages) > MAX_TURNS * 2:
+        raise HTTPException(status_code=400, detail={
+            "reason_code": "conversation_too_long",
+            "message": "This conversation is very long — start a fresh one."})
+
+    row = get_supabase().table("problems").select(
+        "slug, title, description").eq("slug", req.slug).execute().data
+    if not row:
+        raise HTTPException(status_code=404, detail={
+            "reason_code": "problem_not_found",
+            "message": f"Unknown problem '{req.slug}'."})
+
+    try:
+        out = reply(row[0], req.messages, req.chunk_prompt)
+    except Exception as e:
+        # A tutor outage is not a judgement about the student.
+        raise HTTPException(status_code=503, detail={
+            "reason_code": "tutor_unavailable",
+            "message": "The tutor is unavailable right now. Try again shortly.",
+            "detail": str(e)[:120]})
+    return out
 
 
 @app.post("/mark_solved")

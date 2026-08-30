@@ -45,11 +45,21 @@ OPENAI_MODEL = os.environ.get("MICROTUTOR_MODEL", "gpt-4o-mini")
 #   nearly doubles how much of a teacher's upload is usable.
 #
 #   Grading runs on EVERY student attempt that reaches Tier 3/4, so its cost
-#   scales with class size x attempts. It stays on the cheap model: what makes
-#   grading trustworthy is the gates around it (calibration, the anti-bypass
-#   knockout, dual-judge agreement), not raw model strength.
+#   scales with class size x attempts. It was previously pinned to the cheap
+#   model on the argument that the gates (calibration, the anti-bypass knockout,
+#   dual-judge agreement) are what make grading trustworthy, not raw model
+#   strength. That argument still holds, but a stronger model proposes better
+#   adapted tails and disagrees less often as a judge, so fewer honest answers
+#   fall through to an indeterminate. Upgraded deliberately; the cost now scales
+#   with class size, so MICROTUTOR_GRADING_MODEL is the knob to turn back.
 DECOMPOSE_MODEL = os.environ.get("MICROTUTOR_DECOMPOSE_MODEL", "gpt-4o")
-GRADING_MODEL = os.environ.get("MICROTUTOR_GRADING_MODEL", OPENAI_MODEL)
+GRADING_MODEL = os.environ.get("MICROTUTOR_GRADING_MODEL", "gpt-4o")
+
+# The conversational tutor on the student page. It runs per student message, so
+# it is chattier than grading, but it is also the part a student judges the
+# whole system by: a tutor that misreads the problem or leaks a hint is worse
+# than a slow one. It gets the strong model.
+TUTOR_MODEL = os.environ.get("MICROTUTOR_TUTOR_MODEL", "gpt-4o")
 
 OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions"
 OLLAMA_CHAT_URL = "http://localhost:11434/api/chat"
