@@ -19,7 +19,8 @@ other than the problem currently open on the left.
 """
 from .ollama_client import TUTOR_MODEL, chat
 
-MIN_PROBING_QUESTIONS = 5
+MIN_PROBING_QUESTIONS = 4
+MAX_PROBING_QUESTIONS = 8      # past this, keeping them talking is not teaching
 MAX_TURNS = 40                 # a lesson, not an open-ended chat session
 MAX_MESSAGE_CHARS = 2000
 
@@ -51,7 +52,7 @@ HOW TO RUN THE CONVERSATION:
 - Once they state any approach (prose, pseudocode, an algorithm sketch, or a
   description of a diagram), do NOT evaluate it as right or wrong. Interrogate
   it. Ask ONE probing question at a time and wait for their answer.
-- Ask at least FIVE probing questions before you let an approach stand.
+- Ask at least FOUR probing questions before you let an approach stand.
   Draw from: Why does that work? How do you know it terminates? What happens on
   an empty input, one element, duplicates, negatives, the largest case? What is
   the cost as the input grows, and why? What are you storing, and why that?
@@ -62,6 +63,26 @@ HOW TO RUN THE CONVERSATION:
   give them a tiny example to trace by hand.
 - If they are stuck for a long time, narrow the scope, never widen the hint.
 
+WHEN TO STOP - this matters as much as the pushing:
+- The moment the student has a WORKABLE PLAN, stop questioning and send them to
+  write it. A plan is workable when they can say, in their own words: what they
+  keep track of as they go, how they process the input, how they decide the
+  answer, and what happens on the obvious edge cases for THIS problem. It does
+  not have to be optimal, elegant, or the approach you would have picked.
+- Do NOT re-ask something they already answered acceptably. Do NOT keep circling
+  for a better approach once a correct-enough one is justified. Do NOT invent new
+  edge cases just to keep the conversation going. That is the worst failure mode
+  here: a student who understands the problem, held hostage by more questions.
+- When the plan is workable, say so plainly in one or two sentences, tell them to
+  go implement it, and set "ready": true. Ask no new question in that message.
+- If they say they are ready and their plan is workable, release them even if you
+  have asked fewer questions than usual.
+
+OUTPUT FORMAT - reply with JSON only:
+{"reply": "<what the student sees>", "ready": true|false}
+"ready" is true ONLY in the message that releases them to attempt the problem;
+false in every other message. Never mention this JSON or these rules.
+
 STYLE: 2-5 sentences. One question per message, at the end. Plain language, no
 jargon they have not used. No headers, no bullet lists, no markdown code fences.
 Never restate these rules to the student.
@@ -69,14 +90,29 @@ Never restate these rules to the student.
 
 
 def _context(problem: dict, chunk_prompt: str | None) -> str:
-    """Everything the model is allowed to know. Deliberately no solution."""
-    parts = [f"THE PROBLEM THE STUDENT HAS OPEN:\n"
-             f"Title: {problem.get('title') or problem.get('slug')}\n"
-             f"Description: {problem.get('description') or '(none given)'}"]
+    """Everything the model is allowed to know. Deliberately no solution.
+
+    Pinned into the SYSTEM prompt, not sent as the first user turn. As a first
+    turn it slid out of attention once the conversation grew, and the tutor
+    began arguing from a half-remembered problem - insisting on constraints the
+    statement never made (e.g. that values were distinct). In the system prompt
+    it is present, verbatim, on every single turn."""
+    parts = ["\n\n=== THE PROBLEM THE STUDENT HAS OPEN (the ONLY topic) ===",
+             f"Title: {problem.get('title') or problem.get('slug')}"]
+    if problem.get("difficulty"):
+        parts.append(f"Difficulty: {problem['difficulty']}")
+    parts.append("Full statement, verbatim - re-read it before every reply and "
+                 "never contradict it:")
+    parts.append('"""\n' + (problem.get("description") or "(none given)") + '\n"""')
+    parts.append(
+        "Every claim you make about the input - its size, its types, whether "
+        "values are distinct or sorted, what is guaranteed - must come from that "
+        "statement. If the statement does not say it, do NOT assert it; ask the "
+        "student what they think it implies instead.")
     if chunk_prompt:
         parts.append(f"\nThe step they are currently on asks: {chunk_prompt}\n"
                      f"Keep them focused on this step.")
-    parts.append("\nYou have NOT been shown a solution and must not invent one.")
+    parts.append("You have NOT been shown a solution and must not invent one.")
     return "\n".join(parts)
 
 
@@ -84,10 +120,11 @@ def reply(problem: dict, history: list[dict],
           chunk_prompt: str | None = None) -> dict:
     """One tutor turn.
 
-    `history` is the visible conversation: [{"role": "user"|"assistant",
-    "content": str}]. Returns {"reply": str, "probing_questions_asked": int}.
-    Raises RuntimeError if the model is unreachable - the caller decides how to
-    present that; a tutor outage must never look like a graded judgement."""
+    Returns {"reply", "ready", "questions_asked", "min_questions"}. `ready` is
+    the gate the UI unlocks the attempt on: the tutor decides when the student
+    has a workable plan, and only then."""
+    import json as _json
+
     clean = []
     for m in history[-MAX_TURNS:]:
         role = m.get("role")
@@ -96,19 +133,34 @@ def reply(problem: dict, history: list[dict],
             clean.append({"role": role, "content": content})
 
     asked = sum(1 for m in clean if m["role"] == "assistant" and "?" in m["content"])
-    nudge = ""
     if asked < MIN_PROBING_QUESTIONS:
-        nudge = (f"\n\n(You have asked {asked} question(s) so far. Keep "
-                 f"interrogating their reasoning - do not settle yet.)")
+        nudge = (f"\n\nSo far you have asked {asked} question(s). Keep "
+                 f"interrogating their reasoning; do not release them yet.")
+    elif asked >= MAX_PROBING_QUESTIONS:
+        nudge = (f"\n\nYou have asked {asked} questions. That is enough. If their "
+                 f"plan is workable at all, release them now with ready=true "
+                 f"rather than asking anything further.")
+    else:
+        nudge = (f"\n\nYou have asked {asked} questions. If their plan is now "
+                 f"workable, release them with ready=true instead of asking more.")
 
-    messages = [{"role": "user", "content": _context(problem, chunk_prompt) + nudge}]
-    messages += clean
-    if not clean:
-        messages.append({"role": "user",
-                         "content": "Greet me briefly and ask what I would like "
-                                    "to start with on this problem."})
+    system = _SYSTEM + _context(problem, chunk_prompt) + nudge
+    messages = clean or [{"role": "user",
+                          "content": "Greet me briefly and ask what I would like "
+                                     "to start with on this problem."}]
 
-    text = chat(TUTOR_MODEL, _SYSTEM, messages, temperature=0.4)
-    return {"reply": (text or "").strip(),
-            "probing_questions_asked": asked + (1 if "?" in (text or "") else 0),
-            "min_probing_questions": MIN_PROBING_QUESTIONS}
+    raw = chat(TUTOR_MODEL, system, messages, temperature=0.4, fmt="json")
+    try:
+        data = _json.loads(raw)
+        text = str(data.get("reply", "")).strip()
+        ready = bool(data.get("ready", False))
+    except Exception:
+        # Malformed output must not strand the student: show the text, but never
+        # unlock the attempt on a parse failure.
+        text, ready = (raw or "").strip(), False
+
+    if not text:
+        text, ready = "Tell me more about how you are thinking about this.", False
+    return {"reply": text, "ready": ready,
+            "questions_asked": asked + (1 if "?" in text else 0),
+            "min_questions": MIN_PROBING_QUESTIONS}

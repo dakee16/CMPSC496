@@ -76,7 +76,12 @@ function mountHeader({active = "", wide = false} = {}){
   const moveTo = el => {
     if (!el) { glider.style.width = "0px"; return; }
     glider.style.width = el.offsetWidth + "px";
-    glider.style.transform = `translateX(${el.offsetLeft - nav.offsetLeft}px)`;
+    // .navpills is position:relative, so it is the offsetParent for BOTH the
+    // glider and the links: el.offsetLeft is already measured from it. The old
+    // `- nav.offsetLeft` also subtracted the nav's distance from the header's
+    // left edge (~1400px on a wide header), throwing the glider across the bar
+    // and parking it on top of the brand as a stray indigo blob.
+    glider.style.transform = `translateX(${el.offsetLeft}px)`;
   };
   const home = () => moveTo(items.find(a => a.classList.contains("on")) || items[0]);
   items.forEach(a => a.addEventListener("mouseenter", () => moveTo(a)));

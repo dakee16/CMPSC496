@@ -80,7 +80,40 @@
   .bub.me{align-self:flex-end; color:#fff; border-bottom-right-radius:5px;
           background:linear-gradient(135deg,var(--indigo-600),#4f46e5)}
   .cfoot{padding:12px 14px; border-top:1px solid var(--glass-line); display:flex; gap:8px}
-  .cfoot input{flex:1}
+  .cfoot{align-items:flex-end}
+  .cfoot textarea{flex:1; resize:none; max-height:140px; min-height:40px;
+    font:inherit; line-height:1.45; padding:10px 12px; overflow-y:auto;
+    background:var(--card-bg-soft); color:var(--text-bright);
+    border:1px solid var(--card-border); border-radius:10px}
+  .cfoot textarea:focus{outline:none; border-color:var(--indigo-500)}
+
+  /* ---- tutor thinking indicator ----
+     Three dots that rise and dim in sequence, on the same indigo the rest of
+     the page uses for "the system is working". Motion is small and slow on
+     purpose: a frantic spinner next to a question reads as urgency, and this
+     panel is meant to feel like someone thinking before answering.
+     Pure CSS - this page has no bundler, so a JS animation library would mean
+     shipping a module loader for three dots. */
+  .think{display:inline-flex; gap:5px; align-items:center; padding:2px 0}
+  .think i{width:7px; height:7px; border-radius:50%; display:block;
+    background:var(--indigo-400); opacity:.35;
+    animation:thinkPulse 1.25s ease-in-out infinite}
+  .think i:nth-child(2){animation-delay:.16s}
+  .think i:nth-child(3){animation-delay:.32s}
+  @keyframes thinkPulse{
+    0%,100%{opacity:.28; transform:translateY(0)   scale(.9)}
+    40%    {opacity:1;   transform:translateY(-3px) scale(1.12)}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .think i{animation:none; opacity:.6}
+  }
+
+  /* Locked editor until the tutor releases the student. */
+  .locked{position:relative}
+  .lockNote{display:flex; gap:8px; align-items:flex-start; margin:10px 0 0;
+    padding:10px 12px; border-radius:10px; font-size:13px;
+    background:var(--amber-bg); color:var(--amber-text);
+    border:1px solid rgba(245,158,11,.25)}
   .cfoot button{padding:10px 15px}
   .chips{display:flex; gap:6px; flex-wrap:wrap; padding:0 18px 12px}
   .chip{font-size:12px; padding:5px 11px; border-radius:999px; cursor:pointer;
@@ -137,6 +170,11 @@
             <button id="submit">Submit step</button>
             <button class="ghost" id="backP">Another problem</button>
           </div>
+          <p class="lockNote" id="lockNote" hidden>
+            <span>&#128274;</span>
+            <span>Talk your approach through with the tutor first. It will
+            unlock this step once your plan holds together.</span>
+          </p>
           <p class="attempts" id="attempts"></p>
           <div id="msg"></div>
         </div>
@@ -156,7 +194,7 @@
             <span class="chip">I am stuck</span>
           </div>
           <form class="cfoot" id="cform">
-            <input type="text" id="cinput" placeholder="Explain your thinking, or ask about the problem" autocomplete="off">
+            <textarea id="cinput" rows="1" placeholder="Explain your thinking, or ask about the problem&#10;(Enter to send, Shift+Enter for a new line)"></textarea>
             <button type="submit">Send</button>
           </form>
         </div>
@@ -174,6 +212,17 @@ const $ = id => document.getElementById(id);
 let sessionId = null, chunks = [], idx = 0, accepted = [], editor = null, header = "";
 // The tutor is scoped to whatever is open on the LEFT. No problem, no chat.
 let openProblem = null, chatLog = [], chatBusy = false;
+// The tutor decides when a student may start writing code. Discussing the
+// problem first IS the pedagogy, so this is a real gate, not a nudge.
+let tutorReleased = false;
+
+function applyTutorGate(){
+  const btn = $("submit");
+  if (!btn) return;
+  btn.disabled = !tutorReleased || btn.dataset.busy === "1";
+  const note = $("lockNote");
+  if (note) note.hidden = tutorReleased;
+}
 
 async function loadAssignments(){
   try {
@@ -224,10 +273,13 @@ async function start(p){
   $("submit").style.display = ""; $("backP").style.display = "";
   $("msg").innerHTML = `<div class="banner info">Getting this problem ready...</div>`;
   $("submit").disabled = true;
+  applyTutorGate();
   $("attempts").textContent = "";
   accepted = []; idx = 0;
   openProblem = p;
+  tutorReleased = false;
   resetChat(p.title || p.slug);
+  applyTutorGate();
 
   // No solution is sent. The server reads the reference from the
   // database, so the browser never holds it.
@@ -386,7 +438,8 @@ async function sendToTutor(text){
   chatBusy = true;
   bubble("me", text);
   chatLog.push({role: "user", content: text});
-  const thinking = bubble("bot", "…");
+  const thinking = bubble("bot", "");
+  thinking.innerHTML = '<span class="think"><i></i><i></i><i></i></span>';
   try {
     const r = await fetch(`${API}/tutor_chat`, {
       method: "POST",
@@ -406,6 +459,12 @@ async function sendToTutor(text){
     }
     thinking.textContent = data.reply;
     chatLog.push({role: "assistant", content: data.reply});
+    if (data.ready && !tutorReleased){
+      tutorReleased = true;
+      applyTutorGate();
+      const ok = bubble("bot", "Step unlocked — go write it.");
+      ok.style.color = "var(--green-text)";
+    }
   } catch (e) {
     thinking.textContent = "Could not reach the tutor. Check your connection.";
     chatLog.pop();
@@ -414,12 +473,27 @@ async function sendToTutor(text){
     $("cinput").focus();
   }
 }
-$("cform").addEventListener("submit", e => {
-  e.preventDefault();
-  const t = $("cinput").value.trim();
+function autogrow(el){
+  el.style.height = "auto";
+  el.style.height = Math.min(el.scrollHeight, 140) + "px";
+}
+function submitChat(){
+  const el = $("cinput");
+  const t = el.value.trim();
   if (!t) return;
-  $("cinput").value = "";
+  el.value = "";
+  autogrow(el);
   sendToTutor(t);
+}
+$("cform").addEventListener("submit", e => { e.preventDefault(); submitChat(); });
+$("cinput").addEventListener("input", e => autogrow(e.target));
+$("cinput").addEventListener("keydown", e => {
+  // Shift+Enter is a newline; plain Enter sends. Ignore Enter mid-IME so
+  // composing in another language does not fire off a half-typed message.
+  if (e.key === "Enter" && !e.shiftKey && !e.isComposing){
+    e.preventDefault();
+    submitChat();
+  }
 });
 $("chips").addEventListener("click", e => {
   if (!e.target.classList.contains("chip")) return;
