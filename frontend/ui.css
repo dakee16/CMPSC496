@@ -40,6 +40,60 @@
   --blur:blur(20px) saturate(160%);
 }
 
+/* ============ LIGHT THEME ============
+   Opt in with <html data-theme="light"> (set from Settings, persisted in
+   localStorage, and re-applied synchronously in each page's <head> to avoid a
+   flash). Almost everything is token-driven so it flips automatically; only
+   the handful of surfaces that hardcode a dark value are restated below. The
+   CodeMirror editor and <pre class="code"> blocks stay dark on purpose. */
+:root[data-theme="light"]{
+  --indigo-600:#4f46e5;
+  --indigo-500:#6366f1;
+  --indigo-400:#4338ca;
+  --indigo-50:#eef2ff;
+
+  --page-bg:#f5f6fb;
+  --card-bg:#ffffff;
+  --card-bg-soft:#eef1f7;
+  --card-border:#e0e3ee;
+
+  --text-bright:#0f172a;
+  --text-muted:#475569;
+  --text-dim:#8a94a6;
+
+  --green-bg:rgba(34,197,94,.14);  --green-text:#15803d;
+  --amber-bg:rgba(245,158,11,.18); --amber-text:#b45309;
+  --red-bg:rgba(239,68,68,.12);    --red-text:#dc2626;
+
+  --shadow-md:0 4px 12px rgba(15,23,42,.10);
+  --shadow-lg:0 14px 34px rgba(15,23,42,.16);
+
+  --glass-bg:rgba(255,255,255,.62);
+  --glass-bg-strong:rgba(255,255,255,.85);
+  --glass-line:rgba(15,23,42,.10);
+  --glass-lift:inset 0 1px 0 rgba(255,255,255,.7);
+  --blur:blur(18px) saturate(140%);
+}
+:root[data-theme="light"] body::before{
+  background:
+    radial-gradient(38vmax 38vmax at 18% 12%, rgba(99,102,241,.13), transparent 62%),
+    radial-gradient(32vmax 32vmax at 82% 22%, rgba(129,140,248,.10), transparent 62%),
+    radial-gradient(42vmax 42vmax at 62% 88%, rgba(165,180,252,.16), transparent 62%);
+  filter:blur(30px);
+}
+:root[data-theme="light"] .navpills,
+:root[data-theme="light"] .hbtn{background:rgba(15,23,42,.05); border-color:rgba(15,23,42,.07)}
+:root[data-theme="light"] button.ghost{background:rgba(79,70,229,.08)}
+:root[data-theme="light"] input[type=text],
+:root[data-theme="light"] input[type=password],
+:root[data-theme="light"] input[type=email],
+:root[data-theme="light"] select,
+:root[data-theme="light"] textarea{background:#fff}
+:root[data-theme="light"] ul.pick button{background:#fff}
+:root[data-theme="light"] ul.pick button:hover{background:rgba(99,102,241,.09)}
+:root[data-theme="light"] code{background:rgba(79,70,229,.10); color:#4338ca}
+:root[data-theme="light"] td{border-bottom-color:rgba(15,23,42,.08)}
+
 *{box-sizing:border-box}
 html{scroll-behavior:smooth}
 
@@ -126,11 +180,80 @@ body::before{
   box-shadow:0 3px 12px rgba(99,102,241,.4);
   transition:transform .32s cubic-bezier(.4,0,.2,1), width .32s cubic-bezier(.4,0,.2,1);
 }
+/* Standalone "Home" button in the header, sitting next to the brand. */
+.hbtn{
+  display:inline-flex; align-items:center; gap:6px;
+  padding:6px 13px; border-radius:999px;
+  font-size:13px; font-weight:500; white-space:nowrap;
+  color:var(--text-muted); text-decoration:none;
+  background:rgba(10,14,39,.5);
+  border:1px solid rgba(165,180,252,.08);
+  transition:color .2s ease, background .2s ease;
+}
+.hbtn:hover{color:var(--text-bright); background:rgba(99,102,241,.16)}
+
+/* Profile button + dropdown menu. */
+.account{position:relative; display:flex}
 .who{display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text-muted);
-     padding-left:4px; white-space:nowrap}
+     padding:4px 8px 4px 4px; white-space:nowrap; cursor:pointer;
+     background:none; border:1px solid transparent; border-radius:999px;
+     font-family:inherit; transition:background .2s ease, border-color .2s ease}
+.who:hover{background:rgba(99,102,241,.1); border-color:rgba(165,180,252,.12)}
+.who .caret{font-size:10px; opacity:.6}
 .avatar{width:26px; height:26px; border-radius:50%; display:grid; place-items:center;
-        font-size:11px; font-weight:700; color:#fff;
+        font-size:11px; font-weight:700; color:#fff; flex:none;
         background:linear-gradient(135deg,var(--indigo-500),#4f46e5)}
+.menu{
+  position:absolute; top:calc(100% + 8px); right:0; z-index:70;
+  min-width:172px; padding:6px;
+  border-radius:12px;
+  background:var(--glass-bg-strong);
+  border:1px solid var(--glass-line);
+  box-shadow:var(--shadow-lg),var(--glass-lift);
+  backdrop-filter:var(--blur); -webkit-backdrop-filter:var(--blur);
+}
+.menu .mi{
+  display:block; width:100%; text-align:left;
+  padding:9px 11px; border:0; border-radius:8px;
+  font:inherit; font-size:13px; color:var(--text-muted);
+  background:none; cursor:pointer; transition:background .15s ease, color .15s ease;
+}
+.menu .mi:hover{background:rgba(99,102,241,.14); color:var(--text-bright)}
+.menu .mi-danger{color:var(--red-text)}
+.menu .mi-danger:hover{background:rgba(239,68,68,.14); color:var(--red-text)}
+
+/* Settings modal (opened from the profile menu). */
+.modal{
+  position:fixed; inset:0; z-index:200;
+  display:grid; place-items:center; padding:24px;
+  background:rgba(4,6,20,.62); backdrop-filter:blur(3px);
+}
+/* `.modal{display:grid}` outranks the UA `[hidden]{display:none}`, so without
+   this the close button (which sets `.hidden`) does nothing and the dialog is
+   stuck open. */
+.modal[hidden]{display:none}
+.modalCard{
+  width:min(420px,100%); border-radius:16px; overflow:hidden;
+  background:var(--glass-bg-strong); border:1px solid var(--glass-line);
+  box-shadow:var(--shadow-lg),var(--glass-lift);
+}
+.modalHead{display:flex; align-items:center; justify-content:space-between;
+           padding:16px 18px; border-bottom:1px solid var(--glass-line)}
+.modalHead h2{margin:0; font-size:15px}
+.modalX{background:none; border:0; color:var(--text-muted); font-size:20px;
+        line-height:1; cursor:pointer; padding:2px 6px; border-radius:8px}
+.modalX:hover{background:rgba(165,180,252,.12); color:var(--text-bright)}
+.modalBody{padding:16px 18px}
+.setRow{display:flex; justify-content:space-between; gap:16px; padding:9px 0;
+        font-size:13.5px; color:var(--text-muted); border-bottom:1px solid var(--glass-line)}
+.setRow b{color:var(--text-bright); font-weight:600}
+.setNote{margin:14px 0 0; font-size:12.5px; color:var(--text-dim); line-height:1.6}
+.seg{display:inline-flex; border:1px solid var(--glass-line); border-radius:999px;
+     overflow:hidden}
+.seg button{padding:6px 15px; border:0; background:none; color:var(--text-muted);
+            font:inherit; font-size:12.5px; cursor:pointer; transition:var(--transition)}
+.seg button:hover:not(.on){color:var(--text-bright); box-shadow:none; transform:none}
+.seg button.on{background:var(--indigo-600); color:#fff; box-shadow:none; transform:none}
 
 /* ---------- layout ---------- */
 .page{max-width:1180px; margin:0 auto; padding:104px 16px 64px}
@@ -262,5 +385,7 @@ pre.code{
   .page{padding:96px 12px 48px}
   h1{font-size:24px}
   .navpills a{padding:6px 11px; font-size:13px}
-  .who span.nm{display:none}
+  .who .nm{display:none}
+  .hbtn{padding:6px 10px}
+  .hbtn .htext{display:none}
 }

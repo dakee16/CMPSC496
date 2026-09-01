@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<script>try{document.documentElement.dataset.theme=(localStorage.getItem("mt.theme")==="light"?"light":"dark")}catch(e){}</script>
 <title>MicroTutor: Instructor</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -42,6 +43,11 @@
         animation:sp .7s linear infinite; vertical-align:-1px}
   @keyframes sp{to{transform:rotate(360deg)}}
   summary{cursor:pointer; font-size:13.5px; color:var(--indigo-400); font-weight:500}
+
+  /* Light-theme fixes for the surfaces that hardcode a dark value above. */
+  :root[data-theme="light"] .drop{background:#f4f6fb}
+  :root[data-theme="light"] .prog{background:rgba(15,23,42,.08)}
+  :root[data-theme="light"] ul.items li{background:#fff}
 </style>
 </head>
 <body>

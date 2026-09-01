@@ -1,4 +1,3 @@
-console.log("app.js loaded");
 
 // ════════════════════════════════════════════════════════════
 // CONSTANTS + STATE
@@ -156,7 +155,6 @@ authSubmitBtn.addEventListener("click", async function () {
     showMainApp();
 
   } catch (error) {
-    console.error("Auth request failed:", error);
     authError.textContent = "Could not reach the server.";
     authError.style.display = "block";
   }
@@ -203,7 +201,6 @@ authPassword.addEventListener("keydown", function (e) {
 
 startBtn.addEventListener("click", async function () {
 
-  console.log("Start clicked - calling backend...");
   startBtn.textContent = "Calling Backend...";
   startBtn.disabled = true;
 
@@ -224,7 +221,6 @@ startBtn.addEventListener("click", async function () {
     });
 
     const data = await response.json();
-    console.log("Got response from backend:", data);
 
     header = data.header;
     chunks = data.chunks;   // PUBLIC only: no references
@@ -243,10 +239,8 @@ startBtn.addEventListener("click", async function () {
 
 
 
-    console.log(`Loaded ${chunks.length} chunks. First chunk:`, chunks[0]);
 
   } catch (error) {
-    console.error("Decompose error:", error);
     feedbackSection.style.display = "block";
     feedbackText.textContent = "⚠️ Could not reach the grader. Try again.";
     startBtn.disabled = false;
@@ -260,7 +254,6 @@ startBtn.addEventListener("click", async function () {
 
 submitBtn.addEventListener("click", async function () {
 
-  console.log("Submit clicked");
   attemptCount++;
   submitBtn.disabled = true;
   submitBtn.textContent = "Evaluating...";
@@ -269,7 +262,6 @@ submitBtn.addEventListener("click", async function () {
   // One id per press, reused if the request is retried, so a duplicate
   // never double-counts an attempt or advances twice.
   if (!submissionId) { submissionId = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random()); }
-  console.log("student_code being sent:", studentCode);
   try {
     const response = await fetch(`${API_URL}/grade_chunk`, {
       method: "POST",
@@ -367,7 +359,6 @@ submitBtn.addEventListener("click", async function () {
 
 nextBtn.addEventListener("click", function () {
 
-  console.log("Next clicked");
 
   currentChunkIndex++;
 
@@ -390,7 +381,6 @@ nextBtn.addEventListener("click", function () {
           applySolvedHighlight();
         })
         .catch(function (error) {
-          console.warn("Mark solved failed:", error);
         });
     }
   } else {
@@ -459,7 +449,6 @@ fileInput.addEventListener("change", function (event) {
     const raw = reader.result;
 
     const problems = parseProblems(raw);
-    console.log("Parsed problems:", problems);
 
     if (problems.length === 0) {
       alert("No problems found - check the file format (Problem N: / Description: / Solution:). " +
@@ -518,7 +507,6 @@ async function loadSolvedSlugs() {
     solvedSlugs = new Set(data.slugs);
     applySolvedHighlight()
   } catch (error) {
-    console.log("error while loading solved problems for user")
 
   }
 };
@@ -662,7 +650,6 @@ async function loadProblems() {
   try {
     const response = await fetch(`${API_URL}/problems`);
     const data = await response.json();
-    console.log("Loaded problems:", data);
 
     data.problems.forEach(function (problem) {
       const problemsListElement = document.createElement("li");
@@ -690,7 +677,6 @@ async function loadProblems() {
     });
 
   } catch (error) {
-    console.error("Failed to load problems:", error);
   }
 }
 

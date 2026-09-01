@@ -56,7 +56,7 @@ uvicorn==0.44.0
 websockets==15.0.1
 yarl==1.23.0
 zstandard==0.25.0
-python-multipart
+python-multipart==0.0.32
 
 # PSU sign-in (main/psu_auth.py) is written but dormant. Uncomment together
 # with the auth block in frontend/api_server.py; nothing imports it until then,

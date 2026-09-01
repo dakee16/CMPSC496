@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<script>try{document.documentElement.dataset.theme=(localStorage.getItem("mt.theme")==="light"?"light":"dark")}catch(e){}</script>
 <title>MicroTutor: Practice</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -12,6 +13,11 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/dracula.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/python/python.min.js"></script>
+<!-- Multi-cursor: searchcursor gives getSearchCursor(); the sublime keymap
+     registers selectNextOccurrence / findAndSelectAll as CodeMirror commands
+     (we bind them by name below, without switching the whole keymap). -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/search/searchcursor.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/keymap/sublime.min.js"></script>
 <style>
   /* Split view: solving on the left because it is the task, tutor on
      the right where a companion belongs. */
@@ -58,6 +64,20 @@
 
   .prompt{font-size:15.5px; font-weight:500; color:var(--text-bright); margin:0 0 12px}
   .attempts{font-size:12.5px; color:var(--text-dim); margin:10px 0 0}
+
+  /* Step counter */
+  .stepcount{font-size:12.5px; font-weight:600; color:var(--indigo-400);
+             letter-spacing:.02em; margin:0 0 9px}
+
+  /* File picker for the design upload: hide the native control (which renders
+     an unstyled OS button) and drive it from a label that matches .ghost. */
+  .filehidden{position:absolute; width:1px; height:1px; padding:0; margin:-1px;
+              overflow:hidden; clip:rect(0 0 0 0); border:0}
+  .filepick{cursor:pointer; padding:9px 14px; font-size:13px;
+            display:inline-flex; align-items:center}
+  .filename{align-self:center; font-size:12.5px; color:var(--text-dim);
+            max-width:190px; overflow:hidden; text-overflow:ellipsis;
+            white-space:nowrap}
 
   /* ---- chat ---- */
   .chatcol{position:sticky; top:96px}
@@ -110,6 +130,10 @@
 
   /* Locked editor until the tutor releases the student. */
   .locked{position:relative}
+  /* Visible state for the design gate: CodeMirror has no disabled look of its
+     own, so dim it and show the not-allowed cursor while readOnly:"nocursor". */
+  .CodeMirror.cm-gate-locked{opacity:.5; filter:grayscale(.35)}
+  .CodeMirror.cm-gate-locked, .CodeMirror.cm-gate-locked *{cursor:not-allowed}
   /* Graphs are wider than the column they live in, always. They scroll inside
      their own box so the page itself never scrolls sideways. */
   .graphScroll{overflow-x:auto; overflow-y:hidden; padding:4px 0 8px}
@@ -132,6 +156,12 @@
         background:rgba(165,180,252,.08); border:1px solid var(--glass-line);
         color:var(--indigo-400); transition:var(--transition)}
   .chip:hover{background:rgba(99,102,241,.18); color:var(--text-bright)}
+
+  /* Light-theme fixes for the surfaces that hardcode a dark value above. */
+  :root[data-theme="light"] .statement{background:#eef1f7}
+  :root[data-theme="light"] .spine::before{background:rgba(15,23,42,.12)}
+  :root[data-theme="light"] .bub.bot{background:#eef1f7}
+  :root[data-theme="light"] .chead .dot{box-shadow:0 0 0 3px rgba(21,128,61,.16)}
 </style>
 </head>
 <body>
@@ -176,6 +206,7 @@
         <div class="card">
           <p class="hint" style="margin-bottom:6px">You are completing this function:</p>
           <pre class="code" id="sig" style="margin-bottom:14px"></pre>
+          <p class="stepcount" id="stepCount"></p>
           <p class="prompt" id="prompt"></p>
           <textarea id="code"></textarea>
           <div class="row" style="margin-top:13px">
@@ -189,8 +220,10 @@
             your design holds together.</span>
           </p>
           <div class="row" id="designRow" style="margin-top:10px" hidden>
-            <input type="file" id="designFile"
+            <input type="file" id="designFile" class="filehidden"
                    accept="image/png,image/jpeg,application/pdf">
+            <label for="designFile" class="ghost filepick">Choose file</label>
+            <span class="filename" id="designName">No file chosen</span>
             <button id="designBtn">Submit design</button>
           </div>
           <p class="attempts" id="attempts"></p>
@@ -262,7 +295,14 @@ function applyTutorGate(){
   const note = $("lockNote"), row = $("designRow"), code = $("code");
   const btn = $("submit");
   if (btn) btn.disabled = !tutorReleased || btn.dataset.busy === "1";
-  if (code){
+  // CodeMirror ignores the underlying <textarea>'s `disabled` attribute, so
+  // once fromTextArea() has run the lock MUST go through setOption("readOnly").
+  // "nocursor" also blocks focus, so a locked editor cannot be typed into or
+  // even clicked into. Before the editor exists, fall back to the textarea.
+  if (editor){
+    editor.setOption("readOnly", tutorReleased ? false : "nocursor");
+    editor.getWrapperElement().classList.toggle("cm-gate-locked", !tutorReleased);
+  } else if (code){
     code.disabled = !tutorReleased;
     code.placeholder = tutorReleased
       ? "" : "Locked until your design is approved.";
@@ -408,6 +448,7 @@ async function start(p){
   $("statement").textContent = p.description || "";
   $("spine").innerHTML = "";
   $("sig").textContent = "";
+  $("stepCount").textContent = "";
   header = "";
   $("soFarCard").hidden = true;
   $("submit").style.display = ""; $("backP").style.display = "";
@@ -421,6 +462,7 @@ async function start(p){
   designLog = [];
   planGraph = null;
   if ($("designFile")) $("designFile").value = "";
+  if ($("designName")) $("designName").textContent = "No file chosen";
   if ($("planCard")) $("planCard").hidden = true;
   if ($("dualCard")) $("dualCard").hidden = true;
   resetChat(p.title || p.slug);
@@ -452,8 +494,20 @@ function ensureEditor(){
   editor = CodeMirror.fromTextArea($("code"), {
     mode: "python", theme: "dracula", lineNumbers: true,
     indentUnit: 4, tabSize: 4, indentWithTabs: false, lineWrapping: true,
+    extraKeys: {
+      // VSCode-style multi-cursor. Cmd/Ctrl-D adds the NEXT occurrence of the
+      // current selection (press again to keep adding); Cmd/Ctrl-Shift-L
+      // selects EVERY occurrence at once. Commands come from keymap/sublime.
+      "Cmd-D": "selectNextOccurrence",
+      "Ctrl-D": "selectNextOccurrence",
+      "Shift-Cmd-L": "findAndSelectAll",
+      "Shift-Ctrl-L": "findAndSelectAll",
+    },
   });
   editor.setSize(null, 210);
+  // A freshly created editor defaults to editable - re-assert the current gate
+  // so it does not spring open the moment fromTextArea() runs.
+  applyTutorGate();
 }
 
 function render(){
@@ -468,12 +522,19 @@ function render(){
   }).join("");
 
   const cur = chunks[idx];
+  $("stepCount").textContent = chunks.length
+    ? (idx < chunks.length ? `Step ${idx + 1} of ${chunks.length}`
+                           : `All ${chunks.length} steps complete`)
+    : "";
   $("prompt").textContent = cur ? cur.prompt : "";
   $("soFarCard").hidden = accepted.length === 0;
   const body = accepted.map(a => a.code.split("\n").map(l => "    " + l).join("\n"));
   $("soFar").textContent = [header, ...body].filter(Boolean).join("\n");
   $("attempts").textContent = "";
-  if (editor) { editor.setValue(""); editor.refresh(); editor.focus(); }
+  if (editor) {
+    editor.setValue(""); editor.refresh();
+    if (tutorReleased) editor.focus();   // never pull focus into a locked editor
+  }
 }
 
 function show(kind, text, extra){
@@ -558,6 +619,8 @@ $("backP").onclick = () => {
   if (editor) editor.getWrapperElement().style.display = "";
   view("cProblem");
 };
+// "Home" now lives in the shared header (ui.js) and navigates to student.html,
+// which loads on the assignment list.
 
 /* ---------- Socratic tutor ----------
    Explains the problem, then makes the student defend an approach. It is
@@ -644,6 +707,10 @@ function submitChat(){
   sendToTutor(t);
 }
 $("designBtn").addEventListener("click", uploadDesign);
+$("designFile").addEventListener("change", e => {
+  const f = e.target.files && e.target.files[0];
+  $("designName").textContent = f ? f.name : "No file chosen";
+});
 $("cform").addEventListener("submit", e => { e.preventDefault(); submitChat(); });
 $("cinput").addEventListener("input", e => autogrow(e.target));
 $("cinput").addEventListener("keydown", e => {
