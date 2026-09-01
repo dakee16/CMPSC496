@@ -6,7 +6,23 @@
    style.css also carries page specific rules keyed to index.html
    ids, and pulling that in would style things twice.
    ============================================================ */
+/* One @import rather than a <link> in five pages. Every page that loads this
+   file already preconnects to fonts.googleapis.com, so the extra hop is warm.
+   Must stay the first rule in the file - @import after any other rule is
+   ignored. */
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
+
 :root{
+  /* Inter for the interface, JetBrains Mono for anything the student reads as
+     CODE OR DATA - the editor, submitted lines, graph node labels, step
+     signatures. The old stack was 'SF Mono',Monaco,'Cascadia Code', which
+     resolves to a different face on every machine, so column alignment in a
+     code block was luck. A pinned webfont makes it identical everywhere, and
+     JetBrains Mono's tall x-height stays legible at the 12px the graph nodes
+     use. */
+  --font-sans:'Inter',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --font-mono:'JetBrains Mono','SF Mono',Monaco,'Cascadia Code',monospace;
+
   --indigo-600:#6366f1;
   --indigo-500:#818cf8;
   --indigo-400:#a5b4fc;
@@ -19,7 +35,10 @@
 
   --text-bright:#f1f5f9;
   --text-muted:#94a3b8;
-  --text-dim:#64748b;
+  /* Was #64748b, which measured 3.58:1 on a card - under the 4.5:1 AA floor,
+     and .hint uses it for real 13px body copy. #7c8aa5 is the same slate hue
+     one step lighter: 4.90:1 on card, 5.46:1 on the page. */
+  --text-dim:#7c8aa5;
 
   --green-bg:rgba(34,197,94,.15);  --green-text:#4ade80;
   --amber-bg:rgba(245,158,11,.15); --amber-text:#fbbf24;
@@ -30,6 +49,16 @@
   --radius:12px;
   --transition:all .18s ease;
 
+  /* A named stacking scale. These were previously ad hoc literals scattered
+     across four files (-1, 1, 5, 60, 70, 200), which is how two things end up
+     fighting over the same layer months later. Anything new picks a token. */
+  --z-behind:-1;      /* the aurora behind the glass */
+  --z-base:1;         /* in-flow content that must beat a sibling */
+  --z-sticky:5;       /* sticky sub-headers inside a scrolling panel */
+  --z-header:60;      /* the floating page header */
+  --z-popover:70;     /* menus anchored to the header */
+  --z-modal:200;      /* full-screen dialogs */
+
   /* Glass. The border is a hairline of indigo haze; the inset
      highlight is what makes a panel read as a lit edge rather than
      a flat translucent rectangle. */
@@ -38,6 +67,17 @@
   --glass-line:rgba(165,180,252,.14);
   --glass-lift:inset 0 1px 0 rgba(255,255,255,.07);
   --blur:blur(20px) saturate(160%);
+
+  /* Flowchart ink. Tokens rather than literals in graphs.js, which hardcoded
+     #4a5580 / #8892b8 / #2c3358 and so drew the SAME dark greys on the light
+     theme - the edge labels measured 3.07:1 there and the arrows all but
+     vanished. Edges and node outlines are non-text (3:1 floor); edge labels
+     are real text (4.5:1). */
+  --graph-line:#6d7ba6;
+  --graph-label:#aab5d2;
+  /* 3.07:1 on a card. A node's outline is what shows where the box begins, so
+     it is information, not decoration, and WCAG 1.4.11's 3:1 floor applies. */
+  --graph-node-line:#5a6698;
 }
 
 /* ============ LIGHT THEME ============
@@ -59,7 +99,9 @@
 
   --text-bright:#0f172a;
   --text-muted:#475569;
-  --text-dim:#8a94a6;
+  /* Was #8a94a6 = 3.06:1 on white, the worst contrast failure in either
+     theme. #6b7688 is 4.59:1 and keeps the same cool grey. */
+  --text-dim:#6b7688;
 
   --green-bg:rgba(34,197,94,.14);  --green-text:#15803d;
   --amber-bg:rgba(245,158,11,.18); --amber-text:#b45309;
@@ -73,6 +115,10 @@
   --glass-line:rgba(15,23,42,.10);
   --glass-lift:inset 0 1px 0 rgba(255,255,255,.7);
   --blur:blur(18px) saturate(140%);
+
+  --graph-line:#7c88b0;
+  --graph-label:#525d78;
+  --graph-node-line:#828fb6;   /* 3.20:1 on white */
 }
 :root[data-theme="light"] body::before{
   background:
@@ -102,18 +148,27 @@ body{
   min-height:100vh;
   background:var(--page-bg);
   color:var(--text-bright);
-  font-family:'Inter',system-ui,-apple-system,sans-serif;
+  font-family:var(--font-sans);
   font-size:15px;
   line-height:1.6;
   -webkit-font-smoothing:antialiased;
+  text-rendering:optimizeLegibility;
+  /* Inter ships these off by default. cv11 gives the single-storey 'a' and
+     straight-tailed 'l', which stops "1/l/I" from collapsing into each other
+     in a page full of variable names. */
+  font-feature-settings:'cv11' 1,'ss01' 1;
 }
+
+/* Numbers that change in place - attempt counts, step "3 of 7", timers - must
+   not reflow as their digits change. */
+.tnum,.attempts,td,th,.pill{font-variant-numeric:tabular-nums}
 
 /* Aurora behind the glass. Without something moving back here the
    blur has nothing to refract and panels read as flat fills. */
 body::before{
   content:"";
   position:fixed; inset:-30vmax;
-  z-index:-1;
+  z-index:var(--z-behind);
   background:
     radial-gradient(38vmax 38vmax at 18% 12%, rgba(99,102,241,.30), transparent 62%),
     radial-gradient(32vmax 32vmax at 82% 22%, rgba(129,140,248,.20), transparent 62%),
@@ -131,7 +186,7 @@ body::before{
 .hdr{
   position:fixed; top:18px; left:50%;
   transform:translateX(-50%);
-  z-index:60;
+  z-index:var(--z-header);
   width:min(1180px,calc(100vw - 32px));
   display:flex; align-items:center; gap:14px;
   padding:10px 12px 10px 20px;
@@ -165,7 +220,7 @@ body::before{
           border-radius:999px; background:rgba(10,14,39,.5);
           border:1px solid rgba(165,180,252,.08)}
 .navpills a{
-  position:relative; z-index:1;
+  position:relative; z-index:var(--z-base);
   padding:6px 15px; border-radius:999px;
   font-size:13.5px; font-weight:500;
   color:var(--text-muted); text-decoration:none;
@@ -204,7 +259,7 @@ body::before{
         font-size:11px; font-weight:700; color:#fff; flex:none;
         background:linear-gradient(135deg,var(--indigo-500),#4f46e5)}
 .menu{
-  position:absolute; top:calc(100% + 8px); right:0; z-index:70;
+  position:absolute; top:calc(100% + 8px); right:0; z-index:var(--z-popover);
   min-width:172px; padding:6px;
   border-radius:12px;
   background:var(--glass-bg-strong);
@@ -224,7 +279,7 @@ body::before{
 
 /* Settings modal (opened from the profile menu). */
 .modal{
-  position:fixed; inset:0; z-index:200;
+  position:fixed; inset:0; z-index:var(--z-modal);
   display:grid; place-items:center; padding:24px;
   background:rgba(4,6,20,.62); backdrop-filter:blur(3px);
 }
@@ -283,9 +338,25 @@ h2{font-size:17px; letter-spacing:-.01em; margin:0 0 4px; font-weight:600}
 button{
   font:inherit; font-weight:600; font-size:14px;
   border:0; border-radius:10px; padding:10px 18px; cursor:pointer;
+  /* 40px here, 44px on coarse pointers below. A 38px-tall button is fine with
+     a mouse and genuinely hard to hit with a thumb. */
+  min-height:40px;
+  display:inline-flex; align-items:center; justify-content:center; gap:8px;
   color:#fff; background:linear-gradient(135deg,var(--indigo-600),#4f46e5);
   box-shadow:0 4px 14px rgba(99,102,241,.3);
   transition:var(--transition);
+}
+/* The floating header is height-tuned, and .page's top padding plus the sticky
+   offsets on inner columns are measured against it. Growing its controls would
+   push content under it, so these keep their own size. */
+.hdr button,.who,.modalX,.seg button{min-height:0}
+
+/* Touch devices, not narrow screens: a small laptop window still has a mouse,
+   and a large tablet still has a thumb. */
+@media (pointer:coarse){
+  button,.chip,ul.pick button{min-height:44px}
+  .who,.modalX{min-height:38px}     /* still thumb-sized, still fits the pill */
+  .row{gap:12px}                    /* 8px minimum between adjacent targets */
 }
 button:hover:not(:disabled){transform:translateY(-1px); box-shadow:0 7px 20px rgba(99,102,241,.42)}
 button:active:not(:disabled){transform:translateY(0)}
@@ -315,7 +386,21 @@ label{display:block; font-size:12.5px; font-weight:600; color:var(--text-muted);
 .field{margin-bottom:14px}
 .row{display:flex; gap:10px; align-items:center; flex-wrap:wrap}
 
-:focus-visible{outline:2px solid var(--indigo-400); outline-offset:2px}
+:focus-visible{outline:2px solid var(--indigo-400); outline-offset:2px;
+               border-radius:4px}
+
+/* A label that exists for screen readers but not on screen. Needed wherever a
+   control is unambiguous visually (a code editor, a chat box) but arrives as an
+   unnamed text field to anyone who cannot see the layout around it.
+   NOT display:none - that removes it from the accessibility tree too. */
+.sr-only{
+  position:absolute; width:1px; height:1px; padding:0; margin:-1px;
+  overflow:hidden; clip-path:inset(50%); white-space:nowrap; border:0;
+}
+
+/* Prose past ~75 characters a line is measurably harder to track back from.
+   Applies to the long explanatory copy, never to code or tables. */
+.statement,.setNote,.graphDiff li,.note{max-width:74ch}
 
 /* ---------- pills, banners ---------- */
 .pill{font-size:11.5px; font-weight:600; padding:3px 10px; border-radius:999px;
@@ -352,21 +437,26 @@ td{padding:11px 6px; border-bottom:1px solid rgba(37,42,74,.5); color:var(--text
 td:first-child{color:var(--text-bright); font-weight:500}
 
 code{background:rgba(10,14,39,.6); padding:2px 6px; border-radius:5px;
-     font-family:'SF Mono',Monaco,'Cascadia Code',monospace; font-size:12.5px;
+     font-family:var(--font-mono); font-size:12.5px;
      color:var(--indigo-400)}
 pre.code{
   background:rgba(10,14,39,.75); border:1px solid var(--card-border);
   border-radius:12px; padding:15px; overflow:auto;
-  font-family:'SF Mono',Monaco,'Cascadia Code',monospace;
+  font-family:var(--font-mono);
   font-size:12.5px; line-height:1.65; color:#d6dde8; margin:0;
 }
+/* These stay dark in both themes (as does CodeMirror), so their scrollbars
+   need to be light-on-dark regardless of the page theme. */
+pre.code::-webkit-scrollbar{width:9px; height:9px}
+pre.code::-webkit-scrollbar-thumb{background:rgba(165,180,252,.2); border-radius:99px}
+pre.code::-webkit-scrollbar-track{background:transparent}
 
 /* ---------- CodeMirror, seated into the glass ---------- */
 .CodeMirror{
   height:auto; min-height:190px;
   border-radius:12px; border:1px solid var(--card-border);
   background:rgba(10,14,39,.75) !important;
-  font-family:'SF Mono',Monaco,'Cascadia Code',monospace;
+  font-family:var(--font-mono);
   font-size:13px; line-height:1.65;
   padding:8px 4px;
   transition:var(--transition);
@@ -384,6 +474,11 @@ pre.code{
 @media (max-width:720px){
   .page{padding:96px 12px 48px}
   h1{font-size:24px}
+  /* iOS zooms the whole page when a focused input is under 16px. Bumping the
+     font is the fix; disabling zoom in the viewport meta would be the
+     accessibility violation. */
+  input[type=text],input[type=password],input[type=email],select,textarea{
+    font-size:16px}
   .navpills a{padding:6px 11px; font-size:13px}
   .who .nm{display:none}
   .hbtn{padding:6px 10px}

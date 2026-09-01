@@ -78,7 +78,9 @@
       </div>
 
       <button type="submit" style="width:100%">Continue</button>
-      <div id="err"></div>
+      <!-- assertive, not polite: this is a blocking validation error and the
+           student cannot proceed until they hear it. -->
+      <div id="err" role="alert" aria-live="assertive"></div>
     </form>
 
     <div class="note">

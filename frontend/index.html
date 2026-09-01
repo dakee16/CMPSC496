@@ -1,157 +1,33 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-  <meta charset="UTF-8" />
-  <title>MicroTutor</title>
-  <link rel="stylesheet" href="style.css" />
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/dracula.min.css">
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/python/python.min.js"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MicroTutor</title>
+<!-- This file used to be the whole app: a bcrypt username/password login and a
+     tabbed student/teacher view on the retired style.css. Every part of it has
+     been superseded - home.html is the entry gate, login.html is the PSU
+     sign-in, and student.html / teacher.html are the real pages.
+
+     It is kept only as a redirect because index.html is what a static server
+     hands back for "/". Deleting it outright would turn the site's front door
+     into a directory listing. The old markup is recoverable from git history
+     if any of it is ever wanted again.
+
+     The <meta refresh> is the fallback for a browser that runs no JS; the
+     script fires first and uses replace() so the dead page never enters the
+     back-button history. -->
+<meta http-equiv="refresh" content="0; url=home.html">
+<link rel="canonical" href="home.html">
+<script>location.replace("home.html");</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="ui.css">
 </head>
-
 <body>
-
-  <!-- Page header -->
-  <header id="app-header">
-    <h1>MicroTutor</h1>
-    <p>An AI-powered micro-programming tutor.</p>
-    <button id="logout-btn" style="display: none;">Log Out</button>
-  </header>
-
-  <hr />
-
-  <!-- ══════════════ LOGIN / SIGNUP PAGE ══════════════ -->
-  <div id="auth-section">
-    <div id="auth-card">
-      <h2 id="auth-heading">Log In</h2>
-      <div id="auth-error" style="display: none;"></div>
-
-      <label for="auth-username">Username</label>
-      <input type="text" id="auth-username" autocomplete="username" />
-
-      <label for="auth-password">Password</label>
-      <input type="password" id="auth-password" autocomplete="current-password" />
-
-      <button id="auth-submit-btn">Log In</button>
-
-      <p id="auth-toggle-text">
-        <span id="auth-toggle-prompt">Don't have an account?</span>
-        <a href="#" id="auth-toggle">Sign up</a>
-      </p>
-    </div>
-  </div>
-  <div id="main-app" style="display: none;">
-    <!-- Tab buttons -->
-    <div id="tabs">
-      <button class="tab-btn active" data-tab="leetcode">LeetCode</button>
-      <button class="tab-btn" data-tab="upload">Upload File</button>
-    </div>
-
-
-    <!-- LeetCode tab -->
-    <div id="tab-leetcode" class="tab-div">
-      <div id="problem-list-container">
-        <h2>Pick a problem:</h2>
-        <ul id="problem-list"></ul>
-      </div>
-    </div>
-
-
-    <!-- Upload File tab -->
-    <div id="tab-upload" class="tab-div" style="display: none;">
-      <div id="upload-controls">
-        <h2 id="upload-heading">Upload a file in the format shown below:</h2>
-
-        <pre id="upload-example">Problem 1: Two Sum
-Difficulty: Easy
-Description: Given an array of integers, return indices of the two numbers that add up to a target.
-Solution:
-def twoSum(nums, target):
-    seen = {}
-    for i, num in enumerate(nums):
-        complement = target - num
-        if complement in seen:
-            return [seen[complement], i]
-        seen[num] = i
-
-Problem 2: Reverse String
-Description: Write a function that reverses a string in place.
-Solution:
-def reverseString(s):
-    return s[::-1]</pre>
-        <p id="upload-solution-note">
-          <code>Difficulty</code> is optional (Easy / Medium / Hard) and defaults
-          to unset if left out. Every problem needs a <code>Solution:</code>
-          section with a working reference implementation - problems without
-          one are skipped, since the system can't build or check test cases
-          without a correct solution to compare against.
-        </p>
-
-        <div id="upload-button-row">
-          <label for="file-input" class="file-label">Choose a file</label>
-          <input type="file" id="file-input" accept=".txt,text/plain" />
-          <span id="file-name">No file chosen</span>
-        </div>
-      </div>
-
-      <div id="uploaded-problem-list-container">
-        <ul id="uploaded-problem-list"></ul>
-        <button id="upload-another-btn" style="display: none;">Upload a new file</button>
-      </div>
-    </div>
-
-
-    <div id="problem-section" style="display: none;">
-      <h2 id="problem-title"></h2>
-      <div style="text-align: center;">
-        <span id="problem-difficulty" class="difficulty"></span>
-      </div>
-      <pre id="problem-description"></pre>
-
-
-      <div class="action-row">
-        <button class="back-btn">← Problem List</button>
-        <button id="start-btn">Start Tutoring Session</button>
-      </div>
-    </div>
-
-    <!-- Step UI  -->
-    <div id="layout-container">
-
-      <button class="back-btn" id="chunk-problem-list-btn" style="display: none;">← Problem List</button>
-      <div id="part-section" style="display: none;">
-        <h2>Part <span id="part-number"> 1 </span> of <span id="total-parts"> ? </span></h2>
-        <p id="part-prompt"></p>
-
-        <label for="answer-input">Your answer:</label>
-        <textarea id="answer-input"></textarea>
-
-        <div class="action-row">
-          <button id="submit-btn">Submit Answer</button>
-          <button id="edit-code-btn">Edit Code</button>
-        </div>
-
-        <div id="feedback-section" style="display: none;">
-          <p id="feedback-text"></p>
-          <button id="next-btn" disabled>Next Part</button>
-        </div>
-      </div>
-
-      <!-- PHASE 3: assembled-solution screen, shown after the last chunk -->
-      <div id="solution-section" style="display: none;">
-        <h2>🎉 Solution Complete</h2>
-        <pre id="final-solution"></pre>
-        <button class="back-btn">← Problem List</button>
-      </div>
-    </div>
-
-    <script src="app.js"></script>
+  <div class="page" style="display:grid; place-items:center; min-height:60vh">
+    <p class="sub">Taking you to <a href="home.html">MicroTutor</a>…</p>
   </div>
 </body>
-
 </html>

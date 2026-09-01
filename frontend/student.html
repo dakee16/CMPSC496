@@ -134,28 +134,79 @@
      own, so dim it and show the not-allowed cursor while readOnly:"nocursor". */
   .CodeMirror.cm-gate-locked{opacity:.5; filter:grayscale(.35)}
   .CodeMirror.cm-gate-locked, .CodeMirror.cm-gate-locked *{cursor:not-allowed}
-  /* Graphs are wider than the column they live in, always. They scroll inside
-     their own box so the page itself never scrolls sideways. */
-  .graphScroll{overflow-x:auto; overflow-y:hidden; padding:4px 0 8px}
-  .graphScroll svg{display:block}
-  .graphPair{display:grid; grid-template-columns:1fr 1fr; gap:16px}
+  /* ---- flowcharts ----
+     These cards sit BELOW .split so they get the full page width. A flowchart
+     is wide by nature; inside the 372px chat column it was unreadable. */
+  .graphCard{margin-top:18px}
+  /* Wide content still scrolls inside its own box, so the PAGE never scrolls
+     sideways however deep the graph gets. */
+  .graphScroll{overflow-x:auto; overflow-y:hidden; padding:6px 2px 10px}
+  .graphScroll svg{display:block; margin:0 auto}
+  .graphScroll::-webkit-scrollbar{height:8px}
+  .graphScroll::-webkit-scrollbar-thumb{background:rgba(165,180,252,.16);
+    border-radius:99px}
+  .graphScroll:focus-visible{outline:2px solid var(--indigo-400); outline-offset:3px;
+    border-radius:12px}
+
+  .graphPair{display:grid; grid-template-columns:1fr 1fr; gap:18px}
   @media (max-width:900px){ .graphPair{grid-template-columns:1fr} }
-  .graphBox{min-width:0}                        /* let the child scroller win */
-  .graphBox h3, .graphDiff h3{font-size:13px; letter-spacing:.3px;
-    text-transform:uppercase; opacity:.65; margin:0 0 8px}
-  .graphDiff{margin-top:16px; border-top:1px solid #232a4d; padding-top:14px}
-  .graphDiff ul{margin:0; padding-left:18px}
-  .graphDiff li{margin:5px 0; line-height:1.5}
+  .graphBox{min-width:0;                        /* let the child scroller win */
+    background:rgba(10,14,39,.24); border:1px solid var(--glass-line);
+    border-radius:14px; padding:14px 14px 6px}
+  :root[data-theme="light"] .graphBox{background:rgba(15,23,42,.03)}
+  .graphBox h3, .graphDiff h3{display:flex; align-items:center; gap:8px;
+    font-size:13.5px; font-weight:600; letter-spacing:-.01em;
+    color:var(--text-muted); margin:0 0 10px}
+
+  /* Plan vs code are told apart by a WORD, not only by colour. */
+  .gTag{font-size:10px; font-weight:700; letter-spacing:.08em;
+    text-transform:uppercase; padding:3px 7px; border-radius:6px; flex:none}
+  .gTag.plan{background:rgba(99,102,241,.16); color:var(--indigo-400)}
+  .gTag.code{background:var(--green-bg); color:var(--green-text)}
+
+  .graphMeta{display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+    margin:0 0 14px}
+  .gLegend{display:flex; gap:14px; flex-wrap:wrap; list-style:none;
+    margin:0; padding:0; font-size:12px; color:var(--text-muted)}
+  .gLegend li{display:flex; align-items:center; gap:6px}
+  .gSwatch{width:3px; height:13px; border-radius:2px; flex:none}
+
+  .graphDiff{margin-top:18px; border-top:1px solid var(--glass-line);
+    padding-top:16px}
+  .graphDiff ul{margin:0; padding:0; list-style:none; display:grid; gap:7px}
+  .graphDiff li{display:flex; align-items:center; gap:9px; line-height:1.5;
+    font-size:13.5px; color:var(--text-muted); min-height:26px}
+  .graphDiff li.gNote{color:var(--text-bright); font-size:14px}
+  .graphDiff li code{font-size:12px}
+
+  /* Node hover uses opacity, never a transform: scaling a node inside a laid
+     out SVG shifts it off its own edges. */
+  .gnode rect{transition:opacity .18s ease}
+  .gnode:hover rect{opacity:.82}
+  .gnode{cursor:default}
   .lockNote{display:flex; gap:8px; align-items:flex-start; margin:10px 0 0;
     padding:10px 12px; border-radius:10px; font-size:13px;
     background:var(--amber-bg); color:var(--amber-text);
     border:1px solid rgba(245,158,11,.25)}
   .cfoot button{padding:10px 15px}
   .chips{display:flex; gap:6px; flex-wrap:wrap; padding:0 18px 12px}
-  .chip{font-size:12px; padding:5px 11px; border-radius:999px; cursor:pointer;
+  /* min-height 32 + the 12px gap around the row clears a comfortable tap
+     target without making these read as buttons competing with Send. */
+  .chip{font-size:12px; padding:7px 12px; min-height:32px; display:inline-flex;
+        align-items:center; border-radius:999px; cursor:pointer;
         background:rgba(165,180,252,.08); border:1px solid var(--glass-line);
-        color:var(--indigo-400); transition:var(--transition)}
-  .chip:hover{background:rgba(99,102,241,.18); color:var(--text-bright)}
+        color:var(--indigo-400); transition:background .18s ease, color .18s ease,
+        border-color .18s ease}
+  .chip:hover{background:rgba(99,102,241,.18); color:var(--text-bright);
+        border-color:rgba(129,140,248,.32)}
+  .chip:focus-visible{outline:2px solid var(--indigo-400); outline-offset:2px}
+
+  /* The input is visually hidden but still FOCUSABLE, so tabbing lands on a
+     1px box with nothing to see. Forward its focus ring to the label that
+     stands in for it, or a keyboard user cannot tell where they are. */
+  .filehidden:focus-visible + .filepick{
+    outline:2px solid var(--indigo-400); outline-offset:2px}
+  .filehidden:focus + .filepick{background:rgba(99,102,241,.16)}
 
   /* Light-theme fixes for the surfaces that hardcode a dark value above. */
   :root[data-theme="light"] .statement{background:#eef1f7}
@@ -208,13 +259,24 @@
           <pre class="code" id="sig" style="margin-bottom:14px"></pre>
           <p class="stepcount" id="stepCount"></p>
           <p class="prompt" id="prompt"></p>
+          <!-- Visually redundant (the prompt above says what to write), but a
+               screen reader otherwise announces this as an unnamed text field.
+               CodeMirror replaces the textarea and carries the label across. -->
+          <label class="sr-only" for="code">Your code for this step</label>
           <textarea id="code"></textarea>
           <div class="row" style="margin-top:13px">
             <button id="submit">Submit step</button>
             <button class="ghost" id="backP">Another problem</button>
           </div>
           <p class="lockNote" id="lockNote" hidden>
-            <span>&#128274;</span>
+            <!-- SVG, not the 🔒 emoji: an emoji renders as a different picture
+                 on every OS and ignores the surrounding text colour. -->
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                 aria-hidden="true" style="flex:none; margin-top:2px">
+              <rect x="3" y="11" width="18" height="11" rx="2"/>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+            </svg>
             <span>Submit your design first &mdash; a diagram, flowchart, or
             written plan as a PNG, JPEG, or PDF. The tutor unlocks this once
             your design holds together.</span>
@@ -226,8 +288,13 @@
             <span class="filename" id="designName">No file chosen</span>
             <button id="designBtn">Submit design</button>
           </div>
-          <p class="attempts" id="attempts"></p>
-          <div id="msg"></div>
+          <p class="attempts" id="attempts" role="status" aria-live="polite"></p>
+          <!-- The grading verdict lands here. Without a live region a student
+               using a screen reader submits an answer and is told nothing at
+               all - the single worst accessibility gap on this page.
+               "polite" rather than "assertive": it should not cut across them
+               mid-sentence, only be announced when they pause. -->
+          <div id="msg" role="status" aria-live="polite"></div>
         </div>
       </div>
 
@@ -238,34 +305,46 @@
             <h2>Tutor</h2>
             <span class="pill" style="margin-left:auto">Socratic</span>
           </div>
-          <div class="clog" id="clog"></div>
+          <!-- aria-live so a tutor reply is announced when it arrives; the
+               tutor is a conversation, and an unannounced reply is a reply the
+               student never receives. -->
+          <div class="clog" id="clog" role="log" aria-live="polite"
+               aria-label="Conversation with the tutor"></div>
           <div class="chips" id="chips">
             <span class="chip">Explain this problem simply</span>
             <span class="chip">Here is my approach…</span>
             <span class="chip">I am stuck</span>
           </div>
           <form class="cfoot" id="cform">
+            <label class="sr-only" for="cinput">Message the tutor</label>
             <textarea id="cinput" rows="1" placeholder="Explain your thinking, or ask about the problem&#10;(Enter to send, Shift+Enter for a new line)"></textarea>
             <button type="submit">Send</button>
           </form>
         </div>
 
-        <!-- Grows as the student describes their plan. Deliberately beside the
-             chat, not below the editor: it is a picture of what they SAID, and
-             seeing it fill in is what makes them notice a step they skipped. -->
-        <div class="card" id="planCard" hidden>
-          <div class="chead">
-            <h2>Your plan so far</h2>
-            <span class="pill" style="margin-left:auto">from the chat</span>
-          </div>
-          <div class="graphScroll" id="planLive"></div>
-        </div>
       </div>
+    </div>
+
+    <!-- Grows as the student describes their plan.
+         BELOW the split, not inside the chat column: a flowchart is wide by
+         nature and the chat column is 372px, so nesting it there forced every
+         node to be read through a keyhole. Full page width, under both columns,
+         is the only place it is actually legible. -->
+    <div class="card graphCard" id="planCard" hidden>
+      <div class="chead">
+        <h2>Your plan so far</h2>
+        <span class="pill" style="margin-left:auto">built from your chat</span>
+      </div>
+      <p class="hint" style="margin:-2px 0 12px">
+        This grows as you describe your approach. If a step is missing here,
+        it was missing from what you said.
+      </p>
+      <div class="graphScroll" id="planLive"></div>
     </div>
 
     <!-- The finished artifact. Hidden until the session completes, because the
          comparison is meaningless against a half-written function. -->
-    <div class="card" id="dualCard" hidden style="margin-top:18px">
+    <div class="card graphCard" id="dualCard" hidden>
       <div class="chead">
         <h2>Your plan vs. your code</h2>
         <span class="pill" style="margin-left:auto">side by side</span>

@@ -67,7 +67,11 @@
 
     <details style="margin-bottom:16px">
       <summary>Show the format</summary>
-      <pre class="code" id="tmpl" style="margin-top:11px; max-height:300px">loading...</pre>
+      <!-- A scrollable code block must be reachable by keyboard, or a reader
+           who cannot use a mouse can never see past the first 300px. -->
+      <pre class="code" id="tmpl" tabindex="0" role="group"
+           aria-label="Assignment file template, scrolls"
+           style="margin-top:11px; max-height:300px">loading...</pre>
       <button class="ghost" id="dl" style="margin-top:11px">Download this template</button>
     </details>
 
@@ -89,9 +93,14 @@
 
   <div class="card" id="run" hidden>
     <h2 id="runTitle">Preparing</h2>
-    <div class="prog"><i id="bar"></i></div>
+    <!-- The visual bar conveys progress by width alone; the ARIA role is what
+         carries the same fact to anyone who cannot see it. -->
+    <div class="prog" role="progressbar" aria-label="Preparing assignment"
+         aria-valuemin="0" aria-valuemax="100" id="prog"><i id="bar"></i></div>
     <ul class="items" id="items"></ul>
-    <div id="summary"></div>
+    <!-- Upload results land here. Without a live region a teacher uploads an
+         assignment and is told nothing about whether it worked. -->
+    <div id="summary" role="status" aria-live="polite"></div>
   </div>
 
   <div class="card" id="list">
@@ -110,6 +119,16 @@ const S = requireSession("teacher");
 mountHeader({active: "Upload"});
 const $ = id => document.getElementById(id);
 let TEMPLATE = "";
+
+// Width and aria-valuenow must never drift apart, so nothing sets one without
+// the other. A progressbar whose value never updates is worse than none: it
+// reports 0% for the whole run. Defined after `$` because it uses it.
+function setProgress(pct){
+  pct = Math.max(0, Math.min(100, pct));
+  $("bar").style.width = pct + "%";
+  const p = $("prog");
+  if (p) p.setAttribute("aria-valuenow", String(pct));
+}
 
 fetch(`${API}/assignment_template`).then(r => r.json()).then(d => {
   TEMPLATE = d.content;
@@ -154,7 +173,7 @@ $("go").onclick = async () => {
   $("go").disabled = true;
   $("run").hidden = false;
   $("items").innerHTML = ""; $("summary").innerHTML = "";
-  $("bar").style.width = "0%";
+  setProgress(0);
   $("runTitle").textContent = "Reading file";
   $("run").scrollIntoView({behavior: "smooth", block: "nearest"});
 
@@ -205,13 +224,13 @@ function handle(ev, rows){
       addRow(rows, e.slug, "bad", e.slug, "Could not read this one. " + e.error));
   } else if (ev.event === "preparing") {
     addRow(rows, ev.slug, "run", ev.title || ev.slug, "preparing");
-    $("bar").style.width = `${Math.round((ev.index - 1) / ev.total * 100)}%`;
+    setProgress(Math.round((ev.index - 1) / ev.total * 100));
   } else if (ev.event === "prepared") {
-    $("bar").style.width = `${Math.round(ev.index / ev.total * 100)}%`;
+    setProgress(Math.round(ev.index / ev.total * 100));
     if (ev.ready) setRow(rows, ev.slug, "ok", `Ready. ${ev.chunks} steps, ${ev.n_tests} tests.`);
     else          setRow(rows, ev.slug, "bad", ev.error || "could not be prepared");
   } else if (ev.event === "done") {
-    $("bar").style.width = "100%";
+    setProgress(100);
     $("runTitle").textContent = "Preparation finished";
     const cls = ev.failed === 0 ? "ok" : (ev.ready === 0 ? "bad" : "warn");
     let msg = `<strong>${ev.ready} of ${ev.total} ready for students.</strong>`;
