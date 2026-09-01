@@ -952,5 +952,171 @@
     ],
     "confirmed": true,
     "slug": "second-largest"
+  },
+  "f7a9b7d0b9ce12dfe6f48e8e07b14d7f7994e339ec5d309d59542943c03a4234": {
+    "entry_name": "is_leap_year",
+    "params": [
+      "year"
+    ],
+    "confirmed": true,
+    "slug": "is-leap-year"
+  },
+  "316645f5d4240151b7b1135b9ec17cbe58f1090c0795d7e8c23b9230fddcc2c4": {
+    "entry_name": "fizzbuzz_value",
+    "params": [
+      "n"
+    ],
+    "confirmed": true,
+    "slug": "fizzbuzz-value"
+  },
+  "d12ea937b59e7c08b13c7c2e74c3ba44f96f7c69018b7fe757e6079d18e694df": {
+    "entry_name": "is_prime",
+    "params": [
+      "n"
+    ],
+    "confirmed": true,
+    "slug": "is-prime"
+  },
+  "919f25609cf2d303e36e81f652befcc6770de2e68c8ed56c696ef024ec3012c0": {
+    "entry_name": "triangle_type",
+    "params": [
+      "a",
+      "b",
+      "c"
+    ],
+    "confirmed": true,
+    "slug": "triangle-type"
+  },
+  "59ddfc4ca10ec93182ae2f8c8d82f45cd3b99a3c8ba96d0fae1e3e27fcf770e2": {
+    "entry_name": "digit_sum",
+    "params": [
+      "n"
+    ],
+    "confirmed": true,
+    "slug": "digit-sum"
+  },
+  "c12bc7251d031e59f53a692dab33491a2443963d2d5c5b3e6dad61e0780bb375": {
+    "entry_name": "reverse_integer",
+    "params": [
+      "n"
+    ],
+    "confirmed": true,
+    "slug": "reverse-integer"
+  },
+  "ed40617af39975310e6d783155f3eff94a002062d67917c21493d3be7450b2c7": {
+    "entry_name": "count_vowels",
+    "params": [
+      "text"
+    ],
+    "confirmed": true,
+    "slug": "count-vowels"
+  },
+  "b360c989a386429c4ba50595ebb94fda966b18fbdda05dfa030ad5b6892e786d": {
+    "entry_name": "is_palindrome_string",
+    "params": [
+      "text"
+    ],
+    "confirmed": true,
+    "slug": "is-palindrome-string"
+  },
+  "eea00bdc1efb256e33bd56ab84954c53d486521007e66b3a50a7b1f8ba21218e": {
+    "entry_name": "second_largest",
+    "params": [
+      "nums"
+    ],
+    "confirmed": true,
+    "slug": "second-largest"
+  },
+  "662cf4b458383bb59d1f38c2e2fd599eca8f4e3f1ff228aa97e8bfc8d99512eb": {
+    "entry_name": "count_words",
+    "params": [
+      "text"
+    ],
+    "confirmed": true,
+    "slug": "count-words"
+  },
+  "66075071e52c72859af1b98ed2c071955f59c89dc267e180c318f9ff216f8ca3": {
+    "entry_name": "is_armstrong",
+    "params": [
+      "n"
+    ],
+    "confirmed": true,
+    "slug": "is-armstrong"
+  },
+  "79b776ffb1e93ad75719c10976ffab64f9dd7c31288fcd70fa7ae7996d54e4a0": {
+    "entry_name": "collatz_steps",
+    "params": [
+      "n"
+    ],
+    "confirmed": true,
+    "slug": "collatz-steps"
+  },
+  "620e0dbc75a5217dc28299fd20c806e04c55f7b97d6f68e578d8acefbb867b05": {
+    "entry_name": "sum_even_numbers",
+    "params": [
+      "nums"
+    ],
+    "confirmed": true,
+    "slug": "sum-even-numbers"
+  },
+  "b7ab93d1c25edfb45a142d92ef15ab5a6a9a3f2f111a30d56a3afe3de71a0735": {
+    "entry_name": "celsius_to_fahrenheit",
+    "params": [
+      "celsius"
+    ],
+    "confirmed": true,
+    "slug": "celsius-to-fahrenheit"
+  },
+  "0a31e2a820623be71500b36143f9c26581d763ecc3994ca1aad8af3b4430671c": {
+    "entry_name": "score_to_grade",
+    "params": [
+      "score"
+    ],
+    "confirmed": true,
+    "slug": "score-to-grade"
+  },
+  "b7fa764092381a969b3c3352bf0244fb235bc451dbc41fd7e62d34d2a872e39c": {
+    "entry_name": "hamming_distance",
+    "params": [
+      "x",
+      "y"
+    ],
+    "confirmed": true,
+    "slug": "hamming-distance"
+  },
+  "ad05b3a0f30267b639f666b90452e146973db6f9492e608adc2818fe3b5a595e": {
+    "entry_name": "is_power_of_two",
+    "params": [
+      "n"
+    ],
+    "confirmed": true,
+    "slug": "is-power-of-two"
+  },
+  "fe16af480129062dd1dc9c9b61a15547757241c7affd4017b6f8f61bbf82d99c": {
+    "entry_name": "run_length_encode",
+    "params": [
+      "text"
+    ],
+    "confirmed": true,
+    "slug": "run-length-encode"
+  },
+  "69ddaabd3ba80286d2092572930ab928f872f45b0de85ba5cc1fb88a35f9c016": {
+    "entry_name": "caesar_cipher",
+    "params": [
+      "text",
+      "shift"
+    ],
+    "confirmed": true,
+    "slug": "caesar-cipher"
+  },
+  "b8844dc5d8df60fe425bdc11192514d092ed94b301b8229f2969d27e3d38d8ab": {
+    "entry_name": "median_of_three",
+    "params": [
+      "a",
+      "b",
+      "c"
+    ],
+    "confirmed": true,
+    "slug": "median-of-three"
   }
 }
