@@ -16,6 +16,7 @@ import re
 
 from .execution import classify_run
 from .identity import get_resolved_entry
+from .indent import align_to_chunk
 from .ollama_client import GRADING_MODEL, chat
 from . import trace
 from .schemas import GradeResult
@@ -167,6 +168,25 @@ def _scope_violation(student_code: str, in_scope: set) -> tuple[str, str] | None
                 f"built-in type. Did you mean one of the function's parameters?",
                 "builtin_type_as_value")
     return None
+
+
+def align_submission(session: dict, student_code: str) -> str:
+    """Re-seat a submission at the indent depth of the chunk it answers.
+
+    A chunk may begin part-way through a loop or conditional body, in which case
+    its reference is stored indented and a flat answer stitched at column 0 lands
+    OUTSIDE the block - see main/indent.py for the failure this prevents. The
+    student was never told what depth to type at, so it is not theirs to get
+    wrong.
+
+    Public and pure: /grade_chunk calls it to store exactly the text that
+    grade_submission judged, so the accepted prefix and the graded code can
+    never drift apart.
+    """
+    chunks, idx = session["chunks"], session["index"]
+    if idx >= len(chunks):
+        return (student_code or "").strip()
+    return align_to_chunk(student_code, chunks[idx])
 
 
 def _ok(verdict, tier, reason, code, **kw) -> GradeResult:
@@ -369,7 +389,10 @@ def grade_submission(session: dict, student_code: str,
     resolved = get_resolved_entry(problem)
     entry = resolved["entry_name"]
     prefix = "\n".join(accepted_prefix(session))
-    student_code = (student_code or "").strip()
+    # Re-seat the answer at this chunk's depth BEFORE anything reads it. A step
+    # that continues inside a loop is stitched four columns in, and the student
+    # was never told that, so a flat answer is not a wrong answer.
+    student_code = align_submission(session, student_code)
 
     # ── TIER 1 - static policy + compile. No LLM here, ever. ──
     if not student_code:

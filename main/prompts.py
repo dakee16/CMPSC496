@@ -189,8 +189,27 @@ solution (the last one produces/returns the final answer).
 For each sub-problem provide:
   - "prompt": the sub-question (goal only, per the rules above).
   - "reference": ONE correct Python implementation of JUST that chunk, as body
-    code inside the function. Do NOT write the function header. The chunk's first
-    line starts at column 0; indent inner blocks relative to that.
+    code inside the function. Do NOT write the function header.
+
+    INDENTATION: write every line at the depth it actually occupies once the
+    chunks are stacked in order, measuring from the function body as column 0.
+    A chunk that starts a fresh statement in the function body begins at column
+    0. A chunk that CONTINUES a block an earlier chunk left open - the rest of a
+    while loop's body, the remaining branches of an if - begins at that block's
+    depth, indented 4 spaces per level.
+
+      Example. If chunk 1 is:
+        n = x
+        while n > 0:
+            rev = rev * 10 + n % 10
+      and chunk 2 finishes that loop, chunk 2's reference is:
+            n //= 10
+      (four spaces, because it is still inside the while), NOT "n //= 10".
+
+    Prefer splitting where no block is left open - a chunk boundary in the
+    middle of a loop body is harder to state as a goal. But when the split does
+    land mid-block, the indentation above is required: the stacked references
+    must form a runnable program exactly as written.
 
 Example for "return True if integer x is a palindrome":
   {"subproblems": [

@@ -282,7 +282,7 @@ def grade_chunk_route(req: ChunkRequest, request: Request):
     All grading logic lives in main.grading.grade_submission - this route only
     loads the session, enforces request-level preconditions, applies the
     attempt/reveal policy, and strips private material from the response."""
-    from main.grading import grade_submission
+    from main.grading import align_submission, grade_submission
     from main.sessions import MAX_ATTEMPTS, SessionError, load_session
 
     try:
@@ -327,7 +327,11 @@ def grade_chunk_route(req: ChunkRequest, request: Request):
     # ── attempt / reveal policy (server-owned) ──
     accept_code, provenance, reveal_ref = None, "student", None
     if result.verdict == "correct":
-        accept_code = req.student_code
+        # Store what was GRADED, not what was typed. grade_submission re-seats a
+        # submission at its chunk's indent depth (main/indent.py); storing the raw
+        # text instead would put a flat answer into the accepted prefix and break
+        # the NEXT step's assembly, one chunk after the mistake.
+        accept_code = align_submission(session, req.student_code)
     elif result.verdict == "incorrect" and session["attempts"] + 1 >= MAX_ATTEMPTS:
         # Second failure: reveal THIS chunk's reference, record its provenance,
         # mark the session assisted, and move on.

@@ -7,13 +7,16 @@
 <title>MicroTutor: Instructor</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- Same URL as ui.css's @import, so the faces start downloading in
+     parallel with the stylesheet instead of waiting for it to parse.
+     The @import stays the single source of truth; this is a head start. -->
+<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="ui.css">
 <style>
   .drop{
     border:1.5px dashed rgba(165,180,252,.28); border-radius:16px;
     padding:28px 20px; text-align:center; cursor:pointer;
-    background:rgba(10,14,39,.35); transition:var(--transition);
+    background:rgba(11,17,32,.35); transition:var(--transition);
   }
   .drop:hover,.drop.over{background:rgba(99,102,241,.11); border-color:var(--indigo-500)}
   .drop .big{font-size:15px; font-weight:600; color:var(--text-bright)}
@@ -21,7 +24,7 @@
   .drop.has{border-style:solid; border-color:var(--indigo-500);
             background:rgba(99,102,241,.11)}
 
-  .prog{height:5px; border-radius:999px; background:rgba(10,14,39,.6);
+  .prog{height:5px; border-radius:999px; background:rgba(11,17,32,.6);
         overflow:hidden; margin:18px 0 14px}
   .prog>i{display:block; height:100%; width:0; border-radius:999px;
           background:linear-gradient(90deg,var(--indigo-600),var(--indigo-400));
@@ -31,7 +34,7 @@
   ul.items li{
     display:flex; gap:12px; align-items:flex-start;
     padding:12px 14px; border-radius:12px;
-    background:rgba(26,31,61,.5); border:1px solid var(--glass-line);
+    background:rgba(26,35,56,.5); border:1px solid var(--glass-line);
     font-size:14px; animation:rise .3s cubic-bezier(.4,0,.2,1) both;
   }
   @keyframes rise{from{opacity:0; transform:translateY(6px)} to{opacity:1; transform:none}}
@@ -116,7 +119,7 @@
 <script src="ui.js"></script>
 <script>
 const S = requireSession("teacher");
-mountHeader({active: "Upload"});
+mountHeader({active: "Home"});
 const $ = id => document.getElementById(id);
 let TEMPLATE = "";
 

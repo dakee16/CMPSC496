@@ -10,39 +10,64 @@
    file already preconnects to fonts.googleapis.com, so the extra hop is warm.
    Must stay the first rule in the file - @import after any other rule is
    ignored. */
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Lexend:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
 :root{
-  /* Inter for the interface, JetBrains Mono for anything the student reads as
-     CODE OR DATA - the editor, submitted lines, graph node labels, step
-     signatures. The old stack was 'SF Mono',Monaco,'Cascadia Code', which
-     resolves to a different face on every machine, so column alignment in a
-     code block was luck. A pinned webfont makes it identical everywhere, and
-     JetBrains Mono's tall x-height stays legible at the 12px the graph nodes
-     use. */
-  --font-sans:'Inter',system-ui,-apple-system,'Segoe UI',sans-serif;
+  /* ---- type: three faces, one job each ----
+     Inter did all three jobs before, which is why the page read as a default
+     rather than a decision.
+
+     LEXEND for headings, the wordmark and buttons. It was drawn to raise
+     reading proficiency and is used in classrooms for exactly that; on a page
+     whose whole premise is a student reading a task and acting on it, the
+     display face may as well be the one designed for reading. Slightly wide
+     and low-contrast, so it holds up at 30px without turning ornamental.
+
+     IBM PLEX SANS for body copy, labels and prose. Humanist, drawn for
+     technical documentation, and unusually legible at the 13-14px this UI
+     actually runs at. It shares Lexend's open apertures, so the pair reads as
+     one voice rather than two fonts stapled together.
+
+     JETBRAINS MONO for anything the student reads as CODE OR DATA - the
+     editor, submitted lines, graph node labels, step signatures. Pinned rather
+     than the old 'SF Mono',Monaco,'Cascadia Code' stack, which resolved to a
+     different face on every machine and made column alignment luck. It is also
+     the mono JetBrains drew to sit beside Plex-style humanist sans, which is
+     why the code blocks and the prose around them look related. */
+  --font-display:'Lexend','IBM Plex Sans',system-ui,-apple-system,sans-serif;
+  --font-sans:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
   --font-mono:'JetBrains Mono','SF Mono',Monaco,'Cascadia Code',monospace;
 
+  /* ---- colour: ONE accent, on a neutral ground ----
+     The old palette was a saturated blue-violet (#0a0e27 page, #1e1b4b tints)
+     with indigo, amber, green and red all competing on top of it. A violet
+     ground makes every neutral look slightly wrong, and four accents at equal
+     strength means none of them signals anything.
+
+     The ground is now true slate - the same neutral family a code editor uses -
+     and indigo is the only decorative colour. Green, amber and red are demoted
+     to STATUS ONLY: they appear when something passed, was shown, or failed,
+     and never as decoration. That is what makes them readable as status. */
   --indigo-600:#6366f1;
   --indigo-500:#818cf8;
   --indigo-400:#a5b4fc;
   --indigo-50:#1e1b4b;
 
-  --page-bg:#0a0e27;
-  --card-bg:#151a36;
-  --card-bg-soft:#1a1f3d;
-  --card-border:#252a4a;
+  --page-bg:#0b1120;
+  --card-bg:#131b2c;
+  --card-bg-soft:#1a2338;
+  --card-border:#263149;
 
   --text-bright:#f1f5f9;
-  --text-muted:#94a3b8;
+  --text-muted:#9aa8bd;
   /* Was #64748b, which measured 3.58:1 on a card - under the 4.5:1 AA floor,
      and .hint uses it for real 13px body copy. #7c8aa5 is the same slate hue
      one step lighter: 4.90:1 on card, 5.46:1 on the page. */
   --text-dim:#7c8aa5;
 
-  --green-bg:rgba(34,197,94,.15);  --green-text:#4ade80;
-  --amber-bg:rgba(245,158,11,.15); --amber-text:#fbbf24;
-  --red-bg:rgba(239,68,68,.15);    --red-text:#f87171;
+  --green-bg:rgba(16,185,129,.14);  --green-text:#34d399;
+  --amber-bg:rgba(245,158,11,.14); --amber-text:#fbbf24;
+  --red-bg:rgba(239,68,68,.14);    --red-text:#f87171;
 
   --shadow-md:0 4px 12px rgba(0,0,0,.4);
   --shadow-lg:0 12px 32px rgba(0,0,0,.5);
@@ -61,12 +86,15 @@
 
   /* Glass. The border is a hairline of indigo haze; the inset
      highlight is what makes a panel read as a lit edge rather than
-     a flat translucent rectangle. */
-  --glass-bg:rgba(21,26,54,.55);
-  --glass-bg-strong:rgba(21,26,54,.78);
-  --glass-line:rgba(165,180,252,.14);
-  --glass-lift:inset 0 1px 0 rgba(255,255,255,.07);
-  --blur:blur(20px) saturate(160%);
+     a flat translucent rectangle.
+     Opacity is up from .55/.78: at .55 the aurora showed through the card and
+     every panel sat on a slightly different colour, which is most of why the
+     page read as unfinished. A surface should be a surface. */
+  --glass-bg:rgba(19,27,44,.82);
+  --glass-bg-strong:rgba(19,27,44,.93);
+  --glass-line:rgba(165,180,252,.13);
+  --glass-lift:inset 0 1px 0 rgba(255,255,255,.05);
+  --blur:blur(20px) saturate(130%);
 
   /* Flowchart ink. Tokens rather than literals in graphs.js, which hardcoded
      #4a5580 / #8892b8 / #2c3358 and so drew the SAME dark greys on the light
@@ -92,10 +120,10 @@
   --indigo-400:#4338ca;
   --indigo-50:#eef2ff;
 
-  --page-bg:#f5f6fb;
+  --page-bg:#f6f7fa;
   --card-bg:#ffffff;
-  --card-bg-soft:#eef1f7;
-  --card-border:#e0e3ee;
+  --card-bg-soft:#eef1f6;
+  --card-border:#e2e6ee;
 
   --text-bright:#0f172a;
   --text-muted:#475569;
@@ -103,18 +131,20 @@
      theme. #6b7688 is 4.59:1 and keeps the same cool grey. */
   --text-dim:#6b7688;
 
-  --green-bg:rgba(34,197,94,.14);  --green-text:#15803d;
-  --amber-bg:rgba(245,158,11,.18); --amber-text:#b45309;
-  --red-bg:rgba(239,68,68,.12);    --red-text:#dc2626;
+  --green-bg:rgba(16,185,129,.13);  --green-text:#047857;
+  --amber-bg:rgba(245,158,11,.16); --amber-text:#b45309;
+  --red-bg:rgba(239,68,68,.11);    --red-text:#dc2626;
 
-  --shadow-md:0 4px 12px rgba(15,23,42,.10);
-  --shadow-lg:0 14px 34px rgba(15,23,42,.16);
+  --shadow-md:0 2px 8px rgba(15,23,42,.07);
+  --shadow-lg:0 10px 28px rgba(15,23,42,.12);
 
-  --glass-bg:rgba(255,255,255,.62);
-  --glass-bg-strong:rgba(255,255,255,.85);
-  --glass-line:rgba(15,23,42,.10);
+  /* Same reasoning as the dark theme: a card that lets the background through
+     is not a surface. .62 was low enough that text sat on a gradient. */
+  --glass-bg:rgba(255,255,255,.88);
+  --glass-bg-strong:rgba(255,255,255,.95);
+  --glass-line:rgba(15,23,42,.09);
   --glass-lift:inset 0 1px 0 rgba(255,255,255,.7);
-  --blur:blur(18px) saturate(140%);
+  --blur:blur(18px) saturate(120%);
 
   --graph-line:#7c88b0;
   --graph-label:#525d78;
@@ -122,14 +152,14 @@
 }
 :root[data-theme="light"] body::before{
   background:
-    radial-gradient(38vmax 38vmax at 18% 12%, rgba(99,102,241,.13), transparent 62%),
-    radial-gradient(32vmax 32vmax at 82% 22%, rgba(129,140,248,.10), transparent 62%),
-    radial-gradient(42vmax 42vmax at 62% 88%, rgba(165,180,252,.16), transparent 62%);
-  filter:blur(30px);
+    radial-gradient(46vmax 46vmax at 15% 0%, rgba(99,102,241,.07), transparent 60%),
+    radial-gradient(52vmax 52vmax at 88% 4%, rgba(129,140,248,.05), transparent 60%);
+  filter:none;
 }
-:root[data-theme="light"] .navpills,
-:root[data-theme="light"] .hbtn{background:rgba(15,23,42,.05); border-color:rgba(15,23,42,.07)}
-:root[data-theme="light"] button.ghost{background:rgba(79,70,229,.08)}
+:root[data-theme="light"] .hbtn:hover,
+:root[data-theme="light"] .hbtn.on{background:rgba(79,70,229,.09);
+  border-color:rgba(15,23,42,.08)}
+:root[data-theme="light"] .ghost{background:rgba(79,70,229,.08)}
 :root[data-theme="light"] input[type=text],
 :root[data-theme="light"] input[type=password],
 :root[data-theme="light"] input[type=email],
@@ -153,44 +183,55 @@ body{
   line-height:1.6;
   -webkit-font-smoothing:antialiased;
   text-rendering:optimizeLegibility;
-  /* Inter ships these off by default. cv11 gives the single-storey 'a' and
-     straight-tailed 'l', which stops "1/l/I" from collapsing into each other
-     in a page full of variable names. */
-  font-feature-settings:'cv11' 1,'ss01' 1;
+  /* This used to be Inter's 'cv11'/'ss01', which disambiguated 1/l/I on a page
+     full of variable names. IBM Plex Sans does not need the alternates - it
+     draws a tailed 'l' and a serifed 'I' by default, which is a large part of
+     why it was picked for a page where "l" and "1" appear in the same sentence
+     as prose. `zero` is Plex's own slashed zero, on for the same reason. */
+  font-feature-settings:'zero' 1;
 }
 
 /* Numbers that change in place - attempt counts, step "3 of 7", timers - must
    not reflow as their digits change. */
 .tnum,.attempts,td,th,.pill{font-variant-numeric:tabular-nums}
 
-/* Aurora behind the glass. Without something moving back here the
-   blur has nothing to refract and panels read as flat fills. */
+/* A single fixed wash behind the glass, so the blur has something to refract
+   and panels do not read as flat fills.
+
+   It used to be three saturated blobs on a 34s drift animation. Two problems
+   with that: a background that MOVES pulls the eye away from the task on a page
+   whose whole job is concentration, and at .30/.42 alpha it tinted every card
+   a different colour depending on where it sat. Now: two low-alpha pools,
+   anchored at the top where the header floats, and completely still. */
 body::before{
   content:"";
-  position:fixed; inset:-30vmax;
+  position:fixed; inset:0;
   z-index:var(--z-behind);
   background:
-    radial-gradient(38vmax 38vmax at 18% 12%, rgba(99,102,241,.30), transparent 62%),
-    radial-gradient(32vmax 32vmax at 82% 22%, rgba(129,140,248,.20), transparent 62%),
-    radial-gradient(42vmax 42vmax at 62% 88%, rgba(49,46,129,.42), transparent 62%);
-  filter:blur(28px);
-  animation:drift 34s ease-in-out infinite alternate;
-}
-@keyframes drift{
-  0%{transform:translate3d(0,0,0) scale(1)}
-  50%{transform:translate3d(2.5%,-2%,0) scale(1.06)}
-  100%{transform:translate3d(-2%,2.5%,0) scale(1.02)}
+    radial-gradient(50vmax 46vmax at 12% -6%, rgba(99,102,241,.16), transparent 58%),
+    radial-gradient(46vmax 42vmax at 92% 2%, rgba(79,70,229,.13), transparent 58%);
 }
 
-/* ---------- floating header ---------- */
+/* ---------- floating header ----------
+   Three zones, not a flex row: NAVIGATION left, WORDMARK centre, ACCOUNT right.
+
+   Grid rather than flex with a spacer, because the wordmark has to be centred
+   on the PAGE, not on whatever space the two sides happen to leave. The 1fr /
+   auto / 1fr columns are what guarantee that - with a flex row the mark drifts
+   left or right as a nav item or a longer name changes the side widths, which
+   is exactly the sort of thing that reads as unfinished.
+
+   The old bar also carried a sliding-glider pill nav. With one destination per
+   role it was an animated highlight that never moved, taking up the centre of
+   the bar where the brand belongs. */
 .hdr{
-  position:fixed; top:18px; left:50%;
+  position:fixed; top:16px; left:50%;
   transform:translateX(-50%);
   z-index:var(--z-header);
   width:min(1180px,calc(100vw - 32px));
-  display:flex; align-items:center; gap:14px;
-  padding:10px 12px 10px 20px;
-  border-radius:999px;
+  display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:12px;
+  padding:9px 14px;
+  border-radius:16px;
   background:var(--glass-bg-strong);
   border:1px solid var(--glass-line);
   box-shadow:var(--shadow-lg),var(--glass-lift);
@@ -200,52 +241,49 @@ body::before{
              top .28s cubic-bezier(.4,0,.2,1),
              box-shadow .28s ease;
 }
-.hdr.condensed{top:10px; padding:6px 10px 6px 16px; box-shadow:var(--shadow-md),var(--glass-lift)}
+.hdr.condensed{top:8px; padding:5px 12px; box-shadow:var(--shadow-md),var(--glass-lift)}
 .hdr.wide{width:min(1500px,calc(100vw - 32px))}
 
-.brand{
-  display:flex; align-items:center; gap:9px;
-  font-weight:700; letter-spacing:-.02em; font-size:15px;
-  color:var(--text-bright); text-decoration:none; white-space:nowrap;
-}
-.brand .dot{
-  width:9px; height:9px; border-radius:50%;
-  background:var(--indigo-500);
-  box-shadow:0 0 0 4px rgba(99,102,241,.18);
-}
-.hdr .spacer{flex:1}
+.hnav{display:flex; align-items:center; gap:7px; justify-self:start; min-width:0}
+.hacct{justify-self:end}
 
-/* Nav pills: the highlight slides under whichever one is active. */
-.navpills{position:relative; display:flex; gap:2px; padding:3px;
-          border-radius:999px; background:rgba(10,14,39,.5);
-          border:1px solid rgba(165,180,252,.08)}
-.navpills a{
-  position:relative; z-index:var(--z-base);
-  padding:6px 15px; border-radius:999px;
-  font-size:13.5px; font-weight:500;
-  color:var(--text-muted); text-decoration:none;
-  transition:color .2s ease; white-space:nowrap;
+/* The wordmark. Uppercase and letter-spaced because this is a brand mark
+   rather than a heading - it is meant to be recognised, not read. */
+.wordmark{
+  justify-self:center;
+  display:inline-flex; align-items:center; gap:9px;
+  font-family:var(--font-display);
+  font-weight:700; font-size:14px; letter-spacing:.17em;
+  text-transform:uppercase; white-space:nowrap;
+  color:var(--text-bright); text-decoration:none;
+  padding:4px 6px; border-radius:9px;
+  /* The right-hand letter-spacing hangs off the last letter, so without this
+     the word sits a hair left of true centre. */
+  text-indent:.17em;
+  transition:color .2s ease;
 }
-.navpills a:hover{color:var(--text-bright)}
-.navpills a.on{color:#fff}
-.navpills .glider{
-  position:absolute; z-index:0; top:3px; bottom:3px; left:0; width:0;
-  border-radius:999px;
-  background:linear-gradient(135deg,var(--indigo-600),#4f46e5);
-  box-shadow:0 3px 12px rgba(99,102,241,.4);
-  transition:transform .32s cubic-bezier(.4,0,.2,1), width .32s cubic-bezier(.4,0,.2,1);
+.wordmark:hover{color:var(--indigo-400)}
+.wordmark .dot{
+  width:8px; height:8px; border-radius:50%; flex:none; text-indent:0;
+  background:var(--indigo-500);
+  box-shadow:0 0 0 4px rgba(99,102,241,.16);
 }
-/* Standalone "Home" button in the header, sitting next to the brand. */
+
+/* Header navigation buttons ("Home", and "Assignments" for an instructor). */
 .hbtn{
-  display:inline-flex; align-items:center; gap:6px;
-  padding:6px 13px; border-radius:999px;
+  display:inline-flex; align-items:center; gap:7px;
+  padding:7px 13px; border-radius:9px;
   font-size:13px; font-weight:500; white-space:nowrap;
   color:var(--text-muted); text-decoration:none;
-  background:rgba(10,14,39,.5);
-  border:1px solid rgba(165,180,252,.08);
-  transition:color .2s ease, background .2s ease;
+  background:transparent;
+  border:1px solid transparent;
+  transition:color .18s ease, background .18s ease, border-color .18s ease;
 }
-.hbtn:hover{color:var(--text-bright); background:rgba(99,102,241,.16)}
+.hbtn:hover{color:var(--text-bright); background:rgba(129,140,248,.13);
+            border-color:var(--glass-line)}
+.hbtn.on{color:var(--text-bright); background:rgba(129,140,248,.11);
+         border-color:var(--glass-line)}
+.hbtn svg{flex:none; opacity:.85}
 
 /* Profile button + dropdown menu. */
 .account{position:relative; display:flex}
@@ -326,8 +364,13 @@ body::before{
 }
 .card.tight{padding:18px}
 
-h1{font-size:30px; line-height:1.2; letter-spacing:-.03em; margin:0 0 8px; font-weight:700}
-h2{font-size:17px; letter-spacing:-.01em; margin:0 0 4px; font-weight:600}
+/* Headings carry the display face; everything else is body text in Plex Sans.
+   Lexend runs a touch wide, so the tracking is pulled in at display sizes -
+   without that, a 30px h1 sits noticeably looser than the copy under it. */
+h1,h2,h3{font-family:var(--font-display)}
+h1{font-size:30px; line-height:1.2; letter-spacing:-.025em; margin:0 0 8px; font-weight:600}
+h2{font-size:17px; letter-spacing:-.015em; margin:0 0 4px; font-weight:600}
+h3{font-size:15px; letter-spacing:-.01em; margin:0 0 4px; font-weight:600}
 .sub{color:var(--text-muted); margin:0 0 20px; font-size:14px}
 .hint{color:var(--text-dim); font-size:13px; margin:0 0 14px}
 .muted{color:var(--text-muted)}
@@ -336,7 +379,8 @@ h2{font-size:17px; letter-spacing:-.01em; margin:0 0 4px; font-weight:600}
 
 /* ---------- controls ---------- */
 button{
-  font:inherit; font-weight:600; font-size:14px;
+  font:inherit; font-family:var(--font-display);
+  font-weight:600; font-size:13.5px; letter-spacing:-.005em;
   border:0; border-radius:10px; padding:10px 18px; cursor:pointer;
   /* 40px here, 44px on coarse pointers below. A 38px-tall button is fine with
      a mouse and genuinely hard to hit with a thumb. */
@@ -361,16 +405,22 @@ button{
 button:hover:not(:disabled){transform:translateY(-1px); box-shadow:0 7px 20px rgba(99,102,241,.42)}
 button:active:not(:disabled){transform:translateY(0)}
 button:disabled{opacity:.45; cursor:not-allowed; box-shadow:none}
-button.ghost{
+/* `.ghost`, not `button.ghost`: the design-upload control is a <label> dressed
+   as a button (a bare file input renders an unstyled OS widget), and under the
+   old selector it matched nothing and rendered as plain text - a button-shaped
+   affordance with no button on it. The box properties are restated here for the
+   same reason, since a <label> inherits none of the base button rule. */
+.ghost{
   background:rgba(165,180,252,.07); color:var(--indigo-400);
   border:1px solid var(--glass-line); box-shadow:none;
+  border-radius:10px; font-family:var(--font-display); font-weight:600;
 }
-button.ghost:hover:not(:disabled){background:rgba(165,180,252,.13); color:var(--text-bright)}
+.ghost:hover:not(:disabled){background:rgba(165,180,252,.13); color:var(--text-bright)}
 
 input[type=text],input[type=password],select,textarea{
   font:inherit; font-size:14px;
   padding:10px 13px; border-radius:10px;
-  background:rgba(10,14,39,.55);
+  background:rgba(11,17,32,.55);
   border:1px solid var(--card-border);
   color:var(--text-bright);
   transition:var(--transition);
@@ -421,7 +471,7 @@ ul.pick{list-style:none; padding:0; margin:0; display:grid; gap:9px}
 ul.pick button{
   width:100%; text-align:left; display:flex; align-items:center; gap:12px;
   padding:14px 16px; border-radius:13px;
-  background:rgba(26,31,61,.55); color:var(--text-bright);
+  background:rgba(26,35,56,.55); color:var(--text-bright);
   border:1px solid var(--glass-line); box-shadow:none; font-weight:500;
 }
 ul.pick button:hover{
@@ -433,14 +483,14 @@ ul.pick .pill{margin-left:auto}
 table{width:100%; border-collapse:collapse; font-size:14px}
 th{font-size:11px; text-transform:uppercase; letter-spacing:.1em; color:var(--text-dim);
    text-align:left; padding:8px 6px; border-bottom:1px solid var(--card-border); font-weight:600}
-td{padding:11px 6px; border-bottom:1px solid rgba(37,42,74,.5); color:var(--text-muted)}
+td{padding:11px 6px; border-bottom:1px solid rgba(38,49,73,.5); color:var(--text-muted)}
 td:first-child{color:var(--text-bright); font-weight:500}
 
-code{background:rgba(10,14,39,.6); padding:2px 6px; border-radius:5px;
+code{background:rgba(11,17,32,.6); padding:2px 6px; border-radius:5px;
      font-family:var(--font-mono); font-size:12.5px;
      color:var(--indigo-400)}
 pre.code{
-  background:rgba(10,14,39,.75); border:1px solid var(--card-border);
+  background:rgba(11,17,32,.75); border:1px solid var(--card-border);
   border-radius:12px; padding:15px; overflow:auto;
   font-family:var(--font-mono);
   font-size:12.5px; line-height:1.65; color:#d6dde8; margin:0;
@@ -455,14 +505,14 @@ pre.code::-webkit-scrollbar-track{background:transparent}
 .CodeMirror{
   height:auto; min-height:190px;
   border-radius:12px; border:1px solid var(--card-border);
-  background:rgba(10,14,39,.75) !important;
+  background:rgba(11,17,32,.75) !important;
   font-family:var(--font-mono);
   font-size:13px; line-height:1.65;
   padding:8px 4px;
   transition:var(--transition);
 }
 .CodeMirror-focused{border-color:var(--indigo-500); box-shadow:0 0 0 3px rgba(99,102,241,.16)}
-.CodeMirror-gutters{background:transparent !important; border-right:1px solid rgba(37,42,74,.7)}
+.CodeMirror-gutters{background:transparent !important; border-right:1px solid rgba(38,49,73,.7)}
 .CodeMirror-linenumber{color:var(--text-dim)}
 .CodeMirror-cursor{border-left:2px solid var(--indigo-400)}
 
@@ -479,8 +529,16 @@ pre.code::-webkit-scrollbar-track{background:transparent}
      accessibility violation. */
   input[type=text],input[type=password],input[type=email],select,textarea{
     font-size:16px}
-  .navpills a{padding:6px 11px; font-size:13px}
   .who .nm{display:none}
-  .hbtn{padding:6px 10px}
+  .hbtn{padding:7px 9px}
+  /* The label goes, the icon stays: a 36px icon button is still a real target,
+     and the wordmark keeps the centre column it needs. */
   .hbtn .htext{display:none}
+  .wordmark{font-size:12px; letter-spacing:.13em; text-indent:.13em}
+  .wordmark .dot{width:7px; height:7px; box-shadow:0 0 0 3px rgba(99,102,241,.16)}
+}
+/* Below this the three columns cannot all fit; the mark keeps the centre and
+   the account collapses to its avatar. */
+@media (max-width:400px){
+  .hdr{gap:6px; padding:8px 10px}
 }

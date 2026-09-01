@@ -137,23 +137,29 @@ function renderGraph(el, graph, emptyText){
   graph.nodes.forEach(n => {
     const p = pos[n.id], s = G_STYLE[n.kind] || G_STYLE.step;
     const r = (n.kind === "start" || n.kind === "end") ? G_H / 2 : 10;
+    const cx = p.x + G_W / 2;                    // node centre-line
     parts.push(`<g class="gnode"><title>${gEsc(n.label)}</title>`);
     parts.push(`<rect x="${p.x}" y="${p.y}" width="${G_W}" height="${G_H}" `
              + `rx="${r}" fill="${s.fill}" stroke="${s.stroke}" stroke-width="1.5"/>`);
-    // A 3px colour bar keeps the kind legible even for a reader who cannot
-    // separate the amber and green outlines — colour is never the only cue.
+    // A colour bar along the TOP edge keeps the kind legible for a reader who
+    // cannot separate the amber and green outlines — colour is never the only
+    // cue. It ran down the left edge before, which pushed the (left-aligned)
+    // text off-centre and was most of why the boxes looked lopsided; centred on
+    // the top it frames the label instead of fighting it.
     if (n.kind !== "start" && n.kind !== "end"){
-      parts.push(`<rect x="${p.x + 1}" y="${p.y + 9}" width="3" `
-               + `height="${G_H - 18}" rx="1.5" fill="${s.stroke}"/>`);
+      parts.push(`<rect x="${p.x + 14}" y="${p.y + 1}" width="${G_W - 28}" `
+               + `height="3" rx="1.5" fill="${s.stroke}"/>`);
     }
-    parts.push(`<text x="${p.x + 13}" y="${p.y + 18}" font-size="8.5" `
-             + `font-weight="600" fill="${s.text}" letter-spacing="1.1">${
+    // Both lines centred on the node's own centre-line: the KIND eyebrow above,
+    // the label below it, each with text-anchor="middle".
+    parts.push(`<text x="${cx}" y="${p.y + 19}" text-anchor="middle" font-size="8.5" `
+             + `font-weight="700" fill="${s.text}" letter-spacing="1.4">${
                  gEsc(n.kind.toUpperCase())}</text>`);
     // Labels are clipped to 60 chars server-side; this second trim is for the
     // pixel width of the box, which a character count does not predict. The
     // full text stays reachable as the <title> tooltip on the group.
     const label = n.label.length > 24 ? n.label.slice(0, 23) + "…" : n.label;
-    parts.push(`<text x="${p.x + 13}" y="${p.y + 34}" font-size="11.5" `
+    parts.push(`<text x="${cx}" y="${p.y + 35}" text-anchor="middle" font-size="12" `
              + `fill="var(--text-bright)">${gEsc(label)}</text></g>`);
   });
 

@@ -7,7 +7,10 @@
 <title>MicroTutor: Practice</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- Same URL as ui.css's @import, so the faces start downloading in
+     parallel with the stylesheet instead of waiting for it to parse.
+     The @import stays the single source of truth; this is a head start. -->
+<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="ui.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/dracula.min.css">
@@ -32,18 +35,63 @@
     .chat{height:520px}
   }
 
-  .statement{white-space:pre-wrap; background:rgba(10,14,39,.42);
-             border:1px solid var(--card-border); border-radius:12px;
-             padding:15px; font-size:14.5px; color:var(--text-muted); line-height:1.65}
+  /* The problem statement. No box: it was a tinted, bordered panel inside the
+     card, i.e. a card inside a card, which is most of why the whole left column
+     read as busy. It is the primary reading on the page, so it gets size and
+     air instead of a container. */
+  .statement{font-size:16.5px; color:var(--text-muted); line-height:1.72}
+  .statement > p{margin:0 0 12px}
+  .statement > p:last-child{margin-bottom:0}
 
-  /* ---- signature: the step spine ----
+  /* Worked examples, pulled out of the prose into Input/Output pairs.
+     "Example:" on its own line; each case indented under it against a rule so
+     two cases are told apart at a glance. */
+  .examples{margin-top:16px}
+  .ex-label{font-size:11px; font-weight:600; letter-spacing:.11em;
+            text-transform:uppercase; color:var(--indigo-400); margin:0 0 9px}
+  .ex-case{padding-left:15px; border-left:2px solid var(--glass-line);
+           display:grid; gap:5px; margin-bottom:11px}
+  .ex-case:last-child{margin-bottom:0}
+  .io{display:flex; gap:10px; align-items:baseline; line-height:1.5}
+  .io > span{flex:none; width:54px; font-size:11px; font-weight:600;
+             letter-spacing:.05em; text-transform:uppercase; color:var(--text-dim)}
+  .io > code{font-size:12.5px; white-space:pre-wrap; word-break:break-word}
+
+  /* ---- the step spine ----
      Order is real here. Step 3 cannot be attempted before step 2, so
      numbering carries information rather than decorating. Each node
      also records HOW it was completed, which is the distinction the
-     whole product turns on. */
-  .spine{list-style:none; margin:18px 0 0; padding:0; position:relative}
+     whole product turns on.
+
+     The spine used to run straight on from the problem text inside the same
+     card, with only a top margin between them - so it read as a continuation
+     of the statement rather than as the plan the student works through. The
+     header below is a labelled divider that says what this list IS. */
+  .planhead{display:flex; align-items:center; gap:10px;
+            margin:20px 0 4px; padding-top:16px;
+            border-top:1px solid var(--glass-line)}
+  .planhead h2{margin:0; font-size:12px; font-weight:600; letter-spacing:.1em;
+               text-transform:uppercase; color:var(--indigo-400)}
+  .planhead .pill{margin-left:auto}
+  .planhint{font-size:12.5px; color:var(--text-dim); margin:0 0 4px; line-height:1.5}
+
+  .spine{list-style:none; margin:14px 0 0; padding:0; position:relative}
   .spine::before{content:""; position:absolute; left:13px; top:12px; bottom:12px;
-                 width:2px; background:rgba(37,42,74,.9); border-radius:2px}
+                 width:2px; background:rgba(38,49,73,.9); border-radius:2px}
+
+  /* Skeleton shown while /decompose_chunks is in flight. Same shape as the
+     real spine - three nodes on the connector - so the list does not jump
+     when the steps land, it just resolves. */
+  .spine.loading .node{border-style:dashed; background:transparent;
+                       color:var(--text-dim)}
+  .spine.loading .stitle{padding-top:9px}
+  .skel{height:11px; border-radius:6px;
+        background:linear-gradient(90deg,
+          rgba(165,180,252,.05) 25%, rgba(165,180,252,.16) 37%,
+          rgba(165,180,252,.05) 63%);
+        background-size:400% 100%; animation:skelSweep 1.4s ease infinite}
+  @keyframes skelSweep{from{background-position:100% 0} to{background-position:0 0}}
+  @media (prefers-reduced-motion:reduce){ .skel{animation:none} }
   .spine li{position:relative; padding:0 0 14px 40px; min-height:28px}
   .spine li:last-child{padding-bottom:0}
   .node{position:absolute; left:0; top:0; width:28px; height:28px; border-radius:50%;
@@ -78,6 +126,15 @@
   .filename{align-self:center; font-size:12.5px; color:var(--text-dim);
             max-width:190px; overflow:hidden; text-overflow:ellipsis;
             white-space:nowrap}
+  /* The gate panel is dark in BOTH themes (it sits on the code surface, which
+     is), so its controls keep the dark-theme treatment even in light mode -
+     otherwise the ghost button turns light-on-light and vanishes. */
+  :root[data-theme="light"] .gate .ghost{
+    background:rgba(165,180,252,.1); color:#a5b4fc;
+    border-color:rgba(165,180,252,.16)}
+  :root[data-theme="light"] .gate .ghost:hover{
+    background:rgba(165,180,252,.18); color:#f1f5f9}
+  :root[data-theme="light"] .gate .filename{color:#8492aa}
 
   /* ---- chat ---- */
   .chatcol{position:sticky; top:96px}
@@ -94,7 +151,7 @@
   .bub{max-width:88%; padding:10px 13px; border-radius:14px; font-size:13.5px;
        line-height:1.55; white-space:pre-wrap; animation:pop .22s ease both}
   @keyframes pop{from{opacity:0; transform:translateY(5px)} to{opacity:1; transform:none}}
-  .bub.bot{align-self:flex-start; background:rgba(26,31,61,.75);
+  .bub.bot{align-self:flex-start; background:rgba(26,35,56,.75);
            border:1px solid var(--glass-line); border-bottom-left-radius:5px;
            color:var(--text-muted)}
   .bub.me{align-self:flex-end; color:#fff; border-bottom-right-radius:5px;
@@ -128,12 +185,101 @@
     .think i{animation:none; opacity:.6}
   }
 
-  /* Locked editor until the tutor releases the student. */
-  .locked{position:relative}
-  /* Visible state for the design gate: CodeMirror has no disabled look of its
-     own, so dim it and show the not-allowed cursor while readOnly:"nocursor". */
-  .CodeMirror.cm-gate-locked{opacity:.5; filter:grayscale(.35)}
+  /* ---- the code surface ----
+     ONE continuous listing: the function so far is frozen on top, the editor
+     for this step is welded to the bottom of it.
+
+     It used to be two separate cards - "Your solution so far" above and "You
+     are completing this function" below - so the code a student had already
+     written was a scroll away from the box they were writing the next line in.
+     They are one artifact and they now look like one: same font, same
+     background, same left inset, no gap and no seam. CodeMirror's line numbers
+     pick up where the frozen part stops (see firstLineNumber in ensureEditor),
+     so the whole thing reads as a single file. */
+  .codestack{border:1px solid var(--card-border); border-radius:12px;
+             overflow:hidden; background:rgba(8,12,22,.72)}
+  .codestack.focus{border-color:var(--indigo-500);
+                   box-shadow:0 0 0 3px rgba(99,102,241,.16)}
+
+  .ctx{display:flex; max-height:230px; overflow:auto;
+       font-family:var(--font-mono); font-size:13px; line-height:1.65}
+  .ctx::-webkit-scrollbar{width:9px; height:9px}
+  .ctx::-webkit-scrollbar-thumb{background:rgba(165,180,252,.2); border-radius:99px}
+  /* Width is set from the live editor's gutter at render time, which is the
+     only way these two columns line up to the pixel across font loading,
+     zoom and a jump from line 9 to line 10. */
+  .ctxGutter{flex:none; text-align:right; padding:10px 0 0;
+             color:var(--text-dim); user-select:none; white-space:pre}
+  /* padding-left matches CodeMirror's own `.CodeMirror-line{padding:0 4px}`,
+     without which the frozen lines sit 4px left of the editable ones. */
+  .ctxCode{flex:1; margin:0; padding:10px 12px 10px 4px; white-space:pre;
+           color:#8f9cb5; background:none; border:0; border-radius:0}
+  /* The frozen part is dimmer than the editor below it: it is context, and the
+     one line the student is writing should be the brightest thing in the box. */
+  .ctxCode .cAccept{color:#c3cddd}
+  .ctxCode .cHead{color:var(--indigo-400)}
+
+  .ctxEmpty{padding:11px 14px; font-size:12.5px; color:var(--text-dim);
+            font-family:var(--font-sans)}
+
+  /* The seam between frozen and editable. A hairline, not a gap. */
+  .codestack .editorWrap{position:relative; border-top:1px solid rgba(165,180,252,.13)}
+  /* The gate panel is taller than an empty editor, and it is positioned
+     absolutely, so it does not push the box open by itself - it just gets
+     clipped. Reserve the height for as long as the gate is up. */
+  .codestack .editorWrap.locked{min-height:236px}
+  .codestack .CodeMirror{border:0; border-radius:0; background:transparent !important;
+                         min-height:150px; padding:2px 0}
+  .codestack .CodeMirror-focused{box-shadow:none; border:0}
+  .codestack .CodeMirror-gutters{border-right:0; background:transparent !important}
+
+  /* ---- the design gate ----
+     Shown OVER the editor, because the editor is the thing that is locked and
+     that is where the student is about to try to type.
+
+     The old version was an amber banner with a lock beneath the editor, plus a
+     separate file-picker row beneath that: two stacked strips of chrome, in the
+     one colour on the page that otherwise means "you needed help", for a state
+     that is simply the normal beginning of every problem. It read as a warning
+     about something going wrong. Nothing is wrong - the student has not
+     designed yet. So: neutral slate, no alarm colour, and the upload control
+     lives INSIDE the panel, which removes the second row entirely. */
+  .gate{position:absolute; inset:0; z-index:2;
+        display:flex; align-items:center; justify-content:center; padding:18px;
+        background:linear-gradient(180deg,rgba(11,17,32,.80),rgba(11,17,32,.93));
+        backdrop-filter:blur(2.5px); -webkit-backdrop-filter:blur(2.5px);
+        animation:gateIn .22s ease both}
+/* `.gate{display:flex}` outranks the UA's `[hidden]{display:none}`, so without
+   this the overlay stays up after the design is approved and the editor it is
+   covering can never be typed into. Same trap as .modal in ui.css. */
+  .gate[hidden]{display:none}
+  @keyframes gateIn{from{opacity:0} to{opacity:1}}
+  .gateInner{max-width:400px; text-align:center}
+  .gateIcon{width:34px; height:34px; margin:0 auto 11px; border-radius:10px;
+            display:grid; place-items:center; color:var(--indigo-400);
+            background:rgba(99,102,241,.14);
+            border:1px solid rgba(129,140,248,.24)}
+  .gateInner h3{font-family:var(--font-display); font-size:14.5px; font-weight:600;
+                color:var(--text-bright); margin:0 0 5px; letter-spacing:-.01em}
+  .gateInner p{margin:0 0 14px; font-size:12.5px; line-height:1.6;
+               color:var(--text-muted)}
+  /* One row of controls on a shared baseline. The file label is a <label>
+     dressed as a button, so it needs the button's height stated explicitly or
+     it sits a few pixels shallower than the one beside it. */
+  .gateRow{display:flex; gap:8px; align-items:center; justify-content:center;
+           flex-wrap:wrap}
+  .gateRow .filepick{min-height:38px; padding:0 14px}
+  .gateRow button{min-height:38px}
+  .gateRow .filename{max-width:150px}
+  /* Visible state for the editor underneath: CodeMirror has no disabled look of
+     its own, so desaturate it while readOnly:"nocursor" holds. */
+  .CodeMirror.cm-gate-locked{filter:grayscale(.5) opacity(.55)}
   .CodeMirror.cm-gate-locked, .CodeMirror.cm-gate-locked *{cursor:not-allowed}
+  :root[data-theme="light"] .codestack{background:#0f1626}
+  :root[data-theme="light"] .gate{
+    background:linear-gradient(180deg,rgba(15,22,38,.82),rgba(15,22,38,.94))}
+  :root[data-theme="light"] .gateInner h3{color:#f1f5f9}
+  :root[data-theme="light"] .gateInner p{color:#9aa8bd}
   /* ---- flowcharts ----
      These cards sit BELOW .split so they get the full page width. A flowchart
      is wide by nature; inside the 372px chat column it was unreadable. */
@@ -151,7 +297,7 @@
   .graphPair{display:grid; grid-template-columns:1fr 1fr; gap:18px}
   @media (max-width:900px){ .graphPair{grid-template-columns:1fr} }
   .graphBox{min-width:0;                        /* let the child scroller win */
-    background:rgba(10,14,39,.24); border:1px solid var(--glass-line);
+    background:rgba(11,17,32,.24); border:1px solid var(--glass-line);
     border-radius:14px; padding:14px 14px 6px}
   :root[data-theme="light"] .graphBox{background:rgba(15,23,42,.03)}
   .graphBox h3, .graphDiff h3{display:flex; align-items:center; gap:8px;
@@ -184,10 +330,6 @@
   .gnode rect{transition:opacity .18s ease}
   .gnode:hover rect{opacity:.82}
   .gnode{cursor:default}
-  .lockNote{display:flex; gap:8px; align-items:flex-start; margin:10px 0 0;
-    padding:10px 12px; border-radius:10px; font-size:13px;
-    background:var(--amber-bg); color:var(--amber-text);
-    border:1px solid rgba(245,158,11,.25)}
   .cfoot button{padding:10px 15px}
   .chips{display:flex; gap:6px; flex-wrap:wrap; padding:0 18px 12px}
   /* min-height 32 + the 12px gap around the row clears a comfortable tap
@@ -209,7 +351,6 @@
   .filehidden:focus + .filepick{background:rgba(99,102,241,.16)}
 
   /* Light-theme fixes for the surfaces that hardcode a dark value above. */
-  :root[data-theme="light"] .statement{background:#eef1f7}
   :root[data-theme="light"] .spine::before{background:rgba(15,23,42,.12)}
   :root[data-theme="light"] .bub.bot{background:#eef1f7}
   :root[data-theme="light"] .chead .dot{box-shadow:0 0 0 3px rgba(21,128,61,.16)}
@@ -245,48 +386,68 @@
 
         <div class="card">
           <div class="statement" id="statement"></div>
-          <ol class="spine" id="spine"></ol>
-        </div>
-
-        <div class="card" id="soFarCard" hidden>
-          <h2>Your solution so far</h2>
-          <p class="hint">Steps you have finished, in order.</p>
-          <pre class="code" id="soFar"></pre>
+          <div class="planhead">
+            <h2>Your plan</h2>
+            <span class="pill" id="stepTotal">&hellip;</span>
+          </div>
+          <p class="planhint">Work through these in order. Each one is a single
+             line or idea; the current step is highlighted.</p>
+          <ol class="spine loading" id="spine"></ol>
         </div>
 
         <div class="card">
-          <p class="hint" style="margin-bottom:6px">You are completing this function:</p>
-          <pre class="code" id="sig" style="margin-bottom:14px"></pre>
           <p class="stepcount" id="stepCount"></p>
           <p class="prompt" id="prompt"></p>
-          <!-- Visually redundant (the prompt above says what to write), but a
-               screen reader otherwise announces this as an unnamed text field.
-               CodeMirror replaces the textarea and carries the label across. -->
-          <label class="sr-only" for="code">Your code for this step</label>
-          <textarea id="code"></textarea>
+
+          <!-- One code surface. The frozen part (function header + every step
+               already accepted) and the editor for THIS step are the same
+               listing, so nothing has to be scrolled away to see the rest. -->
+          <div class="codestack" id="codestack">
+            <div class="ctx" id="ctx" role="group" tabindex="0"
+                 aria-label="Your function so far">
+              <div class="ctxGutter" id="ctxGutter" aria-hidden="true"></div>
+              <pre class="ctxCode" id="ctxCode"></pre>
+            </div>
+            <div class="editorWrap" id="editorWrap">
+              <!-- Visually redundant (the prompt above says what to write), but
+                   a screen reader otherwise announces this as an unnamed text
+                   field. CodeMirror replaces the textarea and carries the label
+                   across. -->
+              <label class="sr-only" for="code">Your code for this step</label>
+              <textarea id="code"></textarea>
+
+              <!-- The design gate, over the thing it locks. -->
+              <div class="gate" id="gate" hidden>
+                <div class="gateInner">
+                  <!-- SVG, not the lock emoji: an emoji renders as a different
+                       picture on every OS and ignores the text colour around it. -->
+                  <span class="gateIcon">
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none"
+                         stroke="currentColor" stroke-width="2"
+                         stroke-linecap="round" aria-hidden="true">
+                      <rect x="3" y="11" width="18" height="11" rx="2"/>
+                      <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                    </svg>
+                  </span>
+                  <h3>Design first, then code</h3>
+                  <p>Upload your plan &mdash; a diagram, flowchart, or written
+                     approach as a PNG, JPEG, or PDF. The editor unlocks once
+                     the tutor agrees your design holds together.</p>
+                  <div class="gateRow">
+                    <input type="file" id="designFile" class="filehidden"
+                           accept="image/png,image/jpeg,application/pdf">
+                    <label for="designFile" class="ghost filepick">Choose file</label>
+                    <span class="filename" id="designName">No file chosen</span>
+                    <button id="designBtn">Submit design</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div class="row" style="margin-top:13px">
             <button id="submit">Submit step</button>
             <button class="ghost" id="backP">Another problem</button>
-          </div>
-          <p class="lockNote" id="lockNote" hidden>
-            <!-- SVG, not the 🔒 emoji: an emoji renders as a different picture
-                 on every OS and ignores the surrounding text colour. -->
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
-                 stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                 aria-hidden="true" style="flex:none; margin-top:2px">
-              <rect x="3" y="11" width="18" height="11" rx="2"/>
-              <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-            </svg>
-            <span>Submit your design first &mdash; a diagram, flowchart, or
-            written plan as a PNG, JPEG, or PDF. The tutor unlocks this once
-            your design holds together.</span>
-          </p>
-          <div class="row" id="designRow" style="margin-top:10px" hidden>
-            <input type="file" id="designFile" class="filehidden"
-                   accept="image/png,image/jpeg,application/pdf">
-            <label for="designFile" class="ghost filepick">Choose file</label>
-            <span class="filename" id="designName">No file chosen</span>
-            <button id="designBtn">Submit design</button>
           </div>
           <p class="attempts" id="attempts" role="status" aria-live="polite"></p>
           <!-- The grading verdict lands here. Without a live region a student
@@ -358,7 +519,7 @@
 <script src="graphs.js"></script>
 <script>
 const S = requireSession("student");
-mountHeader({active: "Practice", wide: true});
+mountHeader({active: "Home", wide: true});
 const $ = id => document.getElementById(id);
 
 let sessionId = null, chunks = [], idx = 0, accepted = [], editor = null, header = "";
@@ -371,7 +532,7 @@ let openProblem = null, chatLog = [], chatBusy = false;
 let tutorReleased = false;
 
 function applyTutorGate(){
-  const note = $("lockNote"), row = $("designRow"), code = $("code");
+  const gate = $("gate"), code = $("code");
   const btn = $("submit");
   if (btn) btn.disabled = !tutorReleased || btn.dataset.busy === "1";
   // CodeMirror ignores the underlying <textarea>'s `disabled` attribute, so
@@ -386,8 +547,9 @@ function applyTutorGate(){
     code.placeholder = tutorReleased
       ? "" : "Locked until your design is approved.";
   }
-  if (note) note.hidden = tutorReleased;
-  if (row) row.hidden = tutorReleased;
+  if (gate) gate.hidden = tutorReleased;
+  const wrap = $("editorWrap");
+  if (wrap) wrap.classList.toggle("locked", !tutorReleased);
 }
 
 // Review rounds are kept separate from chatLog: the reviewer judges "did they
@@ -398,7 +560,24 @@ let designLog = [];
 // The plan graph lives here between calls. It round-trips to the server on each
 // refresh because it belongs to a STUDENT and there is nobody to key it to yet
 // — see main/archive.py for where it goes once PSU login is live.
-let planGraph = null, planBusy = false;
+let planGraph = null, planBusy = false, planCardSeen = false;
+
+/* Show the plan-graph card, and the FIRST time it appears for a problem, scroll
+   it into view. It sits below the split, so a student who never scrolls past
+   the editor never learns the picture is being built at all - and "here is your
+   plan, drawn from what you said" is a big part of the point. Once per problem:
+   after that the graph updates in place and yanking the page around on every
+   tutor reply would be worse than the student missing it once. */
+function revealPlanCard(){
+  const card = $("planCard");
+  if (!card) return;
+  card.hidden = false;
+  if (!planCardSeen){
+    planCardSeen = true;
+    requestAnimationFrame(() =>
+      card.scrollIntoView({behavior: "smooth", block: "center"}));
+  }
+}
 
 async function refreshPlanGraph(){
   // Fire-and-forget: this is a drawing, never a gate. It must not delay the
@@ -416,7 +595,7 @@ async function refreshPlanGraph(){
     const g = await r.json();
     if (g && g.nodes && g.nodes.length){
       planGraph = g;
-      $("planCard").hidden = false;
+      revealPlanCard();
       renderGraph($("planLive"), g);
     }
   } catch (e) {
@@ -472,7 +651,7 @@ async function uploadDesign(){
     // prose, so it seeds planGraph before any chat-based refresh runs.
     if (data.plan_graph && data.plan_graph.nodes && data.plan_graph.nodes.length){
       planGraph = data.plan_graph;
-      $("planCard").hidden = false;
+      revealPlanCard();
       renderGraph($("planLive"), planGraph);
     }
     refreshPlanGraph();
@@ -521,15 +700,65 @@ async function openAssignment(id, name){
     b.onclick = () => start(ps[+b.dataset.i]));
 }
 
+/* Render a problem statement.
+
+   Docstrings arrive with the source's hard line-wraps intact, and pre-wrap was
+   preserving them - so a sentence broke wherever the author's editor had. Split
+   on blank lines into real paragraphs and collapse the single newlines inside
+   each, then lift any "Example:" paragraph out into Input/Output pairs. */
+function renderStatement(desc){
+  const box = $("statement");
+  box.innerHTML = "";
+  const text = (desc || "").trim();
+  if (!text) return;
+
+  for (const para of text.split(/\n\s*\n+/).map(s => s.trim()).filter(Boolean)){
+    const m = /^examples?\s*\d*\s*[:.]\s*([\s\S]+)$/i.exec(para);
+    const ex = m && renderExamples(m[1]);
+    if (ex){ box.appendChild(ex); continue; }
+    const el = document.createElement("p");
+    el.textContent = para.replace(/\s*\n\s*/g, " ");
+    box.appendChild(el);
+  }
+}
+
+/* "fn(args) -> result", one or more, comma / semicolon / newline separated.
+   Returns a node, or null when nothing parsed - the caller then falls back to
+   showing the paragraph as plain prose. */
+function renderExamples(blob){
+  const t = blob.replace(/\s*\n\s*/g, " ").trim();
+  const re = /([A-Za-z_]\w*\s*\([^()]*\))\s*(?:->|=>|→)\s*("(?:[^"\\]|\\.)*"|\[[^\]]*\]|\{[^}]*\}|[^,;]+?)(?=\s*[,;]\s*[A-Za-z_]\w*\s*\(|\s*$)/g;
+  const pairs = [];
+  let m;
+  while ((m = re.exec(t))) pairs.push([m[1].trim(), m[2].trim()]);
+  if (!pairs.length) return null;
+
+  const wrap = document.createElement("div");
+  wrap.className = "examples";
+  wrap.innerHTML = `<p class="ex-label">${pairs.length > 1 ? "Examples" : "Example"}</p>`
+    + pairs.map(([inp, out]) =>
+        `<div class="ex-case">
+           <div class="io"><span>Input</span><code>${esc(inp)}</code></div>
+           <div class="io"><span>Output</span><code>${esc(out)}</code></div>
+         </div>`).join("");
+  return wrap;
+}
+
 async function start(p){
   view("cSolve");
   $("probTitle").textContent = p.title || p.slug;
-  $("statement").textContent = p.description || "";
-  $("spine").innerHTML = "";
-  $("sig").textContent = "";
+  // Breadcrumb: the assignment this problem belongs to, then the problem. The
+  // eyebrow showed only the assignment name, so a student deep in a problem had
+  // no on-screen reminder of which set it came from.
+  const asg = ($("assignName").textContent || "").trim();
+  $("crumb2").textContent = asg ? `${asg}  ›  ${p.title || p.slug}`
+                                : (p.title || p.slug);
+  renderStatement(p.description);
+  spineLoading();
   $("stepCount").textContent = "";
   header = "";
-  $("soFarCard").hidden = true;
+  showEditor(true);
+  $("ctx").style.maxHeight = "";          // a previous finish() may have opened it
   $("submit").style.display = ""; $("backP").style.display = "";
   $("msg").innerHTML = `<div class="banner info">Getting this problem ready...</div>`;
   $("submit").disabled = true;
@@ -540,6 +769,7 @@ async function start(p){
   tutorReleased = false;
   designLog = [];
   planGraph = null;
+  planCardSeen = false;                   // scroll to the plan graph once, next problem
   if ($("designFile")) $("designFile").value = "";
   if ($("designName")) $("designName").textContent = "No file chosen";
   if ($("planCard")) $("planCard").hidden = true;
@@ -556,16 +786,32 @@ async function start(p){
       body: JSON.stringify({slug: p.slug, title: p.title,
                             description: p.description, student_id: S.name})
     });
-  } catch { return show("bad", "Could not reach the server."); }
-  if (!r.ok) return show("bad", "This problem could not be started. Try another one.");
+  } catch { return failStart("Could not reach the server."); }
+  if (!r.ok) return failStart("This problem could not be started. Try another one.");
 
   const d = await r.json();
   sessionId = d.session_id; chunks = d.chunks || []; header = d.header || "";
-  $("sig").textContent = header || "def solve(...):";
   $("msg").innerHTML = ""; $("submit").disabled = false;
   ensureEditor();
-  if (editor) editor.getWrapperElement().style.display = "";
+  showEditor(true);
   render();
+}
+
+/* Decomposition never arrived. Drop the loading skeleton so it does not shimmer
+   forever under an error message. */
+function failStart(msg){
+  $("spine").className = "spine";
+  $("spine").innerHTML = "";
+  $("stepTotal").textContent = "";
+  show("bad", msg);
+}
+
+/* The editor half of the code surface. Hidden when the problem is finished:
+   there is no next step to write, and an empty box under a completed function
+   invites the student to keep typing into nothing. */
+function showEditor(on){
+  const w = $("editorWrap");
+  if (w) w.hidden = !on;
 }
 
 function ensureEditor(){
@@ -583,13 +829,74 @@ function ensureEditor(){
       "Shift-Ctrl-L": "findAndSelectAll",
     },
   });
-  editor.setSize(null, 210);
+  editor.setSize(null, 168);
+  // The focus ring belongs to the WHOLE code surface, not to the lower half of
+  // it - the frozen context and the editor are presented as one box, so a ring
+  // around only the editable part would give that away as a lie.
+  editor.on("focus", () => $("codestack").classList.add("focus"));
+  editor.on("blur",  () => $("codestack").classList.remove("focus"));
   // A freshly created editor defaults to editable - re-assert the current gate
   // so it does not spring open the moment fromTextArea() runs.
   applyTutorGate();
 }
 
+/* The frozen half of the code surface: the function header plus every step
+   already accepted, drawn to line up exactly with the editor below it.
+
+   Returns how many lines it drew, which is what the editor's line numbering
+   has to continue from. */
+function renderContext(){
+  const lines = [];
+  lines.push({text: header || "def solve(...):", cls: "cHead"});
+  accepted.forEach(a => a.code.split("\n").forEach(
+    l => lines.push({text: l ? "    " + l : "", cls: "cAccept"})));
+
+  $("ctxCode").innerHTML = lines.map(
+    l => `<span class="${l.cls}">${esc(l.text) || "&nbsp;"}</span>`).join("\n");
+  $("ctxGutter").textContent = lines.map((_, i) => i + 1).join("\n");
+
+  matchGutter();
+  // Keep the newest accepted line in view rather than the top of the function.
+  $("ctx").scrollTop = $("ctx").scrollHeight;
+  return lines.length;
+}
+
+/* Match the frozen gutter to the editor's, to the pixel.
+
+   Measuring the live element is the only thing that stays correct across web
+   font loading, browser zoom, and the jump from line 9 to line 10 widening the
+   column - all of which would otherwise leave the two halves of one listing
+   visibly out of step. */
+function matchGutter(){
+  if (!editor) return;
+  const g = editor.getGutterElement();
+  const w = g && g.offsetWidth;
+  if (!w) return;
+  // `*{box-sizing:border-box}` means width INCLUDES the padding, so the frozen
+  // column occupies exactly the gutter's width. The 3px right padding is
+  // CodeMirror's own `.CodeMirror-linenumber{padding:0 3px 0 5px}`, which is
+  // what puts both sets of digits on the same right edge.
+  $("ctxGutter").style.width = w + "px";
+  $("ctxGutter").style.paddingRight = "3px";
+}
+
+/* Placeholder spine while the server is still splitting the problem into
+   steps. Three dashed nodes on the connector and shimmer bars where the step
+   text will be, so when the real steps arrive the list resolves in place
+   rather than popping in from nothing. */
+function spineLoading(){
+  $("spine").className = "spine loading";
+  $("spine").innerHTML = [78, 64, 52].map((w, i) => `
+    <li><span class="node">${i + 1}</span>
+      <div class="stitle"><span class="skel" style="display:block;width:${w}%"></span></div>
+    </li>`).join("");
+  $("stepTotal").innerHTML = "&hellip;";
+}
+
 function render(){
+  $("spine").className = "spine";
+  $("stepTotal").textContent = chunks.length
+    ? `${chunks.length} step${chunks.length === 1 ? "" : "s"}` : "";
   $("spine").innerHTML = chunks.map((c, i) => {
     const done = accepted[i];
     const cls = i === idx ? "now" : done ? (done.how === "revealed" ? "helped" : "own") : "";
@@ -606,14 +913,50 @@ function render(){
                            : `All ${chunks.length} steps complete`)
     : "";
   $("prompt").textContent = cur ? cur.prompt : "";
-  $("soFarCard").hidden = accepted.length === 0;
-  const body = accepted.map(a => a.code.split("\n").map(l => "    " + l).join("\n"));
-  $("soFar").textContent = [header, ...body].filter(Boolean).join("\n");
   $("attempts").textContent = "";
+
+  const shown = renderContext();
   if (editor) {
-    editor.setValue(""); editor.refresh();
+    // Numbering continues from the frozen part, so the editor is line N+1 of
+    // the same function rather than line 1 of a detached box.
+    editor.setOption("firstLineNumber", shown + 1);
+    // Seat the caret at the depth this step actually occupies. The server
+    // re-indents whatever arrives (main/indent.py), so this is a courtesy
+    // rather than a requirement - but a step that continues inside a loop
+    // should LOOK like it continues inside a loop, and a student typing at
+    // column 0 under a `while` has been told nothing about where their code
+    // is about to land.
+    const pad = " ".repeat((cur && cur.indent) || 0);
+    editor.setValue(pad);
+    editor.setCursor({line: 0, ch: pad.length});
+    editor.refresh();
+    // CodeMirror re-lays out its gutter after the option change, so the width
+    // read during renderContext() above was the PREVIOUS one. Re-measure on the
+    // next frame, when the new gutter is on screen.
+    requestAnimationFrame(matchGutter);
     if (tutorReleased) editor.focus();   // never pull focus into a locked editor
   }
+}
+
+/* Mirror of main/indent.py's align_to_chunk, for DISPLAY only.
+
+   The server re-seats every submission at its step's depth and stores that, so
+   a flat answer to a step inside a loop is stored indented. If the frozen
+   listing kept showing the raw text the student typed, the picture of their own
+   function would disagree with the one being graded - and it is the picture
+   they use to write the next step. Same rule, same result, both ends. */
+function alignToStep(code, columns){
+  const lines = String(code || "").replace(/\t/g, "    ").split("\n");
+  const filled = lines.filter(l => l.trim());
+  if (!filled.length) return "";
+  const cut = Math.min(...filled.map(l => l.length - l.trimStart().length));
+  const first = lines.findIndex(l => l.trim());
+  let last = lines.length - 1;
+  while (last >= 0 && !lines[last].trim()) last--;
+  const pad = " ".repeat(Math.max(0, columns || 0));
+  return lines.slice(first, last + 1)
+    .map(l => l.trim() ? pad + l.slice(cut).replace(/\s+$/, "") : "")
+    .join("\n");
 }
 
 function show(kind, text, extra){
@@ -651,7 +994,8 @@ $("submit").onclick = async () => {
   if (res.verdict === "indeterminate") return show("warn", res.reason);
 
   if (res.verdict === "correct") {
-    accepted[idx] = {code, how: "own"};
+    // Store it the way the server did, not the way it was typed.
+    accepted[idx] = {code: alignToStep(code, (chunks[idx] || {}).indent), how: "own"};
     idx = res.index;
     if (res.completed) return finish(res);
     render();
@@ -675,9 +1019,12 @@ $("submit").onclick = async () => {
 async function finish(res){
   render();
   $("prompt").textContent = "";
-  if (editor) editor.getWrapperElement().style.display = "none";
+  showEditor(false);
+  // With the editor gone the frozen listing IS the finished function, so let it
+  // grow instead of scrolling inside a 230px window.
+  $("ctx").style.maxHeight = "none";
+  renderContext();
   $("submit").style.display = "none";
-  $("soFarCard").hidden = false;
   show(res.solved_independently ? "ok" : "warn",
        res.solved_independently
          ? "Solved. Every step on your own, nice work."
@@ -695,7 +1042,8 @@ async function finish(res){
 
 $("backA").onclick = () => view("cAssign");
 $("backP").onclick = () => {
-  if (editor) editor.getWrapperElement().style.display = "";
+  showEditor(true);
+  $("ctx").style.maxHeight = "";          // undo the finish() expansion
   view("cProblem");
 };
 // "Home" now lives in the shared header (ui.js) and navigates to student.html,
@@ -804,6 +1152,13 @@ $("chips").addEventListener("click", e => {
   if (!e.target.classList.contains("chip")) return;
   sendToTutor(e.target.textContent);
 });
+
+// The frozen gutter is measured off the live editor, so anything that can
+// change the editor's metrics has to trigger a re-measure: the mono webfont
+// arriving after first paint (the common case - the first render uses the
+// fallback's digit width), and a resize or zoom.
+addEventListener("resize", matchGutter);
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(matchGutter);
 
 loadAssignments();
 </script>

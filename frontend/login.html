@@ -7,7 +7,10 @@
 <title>Sign in · MicroTutor</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- Same URL as ui.css's @import, so the faces start downloading in
+     parallel with the stylesheet instead of waiting for it to parse.
+     The @import stays the single source of truth; this is a head start. -->
+<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="ui.css">
 <style>
   body{display:grid; place-items:center; padding:24px}
@@ -38,7 +41,7 @@
   .field label{display:block; font-size:12.5px; color:var(--text-muted);
                margin-bottom:7px}
   .field input{width:100%; padding:12px 14px; border-radius:12px;
-    background:rgba(26,31,61,.5); border:1px solid var(--glass-line);
+    background:rgba(26,35,56,.5); border:1px solid var(--glass-line);
     color:var(--text-bright); font-size:14px; font-family:inherit;
     transition:var(--transition)}
   .field input:focus{outline:none; border-color:var(--indigo-500);

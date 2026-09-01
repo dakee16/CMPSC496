@@ -15,6 +15,8 @@ import secrets
 import sqlite3
 from datetime import datetime, timedelta, timezone
 
+from .indent import base_indent
+
 _DEFAULT_DB = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     "data", "grading_sessions.sqlite3")
@@ -134,9 +136,18 @@ def create_session(problem: dict, decomposition: dict, content_hash: str,
 
 
 def public_chunks(chunks: list[dict]) -> list[dict]:
-    """Strip references. The ONLY shape that may cross to the browser."""
+    """Strip references. The ONLY shape that may cross to the browser.
+
+    `indent` is the one number derived from a reference that DOES cross: the
+    column this step's code sits at. The grader re-seats submissions there
+    anyway (main/indent.py), so this is not load-bearing - it exists so the UI
+    can show a step that continues inside a loop AS being inside that loop,
+    instead of presenting an empty flat box and letting the student guess.
+    It leaks nesting depth and nothing else: no names, no logic, no code.
+    """
     return [{"step_id": c["step_id"], "prompt": c["prompt"],
-             "expected_type": c.get("expected_type", "code")} for c in chunks]
+             "expected_type": c.get("expected_type", "code"),
+             "indent": base_indent(c.get("reference") or "")} for c in chunks]
 
 
 def _row_to_session(r: sqlite3.Row) -> dict:

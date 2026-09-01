@@ -58,8 +58,8 @@ const initials = n => (n || "?").trim().split(/\s+/).slice(0, 2)
 const esc = s => String(s == null ? "" : s)
   .replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
-/* Floating glass header. `active` names the current nav item so the
-   glider can sit under it. */
+/* Floating glass header: navigation left, wordmark centre, account right.
+   `active` names the current page so its nav button can be marked. */
 function mountHeader({active = "", wide = false} = {}){
   const s = Session.get();
   // Tab title: plain "MicroTutor" for everyone except an instructor, whose
@@ -67,22 +67,36 @@ function mountHeader({active = "", wide = false} = {}){
   // header inherits it without its own <title> logic.
   document.title = (s && s.role === "teacher") ? "MicroTutor Portal" : "MicroTutor";
   const roleHome = s && s.role === "teacher" ? "teacher.html" : "student.html";
-  const links = s && s.role === "teacher"
-    ? [["teacher.html", "Upload"], ["teacher.html#list", "Assignments"]]
-    : [["student.html", "Practice"]];
+
+  // SVG, never an emoji or a dingbat glyph like the old &#8962;: those render
+  // as a different picture on every OS and ignore the surrounding text colour.
+  const homeIcon = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+    stroke="currentColor" stroke-width="2" stroke-linecap="round"
+    stroke-linejoin="round" aria-hidden="true">
+    <path d="M3 10.2 12 3l9 7.2V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>`;
+  const listIcon = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+    stroke="currentColor" stroke-width="2" stroke-linecap="round"
+    stroke-linejoin="round" aria-hidden="true">
+    <path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></svg>`;
+
+  // "Practice" is gone. It was a single-item nav pointing at the page the
+  // student was already on, so it navigated nowhere and cost the centre of the
+  // bar. Home covers it. An instructor keeps one extra destination, which sits
+  // on the LEFT beside Home rather than in the middle - the middle is the mark.
+  const nav = [`<a class="hbtn ${active === "Home" || !active ? "on" : ""}"
+      id="homeBtn" href="${roleHome}">${homeIcon}<span class="htext">Home</span></a>`];
+  if (s && s.role === "teacher"){
+    nav.push(`<a class="hbtn ${active === "Assignments" ? "on" : ""}"
+      href="teacher.html#list">${listIcon}<span class="htext">Assignments</span></a>`);
+  }
 
   const hdr = document.createElement("header");
   hdr.className = "hdr" + (wide ? " wide" : "");
   hdr.innerHTML = `
-    <a class="brand" href="${roleHome}"><span class="dot"></span>MicroTutor</a>
-    <a class="hbtn" id="homeBtn" href="${roleHome}"><span aria-hidden="true">&#8962;</span><span class="htext">Home</span></a>
-    <span class="spacer"></span>
-    <nav class="navpills" id="np">
-      <span class="glider" id="glider"></span>
-      ${links.map(([h, t]) =>
-        `<a href="${h}" class="${t === active ? "on" : ""}">${t}</a>`).join("")}
-    </nav>
-    <div class="account" id="acct">
+    <nav class="hnav" aria-label="Main">${nav.join("")}</nav>
+    <a class="wordmark" href="${roleHome}" aria-label="MicroTutor home">
+      <span class="dot" aria-hidden="true"></span>MicroTutor</a>
+    <div class="account hacct" id="acct">
       <button class="who" id="whoBtn" aria-haspopup="true" aria-expanded="false">
         <span class="avatar">${esc(initials(s && s.name))}</span>
         <span class="nm">${esc(s ? s.name : "guest")}</span>
@@ -123,25 +137,9 @@ function mountHeader({active = "", wide = false} = {}){
     openSettings(s);
   };
 
-  // Slide the highlight under the active pill, and let it follow the
-  // cursor on hover so the header responds rather than sitting still.
-  const nav = hdr.querySelector("#np"), glider = hdr.querySelector("#glider");
-  const items = [...nav.querySelectorAll("a")];
-  const moveTo = el => {
-    if (!el) { glider.style.width = "0px"; return; }
-    glider.style.width = el.offsetWidth + "px";
-    // .navpills is position:relative, so it is the offsetParent for BOTH the
-    // glider and the links: el.offsetLeft is already measured from it. The old
-    // `- nav.offsetLeft` also subtracted the nav's distance from the header's
-    // left edge (~1400px on a wide header), throwing the glider across the bar
-    // and parking it on top of the brand as a stray indigo blob.
-    glider.style.transform = `translateX(${el.offsetLeft}px)`;
-  };
-  const home = () => moveTo(items.find(a => a.classList.contains("on")) || items[0]);
-  items.forEach(a => a.addEventListener("mouseenter", () => moveTo(a)));
-  nav.addEventListener("mouseleave", home);
-  requestAnimationFrame(home);
-  addEventListener("resize", home);
+  // The sliding "glider" highlight that used to track the active pill is gone
+  // with the pills themselves. It measured offsets on every resize and hover to
+  // animate a bar under a nav that, for a student, had exactly one item.
 
   // Condense on scroll.
   let ticking = false;
