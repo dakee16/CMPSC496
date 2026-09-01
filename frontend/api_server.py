@@ -4,7 +4,7 @@ Place this file in your microprog_phase1/ folder and run:
     pip install fastapi uvicorn
     uvicorn api_server:app --port 8000 --reload
 """
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
@@ -144,6 +144,33 @@ class TutorChatRequest(BaseModel, extra="forbid"):
     slug: str
     messages: list[dict] = []
     chunk_prompt: str | None = None
+    # Whether this student's design has been approved by /design_review. It only
+    # selects the tutor's POSTURE (push back vs. help), so a forged `true` costs
+    # nothing worse than a friendlier tutor - it can never reveal a solution,
+    # since the tutor is not given one in either mode. The coding-UI lock itself
+    # is currently enforced client-side; making it server-authoritative needs an
+    # identity to key the approval to, which arrives with the PSU auth work.
+    design_ok: bool = False
+
+
+class PlanGraphRequest(BaseModel, extra="forbid"):
+    """Re-extract the plan graph from the chat so far.
+
+    `current` is the last graph the browser was given. It round-trips through
+    the client because the plan graph has nowhere to live yet - it belongs to a
+    STUDENT, and there is no authenticated student to key it to until the PSU
+    login lands. main/archive.py holds the storage that replaces this."""
+    slug: str
+    messages: list[dict] = []
+    current: dict | None = None
+
+
+class GraphsRequest(BaseModel, extra="forbid"):
+    """Both graphs plus their comparison, for a finished (or in-progress)
+    session. The code graph is derived server-side from the session's accepted
+    answers - the client cannot assert what code it wrote."""
+    session_id: str
+    plan: dict | None = None
 
 
 class MarkSolvedRequest(BaseModel, extra="forbid"):
@@ -249,7 +276,7 @@ def decompose_chunks_route(req: DecomposeRequest):
 
 
 @app.post("/grade_chunk")
-def grade_chunk_route(req: ChunkRequest):
+def grade_chunk_route(req: ChunkRequest, request: Request):
     """Grade one submission against a SERVER-OWNED session.
 
     All grading logic lives in main.grading.grade_submission - this route only
@@ -339,6 +366,23 @@ def grade_chunk_route(req: ChunkRequest):
                 "reason": result.student_reason[:500]}).execute()
         except Exception as e:
             print(f"  ⚠️  interaction log failed: {e}")
+
+    # Permanent archive. Inert until sign-in exists (current_student() is None,
+    # every writer short-circuits), and best-effort forever after: this runs
+    # AFTER commit_outcome, so an archive outage can never cost a graded answer.
+    # This is what makes the wrong attempts - the ones the session store drops
+    # on expiry - answer "where do students go wrong".
+    from main.archive import save_session_end, save_submission
+    _student = current_student(request)
+    save_submission(get_supabase() if _student else None, _student, session,
+                    session["index"], state["attempts"],
+                    req.student_code, {"verdict": result.verdict,
+                                       "tier": result.tier,
+                                       "deterministic": result.deterministic,
+                                       "reason": result.student_reason})
+    if state["completed"]:
+        save_session_end(get_supabase() if _student else None, _student,
+                         req.session_id, state)
 
     # PUBLIC response: no oracle data, no failures, no future references, no
     # adapted tail, no internal exception text.
@@ -799,7 +843,7 @@ def get_solved(student_id: str):
 
 
 @app.post("/tutor_chat")
-def tutor_chat(req: TutorChatRequest):
+def tutor_chat(req: TutorChatRequest, request: Request):
     """Socratic tutor for the problem currently open on the student page.
 
     Deliberately NOT session-bound: it never grades, never advances a session,
@@ -821,13 +865,265 @@ def tutor_chat(req: TutorChatRequest):
             "message": f"Unknown problem '{req.slug}'."})
 
     try:
-        out = reply(row[0], req.messages, req.chunk_prompt)
+        out = reply(row[0], req.messages, req.chunk_prompt, req.design_ok)
     except Exception as e:
         # A tutor outage is not a judgement about the student.
         raise HTTPException(status_code=503, detail={
             "reason_code": "tutor_unavailable",
             "message": "The tutor is unavailable right now. Try again shortly.",
             "detail": str(e)[:120]})
+
+    # Archive only the NEW turns - the student's last message and this reply.
+    # The client resends the whole history every call, so writing all of it
+    # would grow the transcript quadratically.
+    from main.archive import save_messages
+    _student = current_student(request)
+    if _student:
+        tail = [m for m in req.messages[-1:] if m.get("role") == "user"]
+        save_messages(get_supabase(), _student, req.slug, "tutor",
+                      tail + [{"role": "assistant", "content": out["reply"]}])
+    return out
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# PSU SIGN-IN (Microsoft Entra ID) — WRITTEN, TESTED, AND DORMANT
+#
+# To go live, in this order:
+#   1. Put AZURE_TENANT_ID / AZURE_CLIENT_ID / AZURE_CLIENT_SECRET /
+#      AZURE_REDIRECT_URI and MICROTUTOR_SESSION_SECRET in .env
+#      (see the header of main/psu_auth.py for exactly what each one is).
+#   2. pip install "PyJWT[crypto]"
+#   3. Delete the "# " at the start of every line in the block below.
+#   4. Delete the old /register and /login routes further down this file —
+#      they are bcrypt-against-Supabase and must not survive alongside SSO.
+#   5. In frontend/login.html, unhide the Microsoft button (one `hidden`).
+#
+# Nothing else in the app changes: current_student() returns None while this is
+# commented out, which is precisely today's anonymous behaviour.
+#
+# import secrets
+# from urllib.parse import quote
+#
+# from fastapi import Cookie, Request
+# from fastapi.responses import JSONResponse, RedirectResponse
+#
+# from main.psu_auth import (SESSION_COOKIE, AuthError, authorize_url,
+#                            cookie_kwargs, exchange_code, is_configured,
+#                            issue_session, new_pkce, read_session,
+#                            validate_id_token)
+#
+# # Local http development cannot set Secure cookies; anything else must.
+# _COOKIE_SECURE = os.environ.get("MICROTUTOR_ENV", "dev") != "dev"
+#
+#
+# @app.get("/auth/login")
+# def auth_login(login_hint: str | None = None):
+#     """Start sign-in. Redirects the browser to Microsoft."""
+#     if not is_configured():
+#         raise HTTPException(status_code=503, detail={
+#             "reason_code": "auth_not_configured",
+#             "message": "Sign-in is not configured on this server."})
+#     state, nonce = secrets.token_urlsafe(24), secrets.token_urlsafe(24)
+#     verifier, challenge = new_pkce()
+#     resp = RedirectResponse(authorize_url(state, nonce, challenge, login_hint))
+#     # state/nonce/verifier must survive the round trip to Microsoft but must
+#     # NOT be readable by page scripts, and must die with the browser session.
+#     for k, v in (("mt_state", state), ("mt_nonce", nonce),
+#                  ("mt_verifier", verifier)):
+#         resp.set_cookie(k, v, httponly=True, secure=_COOKIE_SECURE,
+#                         samesite="lax", max_age=600, path="/")
+#     return resp
+#
+#
+# @app.get("/auth/callback")
+# def auth_callback(code: str | None = None, state: str | None = None,
+#                   error: str | None = None, error_description: str | None = None,
+#                   mt_state: str | None = Cookie(default=None),
+#                   mt_nonce: str | None = Cookie(default=None),
+#                   mt_verifier: str | None = Cookie(default=None)):
+#     """Microsoft redirects here. Verify everything, then set our own cookie."""
+#     if error:
+#         # The student cancelled, or the tenant refused. Not our bug.
+#         return RedirectResponse(f"/login.html?error={error}")
+#     # Compared with compare_digest, not ==: state is the CSRF defence and a
+#     # timing-distinguishable comparison is the one weakness it must not have.
+#     if not (code and state and mt_state
+#             and secrets.compare_digest(state, mt_state)):
+#         raise HTTPException(status_code=400, detail={
+#             "reason_code": "bad_state",
+#             "message": "Sign-in expired. Please start again."})
+#     try:
+#         tokens = exchange_code(code, mt_verifier or "")
+#         claims = validate_id_token(tokens.get("id_token", ""), mt_nonce or "")
+#         session_token = issue_session(claims)     # raises on a non-PSU domain
+#     except AuthError as e:
+#         print(f"  ⚠️  sign-in rejected: {e.detail}")   # detail never leaves here
+#         return RedirectResponse(f"/login.html?denied={quote(str(e))}")
+#
+#     resp = RedirectResponse("/student.html")
+#     resp.set_cookie(SESSION_COOKIE, session_token,
+#                     **cookie_kwargs(secure=_COOKIE_SECURE))
+#     for k in ("mt_state", "mt_nonce", "mt_verifier"):
+#         resp.delete_cookie(k, path="/")           # single-use, by design
+#     return resp
+#
+#
+# @app.post("/auth/logout")
+# def auth_logout():
+#     resp = JSONResponse({"ok": True})
+#     resp.delete_cookie(SESSION_COOKIE, path="/")
+#     return resp
+#
+#
+# @app.get("/auth/me")
+# def auth_me(session: str | None = Cookie(default=None, alias=SESSION_COOKIE)):
+#     claims = read_session(session or "")
+#     if not claims:
+#         raise HTTPException(status_code=401, detail={
+#             "reason_code": "not_signed_in", "message": "Please sign in."})
+#     return {"email": claims["email"], "name": claims["name"],
+#             "student_id": claims["sub"]}
+
+
+def current_student(request: Request | None = None) -> str | None:
+    """The signed-in student's stable id, or None.
+
+    THE ONE PLACE the rest of the app asks "who is this". It returns None today
+    because sign-in is dormant, which is exactly the anonymous behaviour the app
+    already has - so every caller can be written against this now and will start
+    receiving real identities the moment the block above is uncommented, with no
+    second edit.
+
+    The id is the Entra `oid` claim, not the email: an email can be reassigned
+    when a student changes their name, and re-pointing years of saved work at
+    the wrong person is not a recoverable mistake."""
+    # UNCOMMENT WITH THE BLOCK ABOVE:
+    # from main.psu_auth import SESSION_COOKIE, read_session
+    # if request is None:
+    #     return None
+    # claims = read_session(request.cookies.get(SESSION_COOKIE, ""))
+    # return claims["sub"] if claims else None
+    return None
+
+
+@app.post("/plan_graph")
+def plan_graph_route(req: PlanGraphRequest):
+    """Grow the student's plan graph from what they have said in chat.
+
+    Same guarantee as /tutor_chat: public title/description only, never a
+    solution. This is a drawing, never a gate - so unlike /grade_chunk it fails
+    soft, returning the previous graph rather than an error the page has to
+    handle mid-conversation."""
+    from main.graphs import plan_graph
+
+    row = get_supabase().table("problems").select(
+        "slug, title, description").eq("slug", req.slug).execute().data
+    if not row:
+        raise HTTPException(status_code=404, detail={
+            "reason_code": "problem_not_found",
+            "message": f"Unknown problem '{req.slug}'."})
+    # plan_graph() never raises by contract - a failed extraction returns the
+    # graph that was already on screen.
+    fresh = plan_graph(row[0], req.messages, req.current)
+    # A graph read off the student's DRAWN design must not be silently replaced
+    # by a thinner one scraped from chat prose. merge_plan keeps whichever
+    # captured more of their plan.
+    if (req.current or {}).get("meta", {}).get("source") == "design":
+        from main.graphs import merge_plan
+        return merge_plan(req.current, fresh)
+    return fresh
+
+
+@app.post("/graphs")
+def graphs_route(req: GraphsRequest, request: Request):
+    """The dual-graph payload: plan, code, and what differs between them.
+
+    Uses session_snapshot rather than load_session because this is most useful
+    on a COMPLETED session, which load_session deliberately refuses."""
+    from main.graphs import build_both
+    from main.sessions import session_snapshot
+
+    session = session_snapshot(req.session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail={
+            "reason_code": "session_not_found",
+            "message": "That session no longer exists."})
+    out = build_both(session, req.plan)
+    out["completed"] = session["state"] == "completed"
+
+    # Snapshot both graphs as they stood at this moment. Snapshots, not an
+    # update: a plan the student revised three times mid-problem is the finding,
+    # and overwriting a single row would destroy the evidence of it.
+    from main.archive import save_graph
+    _student = current_student(request)
+    if _student:
+        for kind in ("plan", "code"):
+            save_graph(get_supabase(), _student, session["slug"], kind,
+                       out[kind], req.session_id)
+    return out
+
+
+@app.post("/design_review")
+async def design_review(request: Request,
+                        slug: str = Form(...),
+                        history: str = Form("[]"),
+                        design: UploadFile = File(...)):
+    """Review a student's uploaded design before they may write any code.
+
+    Same guarantee as /tutor_chat: the reviewer is handed only the public
+    title/description, never the reference solution. Multipart rather than JSON
+    because the payload is a file; `history` is the prior review conversation,
+    JSON-encoded, so a resubmit is judged against what was asked last round."""
+    from main.design_review import DesignRejected, review_design
+
+    row = get_supabase().table("problems").select(
+        "slug, title, description").eq("slug", slug).execute().data
+    if not row:
+        raise HTTPException(status_code=404, detail={
+            "reason_code": "problem_not_found",
+            "message": f"Unknown problem '{slug}'."})
+
+    try:
+        prior = json.loads(history)
+        if not isinstance(prior, list):
+            raise ValueError
+    except Exception:
+        prior = []
+
+    try:
+        blob = await design.read()
+        out = review_design(row[0], blob, design.content_type or "", prior)
+    except DesignRejected as e:
+        # The upload itself was wrong - a validation message for the student,
+        # not a judgement on their design, and no model call was made.
+        raise HTTPException(status_code=400, detail={
+            "reason_code": "design_rejected", "message": str(e)})
+    except Exception as e:
+        raise HTTPException(status_code=503, detail={
+            "reason_code": "reviewer_unavailable",
+            "message": "The design reviewer is unavailable right now. Try again "
+                       "shortly.",
+            "detail": str(e)[:120]})
+
+    # On approval, read the plan graph off the DRAWING itself. Without this a
+    # student who draws a careful flowchart and types little gets an empty plan
+    # graph - punishing exactly the behaviour this gate exists to encourage.
+    # Only on approval, so it is one extra vision call per problem, not per try.
+    if out.get("approved"):
+        from main.graphs import graph_from_design
+        out["plan_graph"] = graph_from_design(row[0], blob,
+                                              design.content_type or "")
+
+    # The diagram itself goes to private object storage; only its path is kept
+    # in the row. A rejected design is archived exactly like an approved one -
+    # the rejected ones are where the teaching signal is.
+    from main.archive import save_design, save_messages
+    _student = current_student(request)
+    if _student:
+        save_design(get_supabase(), _student, slug, blob,
+                    design.content_type or "", out)
+        save_messages(get_supabase(), _student, slug, "design",
+                      [{"role": "assistant", "content": out["reply"]}])
     return out
 
 

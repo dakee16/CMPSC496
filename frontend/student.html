@@ -110,6 +110,18 @@
 
   /* Locked editor until the tutor releases the student. */
   .locked{position:relative}
+  /* Graphs are wider than the column they live in, always. They scroll inside
+     their own box so the page itself never scrolls sideways. */
+  .graphScroll{overflow-x:auto; overflow-y:hidden; padding:4px 0 8px}
+  .graphScroll svg{display:block}
+  .graphPair{display:grid; grid-template-columns:1fr 1fr; gap:16px}
+  @media (max-width:900px){ .graphPair{grid-template-columns:1fr} }
+  .graphBox{min-width:0}                        /* let the child scroller win */
+  .graphBox h3, .graphDiff h3{font-size:13px; letter-spacing:.3px;
+    text-transform:uppercase; opacity:.65; margin:0 0 8px}
+  .graphDiff{margin-top:16px; border-top:1px solid #232a4d; padding-top:14px}
+  .graphDiff ul{margin:0; padding-left:18px}
+  .graphDiff li{margin:5px 0; line-height:1.5}
   .lockNote{display:flex; gap:8px; align-items:flex-start; margin:10px 0 0;
     padding:10px 12px; border-radius:10px; font-size:13px;
     background:var(--amber-bg); color:var(--amber-text);
@@ -172,9 +184,15 @@
           </div>
           <p class="lockNote" id="lockNote" hidden>
             <span>&#128274;</span>
-            <span>Talk your approach through with the tutor first. It will
-            unlock this step once your plan holds together.</span>
+            <span>Submit your design first &mdash; a diagram, flowchart, or
+            written plan as a PNG, JPEG, or PDF. The tutor unlocks this once
+            your design holds together.</span>
           </p>
+          <div class="row" id="designRow" style="margin-top:10px" hidden>
+            <input type="file" id="designFile"
+                   accept="image/png,image/jpeg,application/pdf">
+            <button id="designBtn">Submit design</button>
+          </div>
           <p class="attempts" id="attempts"></p>
           <div id="msg"></div>
         </div>
@@ -198,12 +216,34 @@
             <button type="submit">Send</button>
           </form>
         </div>
+
+        <!-- Grows as the student describes their plan. Deliberately beside the
+             chat, not below the editor: it is a picture of what they SAID, and
+             seeing it fill in is what makes them notice a step they skipped. -->
+        <div class="card" id="planCard" hidden>
+          <div class="chead">
+            <h2>Your plan so far</h2>
+            <span class="pill" style="margin-left:auto">from the chat</span>
+          </div>
+          <div class="graphScroll" id="planLive"></div>
+        </div>
       </div>
+    </div>
+
+    <!-- The finished artifact. Hidden until the session completes, because the
+         comparison is meaningless against a half-written function. -->
+    <div class="card" id="dualCard" hidden style="margin-top:18px">
+      <div class="chead">
+        <h2>Your plan vs. your code</h2>
+        <span class="pill" style="margin-left:auto">side by side</span>
+      </div>
+      <div id="dualWrap"></div>
     </div>
   </section>
 </main>
 
 <script src="ui.js"></script>
+<script src="graphs.js"></script>
 <script>
 const S = requireSession("student");
 mountHeader({active: "Practice", wide: true});
@@ -212,16 +252,116 @@ const $ = id => document.getElementById(id);
 let sessionId = null, chunks = [], idx = 0, accepted = [], editor = null, header = "";
 // The tutor is scoped to whatever is open on the LEFT. No problem, no chat.
 let openProblem = null, chatLog = [], chatBusy = false;
-// The tutor decides when a student may start writing code. Discussing the
-// problem first IS the pedagogy, so this is a real gate, not a nudge.
+// A student may not write code until they have submitted a DESIGN and the
+// reviewer has approved it. Designing before coding IS the pedagogy, so this
+// gates the whole coding column, not just the submit button - leaving the
+// editor typable invites them to start coding and back-fill a design after.
 let tutorReleased = false;
 
 function applyTutorGate(){
+  const note = $("lockNote"), row = $("designRow"), code = $("code");
   const btn = $("submit");
-  if (!btn) return;
-  btn.disabled = !tutorReleased || btn.dataset.busy === "1";
-  const note = $("lockNote");
+  if (btn) btn.disabled = !tutorReleased || btn.dataset.busy === "1";
+  if (code){
+    code.disabled = !tutorReleased;
+    code.placeholder = tutorReleased
+      ? "" : "Locked until your design is approved.";
+  }
   if (note) note.hidden = tutorReleased;
+  if (row) row.hidden = tutorReleased;
+}
+
+// Review rounds are kept separate from chatLog: the reviewer judges "did they
+// fix what I asked last round", and mixing it with the tutor conversation makes
+// both harder for the model to follow.
+let designLog = [];
+
+// The plan graph lives here between calls. It round-trips to the server on each
+// refresh because it belongs to a STUDENT and there is nobody to key it to yet
+// — see main/archive.py for where it goes once PSU login is live.
+let planGraph = null, planBusy = false;
+
+async function refreshPlanGraph(){
+  // Fire-and-forget: this is a drawing, never a gate. It must not delay the
+  // tutor's reply, and a failure must leave the last good picture on screen.
+  if (planBusy || !openProblem) return;
+  planBusy = true;
+  try {
+    const r = await fetch(`${API}/plan_graph`, {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({slug: openProblem.slug,
+                            messages: chatLog.concat(designLog),
+                            current: planGraph})
+    });
+    if (!r.ok) return;
+    const g = await r.json();
+    if (g && g.nodes && g.nodes.length){
+      planGraph = g;
+      $("planCard").hidden = false;
+      renderGraph($("planLive"), g);
+    }
+  } catch (e) {
+    /* keep the previous drawing */
+  } finally {
+    planBusy = false;
+  }
+}
+
+async function showDualGraphs(sid){
+  try {
+    const r = await fetch(`${API}/graphs`, {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({session_id: sid, plan: planGraph})
+    });
+    if (!r.ok) return;
+    const payload = await r.json();
+    $("dualCard").hidden = false;
+    renderDual($("dualWrap"), payload);
+    $("dualCard").scrollIntoView({behavior: "smooth", block: "start"});
+  } catch (e) {
+    /* the comparison is a bonus, never the reason a finished session breaks */
+  }
+}
+
+async function uploadDesign(){
+  const input = $("designFile"), btn = $("designBtn");
+  const file = input && input.files && input.files[0];
+  if (!file) { bubble("bot", "Pick a PNG, JPEG, or PDF first."); return; }
+  const fd = new FormData();
+  fd.append("slug", openProblem.slug);
+  fd.append("history", JSON.stringify(designLog));
+  fd.append("design", file);
+
+  btn.disabled = true; btn.textContent = "Reviewing…";
+  try {
+    const r = await fetch(`${API}/design_review`, {method: "POST", body: fd});
+    const data = await r.json();
+    if (!r.ok){
+      bubble("bot", (data.detail && data.detail.message)
+        || "Could not review that design. Try again.");
+      return;
+    }
+    designLog.push({role: "user", content: "[submitted a design]"});
+    designLog.push({role: "assistant", content: data.reply});
+    bubble("me", `Submitted design: ${file.name}`);
+    bubble("bot", data.reply);
+    if (data.approved){
+      tutorReleased = true;           // one-way: the gate never re-closes
+      applyTutorGate();
+    }
+    // A graph read straight off their drawing beats one scraped from chat
+    // prose, so it seeds planGraph before any chat-based refresh runs.
+    if (data.plan_graph && data.plan_graph.nodes && data.plan_graph.nodes.length){
+      planGraph = data.plan_graph;
+      $("planCard").hidden = false;
+      renderGraph($("planLive"), planGraph);
+    }
+    refreshPlanGraph();
+  } catch (e) {
+    bubble("bot", "Could not reach the reviewer. Try again shortly.");
+  } finally {
+    btn.disabled = false; btn.textContent = "Submit design";
+  }
 }
 
 async function loadAssignments(){
@@ -278,6 +418,11 @@ async function start(p){
   accepted = []; idx = 0;
   openProblem = p;
   tutorReleased = false;
+  designLog = [];
+  planGraph = null;
+  if ($("designFile")) $("designFile").value = "";
+  if ($("planCard")) $("planCard").hidden = true;
+  if ($("dualCard")) $("dualCard").hidden = true;
   resetChat(p.title || p.slug);
   applyTutorGate();
 
@@ -403,6 +548,9 @@ async function finish(res){
       body: JSON.stringify({session_id: sessionId})
     });
   } catch {}
+  // Both graphs, now that there is a finished function to draw the second one
+  // from. Awaited last so a slow render never delays the "solved" message.
+  await showDualGraphs(sessionId);
 }
 
 $("backA").onclick = () => view("cAssign");
@@ -427,7 +575,9 @@ function resetChat(title){
   $("clog").innerHTML = "";
   chatLog = [];
   bubble("bot", `We are on ${title}. Ask me to explain it, or tell me how you `
-               + `are thinking of approaching it — I will not give you the answer.`);
+               + `are thinking of approaching it — I will not give you the `
+               + `answer. When your plan is ready, submit a design (PNG, JPEG, `
+               + `or PDF) to unlock the editor.`);
 }
 async function sendToTutor(text){
   if (chatBusy) return;
@@ -447,7 +597,8 @@ async function sendToTutor(text){
       body: JSON.stringify({
         slug: openProblem.slug,
         messages: chatLog,
-        chunk_prompt: chunks[idx] ? chunks[idx].prompt : null
+        chunk_prompt: chunks[idx] ? chunks[idx].prompt : null,
+        design_ok: tutorReleased
       })
     });
     const data = await r.json();
@@ -459,11 +610,18 @@ async function sendToTutor(text){
     }
     thinking.textContent = data.reply;
     chatLog.push({role: "assistant", content: data.reply});
+    // Not awaited: the graph grows in the background while the student reads
+    // the reply. It is a picture, so it must never make the chat feel slower.
+    refreshPlanGraph();
+    // The tutor's own `ready` no longer opens the gate - only an APPROVED
+    // DESIGN does. A student who talks a good game in chat but cannot draw the
+    // plan has not shown they have one, and that is exactly the case this gate
+    // exists to catch. `ready` now only tells them what to do next.
     if (data.ready && !tutorReleased){
-      tutorReleased = true;
-      applyTutorGate();
-      const ok = bubble("bot", "Step unlocked — go write it.");
-      ok.style.color = "var(--green-text)";
+      const ok = bubble("bot", "Your plan sounds workable — draw it up and "
+                             + "submit it as a PNG, JPEG, or PDF to unlock the "
+                             + "editor.");
+      ok.style.color = "var(--amber-text)";
     }
   } catch (e) {
     thinking.textContent = "Could not reach the tutor. Check your connection.";
@@ -485,6 +643,7 @@ function submitChat(){
   autogrow(el);
   sendToTutor(t);
 }
+$("designBtn").addEventListener("click", uploadDesign);
 $("cform").addEventListener("submit", e => { e.preventDefault(); submitChat(); });
 $("cinput").addEventListener("input", e => autogrow(e.target));
 $("cinput").addEventListener("keydown", e => {

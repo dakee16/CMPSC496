@@ -61,6 +61,11 @@ GRADING_MODEL = os.environ.get("MICROTUTOR_GRADING_MODEL", "gpt-4o")
 # than a slow one. It gets the strong model.
 TUTOR_MODEL = os.environ.get("MICROTUTOR_TUTOR_MODEL", "gpt-4o")
 
+# Reading a student's hand-drawn or exported design diagram needs a vision
+# model. Split from TUTOR_MODEL so the image reviewer can be changed without
+# touching the conversational tutor.
+VISION_MODEL = os.environ.get("MICROTUTOR_VISION_MODEL", "gpt-4o")
+
 OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions"
 OLLAMA_CHAT_URL = "http://localhost:11434/api/chat"
 
@@ -171,7 +176,7 @@ def _ollama_chat(model: str, system: str, messages: List[Dict[str, str]],
 def chat(
     model: str,
     system: str,
-    messages: List[Dict[str, str]],
+    messages: List[Dict],
     temperature: float = 0.2,
     fmt: Optional[str] = None,
 ) -> str:
@@ -180,7 +185,19 @@ def chat(
     Signature is unchanged from the Ollama-only version - every existing call
     site works untouched. `fmt="json"` means "guarantee parseable JSON back":
     Ollama's `format` field, OpenAI's response_format={"type":"json_object"}.
-    The backend is picked from `model` (see _is_ollama_tag)."""
+    The backend is picked from `model` (see _is_ollama_tag).
+
+    A message's "content" is normally a string. It may instead be a list of
+    OpenAI content parts - [{"type":"text",...},{"type":"image_url",...}] -
+    which is how a student's uploaded design diagram reaches the vision model.
+    Ollama's /api/chat takes images as a separate base64 field and would drop
+    content parts on the floor, so an image sent to an Ollama tag raises rather
+    than silently degrading into a text-only review that always says yes."""
+    if any(not isinstance(m.get("content"), str) for m in messages) \
+            and _is_ollama_tag(model):
+        raise RuntimeError(
+            f"image content routed to Ollama tag {model!r}, which cannot accept "
+            f"it; use a vision-capable OpenAI model (MICROTUTOR_VISION_MODEL)")
     if _is_ollama_tag(model):
         return _ollama_chat(model, system, messages, temperature, fmt)
     return _openai_chat(model, system, messages, temperature, fmt)

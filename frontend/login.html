@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in · MicroTutor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="ui.css">
+<style>
+  body{display:grid; place-items:center; padding:24px}
+  .gate{width:min(430px,100%)}
+  .mark{display:flex; align-items:center; gap:11px; margin-bottom:24px}
+  .mark .dot{width:11px;height:11px;border-radius:50%;background:var(--indigo-500);
+             box-shadow:0 0 0 5px rgba(99,102,241,.18)}
+  .mark span{font-weight:700; font-size:16px; letter-spacing:-.02em}
+
+  /* The Microsoft button is the primary path and looks like it. The email box
+     below is a shortcut INTO the same flow, not a second way in. */
+  .msbtn{display:flex; align-items:center; justify-content:center; gap:11px;
+    width:100%; padding:14px 16px; border-radius:13px; cursor:pointer;
+    font-size:14.5px; font-weight:600; color:var(--text-bright);
+    background:linear-gradient(135deg,rgba(99,102,241,.24),rgba(79,70,229,.14));
+    border:1px solid var(--indigo-500);
+    box-shadow:0 6px 20px rgba(99,102,241,.22); transition:var(--transition)}
+  .msbtn:hover{filter:brightness(1.12)}
+  .msbtn:disabled{opacity:.5; cursor:not-allowed; filter:none}
+  .msgrid{width:17px; height:17px; display:grid; grid-template-columns:1fr 1fr;
+    grid-gap:2px; flex:none}
+  .msgrid i{display:block; border-radius:1px}
+
+  .or{display:flex; align-items:center; gap:12px; margin:20px 0;
+      color:var(--text-muted); font-size:12.5px}
+  .or::before,.or::after{content:""; flex:1; height:1px; background:var(--glass-line)}
+
+  .field label{display:block; font-size:12.5px; color:var(--text-muted);
+               margin-bottom:7px}
+  .field input{width:100%; padding:12px 14px; border-radius:12px;
+    background:rgba(26,31,61,.5); border:1px solid var(--glass-line);
+    color:var(--text-bright); font-size:14px; font-family:inherit;
+    transition:var(--transition)}
+  .field input:focus{outline:none; border-color:var(--indigo-500);
+    box-shadow:0 0 0 3px rgba(99,102,241,.16)}
+  .field input[aria-invalid="true"]{border-color:var(--red-text)}
+  .err{color:var(--red-text); font-size:12.5px; margin:8px 0 0; min-height:17px}
+  .note{margin-top:22px; padding-top:16px; border-top:1px solid var(--glass-line);
+        font-size:12.5px; color:var(--text-muted); line-height:1.6}
+</style>
+</head>
+<body>
+
+<div class="gate">
+  <div class="mark"><span class="dot"></span><span>MicroTutor</span></div>
+
+  <div class="card">
+    <h2 style="margin:0 0 6px">Sign in</h2>
+    <p class="hint" style="margin:0 0 22px">
+      MicroTutor is open to Penn State accounts only.
+    </p>
+
+    <!-- Shown automatically once the server has the auth routes — see
+         detectAuth() below. No edit needed here when the backend block in
+         api_server.py is uncommented. -->
+    <button class="msbtn" id="msBtn" hidden>
+      <span class="msgrid" aria-hidden="true">
+        <i style="background:#f25022"></i><i style="background:#7fba00"></i>
+        <i style="background:#00a4ef"></i><i style="background:#ffb900"></i>
+      </span>
+      Continue with Penn State Microsoft
+    </button>
+
+    <div class="or" id="orRow" hidden>or</div>
+
+    <form id="emailForm" novalidate>
+      <div class="field">
+        <label for="email">Penn State email</label>
+        <input id="email" type="email" inputmode="email" autocomplete="username"
+               placeholder="abc1234@psu.edu" spellcheck="false">
+      </div>
+      <p class="err" id="err" role="alert"></p>
+      <button type="submit" style="width:100%" id="goBtn">Continue</button>
+    </form>
+
+    <!-- Shown only while sign-in is dormant. The block above stays visible on
+         purpose: the page should look finished, so that turning it on is
+         visibly a configuration change and not a build. -->
+    <p class="note" id="devNotice">
+      <b>Sign-in is not switched on yet.</b> The Microsoft flow is built and
+      waiting on Azure credentials from PSU. Until then, continue from the
+      <a href="home.html">practice entry page</a>.
+    </p>
+
+    <p class="note" id="whyNote" hidden>
+      Signing in with Microsoft is what keeps your saved work — your designs,
+      your submissions, and your plan graphs — attached to you and to nobody
+      else. We never see your password.
+    </p>
+  </div>
+</div>
+
+<script src="ui.js"></script>
+<script>
+// Kept in step with ALLOWED_DOMAINS in main/psu_auth.py. This check is a
+// CONVENIENCE — it saves a pointless round trip to Microsoft for an address
+// that will be refused anyway. It admits nobody: the real decision is
+// psu_auth.psu_email() on a claim Microsoft signed.
+const PSU_DOMAINS = ["psu.edu"];
+
+function looksLikePSU(address){
+  address = (address || "").trim().toLowerCase();
+  if ((address.match(/@/g) || []).length !== 1) return false;
+  const domain = address.split("@")[1];
+  return PSU_DOMAINS.some(d => domain === d || domain.endsWith("." + d));
+}
+
+// Errors handed back by /auth/callback arrive as ?denied=<message>.
+const params = new URLSearchParams(location.search);
+if (params.get("denied")) $("err").textContent = params.get("denied");
+else if (params.get("error")) $("err").textContent = "Sign-in was cancelled.";
+
+// Flip the page from "dormant" to "live" purely on whether the server has the
+// auth routes, so turning auth on is a one-place change in api_server.py.
+(async function detectAuth(){
+  let live = false;
+  try {
+    // 401 means the route EXISTS and we are simply not signed in — that is the
+    // signal. 404 means the block is still commented out.
+    live = (await fetch(`${API}/auth/me`)).status !== 404;
+  } catch (e) { live = false; }
+
+  $("msBtn").hidden = !live;
+  $("orRow").hidden = !live;
+  $("devNotice").hidden = live;
+  $("whyNote").hidden = !live;
+  $("goBtn").textContent = live ? "Continue" : "Continue without signing in";
+})();
+
+$("msBtn").addEventListener("click", () => {
+  location.href = `${API}/auth/login`;
+});
+
+$("emailForm").addEventListener("submit", e => {
+  e.preventDefault();
+  const address = $("email").value.trim();
+  const bad = !looksLikePSU(address);
+  $("email").setAttribute("aria-invalid", bad ? "true" : "false");
+  if (bad){
+    $("err").textContent = address
+      ? "That is not a Penn State address. Use your @psu.edu email."
+      : "Enter your Penn State email address.";
+    return;
+  }
+  $("err").textContent = "";
+  if ($("msBtn").hidden){
+    // Dormant: there is nothing to authenticate against yet, so send them to
+    // the existing entry page rather than pretending they signed in.
+    location.href = "home.html";
+    return;
+  }
+  // Live: the address is only a login_hint. It pre-fills the Microsoft page;
+  // it never stands in for authentication.
+  location.href = `${API}/auth/login?login_hint=${encodeURIComponent(address)}`;
+});
+</script>
+</body>
+</html>
