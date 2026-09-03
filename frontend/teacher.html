@@ -185,7 +185,9 @@ $("go").onclick = async () => {
   try {
     resp = await fetch(`${API}/teacher/assignments`, {
       method: "POST", headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({filename: f.name, content, teacher_name: S.name})
+      // No teacher_name: the server records the signed-in instructor, so an
+      // assignment's owner is not whatever the browser claimed it was.
+      body: JSON.stringify({filename: f.name, content})
     });
   } catch { return fail("Could not reach the server. Is the backend running?"); }
   if (!resp.ok) {

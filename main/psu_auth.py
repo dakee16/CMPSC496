@@ -1,8 +1,24 @@
 """
 psu_auth.py - PSU-only sign-in via Microsoft Entra ID (Azure AD).
 
-STATUS: complete but DORMANT. Nothing imports this yet. It goes live by doing
-three things, in this order:
+STATUS: complete but ON HOLD, waiting on Azure credentials from PSU IT.
+Nothing imports this.
+
+WHAT IS RUNNING INSTEAD: main/auth.py - username (PSU email) + password against
+Supabase, with the site behind the college VPN. Read that file first; this one
+is not in the request path.
+
+WHEN THE CREDENTIALS ARRIVE this plugs into the existing session rather than
+replacing it. auth.py already owns the cookie, the role and current_student();
+SSO only has to verify the Microsoft token, find or create the `students` row
+for the returned PSU address, and call auth.issue_session() on it. Usernames
+are already PSU emails - the same string Entra returns as
+`preferred_username` - so that is a lookup, not a data migration. The cookie
+helpers at the bottom of this file duplicate auth.py's and should be deleted
+in favour of them at that point; they are still here only so this file can run
+its own self-check today.
+
+To go live, in this order:
 
   1. Register the app in the PSU Azure portal and put four values in .env:
          AZURE_TENANT_ID=<the PSU tenant GUID>
@@ -14,9 +30,13 @@ three things, in this order:
      The redirect URI must match the portal registration EXACTLY, including
      scheme, port and trailing slash - a mismatch is the single most common
      first-day failure and Microsoft reports it as AADSTS50011.
+     MICROTUTOR_SESSION_SECRET is already set - password sign-in uses the same
+     key, and reusing it is what keeps everyone signed in across the switch.
   2. pip install "PyJWT[crypto]" (already listed, commented, in requirements).
-  3. Uncomment the auth block in frontend/api_server.py and the button in
-     frontend/login.html.
+  3. Add /auth/login and /auth/callback to frontend/api_server.py, ending in
+     auth.issue_session(students_row), and put a "Continue with Penn State"
+     button on frontend/login.html above the password form. The password form
+     stays: not every account will have an Entra identity on day one.
 
 WHY THIS SHAPE
 

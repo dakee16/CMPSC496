@@ -6,11 +6,11 @@ Place this file in your microprog_phase1/ folder and run:
 """
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import Optional
 import json
 from dotenv import load_dotenv
-import bcrypt
 import os
 from supabase import create_client
 
@@ -20,10 +20,25 @@ from supabase import create_client
 # create_client() call two lines down starts raising KeyError.
 load_dotenv()
 
+from main import auth as auth_mod
 from main.run_phase1 import eval_step, parse_json, decompose_into_chunks, replan_from_prefix, get_chunk_decomposition
 from main.schemas import StepItem
 
 app = FastAPI(title="MicroTutor API", version="1.0")
+
+# Local http development cannot set Secure cookies; anything else must. Behind
+# the VPN is not an exception - the VPN carries every other student too, so a
+# session riding over plain http is readable by them, not by the internet.
+_COOKIE_SECURE = os.environ.get("MICROTUTOR_ENV", "dev") != "dev"
+
+
+def _require_auth_configured():
+    """Refuse to issue sessions without a signing key, rather than signing
+    every cookie with "" - which would let anyone mint one."""
+    if not auth_mod.is_configured():
+        raise HTTPException(status_code=503, detail={
+            "reason_code": "auth_not_configured",
+            "message": "Sign-in is not configured on this server."})
 
 # Single lazy client boundary. Importing this module must perform NO network or
 # client construction, so tests can import the app and inject a fake without
@@ -44,54 +59,80 @@ def set_supabase(client):
     _SB = client
 
 
-_UUID_RE = __import__("re").compile(
-    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", 2)
+# ── who is asking ────────────────────────────────────────────────────────
+# THE ONE PLACE the rest of the app answers "who is this". Everything below
+# reads the signed cookie; nothing reads a name or a role out of a request
+# body. resolve_student() used to sit here and did the opposite - it took the
+# typed name the demo role-picker sent and looked it up, creating the row on a
+# miss, which meant anyone could act as anyone by typing their name.
 
-
-def resolve_student(value: str | None) -> str | None:
-    """Turn whatever the demo sent into a real students.id UUID.
-
-    students.id, student_interactions.student_id and solved.student_id are all
-    uuid columns, but the demo role picker has no login and sends a typed NAME.
-    Inserting that raised `invalid input syntax for type uuid` on every write,
-    which the logging path then swallowed - progress silently vanished.
-
-    A UUID passes through untouched. A name is looked up, and created on a miss,
-    so a demo student keeps the same id across sessions and their history adds
-    up. TEMPORARY: real identity arrives with PSU-email auth, at which point the
-    JWT subject replaces this entirely."""
-    name = (value or "").strip()
-    if not name:
+def current_claims(request: Request | None) -> dict | None:
+    """Verified session claims, or None if signed out."""
+    from main.auth import SESSION_COOKIE, read_session
+    if request is None:
         return None
-    if _UUID_RE.match(name):
-        return name
-    sb = get_supabase()
-    try:
-        hit = sb.table("students").select("id").eq("username", name).limit(1).execute().data
-        if hit:
-            return hit[0]["id"]
-        # No password: a demo row cannot be logged into, only referenced.
-        made = sb.table("students").insert(
-            {"username": name, "password_hash": "!demo-no-login"}).execute().data
-        return made[0]["id"] if made else None
-    except Exception as e:
-        # Identity is optional - anonymous sessions are valid. Never fail a
-        # student's request because we could not name them.
-        print(f"  ⚠️  could not resolve student {name!r}: {e}")
-        return None
+    return read_session(request.cookies.get(SESSION_COOKIE, ""))
 
+
+def current_student(request: Request | None = None) -> str | None:
+    """The signed-in student's students.id, or None.
+
+    The id, not the username: an address can be reassigned when a student
+    changes their name, and re-pointing years of saved work at the wrong
+    person is not a recoverable mistake."""
+    claims = current_claims(request)
+    return claims["sub"] if claims else None
+
+
+def require_student(request: Request) -> dict:
+    """Claims, or 401. Use on anything that writes a student's own work."""
+    claims = current_claims(request)
+    if not claims:
+        raise HTTPException(status_code=401, detail={
+            "reason_code": "not_signed_in", "message": "Please sign in."})
+    return claims
+
+
+def require_teacher(request: Request) -> dict:
+    """Claims, or 401/403. The role comes from the students row the cookie was
+    signed from, never from the browser - the old gate let anyone reach the
+    upload screen by picking "Instructor" on a radio button."""
+    claims = require_student(request)
+    if claims.get("role") != "teacher":
+        raise HTTPException(status_code=403, detail={
+            "reason_code": "not_a_teacher",
+            "message": "This page is for instructors."})
+    return claims
+
+
+# The pages are served BY this app (see the StaticFiles mount at the bottom of
+# this file), so in production the browser is same-origin and CORS never comes
+# into it. This block exists only for opening frontend/*.html straight off disk
+# during development.
+#
+# `allow_origins=["*"]` is gone and cannot come back: the CORS spec forbids the
+# wildcard together with credentials, so with a session cookie in play every
+# browser would silently refuse to send it and every request would look
+# signed-out for no visible reason.
+_DEV_ORIGINS = [o.strip() for o in os.environ.get(
+    "MICROTUTOR_ALLOWED_ORIGINS",
+    "http://localhost:8000,http://127.0.0.1:8000,"
+    "http://localhost:5173,http://127.0.0.1:5173").split(",") if o.strip()]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],          # allow any frontend origin (for dev)
-    allow_credentials=True,
-    allow_methods=["*"],          # allow GET, POST, PUT, etc.
-    allow_headers=["*"],          # allow any headers
+    allow_origins=_DEV_ORIGINS,
+    allow_credentials=True,       # required for the session cookie
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
 
-class DecomposeRequest(BaseModel):
+class DecomposeRequest(BaseModel, extra="forbid"):
+    # forbid, like ChunkRequest: an unrecognised field is a stale client, and
+    # the one that used to be here was student_id. Ignoring it silently is how
+    # a page keeps sending an identity that stopped meaning anything.
     slug: str
     description: str
     # Uploaded problems carry the professor's reference solution in the request;
@@ -99,9 +140,9 @@ class DecomposeRequest(BaseModel):
     # REQUIRED before the pipeline runs - see decompose_chunks_route.
     title: str | None = None
     solution: str | None = None
-    # Identity is bound ONCE, here, when the session begins. /grade_chunk never
-    # accepts it again - it must not be changeable mid-session.
-    student_id: str | None = None
+    # NO student_id. Identity is bound ONCE when the session begins, and it is
+    # taken from the session cookie - never from the body, which the student
+    # controls and used to be able to set to anyone's name.
 
 
 class EvaluateRequest(BaseModel):
@@ -127,16 +168,6 @@ class ChunkRequest(BaseModel, extra="forbid"):
 class AuthRequest(BaseModel):
     username: str
     password: str
-
-class LogInteractionRequest(BaseModel):
-    student_id: str
-    slug: str
-    chunk_index: int
-    attempt_number: int
-    student_code: str
-    verdict: bool
-    tier: str
-    reason: str
 
 class TutorChatRequest(BaseModel, extra="forbid"):
     """The tutor is given the problem SLUG, never a solution. The server looks
@@ -228,7 +259,8 @@ def replan(req: ReplanRequest):
 
 
 @app.post("/decompose_chunks")
-def decompose_chunks_route(req: DecomposeRequest):
+def decompose_chunks_route(req: DecomposeRequest, request: Request):
+    claims = require_student(request)
     try:
         problem = {"slug": req.slug, "title": req.title or req.slug,
                    "description": req.description,
@@ -259,11 +291,11 @@ def decompose_chunks_route(req: DecomposeRequest):
         # reference, the solution, or oracle data again.
         from main.identity import content_hash
         from main.sessions import create_session
-        # Identity is bound ONCE, here, and resolved to a real students.id so
-        # every later write (interactions, solved) has a valid uuid.
+        # Identity is bound ONCE, here, from the signed cookie - so every later
+        # write (interactions, solved) carries a students.id the student could
+        # not have chosen.
         public = create_session(problem, result, content_hash(problem),
-                                student_id=resolve_student(
-                                    getattr(req, "student_id", None)))
+                                student_id=claims["sub"])
 
         # NO oracle pre-warm here. get_oracle_tests() is the WRITE path: on a
         # miss it generates inputs and runs mutation testing, minutes of paid
@@ -642,7 +674,8 @@ class AssignmentUpload(BaseModel, extra="forbid"):
     FileReader, which avoids adding python-multipart as a dependency."""
     filename: str = "assignment.py"
     content: str
-    teacher_name: str = "demo-teacher"
+    # teacher_name is gone: the author is the signed-in instructor, taken from
+    # the session cookie in upload_assignment().
 
 
 class ManualSplitRequest(BaseModel, extra="forbid"):
@@ -659,7 +692,7 @@ def assignment_template():
 
 
 @app.post("/teacher/assignments")
-def upload_assignment(req: AssignmentUpload):
+def upload_assignment(req: AssignmentUpload, request: Request):
     """Parse an assignment file and PREPARE every problem, streaming progress.
 
     Preparation (oracle generation, mutation validation, decomposition) is
@@ -671,6 +704,11 @@ def upload_assignment(req: AssignmentUpload):
     from main.assignments import AssignmentParseError, parse_assignment_file
     from main.publish import prepare_assignment_stream
 
+    # Preparation is minutes of paid model work per problem, and it publishes
+    # what students then see. Both are reasons this cannot be reachable by
+    # anyone who typed "Instructor" into a radio button.
+    teacher = require_teacher(request)
+
     try:
         parsed = parse_assignment_file(req.content, req.filename)
     except AssignmentParseError as e:
@@ -678,8 +716,10 @@ def upload_assignment(req: AssignmentUpload):
             "reason_code": "unparseable_assignment", "message": str(e)})
 
     sb = get_supabase()
+    # The signed-in instructor, not req.teacher_name - the browser used to name
+    # its own author, so an assignment's owner was whatever it claimed to be.
     row = sb.table("assignments").insert({
-        "name": parsed["name"], "teacher_name": req.teacher_name,
+        "name": parsed["name"], "teacher_name": teacher["username"],
         "source_file": req.filename}).execute().data
     assignment_id = row[0]["id"]
 
@@ -761,11 +801,14 @@ def assignment_problems(assignment_id: str):
 
 
 @app.get("/teacher/assignments/{assignment_id}/problems")
-def teacher_assignment_problems(assignment_id: str):
+def teacher_assignment_problems(assignment_id: str, request: Request):
     """TEACHER view. Every problem including the ones that failed, with reasons.
 
     Still no solution: the teacher already has it in their own file, and not
-    sending it keeps one fewer copy of the answer key moving over the wire."""
+    sending it keeps one fewer copy of the answer key moving over the wire.
+    The reasons themselves are instructor-only, so the route is role-gated -
+    prepare_error quotes the source file back."""
+    require_teacher(request)
     res = get_supabase().table("problems").select(
         _PUBLIC_PROBLEM_COLS + ", ready, prepare_error").eq(
         "assignment_id", assignment_id).execute()
@@ -777,7 +820,7 @@ def teacher_assignment_problems(assignment_id: str):
 
 
 @app.post("/teacher/split")
-def manual_split(req: ManualSplitRequest):
+def manual_split(req: ManualSplitRequest, request: Request):
     """Teacher-authored decomposition for a problem the model could not split.
 
     Goes through the SAME serve gate as a generated one - a hand-written split
@@ -785,6 +828,8 @@ def manual_split(req: ManualSplitRequest):
     it and be marked correct."""
     from main.publish import save_manual_decomposition
 
+    # This flips `ready` - it decides what students are served.
+    require_teacher(request)
     sb = get_supabase()
     row = sb.table("problems").select(
         "slug, title, description, solution").eq("slug", req.slug).execute().data
@@ -804,46 +849,86 @@ def manual_split(req: ManualSplitRequest):
 
 
 
+# ══════════════════════════════════════════════════════════════════════════
+# SIGN-IN — username (PSU email) + password, against Supabase.
+#
+# Microsoft/Entra sign-in is ON HOLD until PSU IT issues Azure credentials;
+# main/psu_auth.py keeps that work intact and unwired. The site itself sits
+# behind the college VPN, which is what limits it to students and faculty;
+# these routes are what tell one of them from another. See main/auth.py.
+
+def _session_response(body: dict, student: dict) -> JSONResponse:
+    """Answer with the account, and set the cookie that proves it.
+
+    The id is in the body only so the UI can show it; every server-side use
+    reads it back out of the signed cookie, which the page cannot forge and
+    (HttpOnly) cannot even read."""
+    from main.auth import cookie_kwargs, issue_session
+    resp = JSONResponse(body)
+    resp.set_cookie(auth_mod.SESSION_COOKIE, issue_session(student),
+                    **cookie_kwargs(secure=_COOKIE_SECURE))
+    return resp
+
+
+def _account(student: dict) -> dict:
+    return {"student_id": student["id"], "username": student["username"],
+            "name": student.get("name") or student["username"].split("@")[0],
+            "role": student.get("role") or "student"}
+
+
 @app.post("/register")
 def register(req: AuthRequest):
-    pw_hash = bcrypt.hashpw(req.password.encode(), bcrypt.gensalt()).decode()
-
+    """Create an account. Always as a student - see main/auth.py for why role
+    is not something the browser gets to ask for."""
+    _require_auth_configured()
     try:
-        result = get_supabase().table("students").insert({
-            "username": req.username,
-            "password_hash": pw_hash
-        }).execute()
-    except Exception:
-        raise HTTPException(status_code=400, detail="Username already taken")
-
-    if not result.data:
-        raise HTTPException(status_code=400, detail="Could not create account")
-
-    row = result.data[0]
-    return {"student_id": row["id"], "username": row["username"]}
+        row = auth_mod.register_student(get_supabase(), req.username, req.password)
+    except auth_mod.AuthError as e:
+        if e.detail:
+            print(f"  ⚠️  registration refused: {e.detail}")
+        raise HTTPException(status_code=400, detail={
+            "reason_code": "registration_refused", "message": str(e)})
+    return _session_response(_account(row), row)
 
 
 @app.post("/login")
 def login(req: AuthRequest):
-
-    result = get_supabase().table("students").select("*").eq("username", req.username).execute()
-
-    if not result.data:
-        raise HTTPException(status_code=401, detail="Invalid username or password")
-
-    row = result.data[0]
-    if not bcrypt.checkpw(req.password.encode(), row["password_hash"].encode()):
-        raise HTTPException(status_code=401, detail="Invalid username or password")
-
-    return {"student_id": row["id"], "username": row["username"]}
+    _require_auth_configured()
+    try:
+        row = auth_mod.authenticate(get_supabase(), req.username, req.password)
+    except auth_mod.AuthError as e:
+        raise HTTPException(status_code=401, detail={
+            "reason_code": "bad_credentials", "message": str(e)})
+    return _session_response(_account(row), row)
 
 
-@app.get("/solved/{student_id}")
-def get_solved(student_id: str):
+@app.post("/logout")
+def logout():
+    resp = JSONResponse({"ok": True})
+    resp.delete_cookie(auth_mod.SESSION_COOKIE, path="/")
+    return resp
 
-    result = get_supabase().table("solved").select("problem_slug").eq("student_id", student_id).execute()
-    slugs = [r["problem_slug"] for r in (result.data or [])]
-    return {"slugs": slugs}
+
+@app.get("/auth/me")
+def auth_me(request: Request):
+    """Who the cookie says you are. The pages call this on load, so a cookie
+    that expired mid-lab bounces to sign-in instead of failing later on a
+    write the student thought had been saved."""
+    claims = require_student(request)
+    return {"student_id": claims["sub"], "username": claims["username"],
+            "name": claims["name"], "role": claims.get("role", "student")}
+
+
+@app.get("/solved")
+def get_solved(request: Request):
+    """The signed-in student's solves.
+
+    Was /solved/{student_id}, which handed anyone else's progress to anyone
+    who could type a uuid."""
+    claims = require_student(request)
+    result = get_supabase().table("solved").select("problem_slug").eq(
+        "student_id", claims["sub"]).execute()
+    return {"slugs": [r["problem_slug"] for r in (result.data or [])]}
 
 
 @app.post("/tutor_chat")
@@ -890,124 +975,19 @@ def tutor_chat(req: TutorChatRequest, request: Request):
 
 
 # ══════════════════════════════════════════════════════════════════════════
-# PSU SIGN-IN (Microsoft Entra ID) — WRITTEN, TESTED, AND DORMANT
+# MICROSOFT / ENTRA SIGN-IN — ON HOLD
 #
-# To go live, in this order:
-#   1. Put AZURE_TENANT_ID / AZURE_CLIENT_ID / AZURE_CLIENT_SECRET /
-#      AZURE_REDIRECT_URI and MICROTUTOR_SESSION_SECRET in .env
-#      (see the header of main/psu_auth.py for exactly what each one is).
-#   2. pip install "PyJWT[crypto]"
-#   3. Delete the "# " at the start of every line in the block below.
-#   4. Delete the old /register and /login routes further down this file —
-#      they are bcrypt-against-Supabase and must not survive alongside SSO.
-#   5. In frontend/login.html, unhide the Microsoft button (one `hidden`).
+# The full PKCE flow lives in main/psu_auth.py, written and self-tested. It is
+# waiting on Azure credentials from PSU IT, which is not our schedule, so the
+# live path is username + password (main/auth.py) behind the college VPN.
 #
-# Nothing else in the app changes: current_student() returns None while this is
-# commented out, which is precisely today's anonymous behaviour.
-#
-# import secrets
-# from urllib.parse import quote
-#
-# from fastapi import Cookie, Request
-# from fastapi.responses import JSONResponse, RedirectResponse
-#
-# from main.psu_auth import (SESSION_COOKIE, AuthError, authorize_url,
-#                            cookie_kwargs, exchange_code, is_configured,
-#                            issue_session, new_pkce, read_session,
-#                            validate_id_token)
-#
-# # Local http development cannot set Secure cookies; anything else must.
-# _COOKIE_SECURE = os.environ.get("MICROTUTOR_ENV", "dev") != "dev"
-#
-#
-# @app.get("/auth/login")
-# def auth_login(login_hint: str | None = None):
-#     """Start sign-in. Redirects the browser to Microsoft."""
-#     if not is_configured():
-#         raise HTTPException(status_code=503, detail={
-#             "reason_code": "auth_not_configured",
-#             "message": "Sign-in is not configured on this server."})
-#     state, nonce = secrets.token_urlsafe(24), secrets.token_urlsafe(24)
-#     verifier, challenge = new_pkce()
-#     resp = RedirectResponse(authorize_url(state, nonce, challenge, login_hint))
-#     # state/nonce/verifier must survive the round trip to Microsoft but must
-#     # NOT be readable by page scripts, and must die with the browser session.
-#     for k, v in (("mt_state", state), ("mt_nonce", nonce),
-#                  ("mt_verifier", verifier)):
-#         resp.set_cookie(k, v, httponly=True, secure=_COOKIE_SECURE,
-#                         samesite="lax", max_age=600, path="/")
-#     return resp
-#
-#
-# @app.get("/auth/callback")
-# def auth_callback(code: str | None = None, state: str | None = None,
-#                   error: str | None = None, error_description: str | None = None,
-#                   mt_state: str | None = Cookie(default=None),
-#                   mt_nonce: str | None = Cookie(default=None),
-#                   mt_verifier: str | None = Cookie(default=None)):
-#     """Microsoft redirects here. Verify everything, then set our own cookie."""
-#     if error:
-#         # The student cancelled, or the tenant refused. Not our bug.
-#         return RedirectResponse(f"/login.html?error={error}")
-#     # Compared with compare_digest, not ==: state is the CSRF defence and a
-#     # timing-distinguishable comparison is the one weakness it must not have.
-#     if not (code and state and mt_state
-#             and secrets.compare_digest(state, mt_state)):
-#         raise HTTPException(status_code=400, detail={
-#             "reason_code": "bad_state",
-#             "message": "Sign-in expired. Please start again."})
-#     try:
-#         tokens = exchange_code(code, mt_verifier or "")
-#         claims = validate_id_token(tokens.get("id_token", ""), mt_nonce or "")
-#         session_token = issue_session(claims)     # raises on a non-PSU domain
-#     except AuthError as e:
-#         print(f"  ⚠️  sign-in rejected: {e.detail}")   # detail never leaves here
-#         return RedirectResponse(f"/login.html?denied={quote(str(e))}")
-#
-#     resp = RedirectResponse("/student.html")
-#     resp.set_cookie(SESSION_COOKIE, session_token,
-#                     **cookie_kwargs(secure=_COOKIE_SECURE))
-#     for k in ("mt_state", "mt_nonce", "mt_verifier"):
-#         resp.delete_cookie(k, path="/")           # single-use, by design
-#     return resp
-#
-#
-# @app.post("/auth/logout")
-# def auth_logout():
-#     resp = JSONResponse({"ok": True})
-#     resp.delete_cookie(SESSION_COOKIE, path="/")
-#     return resp
-#
-#
-# @app.get("/auth/me")
-# def auth_me(session: str | None = Cookie(default=None, alias=SESSION_COOKIE)):
-#     claims = read_session(session or "")
-#     if not claims:
-#         raise HTTPException(status_code=401, detail={
-#             "reason_code": "not_signed_in", "message": "Please sign in."})
-#     return {"email": claims["email"], "name": claims["name"],
-#             "student_id": claims["sub"]}
-
-
-def current_student(request: Request | None = None) -> str | None:
-    """The signed-in student's stable id, or None.
-
-    THE ONE PLACE the rest of the app asks "who is this". It returns None today
-    because sign-in is dormant, which is exactly the anonymous behaviour the app
-    already has - so every caller can be written against this now and will start
-    receiving real identities the moment the block above is uncommented, with no
-    second edit.
-
-    The id is the Entra `oid` claim, not the email: an email can be reassigned
-    when a student changes their name, and re-pointing years of saved work at
-    the wrong person is not a recoverable mistake."""
-    # UNCOMMENT WITH THE BLOCK ABOVE:
-    # from main.psu_auth import SESSION_COOKIE, read_session
-    # if request is None:
-    #     return None
-    # claims = read_session(request.cookies.get(SESSION_COOKIE, ""))
-    # return claims["sub"] if claims else None
-    return None
+# When the credentials land it plugs in ABOVE, not here: /login and /register
+# already set the session cookie every other route reads, so SSO only has to
+# find or create the students row for the verified PSU address and call the
+# same auth.issue_session(). current_student() and require_teacher() do not
+# change. Usernames are already PSU emails, which is the same string Entra
+# returns as `preferred_username` — so that lookup is a join, not a migration.
+# ══════════════════════════════════════════════════════════════════════════
 
 
 @app.post("/plan_graph")
@@ -1158,10 +1138,23 @@ def mark_solved(req: MarkSolvedRequest):
             "solved_independently": independent, "assisted": snap["assisted"]}
 
 
-@app.post("/log_interaction")
-def log_interaction(req: LogInteractionRequest):
+# POST /log_interaction is gone. It had no callers - /grade_chunk writes
+# student_interactions itself, from the graded outcome - and it took student_id
+# and `verdict` straight from the body, so any browser could file a passing
+# attempt under any student's id.
 
-    data = req.model_dump()
-    data["problem_slug"] = data.pop("slug")
-    get_supabase().table("student_interactions").insert(data).execute()
-    return {"ok": True}
+
+# The pages are served from this app so the browser is same-origin with the
+# API: the session cookie is sent on every fetch with no CORS involved, and
+# SameSite=lax is enough. Mounted LAST because it claims "/" - anything
+# declared after it would be shadowed by a 404 for a missing file.
+#
+# Behind the VPN this is the whole deployment: one uvicorn process, one origin,
+# nothing else to configure. Put TLS in front of it and set MICROTUTOR_ENV to
+# anything but "dev" so the cookie goes out Secure.
+from pathlib import Path
+
+from fastapi.staticfiles import StaticFiles
+
+app.mount("/", StaticFiles(directory=Path(__file__).parent, html=True),
+          name="frontend")

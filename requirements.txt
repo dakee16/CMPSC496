@@ -58,7 +58,8 @@ yarl==1.23.0
 zstandard==0.25.0
 python-multipart==0.0.32
 
-# PSU sign-in (main/psu_auth.py) is written but dormant. Uncomment together
-# with the auth block in frontend/api_server.py; nothing imports it until then,
-# so installing it early is harmless but pointless.
+# Microsoft/Entra sign-in (main/psu_auth.py) is ON HOLD, waiting on Azure
+# credentials from PSU IT. The live path is username + password (main/auth.py),
+# which needs only bcrypt - already installed above. Uncomment this when the
+# credentials arrive; nothing imports it until then.
 # PyJWT[crypto]>=2.8.0

@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>MicroTutor</title>
-<!-- This file used to be the whole app: a bcrypt username/password login and a
-     tabbed student/teacher view on the retired style.css. Every part of it has
-     been superseded - home.html is the entry gate, login.html is the PSU
-     sign-in, and student.html / teacher.html are the real pages.
+<!-- This file used to be the whole app: a login form and a tabbed
+     student/teacher view on the retired style.css. Every part of it has been
+     superseded - login.html is the entry gate and student.html /
+     teacher.html are the real pages.
 
      It is kept only as a redirect because index.html is what a static server
      hands back for "/". Deleting it outright would turn the site's front door
@@ -17,9 +17,9 @@
      The <meta refresh> is the fallback for a browser that runs no JS; the
      script fires first and uses replace() so the dead page never enters the
      back-button history. -->
-<meta http-equiv="refresh" content="0; url=home.html">
-<link rel="canonical" href="home.html">
-<script>location.replace("home.html");</script>
+<meta http-equiv="refresh" content="0; url=login.html">
+<link rel="canonical" href="login.html">
+<script>location.replace("login.html");</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -27,7 +27,7 @@
 </head>
 <body>
   <div class="page" style="display:grid; place-items:center; min-height:60vh">
-    <p class="sub">Taking you to <a href="home.html">MicroTutor</a>…</p>
+    <p class="sub">Taking you to <a href="login.html">MicroTutor</a>…</p>
   </div>
 </body>
 </html>

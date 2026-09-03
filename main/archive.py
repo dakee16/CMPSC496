@@ -1,11 +1,13 @@
 """
 archive.py - the permanent record of what a student did.
 
-STATUS: written and wired, INERT until sign-in exists. Every function here
-returns immediately when `student_id` is None, which is what
-api_server.current_student() returns today. The moment the PSU auth block is
-uncommented, real ids start arriving and these begin writing, with no second
-edit at the call sites.
+STATUS: LIVE. api_server.current_student() now returns a real students.id from
+the session cookie, so these write. Every function still returns immediately
+when `student_id` is None, which is what an unauthenticated caller gets.
+
+The tables are NOT created automatically - run migrations/004_archive.sql (it
+is SCHEMA_SQL below, verbatim) or every write here fails, and by rule 2 it
+fails SILENTLY.
 
 WHAT IS SAVED, AND WHY EACH ONE
 
@@ -44,10 +46,11 @@ THREE RULES THIS MODULE FOLLOWS
      submit because the archive is down is an outage. This is the opposite of
      the rule in grading.py, and deliberately so.
 
-  3. KEYED ON THE ENTRA `oid`, NEVER THE EMAIL. Addresses get reassigned when
-     a student changes their name; re-pointing a year of saved work at the
-     wrong person is not a recoverable mistake. Email is stored as a display
-     convenience and is never a join key.
+  3. KEYED ON THE ACCOUNT ID, NEVER THE USERNAME. Addresses get reassigned
+     when a student changes their name; re-pointing a year of saved work at
+     the wrong person is not a recoverable mistake. The username is stored as
+     a display convenience and is never a join key. (It is students.id today
+     and would be the Entra `oid` under SSO - same rule, either way.)
 
 FERPA: these rows are education records. Whatever retention window the course
 settles on, `purge_student()` at the bottom is the one supported way to honour
@@ -56,10 +59,12 @@ a deletion request - which is why it is the single exception to rule 1.
 import json
 from datetime import datetime, timezone
 
-# Paste into the Supabase SQL editor once, before turning sign-in on.
+# Paste into the Supabase SQL editor once. Also kept as
+# migrations/004_archive.sql so it sits with the other migrations.
 #
-# `student_id` is text, not a FK to auth.users: identity comes from Entra, not
-# from Supabase Auth, so there is no local user row to point at.
+# `student_id` is text, not a FK to auth.users: identity is our own `students`
+# table (and would be Entra under SSO), not Supabase Auth, so there is no
+# auth.users row to point at.
 SCHEMA_SQL = """
 create table if not exists mt_sessions (
   session_id      text primary key,

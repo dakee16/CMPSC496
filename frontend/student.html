@@ -783,8 +783,10 @@ async function start(p){
   try {
     r = await fetch(`${API}/decompose_chunks`, {
       method: "POST", headers: {"Content-Type": "application/json"},
+      // No student_id: the server binds the session to whoever the cookie
+      // says we are. Sending a name here used to let anyone claim anyone.
       body: JSON.stringify({slug: p.slug, title: p.title,
-                            description: p.description, student_id: S.name})
+                            description: p.description})
     });
   } catch { return failStart("Could not reach the server."); }
   if (!r.ok) return failStart("This problem could not be started. Try another one.");

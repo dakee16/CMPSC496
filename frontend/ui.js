@@ -1,13 +1,20 @@
 /* ============================================================
-   MicroTutor shared UI behaviour: session gate + floating header
+   MicroTutor shared UI behaviour: session + floating header
    ------------------------------------------------------------
-   DEMO GATE ONLY. This stores a name and a role in sessionStorage.
-   It is not authentication: both values are chosen in the browser
-   and are trivially editable. The server already treats the client
-   as untrusted for anything that matters, and real PSU sign in
-   replaces this later.
+   Sign-in is username (PSU email) + password, and the thing that
+   proves it is an HttpOnly cookie this file cannot read. What
+   sessionStorage holds below is a COPY for drawing the header -
+   a name and a role. Editing it changes what the avatar says and
+   nothing else: every server route re-reads the cookie, so a
+   forged role here buys a 403, not an upload screen.
    ============================================================ */
-const API = "http://localhost:8000";
+
+/* Same origin as the pages, because api_server.py serves them (see the
+   StaticFiles mount at the bottom of that file). An empty string makes every
+   fetch a relative URL, so the cookie rides along with no CORS involved. The
+   localhost fallback is only for opening these files straight off disk, where
+   there is no origin to be the same as. */
+const API = location.protocol.startsWith("http") ? "" : "http://localhost:8000";
 
 /* Theme: "dark" (default) or "light", per browser. Applied to <html
    data-theme> so the light token overrides in ui.css take effect. Each page's
@@ -34,23 +41,97 @@ const Session = {
     try { return JSON.parse(sessionStorage.getItem(this.key) || "null"); }
     catch { return null; }
   },
-  set(name, role){
-    sessionStorage.setItem(this.key, JSON.stringify({name, role}));
+  set(me){
+    sessionStorage.setItem(this.key, JSON.stringify(
+      {name: me.name, role: me.role, id: me.student_id}));
+    return me;
   },
-  clear(){ sessionStorage.removeItem(this.key); },
+  clear(){ try { sessionStorage.removeItem(this.key); } catch {} },
+
+  /* Ask the SERVER who we are. Returns the account or null. This is the only
+     honest answer: the cookie can expire mid-lab, and a page that trusted
+     sessionStorage would keep drawing a signed-in header while every save
+     silently 401'd. */
+  async check(){
+    try {
+      const r = await fetch(`${API}/auth/me`, {credentials: "include"});
+      if (!r.ok) { this.clear(); return null; }
+      return this.set(await r.json());
+    } catch {
+      return null;              // server unreachable is not "signed out"
+    }
+  },
+
+  /* `mode` is "login" or "register". Throws an Error whose message is meant
+     for the student - the server writes it, so there is one wording for a bad
+     password and not one per page. */
+  async signIn(mode, username, password){
+    let r;
+    try {
+      r = await fetch(`${API}/${mode === "register" ? "register" : "login"}`, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        credentials: "include",
+        body: JSON.stringify({username, password}),
+      });
+    } catch {
+      throw new Error("Could not reach the server. Are you on the VPN?");
+    }
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok){
+      const d = body.detail;
+      throw new Error((d && d.message) || (typeof d === "string" && d)
+                      || "Sign-in failed. Try again.");
+    }
+    return this.set(body);
+  },
+
+  async signOut(){
+    try { await fetch(`${API}/logout`, {method: "POST", credentials: "include"}); }
+    catch {}                    // the cookie expires on its own regardless
+    this.clear();
+  },
 };
 
-/* Send anyone without a session back to the gate. `role` optionally
-   pins a page to one side, so a student cannot land on the instructor
-   upload screen by typing the URL. */
+/* Send anyone without a session to sign-in. `role` optionally pins a page to
+   one side, so a student cannot land on the instructor upload screen by
+   typing the URL.
+
+   Synchronous on purpose: it returns the cached account so callers can keep
+   `const S = requireSession("student")` at the top of a plain script. That
+   cache is only a HINT - it is revalidated against /auth/me a moment later,
+   and it decides nothing on the server. */
 function requireSession(role){
   const s = Session.get();
   if (!s || !s.name || (role && s.role !== role)) {
-    location.replace("home.html");
+    location.replace("login.html");
     return null;
   }
+  // Confirm with the server without blocking the page. A cookie that expired
+  // while the tab sat open lands back on sign-in instead of failing later, on
+  // a save the student thought had gone through.
+  Session.check().then(me => {
+    if (!me || (role && me.role !== role)) location.replace("login.html");
+  });
   return s;
 }
+
+/* Any route may answer 401 once the cookie expires. Handling that in one place
+   beats threading a check through every fetch on every page - and a page that
+   ignores it shows stale work as though it were still being saved. */
+const _fetch = window.fetch.bind(window);
+window.fetch = async (input, init = {}) => {
+  // Send the cookie by default. Same-origin would do this anyway; saying it
+  // explicitly is what makes a cross-origin dev server (vite on :5173 against
+  // the API on :8000) behave the same as production instead of looking
+  // signed-out for reasons no error message explains.
+  const r = await _fetch(input, {credentials: "include", ...init});
+  if (r.status === 401 && !location.pathname.endsWith("login.html")){
+    Session.clear();
+    location.replace("login.html");
+  }
+  return r;
+};
 
 const initials = n => (n || "?").trim().split(/\s+/).slice(0, 2)
   .map(w => w[0]).join("").toUpperCase();
@@ -128,9 +209,11 @@ function mountHeader({active = "", wide = false} = {}){
   });
   addEventListener("keydown", e => { if (e.key === "Escape") closeMenu(); });
 
-  hdr.querySelector("#miLogout").onclick = () => {
-    Session.clear();
-    location.href = "home.html";
+  hdr.querySelector("#miLogout").onclick = async () => {
+    // Await it: clearing only sessionStorage would leave the cookie valid, so
+    // the next page load would sign straight back in.
+    await Session.signOut();
+    location.href = "login.html";
   };
   hdr.querySelector("#miSettings").onclick = () => {
     closeMenu();
@@ -156,8 +239,8 @@ function mountHeader({active = "", wide = false} = {}){
 }
 
 /* Settings dialog opened from the profile menu. Lazily built and reused.
-   Real preferences land here once PSU sign-in exists; for now it shows the
-   account the demo gate recorded. */
+   Shows the signed-in account; preferences beyond the theme land here when
+   there is a second one worth storing. */
 function openSettings(s){
   let ov = document.getElementById("mtSettings");
   if (!ov){
@@ -179,7 +262,7 @@ function openSettings(s){
     addEventListener("keydown", e => { if (e.key === "Escape") ov.hidden = true; });
   }
   ov.querySelector("#mtsBody").innerHTML = `
-    <div class="setRow"><span>Name</span><b>${esc(s ? s.name : "guest")}</b></div>
+    <div class="setRow"><span>Account</span><b>${esc(s ? s.name : "guest")}</b></div>
     <div class="setRow"><span>Role</span><b>${esc(s ? s.role : "—")}</b></div>
     <div class="setRow"><span>Theme</span>
       <span class="seg" id="mtsTheme">
@@ -187,8 +270,8 @@ function openSettings(s){
         <button type="button" data-t="light">Light</button>
       </span>
     </div>
-    <p class="setNote">Account preferences arrive with Penn State sign-in. For
-      now, use <b>Log out</b> to switch name or role.</p>`;
+    <p class="setNote">Your role is set by the course staff, not here. Ask your
+      instructor if it looks wrong.</p>`;
 
   const seg = ov.querySelector("#mtsTheme");
   const paintSeg = () => seg.querySelectorAll("button").forEach(b =>
