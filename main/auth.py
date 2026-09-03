@@ -61,6 +61,13 @@ SESSION_HOURS = 12          # a class day; long enough to not re-login mid-lab
 MIN_PASSWORD = 8
 MAX_PASSWORD_BYTES = 72
 
+# Failed sign-ins before an account stops answering, and the window they are
+# counted over. Both are env-tunable because a lockout policy is the kind of
+# thing that gets loosened three weeks into a term, and editing code to do it
+# is how it ends up disabled instead.
+FAIL_LIMIT = int(os.environ.get("MICROTUTOR_LOGIN_FAIL_LIMIT", "5"))
+FAIL_WINDOW = int(os.environ.get("MICROTUTOR_LOGIN_FAIL_WINDOW", str(15 * 60)))
+
 
 class AuthError(Exception):
     """Sign-in or registration failed. The message is safe to show a student;
@@ -72,6 +79,15 @@ class AuthError(Exception):
     def __init__(self, message: str, detail: str = ""):
         super().__init__(message)
         self.detail = detail
+
+
+class RateLimited(AuthError):
+    """Too many failed attempts. Separate from AuthError so the route can
+    answer 429 with a Retry-After rather than a 401 that invites a retry."""
+
+    def __init__(self, message: str, retry_after: int, detail: str = ""):
+        super().__init__(message, detail)
+        self.retry_after = retry_after
 
 
 def is_configured() -> bool:
@@ -229,13 +245,65 @@ def register_student(sb, username: str, password: str) -> Dict[str, Any]:
     return rows[0]
 
 
+# ── brute-force limit ────────────────────────────────────────────────────
+# Counted PER USERNAME, not per IP, and that is the important choice: behind
+# the college VPN a whole lab shares one egress address, so an IP limit would
+# let one person's typos lock out everyone sitting near them. Per-username
+# cannot do that - the worst an attacker achieves by hammering someone else's
+# account is locking that one account, which is also exactly what we want to
+# happen while they are hammering it.
+#
+# ponytail: per-process dict, so N uvicorn workers means N times the budget.
+# Move the counter into Postgres (or Redis) if this ever runs multi-worker.
+_failures: Dict[str, list] = {}
+
+# An attacker guessing usernames would otherwise grow this dict forever. The
+# sweep is O(n) but runs only when the dict is implausibly large for a course.
+_MAX_TRACKED = 10_000
+
+
+def _recent_failures(username: str, now: float) -> list:
+    """Failure timestamps still inside the window, pruning as it reads. The
+    prune is what makes the limit self-healing: nobody has to expire a lock."""
+    stamps = [t for t in _failures.get(username, ()) if now - t < FAIL_WINDOW]
+    if stamps:
+        _failures[username] = stamps
+    else:
+        _failures.pop(username, None)
+    return stamps
+
+
+def _record_failure(username: str, now: float) -> None:
+    if len(_failures) > _MAX_TRACKED:
+        for name in [k for k, v in _failures.items()
+                     if all(now - t >= FAIL_WINDOW for t in v)]:
+            del _failures[name]
+    _failures.setdefault(username, []).append(now)
+
+
 def authenticate(sb, username: str, password: str) -> Dict[str, Any]:
-    """The row for a correct username+password, else AuthError.
+    """The row for a correct username+password, else AuthError (RateLimited
+    once an account has failed too often).
 
     One message for both "no such account" and "wrong password", on purpose:
-    distinguishing them tells an outsider which addresses are registered."""
+    distinguishing them tells an outsider which addresses are registered.
+
+    The limit lives HERE and not in the route so that anything which ever
+    signs a person in - a second route, an SSO fallback, a script - is behind
+    it by construction rather than by remembering to add it."""
     username = normalize_username(username)
     wrong = AuthError("Incorrect username or password.")
+    now = time.monotonic()
+
+    stamps = _recent_failures(username, now)
+    if len(stamps) >= FAIL_LIMIT:
+        # Locked until the OLDEST of those failures ages out, so a locked-out
+        # student is let back in on their own without anyone unlocking them.
+        wait = int(FAIL_WINDOW - (now - min(stamps))) + 1
+        raise RateLimited(
+            "Too many failed sign-in attempts. Try again in "
+            f"{max(1, round(wait / 60))} minute(s).", retry_after=wait,
+            detail=f"{len(stamps)} failures for {username}")
 
     rows = sb.table("students").select("*").eq(
         "username", username).limit(1).execute().data
@@ -243,10 +311,16 @@ def authenticate(sb, username: str, password: str) -> Dict[str, Any]:
         # Spend the time anyway. Returning instantly for an unknown username
         # and slowly for a known one leaks the account list by stopwatch.
         bcrypt.checkpw(b"x", bcrypt.hashpw(b"x", bcrypt.gensalt()))
+        _record_failure(username, now)
         raise wrong
     row = rows[0]
     if not verify_password(password, row.get("password_hash", "")):
+        _record_failure(username, now)
         raise wrong
+
+    # Clear on success, so a student who fumbles a password four times and then
+    # gets it right starts the next session with a full budget.
+    _failures.pop(username, None)
     return row
 
 
@@ -300,5 +374,59 @@ if __name__ == "__main__":
     m.SESSION_SECRET = ""
     assert not m.is_configured()
     assert m.read_session(forged) is None, "unconfigured server accepted a cookie"
+    m.SESSION_SECRET = "test-secret-not-a-real-key"
+
+    # ── the brute-force limit, with no database ──────────────────────────
+    class OneStudent:
+        """Minimal stand-in: one account, whose password is 'right'."""
+        def table(self, _name):
+            return self
+        def select(self, *_a, **_k):
+            return self
+        def eq(self, _c, v):
+            self.hit = (v == "u@psu.edu")
+            return self
+        def limit(self, _n):
+            return self
+        def execute(self):
+            return type("R", (), {"data": [
+                {"id": "u-1", "username": "u@psu.edu",
+                 "password_hash": m.hash_password("right-password")}
+            ] if self.hit else []})()
+
+    sb = OneStudent()
+    m._failures.clear()
+    for _ in range(m.FAIL_LIMIT):
+        try:
+            m.authenticate(sb, "u@psu.edu", "wrong")
+            raise AssertionError("a wrong password was accepted")
+        except m.RateLimited:
+            raise AssertionError("locked before the limit was reached")
+        except m.AuthError:
+            pass
+    try:
+        # Locked even for the correct password - a limit that still admits the
+        # right guess only slows down the guesses that would have failed.
+        m.authenticate(sb, "u@psu.edu", "right-password")
+        raise AssertionError("the limit did not apply")
+    except m.RateLimited as e:
+        assert e.retry_after > 0
+
+    # Someone else's typos must not lock this account: the lock is per
+    # username, because the VPN puts a whole lab on one address.
+    try:
+        m.authenticate(sb, "other@psu.edu", "wrong")
+        raise AssertionError("unknown user was admitted")
+    except m.RateLimited:
+        raise AssertionError("one account's failures locked another")
+    except m.AuthError:
+        pass
+
+    # Ageing the failures out of the window lifts the lock unaided...
+    m._failures["u@psu.edu"] = [t - m.FAIL_WINDOW - 1
+                                for t in m._failures["u@psu.edu"]]
+    assert m.authenticate(sb, "u@psu.edu", "right-password")["id"] == "u-1"
+    # ...and a success clears the count.
+    assert "u@psu.edu" not in m._failures
 
     print("auth self-check ok")

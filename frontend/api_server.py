@@ -896,6 +896,13 @@ def login(req: AuthRequest):
     _require_auth_configured()
     try:
         row = auth_mod.authenticate(get_supabase(), req.username, req.password)
+    except auth_mod.RateLimited as e:
+        # Before the AuthError clause: RateLimited subclasses it, so the order
+        # of these two is what decides whether the limit is visible at all.
+        print(f"  ⚠️  sign-in throttled: {e.detail}")
+        raise HTTPException(status_code=429, detail={
+            "reason_code": "too_many_attempts", "message": str(e)},
+            headers={"Retry-After": str(e.retry_after)})
     except auth_mod.AuthError as e:
         raise HTTPException(status_code=401, detail={
             "reason_code": "bad_credentials", "message": str(e)})

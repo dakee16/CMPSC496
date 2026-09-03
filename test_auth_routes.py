@@ -80,6 +80,9 @@ class FakeSupabase:
 def client():
     auth.SESSION_SECRET = "test-secret-not-a-real-key"
     auth.ALLOWED_DOMAINS = ("psu.edu",)
+    # Module-level, so without this a test that burns failed logins leaks a
+    # lockout into whichever test happens to run next.
+    auth._failures.clear()
     api_server.set_supabase(FakeSupabase())
     # TestClient keeps cookies between calls, or every assertion below would
     # pass for the wrong reason.
@@ -153,6 +156,67 @@ def test_login_is_case_insensitive_and_rejects_a_wrong_password():
                                   "password": "not it"}).status_code == 401
     assert c.post("/login", json={"username": "nobody@psu.edu",
                                   "password": PW}).status_code == 401
+
+
+def test_repeated_wrong_passwords_lock_the_account():
+    c = client()
+    c.post("/register", json={"username": "abc123@psu.edu", "password": PW})
+    c.post("/logout")
+
+    for _ in range(auth.FAIL_LIMIT):
+        assert c.post("/login", json={"username": "abc123@psu.edu",
+                                      "password": "not it"}).status_code == 401
+
+    r = c.post("/login", json={"username": "abc123@psu.edu", "password": "not it"})
+    assert r.status_code == 429
+    assert int(r.headers["Retry-After"]) > 0
+    # Locked even for the RIGHT password - otherwise the limit only slows down
+    # the guesses that were never going to work.
+    assert c.post("/login", json={"username": "abc123@psu.edu",
+                                  "password": PW}).status_code == 429
+
+
+def test_the_lock_is_per_account_not_shared():
+    """Everyone on the VPN shares an egress IP, so a limit that is not keyed
+    per username locks out the whole lab when one person fat-fingers."""
+    c = client()
+    c.post("/register", json={"username": "victim@psu.edu", "password": PW})
+    c.post("/register", json={"username": "bystander@psu.edu", "password": PW})
+    c.post("/logout")
+
+    for _ in range(auth.FAIL_LIMIT + 1):
+        c.post("/login", json={"username": "victim@psu.edu", "password": "no"})
+
+    assert c.post("/login", json={"username": "victim@psu.edu",
+                                  "password": PW}).status_code == 429
+    assert c.post("/login", json={"username": "bystander@psu.edu",
+                                  "password": PW}).status_code == 200
+
+
+def test_the_lock_expires_and_a_success_clears_the_count():
+    c = client()
+    c.post("/register", json={"username": "abc123@psu.edu", "password": PW})
+    c.post("/logout")
+
+    for _ in range(auth.FAIL_LIMIT):
+        c.post("/login", json={"username": "abc123@psu.edu", "password": "no"})
+    assert c.post("/login", json={"username": "abc123@psu.edu",
+                                  "password": PW}).status_code == 429
+
+    # Age the recorded failures past the window; the lock must lift itself,
+    # with nobody unlocking anything.
+    auth._failures["abc123@psu.edu"] = [
+        t - auth.FAIL_WINDOW - 1 for t in auth._failures["abc123@psu.edu"]]
+    assert c.post("/login", json={"username": "abc123@psu.edu",
+                                  "password": PW}).status_code == 200
+
+    # And a success wipes the slate, so four fumbles then a success does not
+    # leave the next session one mistake from a lockout.
+    for _ in range(auth.FAIL_LIMIT - 1):
+        c.post("/login", json={"username": "abc123@psu.edu", "password": "no"})
+    assert c.post("/login", json={"username": "abc123@psu.edu",
+                                  "password": PW}).status_code == 200
+    assert "abc123@psu.edu" not in auth._failures
 
 
 def test_a_forged_cookie_is_not_a_session():
