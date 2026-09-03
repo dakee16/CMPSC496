@@ -4,13 +4,18 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script>try{document.documentElement.dataset.theme=(localStorage.getItem("mt.theme")==="light"?"light":"dark")}catch(e){}</script>
-<title>MicroTutor: Instructor</title>
+<title>Prepare an assignment · MicroTutor</title>
+<!-- The literal is the value used before ui.js runs; Theme.set() then rewrites
+     it from the --bg token so it follows the chosen theme. -->
+<meta name="theme-color" content="#0b1120">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <!-- Same URL as ui.css's @import, so the faces start downloading in
      parallel with the stylesheet instead of waiting for it to parse.
      The @import stays the single source of truth; this is a head start. -->
 <link href="https://fonts.googleapis.com/css2?family=Lexend:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="tokens.css">
 <link rel="stylesheet" href="ui.css">
 <style>
   .drop{
@@ -119,7 +124,7 @@
 <script src="ui.js"></script>
 <script>
 const S = requireSession("teacher");
-mountHeader({active: "Home"});
+mountHeader({variant: "instructor", active: "Home"});
 const $ = id => document.getElementById(id);
 let TEMPLATE = "";
 

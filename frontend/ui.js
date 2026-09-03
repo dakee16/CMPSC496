@@ -31,6 +31,14 @@ const Theme = {
     const v = t === "light" ? "light" : "dark";
     try { localStorage.setItem(this.key, v); } catch {}
     document.documentElement.dataset.theme = v;
+    // Keep the browser's own chrome (the mobile address bar) on the same ground
+    // as the page. Read from the token so --bg stays the single source of the
+    // page's colour; the literal in each page's <meta> is only the value used
+    // before this file has run.
+    const m = document.querySelector('meta[name="theme-color"]');
+    const bg = getComputedStyle(document.documentElement)
+      .getPropertyValue("--bg").trim();
+    if (m && bg) m.setAttribute("content", bg);
   },
 };
 Theme.set(Theme.get());
@@ -140,14 +148,23 @@ const esc = s => String(s == null ? "" : s)
   .replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* Floating glass header: navigation left, wordmark centre, account right.
-   `active` names the current page so its nav button can be marked. */
-function mountHeader({active = "", wide = false} = {}){
+
+   ONE header for every authenticated page. `variant` ("student" | "instructor")
+   decides which nav items render and defaults to the signed-in role, `active`
+   names the current one, and `crumbs` adds a breadcrumb trail beside the nav.
+
+   The page's own <title> is left alone. This used to overwrite it with
+   "MicroTutor" / "MicroTutor Portal", which meant no page could ever carry a
+   descriptive tab title of its own. */
+function mountHeader({active = "", wide = false, variant = "", crumbs = null} = {}){
   const s = Session.get();
-  // Tab title: plain "MicroTutor" for everyone except an instructor, whose
-  // pages read "MicroTutor Portal". Set here so every page that mounts the
-  // header inherits it without its own <title> logic.
-  document.title = (s && s.role === "teacher") ? "MicroTutor Portal" : "MicroTutor";
-  const roleHome = s && s.role === "teacher" ? "teacher.html" : "student.html";
+  // Mounting twice would leave two headers stacked, and the second one's
+  // account chip floating loose over the page - exactly the "second, faded
+  // avatar chip" symptom. Cheaper to make this idempotent than to police every
+  // caller forever.
+  document.querySelectorAll("header.hdr").forEach(h => h.remove());
+  const role = variant || (s && s.role === "teacher" ? "instructor" : "student");
+  const roleHome = role === "instructor" ? "teacher.html" : "student.html";
 
   // SVG, never an emoji or a dingbat glyph like the old &#8962;: those render
   // as a different picture on every OS and ignore the surrounding text colour.
@@ -165,16 +182,19 @@ function mountHeader({active = "", wide = false} = {}){
   // bar. Home covers it. An instructor keeps one extra destination, which sits
   // on the LEFT beside Home rather than in the middle - the middle is the mark.
   const nav = [`<a class="hbtn ${active === "Home" || !active ? "on" : ""}"
-      id="homeBtn" href="${roleHome}">${homeIcon}<span class="htext">Home</span></a>`];
-  if (s && s.role === "teacher"){
+      id="homeBtn" href="${roleHome}"${active === "Home" || !active
+        ? ' aria-current="page"' : ""}>${homeIcon}<span class="htext">Home</span></a>`];
+  if (role === "instructor"){
     nav.push(`<a class="hbtn ${active === "Assignments" ? "on" : ""}"
-      href="teacher.html#list">${listIcon}<span class="htext">Assignments</span></a>`);
+      href="teacher.html#list"${active === "Assignments" ? ' aria-current="page"' : ""}
+      >${listIcon}<span class="htext">Assignments</span></a>`);
   }
 
   const hdr = document.createElement("header");
   hdr.className = "hdr" + (wide ? " wide" : "");
   hdr.innerHTML = `
-    <nav class="hnav" aria-label="Main">${nav.join("")}</nav>
+    <nav class="hnav" aria-label="Main">${nav.join("")}
+      <span class="crumbs" id="hcrumbs"></span></nav>
     <a class="wordmark" href="${roleHome}" aria-label="MicroTutor home">
       <span class="dot" aria-hidden="true"></span>MicroTutor</a>
     <div class="account hacct" id="acct">
@@ -220,9 +240,7 @@ function mountHeader({active = "", wide = false} = {}){
     openSettings(s);
   };
 
-  // The sliding "glider" highlight that used to track the active pill is gone
-  // with the pills themselves. It measured offsets on every resize and hover to
-  // animate a bar under a nav that, for a student, had exactly one item.
+  if (crumbs) setCrumbs(crumbs);
 
   // Condense on scroll.
   let ticking = false;
@@ -281,4 +299,187 @@ function openSettings(s){
   paintSeg();
 
   ov.hidden = false;
+}
+
+/* Breadcrumb trail in the header, e.g. Home / Practice Set / Count Vowels.
+
+   `items` is [{label, go}] - `go` is a function, because the student page is
+   one document that swaps sections rather than three URLs, so there is nothing
+   to href. The LAST item is the current page and is not clickable. Call with
+   [] to clear. */
+function setCrumbs(items){
+  const host = document.getElementById("hcrumbs");
+  if (!host) return;
+  host.innerHTML = "";
+  (items || []).forEach((it, i) => {
+    if (i){
+      const sep = document.createElement("span");
+      sep.className = "sep";
+      sep.setAttribute("aria-hidden", "true");
+      sep.textContent = "/";
+      host.appendChild(sep);
+    }
+    const last = i === items.length - 1;
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "crumb";
+    b.textContent = it.label;
+    b.title = it.label;
+    if (last){
+      b.setAttribute("aria-current", "page");
+      b.disabled = true;
+      // A disabled crumb is still the label of where you are, so it must not
+      // read as a broken control: no not-allowed cursor, no dimming.
+      b.style.cursor = "default";
+      b.style.background = "none";
+      b.style.color = "var(--text)";
+    } else if (it.go){
+      b.addEventListener("click", it.go);
+    }
+    host.appendChild(b);
+  });
+}
+
+/* ============================================================
+   Shared primitives
+   ------------------------------------------------------------
+   Every screen used to roll its own version of these four things, which is why
+   no two of them behaved the same. One implementation each.
+   ============================================================ */
+
+/* --- toast -------------------------------------------------------------
+   For things the user should notice but does not have to act on. Anything
+   BLOCKING belongs in an inline banner next to the control that failed, not
+   in a corner of the screen. */
+function toast(message, kind = "info", ms = 5000){
+  let host = document.getElementById("mtToasts");
+  if (!host){
+    host = document.createElement("div");
+    host.id = "mtToasts";
+    host.className = "toasts";
+    // polite, not assertive: a toast never interrupts what is being read.
+    host.setAttribute("role", "status");
+    host.setAttribute("aria-live", "polite");
+    document.body.appendChild(host);
+  }
+  const t = document.createElement("div");
+  t.className = "toast " + (kind === "info" ? "" : kind);
+  t.innerHTML = `<span class="tbar" aria-hidden="true"></span>
+                 <span class="tmsg"></span>
+                 <button class="x" type="button" aria-label="Dismiss">&times;</button>`;
+  t.querySelector(".tmsg").textContent = message;
+  const kill = () => {
+    t.classList.add("out");
+    setTimeout(() => t.remove(), 200);
+  };
+  t.querySelector(".x").onclick = kill;
+  host.appendChild(t);
+  if (ms) setTimeout(kill, ms);
+  return t;
+}
+
+/* --- button loading / disabled states ----------------------------------
+   `disable(btn, why)` is the only way a button in this app goes dead: it is
+   impossible to call without saying why, and the reason lands in the tooltip
+   the user sees when they hover the thing that will not click. */
+function disable(btn, why){
+  if (!btn) return;
+  btn.disabled = true;
+  btn.setAttribute("aria-disabled", "true");
+  if (why) btn.title = why;
+}
+function enable(btn){
+  if (!btn) return;
+  btn.disabled = false;
+  btn.removeAttribute("aria-disabled");
+  btn.removeAttribute("title");
+}
+/* Busy is not the same as disabled: the control is unavailable because IT is
+   working, so it says so and keeps its own label to come back to. */
+function setBusy(btn, on, busyLabel){
+  if (!btn) return;
+  if (on){
+    if (btn.dataset.label == null) btn.dataset.label = btn.innerHTML;
+    btn.dataset.busy = "1";
+    btn.disabled = true;
+    btn.setAttribute("aria-busy", "true");
+    btn.innerHTML = `<span class="spin" aria-hidden="true"></span>`
+      + esc(busyLabel || "Working…");
+  } else {
+    btn.dataset.busy = "";
+    btn.removeAttribute("aria-busy");
+    if (btn.dataset.label != null){
+      btn.innerHTML = btn.dataset.label;
+      delete btn.dataset.label;
+    }
+    enable(btn);
+  }
+}
+
+/* --- skeleton ----------------------------------------------------------
+   Anything that fetches shows one of these. A blank panel and a broken panel
+   look identical, which is why "loading..." was never good enough. */
+function skeletonRows(n = 3, widths = [78, 62, 88, 54, 70]){
+  let out = "";
+  for (let i = 0; i < n; i++){
+    out += `<div class="skelRow" aria-hidden="true">
+      <span class="skel" style="width:${widths[i % widths.length]}%"></span>
+      <span class="skel" style="width:34%;height:9px"></span></div>`;
+  }
+  return `<div role="status" aria-label="Loading">${out}</div>`;
+}
+
+/* --- formatting --------------------------------------------------------
+   toLocaleString() renders "9/1/2026, 12:46:42 PM" - seconds nobody needs and
+   a date order that means two different things depending on where the reader
+   grew up. */
+function fmtWhen(iso){
+  const d = new Date(iso);
+  if (isNaN(d)) return "—";
+  const date = d.toLocaleDateString("en-US",
+    {month: "short", day: "numeric", year: "numeric"});
+  const time = d.toLocaleTimeString("en-US",
+    {hour: "numeric", minute: "2-digit"});
+  return `${date} · ${time}`;
+}
+function relTime(iso){
+  const d = new Date(iso);
+  if (isNaN(d)) return "";
+  const secs = (Date.now() - d.getTime()) / 1000;
+  if (secs < 60) return "just now";
+  const units = [["minute", 60], ["hour", 3600], ["day", 86400],
+                 ["month", 2592000], ["year", 31536000]];
+  let label = "minute", size = 60;
+  for (const [u, s] of units){ if (secs >= s){ label = u; size = s; } }
+  const n = Math.floor(secs / size);
+  return `${n} ${label}${n === 1 ? "" : "s"} ago`;
+}
+function fmtBytes(n){
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / 1048576).toFixed(1)} MB`;
+}
+
+/* --- tiny Python highlighter -------------------------------------------
+   For the static snippets (the format example on the instructor page). Four
+   token classes is enough to make a four-line sample readable, and it beats
+   pulling CodeMirror into a page that has no editor.
+
+   Order matters: comments and strings are matched FIRST and their content is
+   never re-scanned, so a keyword inside a string stays a string. */
+function hlPython(src){
+  const out = [];
+  const re = /(#[^\n]*)|('''[\s\S]*?'''|"""[\s\S]*?"""|'(?:[^'\\\n]|\\.)*'|"(?:[^"\\\n]|\\.)*")/g;
+  let last = 0, m;
+  const plain = s => esc(s)
+    .replace(/\b(def|return|if|elif|else|for|while|in|not|and|or|import|from|None|True|False)\b/g,
+             '<span class="t-kw">$1</span>')
+    .replace(/\b([a-zA-Z_]\w*)(?=\()/g, '<span class="t-fn">$1</span>');
+  while ((m = re.exec(src))){
+    out.push(plain(src.slice(last, m.index)));
+    out.push(`<span class="${m[1] ? "t-com" : "t-str"}">${esc(m[0])}</span>`);
+    last = m.index + m[0].length;
+  }
+  out.push(plain(src.slice(last)));
+  return out.join("");
 }

@@ -5,23 +5,25 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script>try{document.documentElement.dataset.theme=(localStorage.getItem("mt.theme")==="light"?"light":"dark")}catch(e){}</script>
 <title>Sign in · MicroTutor</title>
+<!-- The literal is the value used before ui.js runs; Theme.set() then rewrites
+     it from the --bg token so it follows the chosen theme. -->
+<meta name="theme-color" content="#0b1120">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <!-- Same URL as ui.css's @import, so the faces start downloading in
      parallel with the stylesheet instead of waiting for it to parse.
      The @import stays the single source of truth; this is a head start. -->
 <link href="https://fonts.googleapis.com/css2?family=Lexend:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="tokens.css">
 <link rel="stylesheet" href="ui.css">
 <style>
   body{display:grid; place-items:center; padding:24px}
   .gate{width:min(430px,100%)}
-  /* Same wordmark as the floating header, so the first screen and every screen
-     after it are unmistakably the same product. */
-  .mark{display:flex; align-items:center; gap:10px; margin-bottom:26px}
-  .mark .dot{width:9px;height:9px;border-radius:50%;background:var(--indigo-500);
-             box-shadow:0 0 0 4px rgba(99,102,241,.16)}
-  .mark span{font-family:var(--font-display); font-weight:700; font-size:14px;
-             letter-spacing:.17em; text-transform:uppercase}
+  /* The wordmark is the SAME .wordmark element the floating header renders -
+     one implementation, so the first screen and every screen after it cannot
+     drift apart. This page only positions it. */
+  .markrow{display:flex; margin-bottom:var(--s6)}
 
   .field + .field{margin-top:14px}
   .field label{display:block; font-size:12.5px; color:var(--text-muted);
@@ -56,7 +58,9 @@
 <body>
 
 <main class="gate">
-  <div class="mark"><span class="dot"></span><span>MicroTutor</span></div>
+  <div class="markrow">
+    <span class="wordmark"><span class="dot" aria-hidden="true"></span>MicroTutor</span>
+  </div>
 
   <div class="card">
     <p class="eyebrow" id="eyebrow">Sign in</p>

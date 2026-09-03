@@ -1,0 +1,190 @@
+/* ============================================================
+   MicroTutor design tokens — the single source of colour, space,
+   radius and elevation for every page.
+   ------------------------------------------------------------
+   These lived in ui.css's :root. They are here instead so that a
+   page's own <style> block can use them without depending on the
+   load order of the sheet that also styles the header.
+
+   Rules for anything added below this file:
+     - no hex or rgba() outside this file
+     - a colour that does not map to a token is a bug, not a token
+   ============================================================ */
+
+:root{
+  /* ---- type: three faces, one job each ------------------------------
+     LEXEND for headings, the wordmark and buttons — drawn to raise reading
+     proficiency, which is the whole premise of this page.
+     IBM PLEX SANS for body copy at the 13-14px this UI actually runs at.
+     JETBRAINS MONO for anything read as CODE OR DATA. */
+  --font-display:'Lexend','IBM Plex Sans',system-ui,-apple-system,sans-serif;
+  --font-sans:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --font-mono:'JetBrains Mono','SF Mono',Monaco,'Cascadia Code',monospace;
+
+  /* ---- spacing scale ---- */
+  --s1:4px;  --s2:8px;  --s3:12px; --s4:16px;
+  --s6:24px; --s8:32px; --s12:48px; --s16:64px;
+
+  /* ---- radii ---- */
+  --r-sm:8px; --r-md:12px; --r-lg:18px; --r-pill:999px;
+
+  /* ---- surface levels ----
+     The ground is true slate, the same neutral family a code editor uses.
+     A violet ground makes every neutral look slightly wrong. */
+  --bg:#0b1120;
+  --surface:#131b2c;
+  --surface-raised:#1a2338;
+  --border:#263149;
+
+  /* ---- text levels ----
+     Measured against --surface. Both muted levels clear the 4.5:1 AA floor
+     for body text; --text-subtle is the one that used to sit on the line. */
+  --text:#f1f5f9;          /* 15.9:1 */
+  --text-muted:#9aa8bd;    /*  7.1:1 */
+  --text-subtle:#8593ae;   /*  5.5:1 — was #7c8aa5 (4.9:1), a thin margin once
+                              the aurora tints the card underneath it */
+
+  /* ---- accent: ONE decorative colour ----
+     Green, amber and red are STATUS ONLY below. They mean something passed,
+     was shown, or failed — never decoration. That is what makes them
+     readable as status. */
+  --accent:#6366f1;
+  --accent-hover:#818cf8;
+  --accent-active:#4f46e5;
+  --accent-ink:#a5b4fc;              /* accent used as TEXT */
+  --accent-deep:#1e1b4b;
+  --on-accent:#ffffff;
+  --accent-tint:rgba(99,102,241,.12);
+  --accent-tint-strong:rgba(99,102,241,.20);
+  --accent-line:rgba(129,140,248,.28);
+  --accent-halo:rgba(99,102,241,.16);
+  --focus-ring:rgba(99,102,241,.18);
+  /* Disabled controls: opacity alone would fade the label below 4.5:1, so a
+     disabled button keeps its own flat fill and readable ink. */
+  --disabled-bg:rgba(148,163,184,.14);
+  --disabled-ink:#8593ae;
+
+  /* ---- semantic ---- */
+  --success:#34d399; --success-bg:rgba(16,185,129,.14); --success-line:rgba(52,211,153,.24);
+  --warning:#fbbf24; --warning-bg:rgba(245,158,11,.14); --warning-line:rgba(251,191,36,.24);
+  --danger:#f87171;  --danger-bg:rgba(239,68,68,.14);   --danger-line:rgba(248,113,113,.24);
+
+  /* ---- elevation: two levels, plus the accent glow ----
+     The glow belongs to ONE control on a screen at a time. Two glowing
+     buttons is two primary actions, which is none. */
+  --shadow-1:0 4px 12px rgba(0,0,0,.40);
+  --shadow-2:0 12px 32px rgba(0,0,0,.50);
+  --accent-glow:0 4px 14px rgba(99,102,241,.30);
+  --accent-glow-hover:0 7px 20px rgba(99,102,241,.42);
+
+  /* ---- glass ----
+     Opacity is high on purpose: below ~.8 the aurora shows through and every
+     panel sits on a slightly different colour. A surface should be a surface. */
+  --glass-bg:rgba(19,27,44,.82);
+  --glass-bg-strong:rgba(19,27,44,.93);
+  --glass-line:rgba(165,180,252,.13);
+  --glass-lift:inset 0 1px 0 rgba(255,255,255,.05);
+  --blur:blur(20px) saturate(130%);
+  --scrim:rgba(4,6,20,.62);
+  --scroll-thumb:rgba(165,180,252,.18);
+
+  /* ---- the code surface. Dark in BOTH themes, as is CodeMirror. ---- */
+  --code-bg:rgba(11,17,32,.75);
+  --code-bg-deep:rgba(8,12,22,.72);
+  --code-text:#d6dde8;
+  --code-dim:#8f9cb5;
+  --code-accept:#c3cddd;
+
+  /* ---- flowchart ink ----
+     Edges and node outlines are non-text (3:1 floor); edge labels are real
+     text (4.5:1). */
+  --graph-line:#6d7ba6;
+  --graph-label:#aab5d2;
+  --graph-node-line:#5a6698;
+
+  /* ---- motion ---- */
+  --transition:all .18s ease;
+  --ease:cubic-bezier(.4,0,.2,1);
+
+  /* ---- a named stacking scale ----
+     These were ad hoc literals across four files, which is how two things end
+     up fighting over the same layer months later. Anything new picks a token. */
+  --z-behind:-1;      /* the aurora behind the glass */
+  --z-base:1;         /* in-flow content that must beat a sibling */
+  --z-sticky:5;       /* sticky sub-headers inside a scrolling panel */
+  --z-header:60;      /* the floating page header */
+  --z-popover:70;     /* menus anchored to the header */
+  --z-modal:200;      /* full-screen dialogs */
+  --z-toast:300;      /* above the dialog that raised it */
+
+  /* ---- legacy aliases ----
+     The names the existing sheets were written against. Keeping them as
+     aliases is what let the token refactor land without rewriting every
+     selector in ui.css. New code uses the names above. */
+  --indigo-600:var(--accent);
+  --indigo-500:var(--accent-hover);
+  --indigo-400:var(--accent-ink);
+  --indigo-50:var(--accent-deep);
+  --page-bg:var(--bg);
+  --card-bg:var(--surface);
+  --card-bg-soft:var(--surface-raised);
+  --card-border:var(--border);
+  --text-bright:var(--text);
+  --text-dim:var(--text-subtle);
+  --green-text:var(--success); --green-bg:var(--success-bg);
+  --amber-text:var(--warning); --amber-bg:var(--warning-bg);
+  --red-text:var(--danger);    --red-bg:var(--danger-bg);
+  --shadow-md:var(--shadow-1); --shadow-lg:var(--shadow-2);
+  --radius:var(--r-md);
+}
+
+/* ============ LIGHT THEME ============
+   Opt in with <html data-theme="light">, set from Settings and re-applied
+   synchronously in each page's <head> to avoid a flash. Only the tokens move;
+   every rule that uses them flips for free. */
+:root[data-theme="light"]{
+  --bg:#f6f7fa;
+  --surface:#ffffff;
+  --surface-raised:#eef1f6;
+  --border:#e2e6ee;
+
+  --text:#0f172a;
+  --text-muted:#475569;    /* 7.5:1 on white */
+  --text-subtle:#667080;   /* 5.0:1 on white — was #8a94a6 (3.1:1) */
+
+  --accent:#4f46e5;
+  --accent-hover:#6366f1;
+  --accent-active:#4338ca;
+  --accent-ink:#4338ca;
+  --accent-deep:#eef2ff;
+  --accent-tint:rgba(79,70,229,.09);
+  --accent-tint-strong:rgba(79,70,229,.16);
+  --accent-line:rgba(79,70,229,.22);
+  --accent-halo:rgba(79,70,229,.14);
+  --focus-ring:rgba(79,70,229,.20);
+  --disabled-bg:rgba(15,23,42,.07);
+  --disabled-ink:#667080;
+
+  --success:#047857; --success-bg:rgba(16,185,129,.13); --success-line:rgba(4,120,87,.22);
+  --warning:#b45309; --warning-bg:rgba(245,158,11,.16); --warning-line:rgba(180,83,9,.22);
+  --danger:#dc2626;  --danger-bg:rgba(239,68,68,.11);   --danger-line:rgba(220,38,38,.22);
+
+  --shadow-1:0 2px 8px rgba(15,23,42,.07);
+  --shadow-2:0 10px 28px rgba(15,23,42,.12);
+  --accent-glow:0 4px 14px rgba(79,70,229,.24);
+  --accent-glow-hover:0 7px 20px rgba(79,70,229,.34);
+
+  --glass-bg:rgba(255,255,255,.88);
+  --glass-bg-strong:rgba(255,255,255,.95);
+  --glass-line:rgba(15,23,42,.09);
+  --glass-lift:inset 0 1px 0 rgba(255,255,255,.7);
+  --blur:blur(18px) saturate(120%);
+  --scrim:rgba(15,23,42,.42);
+  --scroll-thumb:rgba(15,23,42,.18);
+
+  /* The code surface stays dark, so its own ink does not flip. */
+
+  --graph-line:#7c88b0;
+  --graph-label:#525d78;
+  --graph-node-line:#828fb6;   /* 3.20:1 on white */
+}

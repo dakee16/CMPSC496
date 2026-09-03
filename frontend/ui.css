@@ -1,10 +1,9 @@
 /* ============================================================
    MicroTutor shared UI: midnight glass
    ------------------------------------------------------------
-   Tokens mirror style.css so these pages sit in the same world as
-   index.html. They are restated rather than imported because
-   style.css also carries page specific rules keyed to index.html
-   ids, and pulling that in would style things twice.
+   Every colour, radius, shadow and step of the spacing scale
+   comes from tokens.css, which each page links immediately
+   before this file. There are no hex or rgba() literals below.
    ============================================================ */
 /* One @import rather than a <link> in five pages. Every page that loads this
    file already preconnects to fonts.googleapis.com, so the extra hop is warm.
@@ -12,163 +11,14 @@
    ignored. */
 @import url('https://fonts.googleapis.com/css2?family=Lexend:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
-:root{
-  /* ---- type: three faces, one job each ----
-     Inter did all three jobs before, which is why the page read as a default
-     rather than a decision.
-
-     LEXEND for headings, the wordmark and buttons. It was drawn to raise
-     reading proficiency and is used in classrooms for exactly that; on a page
-     whose whole premise is a student reading a task and acting on it, the
-     display face may as well be the one designed for reading. Slightly wide
-     and low-contrast, so it holds up at 30px without turning ornamental.
-
-     IBM PLEX SANS for body copy, labels and prose. Humanist, drawn for
-     technical documentation, and unusually legible at the 13-14px this UI
-     actually runs at. It shares Lexend's open apertures, so the pair reads as
-     one voice rather than two fonts stapled together.
-
-     JETBRAINS MONO for anything the student reads as CODE OR DATA - the
-     editor, submitted lines, graph node labels, step signatures. Pinned rather
-     than the old 'SF Mono',Monaco,'Cascadia Code' stack, which resolved to a
-     different face on every machine and made column alignment luck. It is also
-     the mono JetBrains drew to sit beside Plex-style humanist sans, which is
-     why the code blocks and the prose around them look related. */
-  --font-display:'Lexend','IBM Plex Sans',system-ui,-apple-system,sans-serif;
-  --font-sans:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
-  --font-mono:'JetBrains Mono','SF Mono',Monaco,'Cascadia Code',monospace;
-
-  /* ---- colour: ONE accent, on a neutral ground ----
-     The old palette was a saturated blue-violet (#0a0e27 page, #1e1b4b tints)
-     with indigo, amber, green and red all competing on top of it. A violet
-     ground makes every neutral look slightly wrong, and four accents at equal
-     strength means none of them signals anything.
-
-     The ground is now true slate - the same neutral family a code editor uses -
-     and indigo is the only decorative colour. Green, amber and red are demoted
-     to STATUS ONLY: they appear when something passed, was shown, or failed,
-     and never as decoration. That is what makes them readable as status. */
-  --indigo-600:#6366f1;
-  --indigo-500:#818cf8;
-  --indigo-400:#a5b4fc;
-  --indigo-50:#1e1b4b;
-
-  --page-bg:#0b1120;
-  --card-bg:#131b2c;
-  --card-bg-soft:#1a2338;
-  --card-border:#263149;
-
-  --text-bright:#f1f5f9;
-  --text-muted:#9aa8bd;
-  /* Was #64748b, which measured 3.58:1 on a card - under the 4.5:1 AA floor,
-     and .hint uses it for real 13px body copy. #7c8aa5 is the same slate hue
-     one step lighter: 4.90:1 on card, 5.46:1 on the page. */
-  --text-dim:#7c8aa5;
-
-  --green-bg:rgba(16,185,129,.14);  --green-text:#34d399;
-  --amber-bg:rgba(245,158,11,.14); --amber-text:#fbbf24;
-  --red-bg:rgba(239,68,68,.14);    --red-text:#f87171;
-
-  --shadow-md:0 4px 12px rgba(0,0,0,.4);
-  --shadow-lg:0 12px 32px rgba(0,0,0,.5);
-  --radius:12px;
-  --transition:all .18s ease;
-
-  /* A named stacking scale. These were previously ad hoc literals scattered
-     across four files (-1, 1, 5, 60, 70, 200), which is how two things end up
-     fighting over the same layer months later. Anything new picks a token. */
-  --z-behind:-1;      /* the aurora behind the glass */
-  --z-base:1;         /* in-flow content that must beat a sibling */
-  --z-sticky:5;       /* sticky sub-headers inside a scrolling panel */
-  --z-header:60;      /* the floating page header */
-  --z-popover:70;     /* menus anchored to the header */
-  --z-modal:200;      /* full-screen dialogs */
-
-  /* Glass. The border is a hairline of indigo haze; the inset
-     highlight is what makes a panel read as a lit edge rather than
-     a flat translucent rectangle.
-     Opacity is up from .55/.78: at .55 the aurora showed through the card and
-     every panel sat on a slightly different colour, which is most of why the
-     page read as unfinished. A surface should be a surface. */
-  --glass-bg:rgba(19,27,44,.82);
-  --glass-bg-strong:rgba(19,27,44,.93);
-  --glass-line:rgba(165,180,252,.13);
-  --glass-lift:inset 0 1px 0 rgba(255,255,255,.05);
-  --blur:blur(20px) saturate(130%);
-
-  /* Flowchart ink. Tokens rather than literals in graphs.js, which hardcoded
-     #4a5580 / #8892b8 / #2c3358 and so drew the SAME dark greys on the light
-     theme - the edge labels measured 3.07:1 there and the arrows all but
-     vanished. Edges and node outlines are non-text (3:1 floor); edge labels
-     are real text (4.5:1). */
-  --graph-line:#6d7ba6;
-  --graph-label:#aab5d2;
-  /* 3.07:1 on a card. A node's outline is what shows where the box begins, so
-     it is information, not decoration, and WCAG 1.4.11's 3:1 floor applies. */
-  --graph-node-line:#5a6698;
-}
-
-/* ============ LIGHT THEME ============
-   Opt in with <html data-theme="light"> (set from Settings, persisted in
-   localStorage, and re-applied synchronously in each page's <head> to avoid a
-   flash). Almost everything is token-driven so it flips automatically; only
-   the handful of surfaces that hardcode a dark value are restated below. The
-   CodeMirror editor and <pre class="code"> blocks stay dark on purpose. */
-:root[data-theme="light"]{
-  --indigo-600:#4f46e5;
-  --indigo-500:#6366f1;
-  --indigo-400:#4338ca;
-  --indigo-50:#eef2ff;
-
-  --page-bg:#f6f7fa;
-  --card-bg:#ffffff;
-  --card-bg-soft:#eef1f6;
-  --card-border:#e2e6ee;
-
-  --text-bright:#0f172a;
-  --text-muted:#475569;
-  /* Was #8a94a6 = 3.06:1 on white, the worst contrast failure in either
-     theme. #6b7688 is 4.59:1 and keeps the same cool grey. */
-  --text-dim:#6b7688;
-
-  --green-bg:rgba(16,185,129,.13);  --green-text:#047857;
-  --amber-bg:rgba(245,158,11,.16); --amber-text:#b45309;
-  --red-bg:rgba(239,68,68,.11);    --red-text:#dc2626;
-
-  --shadow-md:0 2px 8px rgba(15,23,42,.07);
-  --shadow-lg:0 10px 28px rgba(15,23,42,.12);
-
-  /* Same reasoning as the dark theme: a card that lets the background through
-     is not a surface. .62 was low enough that text sat on a gradient. */
-  --glass-bg:rgba(255,255,255,.88);
-  --glass-bg-strong:rgba(255,255,255,.95);
-  --glass-line:rgba(15,23,42,.09);
-  --glass-lift:inset 0 1px 0 rgba(255,255,255,.7);
-  --blur:blur(18px) saturate(120%);
-
-  --graph-line:#7c88b0;
-  --graph-label:#525d78;
-  --graph-node-line:#828fb6;   /* 3.20:1 on white */
-}
+/* The aurora is softer in light mode: the same alphas that read as a wash on
+   near-black read as a stain on near-white. */
 :root[data-theme="light"] body::before{
   background:
-    radial-gradient(46vmax 46vmax at 15% 0%, rgba(99,102,241,.07), transparent 60%),
-    radial-gradient(52vmax 52vmax at 88% 4%, rgba(129,140,248,.05), transparent 60%);
+    radial-gradient(46vmax 46vmax at 15% 0%, var(--accent-tint), transparent 60%),
+    radial-gradient(52vmax 52vmax at 88% 4%, var(--accent-halo), transparent 60%);
   filter:none;
 }
-:root[data-theme="light"] .hbtn:hover,
-:root[data-theme="light"] .hbtn.on{background:rgba(79,70,229,.09);
-  border-color:rgba(15,23,42,.08)}
-:root[data-theme="light"] .ghost{background:rgba(79,70,229,.08)}
-:root[data-theme="light"] input[type=text],
-:root[data-theme="light"] input[type=password],
-:root[data-theme="light"] input[type=email],
-:root[data-theme="light"] select,
-:root[data-theme="light"] textarea{background:#fff}
-:root[data-theme="light"] ul.pick button{background:#fff}
-:root[data-theme="light"] ul.pick button:hover{background:rgba(99,102,241,.09)}
-:root[data-theme="light"] code{background:rgba(79,70,229,.10); color:#4338ca}
-:root[data-theme="light"] td{border-bottom-color:rgba(15,23,42,.08)}
 
 *{box-sizing:border-box}
 html{scroll-behavior:smooth}
@@ -176,18 +26,16 @@ html{scroll-behavior:smooth}
 body{
   margin:0;
   min-height:100vh;
-  background:var(--page-bg);
-  color:var(--text-bright);
+  background:var(--bg);
+  color:var(--text);
   font-family:var(--font-sans);
   font-size:15px;
   line-height:1.6;
   -webkit-font-smoothing:antialiased;
   text-rendering:optimizeLegibility;
-  /* This used to be Inter's 'cv11'/'ss01', which disambiguated 1/l/I on a page
-     full of variable names. IBM Plex Sans does not need the alternates - it
-     draws a tailed 'l' and a serifed 'I' by default, which is a large part of
-     why it was picked for a page where "l" and "1" appear in the same sentence
-     as prose. `zero` is Plex's own slashed zero, on for the same reason. */
+  /* IBM Plex Sans draws a tailed 'l' and a serifed 'I' by default, which is a
+     large part of why it was picked for a page where "l" and "1" appear in the
+     same sentence as prose. `zero` is Plex's own slashed zero. */
   font-feature-settings:'zero' 1;
 }
 
@@ -196,77 +44,66 @@ body{
 .tnum,.attempts,td,th,.pill{font-variant-numeric:tabular-nums}
 
 /* A single fixed wash behind the glass, so the blur has something to refract
-   and panels do not read as flat fills.
-
-   It used to be three saturated blobs on a 34s drift animation. Two problems
-   with that: a background that MOVES pulls the eye away from the task on a page
-   whose whole job is concentration, and at .30/.42 alpha it tinted every card
-   a different colour depending on where it sat. Now: two low-alpha pools,
-   anchored at the top where the header floats, and completely still. */
+   and panels do not read as flat fills. Two low-alpha pools, anchored at the
+   top where the header floats, and completely still: a background that MOVES
+   pulls the eye away from the task on a page whose whole job is concentration. */
 body::before{
   content:"";
   position:fixed; inset:0;
   z-index:var(--z-behind);
   background:
-    radial-gradient(50vmax 46vmax at 12% -6%, rgba(99,102,241,.16), transparent 58%),
-    radial-gradient(46vmax 42vmax at 92% 2%, rgba(79,70,229,.13), transparent 58%);
+    radial-gradient(50vmax 46vmax at 12% -6%, var(--accent-tint-strong), transparent 58%),
+    radial-gradient(46vmax 42vmax at 92% 2%, var(--accent-tint), transparent 58%);
 }
 
 /* ---------- floating header ----------
    Three zones, not a flex row: NAVIGATION left, WORDMARK centre, ACCOUNT right.
 
    Grid rather than flex with a spacer, because the wordmark has to be centred
-   on the PAGE, not on whatever space the two sides happen to leave. The 1fr /
-   auto / 1fr columns are what guarantee that - with a flex row the mark drifts
-   left or right as a nav item or a longer name changes the side widths, which
-   is exactly the sort of thing that reads as unfinished.
-
-   The old bar also carried a sliding-glider pill nav. With one destination per
-   role it was an animated highlight that never moved, taking up the centre of
-   the bar where the brand belongs. */
+   on the PAGE, not on whatever space the two sides happen to leave. */
 .hdr{
-  position:fixed; top:16px; left:50%;
+  position:fixed; top:var(--s4); left:50%;
   transform:translateX(-50%);
   z-index:var(--z-header);
-  width:min(1180px,calc(100vw - 32px));
-  display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:12px;
-  padding:9px 14px;
+  width:min(1180px,calc(100vw - var(--s8)));
+  display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:var(--s3);
+  padding:9px var(--s3);
   border-radius:16px;
   background:var(--glass-bg-strong);
   border:1px solid var(--glass-line);
-  box-shadow:var(--shadow-lg),var(--glass-lift);
+  box-shadow:var(--shadow-2),var(--glass-lift);
   backdrop-filter:var(--blur);
   -webkit-backdrop-filter:var(--blur);
-  transition:padding .28s cubic-bezier(.4,0,.2,1),
-             top .28s cubic-bezier(.4,0,.2,1),
-             box-shadow .28s ease;
+  transition:padding .28s var(--ease), top .28s var(--ease), box-shadow .28s ease;
 }
-.hdr.condensed{top:8px; padding:5px 12px; box-shadow:var(--shadow-md),var(--glass-lift)}
-.hdr.wide{width:min(1500px,calc(100vw - 32px))}
+.hdr.condensed{top:var(--s2); padding:5px var(--s3); box-shadow:var(--shadow-1),var(--glass-lift)}
+.hdr.wide{width:min(1500px,calc(100vw - var(--s8)))}
 
 .hnav{display:flex; align-items:center; gap:7px; justify-self:start; min-width:0}
 .hacct{justify-self:end}
 
 /* The wordmark. Uppercase and letter-spaced because this is a brand mark
-   rather than a heading - it is meant to be recognised, not read. */
+   rather than a heading - it is meant to be recognised, not read. The login
+   page renders the SAME mark from the same class, so the first screen and
+   every screen after it are unmistakably the same product. */
 .wordmark{
   justify-self:center;
   display:inline-flex; align-items:center; gap:9px;
   font-family:var(--font-display);
   font-weight:700; font-size:14px; letter-spacing:.17em;
   text-transform:uppercase; white-space:nowrap;
-  color:var(--text-bright); text-decoration:none;
-  padding:4px 6px; border-radius:9px;
+  color:var(--text); text-decoration:none;
+  padding:var(--s1) 6px; border-radius:9px;
   /* The right-hand letter-spacing hangs off the last letter, so without this
      the word sits a hair left of true centre. */
   text-indent:.17em;
   transition:color .2s ease;
 }
-.wordmark:hover{color:var(--indigo-400)}
+.wordmark:hover{color:var(--accent-ink)}
 .wordmark .dot{
   width:8px; height:8px; border-radius:50%; flex:none; text-indent:0;
-  background:var(--indigo-500);
-  box-shadow:0 0 0 4px rgba(99,102,241,.16);
+  background:var(--accent-hover);
+  box-shadow:0 0 0 4px var(--accent-halo);
 }
 
 /* Header navigation buttons ("Home", and "Assignments" for an instructor). */
@@ -279,47 +116,63 @@ body::before{
   border:1px solid transparent;
   transition:color .18s ease, background .18s ease, border-color .18s ease;
 }
-.hbtn:hover{color:var(--text-bright); background:rgba(129,140,248,.13);
+.hbtn:hover{color:var(--text); background:var(--accent-tint-strong);
             border-color:var(--glass-line)}
-.hbtn.on{color:var(--text-bright); background:rgba(129,140,248,.11);
+.hbtn.on{color:var(--text); background:var(--accent-tint);
          border-color:var(--glass-line)}
 .hbtn svg{flex:none; opacity:.85}
 
+/* Breadcrumb, rendered into the header's nav zone. It exists so a student
+   three levels deep can go back ONE level instead of all the way Home. */
+.crumbs{display:flex; align-items:center; gap:2px; min-width:0; overflow:hidden}
+.crumbs .sep{color:var(--text-subtle); font-size:12px; flex:none; padding:0 1px}
+.crumbs .crumb{
+  background:none; border:0; padding:5px 7px; border-radius:var(--r-sm);
+  font:inherit; font-size:12.5px; font-family:var(--font-sans); font-weight:500;
+  color:var(--text-muted); cursor:pointer; white-space:nowrap;
+  overflow:hidden; text-overflow:ellipsis; max-width:22ch; min-height:0;
+  box-shadow:none;
+}
+.crumbs .crumb:hover{background:var(--accent-tint); color:var(--text);
+                     transform:none; box-shadow:none}
+.crumbs .crumb[aria-current="page"]{color:var(--text); cursor:default}
+.crumbs .crumb[aria-current="page"]:hover{background:none}
+
 /* Profile button + dropdown menu. */
 .account{position:relative; display:flex}
-.who{display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text-muted);
-     padding:4px 8px 4px 4px; white-space:nowrap; cursor:pointer;
-     background:none; border:1px solid transparent; border-radius:999px;
+.who{display:flex; align-items:center; gap:var(--s2); font-size:13px; color:var(--text-muted);
+     padding:var(--s1) var(--s2) var(--s1) var(--s1); white-space:nowrap; cursor:pointer;
+     background:none; border:1px solid transparent; border-radius:var(--r-pill);
      font-family:inherit; transition:background .2s ease, border-color .2s ease}
-.who:hover{background:rgba(99,102,241,.1); border-color:rgba(165,180,252,.12)}
+.who:hover{background:var(--accent-tint); border-color:var(--glass-line)}
 .who .caret{font-size:10px; opacity:.6}
 .avatar{width:26px; height:26px; border-radius:50%; display:grid; place-items:center;
-        font-size:11px; font-weight:700; color:#fff; flex:none;
-        background:linear-gradient(135deg,var(--indigo-500),#4f46e5)}
+        font-size:11px; font-weight:700; color:var(--on-accent); flex:none;
+        background:linear-gradient(135deg,var(--accent-hover),var(--accent-active))}
 .menu{
-  position:absolute; top:calc(100% + 8px); right:0; z-index:var(--z-popover);
+  position:absolute; top:calc(100% + var(--s2)); right:0; z-index:var(--z-popover);
   min-width:172px; padding:6px;
-  border-radius:12px;
+  border-radius:var(--r-md);
   background:var(--glass-bg-strong);
   border:1px solid var(--glass-line);
-  box-shadow:var(--shadow-lg),var(--glass-lift);
+  box-shadow:var(--shadow-2),var(--glass-lift);
   backdrop-filter:var(--blur); -webkit-backdrop-filter:var(--blur);
 }
 .menu .mi{
   display:block; width:100%; text-align:left;
-  padding:9px 11px; border:0; border-radius:8px;
+  padding:9px 11px; border:0; border-radius:var(--r-sm);
   font:inherit; font-size:13px; color:var(--text-muted);
   background:none; cursor:pointer; transition:background .15s ease, color .15s ease;
 }
-.menu .mi:hover{background:rgba(99,102,241,.14); color:var(--text-bright)}
-.menu .mi-danger{color:var(--red-text)}
-.menu .mi-danger:hover{background:rgba(239,68,68,.14); color:var(--red-text)}
+.menu .mi:hover{background:var(--accent-tint-strong); color:var(--text)}
+.menu .mi-danger{color:var(--danger)}
+.menu .mi-danger:hover{background:var(--danger-bg); color:var(--danger)}
 
 /* Settings modal (opened from the profile menu). */
 .modal{
   position:fixed; inset:0; z-index:var(--z-modal);
-  display:grid; place-items:center; padding:24px;
-  background:rgba(4,6,20,.62); backdrop-filter:blur(3px);
+  display:grid; place-items:center; padding:var(--s6);
+  background:var(--scrim); backdrop-filter:blur(3px);
 }
 /* `.modal{display:grid}` outranks the UA `[hidden]{display:none}`, so without
    this the close button (which sets `.hidden`) does nothing and the dialog is
@@ -328,121 +181,147 @@ body::before{
 .modalCard{
   width:min(420px,100%); border-radius:16px; overflow:hidden;
   background:var(--glass-bg-strong); border:1px solid var(--glass-line);
-  box-shadow:var(--shadow-lg),var(--glass-lift);
+  box-shadow:var(--shadow-2),var(--glass-lift);
 }
 .modalHead{display:flex; align-items:center; justify-content:space-between;
-           padding:16px 18px; border-bottom:1px solid var(--glass-line)}
+           padding:var(--s4); border-bottom:1px solid var(--glass-line)}
 .modalHead h2{margin:0; font-size:15px}
 .modalX{background:none; border:0; color:var(--text-muted); font-size:20px;
-        line-height:1; cursor:pointer; padding:2px 6px; border-radius:8px}
-.modalX:hover{background:rgba(165,180,252,.12); color:var(--text-bright)}
-.modalBody{padding:16px 18px}
-.setRow{display:flex; justify-content:space-between; gap:16px; padding:9px 0;
+        line-height:1; cursor:pointer; padding:2px 6px; border-radius:var(--r-sm);
+        box-shadow:none}
+.modalX:hover{background:var(--accent-tint-strong); color:var(--text);
+              transform:none; box-shadow:none}
+.modalBody{padding:var(--s4)}
+.setRow{display:flex; justify-content:space-between; gap:var(--s4); padding:9px 0;
         font-size:13.5px; color:var(--text-muted); border-bottom:1px solid var(--glass-line)}
-.setRow b{color:var(--text-bright); font-weight:600}
-.setNote{margin:14px 0 0; font-size:12.5px; color:var(--text-dim); line-height:1.6}
-.seg{display:inline-flex; border:1px solid var(--glass-line); border-radius:999px;
+.setRow b{color:var(--text); font-weight:600}
+.setNote{margin:var(--s3) 0 0; font-size:12.5px; color:var(--text-subtle); line-height:1.6}
+.seg{display:inline-flex; border:1px solid var(--glass-line); border-radius:var(--r-pill);
      overflow:hidden}
 .seg button{padding:6px 15px; border:0; background:none; color:var(--text-muted);
             font:inherit; font-size:12.5px; cursor:pointer; transition:var(--transition)}
-.seg button:hover:not(.on){color:var(--text-bright); box-shadow:none; transform:none}
-.seg button.on{background:var(--indigo-600); color:#fff; box-shadow:none; transform:none}
+.seg button:hover:not(.on){color:var(--text); box-shadow:none; transform:none}
+.seg button.on{background:var(--accent); color:var(--on-accent); box-shadow:none; transform:none}
 
 /* ---------- layout ---------- */
-.page{max-width:1180px; margin:0 auto; padding:104px 16px 64px}
+.page{max-width:1180px; margin:0 auto; padding:104px var(--s4) var(--s16)}
 .page.wide{max-width:1500px}
+/* A reading column. Content left-aligned in a 1180px page reads as a page that
+   failed to fill; ~880px is a deliberate measure. */
+.page.narrow{max-width:880px}
 
 .card{
   background:var(--glass-bg);
   border:1px solid var(--glass-line);
-  border-radius:18px;
-  box-shadow:var(--shadow-md),var(--glass-lift);
+  border-radius:var(--r-lg);
+  box-shadow:var(--shadow-1),var(--glass-lift);
   backdrop-filter:var(--blur);
   -webkit-backdrop-filter:var(--blur);
-  padding:24px;
-  margin-bottom:18px;
+  padding:var(--s6);
+  margin-bottom:var(--s4);
 }
-.card.tight{padding:18px}
+.card.tight{padding:var(--s4)}
 
 /* Headings carry the display face; everything else is body text in Plex Sans.
-   Lexend runs a touch wide, so the tracking is pulled in at display sizes -
-   without that, a 30px h1 sits noticeably looser than the copy under it. */
+   Lexend runs a touch wide, so the tracking is pulled in at display sizes. */
 h1,h2,h3{font-family:var(--font-display)}
-h1{font-size:30px; line-height:1.2; letter-spacing:-.025em; margin:0 0 8px; font-weight:600}
-h2{font-size:17px; letter-spacing:-.015em; margin:0 0 4px; font-weight:600}
-h3{font-size:15px; letter-spacing:-.01em; margin:0 0 4px; font-weight:600}
-.sub{color:var(--text-muted); margin:0 0 20px; font-size:14px}
-.hint{color:var(--text-dim); font-size:13px; margin:0 0 14px}
+h1{font-size:30px; line-height:1.2; letter-spacing:-.025em; margin:0 0 var(--s2); font-weight:600}
+h2{font-size:17px; letter-spacing:-.015em; margin:0 0 var(--s1); font-weight:600}
+h3{font-size:15px; letter-spacing:-.01em; margin:0 0 var(--s1); font-weight:600}
+.sub{color:var(--text-muted); margin:0 0 var(--s4); font-size:14px}
+.hint{color:var(--text-subtle); font-size:13px; margin:0 0 var(--s3)}
 .muted{color:var(--text-muted)}
 .eyebrow{font-size:11px; font-weight:600; letter-spacing:.13em; text-transform:uppercase;
-         color:var(--indigo-400); margin:0 0 8px}
+         color:var(--accent-ink); margin:0 0 var(--s2)}
 
 /* ---------- controls ---------- */
 button{
   font:inherit; font-family:var(--font-display);
   font-weight:600; font-size:13.5px; letter-spacing:-.005em;
-  border:0; border-radius:10px; padding:10px 18px; cursor:pointer;
+  border:0; border-radius:10px; padding:10px var(--s4); cursor:pointer;
   /* 40px here, 44px on coarse pointers below. A 38px-tall button is fine with
      a mouse and genuinely hard to hit with a thumb. */
   min-height:40px;
-  display:inline-flex; align-items:center; justify-content:center; gap:8px;
-  color:#fff; background:linear-gradient(135deg,var(--indigo-600),#4f46e5);
-  box-shadow:0 4px 14px rgba(99,102,241,.3);
+  display:inline-flex; align-items:center; justify-content:center; gap:var(--s2);
+  color:var(--on-accent); background:linear-gradient(135deg,var(--accent),var(--accent-active));
+  box-shadow:var(--accent-glow);
   transition:var(--transition);
 }
 /* The floating header is height-tuned, and .page's top padding plus the sticky
-   offsets on inner columns are measured against it. Growing its controls would
-   push content under it, so these keep their own size. */
-.hdr button,.who,.modalX,.seg button{min-height:0}
+   offsets on inner columns are measured against it. */
+.hdr button,.who,.modalX,.seg button,.crumbs .crumb{min-height:0}
 
 /* Touch devices, not narrow screens: a small laptop window still has a mouse,
    and a large tablet still has a thumb. */
 @media (pointer:coarse){
   button,.chip,ul.pick button{min-height:44px}
   .who,.modalX{min-height:38px}     /* still thumb-sized, still fits the pill */
-  .row{gap:12px}                    /* 8px minimum between adjacent targets */
+  .row{gap:var(--s3)}               /* 8px minimum between adjacent targets */
 }
-button:hover:not(:disabled){transform:translateY(-1px); box-shadow:0 7px 20px rgba(99,102,241,.42)}
+button:hover:not(:disabled){transform:translateY(-1px); box-shadow:var(--accent-glow-hover)}
 button:active:not(:disabled){transform:translateY(0)}
-button:disabled{opacity:.45; cursor:not-allowed; box-shadow:none}
+/* A disabled button must still be READABLE - opacity alone drags the label
+   under 4.5:1 - and must still be hoverable, so the `title` explaining WHY it
+   is disabled can actually appear. Every disabled button in this app carries
+   one; see disable() in ui.js. */
+button:disabled,button[aria-disabled="true"]{
+  cursor:not-allowed; box-shadow:none; transform:none;
+  background:var(--disabled-bg); color:var(--disabled-ink);
+  border-color:transparent;
+}
 /* `.ghost`, not `button.ghost`: the design-upload control is a <label> dressed
    as a button (a bare file input renders an unstyled OS widget), and under the
-   old selector it matched nothing and rendered as plain text - a button-shaped
-   affordance with no button on it. The box properties are restated here for the
+   old selector it matched nothing. The box properties are restated here for the
    same reason, since a <label> inherits none of the base button rule. */
 .ghost{
-  background:rgba(165,180,252,.07); color:var(--indigo-400);
+  background:var(--accent-tint); color:var(--accent-ink);
   border:1px solid var(--glass-line); box-shadow:none;
   border-radius:10px; font-family:var(--font-display); font-weight:600;
 }
-.ghost:hover:not(:disabled){background:rgba(165,180,252,.13); color:var(--text-bright)}
+.ghost:hover:not(:disabled){background:var(--accent-tint-strong); color:var(--text)}
+/* A destructive action names itself before it is clicked. */
+.danger{background:var(--danger-bg); color:var(--danger);
+        border:1px solid var(--danger-line); box-shadow:none}
+.danger:hover:not(:disabled){background:var(--danger-bg); color:var(--danger);
+        box-shadow:none; border-color:var(--danger)}
 
-input[type=text],input[type=password],select,textarea{
+input[type=text],input[type=password],input[type=email],input[type=search],
+select,textarea{
   font:inherit; font-size:14px;
   padding:10px 13px; border-radius:10px;
-  background:rgba(11,17,32,.55);
-  border:1px solid var(--card-border);
-  color:var(--text-bright);
+  background:var(--code-bg);
+  border:1px solid var(--border);
+  color:var(--text);
   transition:var(--transition);
   width:100%;
 }
-input::placeholder,textarea::placeholder{color:var(--text-dim)}
+:root[data-theme="light"] input[type=text],
+:root[data-theme="light"] input[type=password],
+:root[data-theme="light"] input[type=email],
+:root[data-theme="light"] input[type=search],
+:root[data-theme="light"] select,
+:root[data-theme="light"] textarea{background:var(--surface)}
+input::placeholder,textarea::placeholder{color:var(--text-subtle)}
 input:focus,select:focus,textarea:focus{
-  outline:none; border-color:var(--indigo-500);
-  box-shadow:0 0 0 3px rgba(99,102,241,.18);
+  outline:none; border-color:var(--accent-hover);
+  box-shadow:0 0 0 3px var(--focus-ring);
 }
+input[aria-invalid="true"],textarea[aria-invalid="true"]{border-color:var(--danger)}
 label{display:block; font-size:12.5px; font-weight:600; color:var(--text-muted);
       margin:0 0 6px; letter-spacing:.01em}
-.field{margin-bottom:14px}
+.field{margin-bottom:var(--s3)}
+/* Inline validation text. Reserves its line so the form does not jump when a
+   message appears. */
+.fielderr{color:var(--danger); font-size:12.5px; margin:6px 0 0; min-height:17px;
+          line-height:1.4}
+.helptext{font-size:11.5px; color:var(--text-subtle); margin:6px 0 0; line-height:1.45}
 .row{display:flex; gap:10px; align-items:center; flex-wrap:wrap}
 
-:focus-visible{outline:2px solid var(--indigo-400); outline-offset:2px;
-               border-radius:4px}
+:focus-visible{outline:2px solid var(--accent-ink); outline-offset:2px;
+               border-radius:var(--s1)}
 
-/* A label that exists for screen readers but not on screen. Needed wherever a
-   control is unambiguous visually (a code editor, a chat box) but arrives as an
-   unnamed text field to anyone who cannot see the layout around it.
-   NOT display:none - that removes it from the accessibility tree too. */
+/* A label that exists for screen readers but not on screen. NOT display:none -
+   that removes it from the accessibility tree too. */
 .sr-only{
   position:absolute; width:1px; height:1px; padding:0; margin:-1px;
   overflow:hidden; clip-path:inset(50%); white-space:nowrap; border:0;
@@ -453,68 +332,240 @@ label{display:block; font-size:12.5px; font-weight:600; color:var(--text-muted);
 .statement,.setNote,.graphDiff li,.note{max-width:74ch}
 
 /* ---------- pills, banners ---------- */
-.pill{font-size:11.5px; font-weight:600; padding:3px 10px; border-radius:999px;
-      background:rgba(165,180,252,.1); color:var(--indigo-400); white-space:nowrap}
-.pill.ok{background:var(--green-bg); color:var(--green-text)}
-.pill.bad{background:var(--red-bg); color:var(--red-text)}
-.pill.warn{background:var(--amber-bg); color:var(--amber-text)}
+.pill{font-size:11.5px; font-weight:600; padding:3px 10px; border-radius:var(--r-pill);
+      background:var(--accent-tint); color:var(--accent-ink); white-space:nowrap}
+.pill.ok{background:var(--success-bg); color:var(--success)}
+.pill.bad{background:var(--danger-bg); color:var(--danger)}
+.pill.warn{background:var(--warning-bg); color:var(--warning)}
+/* A pill that is really a button (the instructor's ready badge). */
+button.pill{min-height:0; padding:4px 10px; border:1px solid transparent;
+            box-shadow:none; font-family:var(--font-sans)}
+button.pill:hover:not(:disabled){transform:none; box-shadow:none;
+            border-color:currentColor}
 
-.banner{padding:13px 16px; border-radius:12px; font-size:14px; margin-top:14px;
+.banner{padding:13px var(--s4); border-radius:var(--r-md); font-size:14px; margin-top:var(--s3);
         white-space:pre-wrap; border:1px solid transparent}
-.banner.ok{background:var(--green-bg); color:var(--green-text); border-color:rgba(74,222,128,.22)}
-.banner.bad{background:var(--red-bg); color:var(--red-text); border-color:rgba(248,113,113,.22)}
-.banner.warn{background:var(--amber-bg); color:var(--amber-text); border-color:rgba(251,191,36,.22)}
-.banner.info{background:rgba(99,102,241,.12); color:var(--indigo-400); border-color:rgba(129,140,248,.22)}
+.banner.ok{background:var(--success-bg); color:var(--success); border-color:var(--success-line)}
+.banner.bad{background:var(--danger-bg); color:var(--danger); border-color:var(--danger-line)}
+.banner.warn{background:var(--warning-bg); color:var(--warning); border-color:var(--warning-line)}
+.banner.info{background:var(--accent-tint); color:var(--accent-ink); border-color:var(--accent-line)}
+/* An inline error that carries a retry, so a failed fetch is never a dead end. */
+.banner .retry{margin-left:var(--s2); background:none; border:1px solid currentColor;
+  color:inherit; font-size:12px; padding:3px 10px; min-height:0; border-radius:var(--r-pill);
+  box-shadow:none; font-family:var(--font-sans); font-weight:600}
+.banner .retry:hover{transform:none; box-shadow:none}
+
+/* A standing note about how something works, not an error - muted copy with
+   only the label carrying colour. */
+.note{padding:var(--s3); border-radius:11px;
+      background:var(--accent-tint); border:1px solid var(--accent-line);
+      color:var(--text-muted); font-size:12.5px; line-height:1.55}
+.note strong{color:var(--text); font-weight:600}
+.note.warn{background:var(--warning-bg); border-color:var(--warning-line)}
+.note.warn strong{color:var(--warning)}
 
 /* ---------- lists ---------- */
 ul.pick{list-style:none; padding:0; margin:0; display:grid; gap:9px}
 ul.pick button{
-  width:100%; text-align:left; display:flex; align-items:center; gap:12px;
-  padding:14px 16px; border-radius:13px;
-  background:rgba(26,35,56,.55); color:var(--text-bright);
+  width:100%; text-align:left; display:flex; align-items:center; gap:var(--s3);
+  padding:var(--s3) var(--s4); border-radius:13px;
+  background:var(--surface-raised); color:var(--text);
   border:1px solid var(--glass-line); box-shadow:none; font-weight:500;
 }
 ul.pick button:hover{
-  background:rgba(99,102,241,.13); border-color:rgba(129,140,248,.35);
+  background:var(--accent-tint); border-color:var(--accent-line);
   transform:translateX(3px); box-shadow:none;
 }
 ul.pick .pill{margin-left:auto}
 
 table{width:100%; border-collapse:collapse; font-size:14px}
-th{font-size:11px; text-transform:uppercase; letter-spacing:.1em; color:var(--text-dim);
-   text-align:left; padding:8px 6px; border-bottom:1px solid var(--card-border); font-weight:600}
-td{padding:11px 6px; border-bottom:1px solid rgba(38,49,73,.5); color:var(--text-muted)}
-td:first-child{color:var(--text-bright); font-weight:500}
+th{font-size:11px; text-transform:uppercase; letter-spacing:.1em; color:var(--text-subtle);
+   text-align:left; padding:var(--s2) 6px; border-bottom:1px solid var(--border); font-weight:600}
+td{padding:11px 6px; border-bottom:1px solid var(--border); color:var(--text-muted);
+   vertical-align:middle}
+td:first-child{color:var(--text); font-weight:500}
 
-code{background:rgba(11,17,32,.6); padding:2px 6px; border-radius:5px;
+code{background:var(--code-bg); padding:2px 6px; border-radius:5px;
      font-family:var(--font-mono); font-size:12.5px;
-     color:var(--indigo-400)}
+     color:var(--accent-ink)}
+:root[data-theme="light"] code{background:var(--accent-tint)}
 pre.code{
-  background:rgba(11,17,32,.75); border:1px solid var(--card-border);
-  border-radius:12px; padding:15px; overflow:auto;
+  background:var(--code-bg); border:1px solid var(--border);
+  border-radius:var(--r-md); padding:15px; overflow:auto;
   font-family:var(--font-mono);
-  font-size:12.5px; line-height:1.65; color:#d6dde8; margin:0;
+  font-size:12.5px; line-height:1.65; color:var(--code-text); margin:0;
 }
 /* These stay dark in both themes (as does CodeMirror), so their scrollbars
    need to be light-on-dark regardless of the page theme. */
 pre.code::-webkit-scrollbar{width:9px; height:9px}
-pre.code::-webkit-scrollbar-thumb{background:rgba(165,180,252,.2); border-radius:99px}
+pre.code::-webkit-scrollbar-thumb{background:var(--scroll-thumb); border-radius:var(--r-pill)}
 pre.code::-webkit-scrollbar-track{background:transparent}
+/* A four-token Python highlighter for static snippets that are not worth
+   loading CodeMirror for. Classes come from hlPython() in ui.js. */
+pre.code .t-kw{color:var(--accent-ink); font-weight:600}
+pre.code .t-str{color:var(--success)}
+pre.code .t-com{color:var(--code-dim); font-style:italic}
+pre.code .t-fn{color:var(--warning)}
+
+summary{cursor:pointer; font-size:13.5px; color:var(--accent-ink); font-weight:500;
+        border-radius:var(--s1)}
+summary:focus-visible{outline:2px solid var(--accent-ink); outline-offset:3px}
+
+/* ==================== shared primitives ====================
+   Screens stopped rolling their own once these existed. Anything here is used
+   by at least two pages; a one-page widget stays in that page's <style>. */
+
+/* --- skeleton loader. Every fetch shows one of these, never a blank page. --- */
+.skel{display:block; height:11px; border-radius:6px;
+      background:linear-gradient(90deg,
+        var(--accent-tint) 25%, var(--accent-tint-strong) 37%, var(--accent-tint) 63%);
+      background-size:400% 100%; animation:skelSweep 1.4s ease infinite}
+@keyframes skelSweep{from{background-position:100% 0} to{background-position:0 0}}
+.skelRow{display:grid; gap:var(--s2); padding:var(--s3) var(--s4); border-radius:13px;
+         background:var(--surface-raised); border:1px solid var(--glass-line);
+         margin-bottom:9px}
+.skelRow:last-child{margin-bottom:0}
+
+/* --- toast. One stack, bottom-right, above everything. --- */
+.toasts{position:fixed; right:var(--s4); bottom:var(--s4); z-index:var(--z-toast);
+        display:flex; flex-direction:column; gap:var(--s2);
+        max-width:min(360px,calc(100vw - var(--s8))); pointer-events:none}
+.toast{pointer-events:auto; display:flex; align-items:flex-start; gap:10px;
+       padding:11px 13px; border-radius:var(--r-md); font-size:13.5px; line-height:1.5;
+       background:var(--glass-bg-strong); border:1px solid var(--glass-line);
+       box-shadow:var(--shadow-2),var(--glass-lift);
+       backdrop-filter:var(--blur); -webkit-backdrop-filter:var(--blur);
+       color:var(--text-muted);
+       animation:toastIn .22s var(--ease) both}
+.toast .tbar{width:3px; align-self:stretch; border-radius:2px; flex:none;
+             background:var(--accent-ink)}
+.toast.ok   .tbar{background:var(--success)}
+.toast.bad  .tbar{background:var(--danger)}
+.toast.warn .tbar{background:var(--warning)}
+.toast .x{margin-left:auto; background:none; border:0; color:var(--text-subtle);
+          font-size:16px; line-height:1; cursor:pointer; padding:0 2px; min-height:0;
+          box-shadow:none}
+.toast .x:hover{color:var(--text); transform:none; box-shadow:none; background:none}
+.toast.out{animation:toastOut .18s ease both}
+@keyframes toastIn{from{opacity:0; transform:translateY(8px)} to{opacity:1; transform:none}}
+@keyframes toastOut{to{opacity:0; transform:translateY(6px)}}
+
+/* --- button loading state --- */
+.spin{display:inline-block; width:11px; height:11px; border-radius:50%; flex:none;
+      border:2px solid var(--accent-line); border-top-color:currentColor;
+      animation:sp .7s linear infinite; vertical-align:-1px}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+/* --- progress bar. Instructor preparation, student assignment progress. --- */
+.bar{height:5px; border-radius:var(--r-pill); background:var(--surface-raised);
+     overflow:hidden}
+.bar>i{display:block; height:100%; width:0; border-radius:var(--r-pill);
+       background:linear-gradient(90deg,var(--accent),var(--accent-hover));
+       transition:width .35s var(--ease)}
+.bar.slim{height:4px}
+.bar.done>i{background:var(--success)}
+
+/* --- interactive list rows (assignment list, problem list) ---
+   A row that is clickable has to LOOK clickable: hover, focus, and a chevron
+   at the right edge. */
+.rows{list-style:none; margin:0; padding:0; display:grid; gap:var(--s2)}
+.rows.two{grid-template-columns:1fr 1fr}
+@media (max-width:900px){ .rows.two{grid-template-columns:1fr} }
+.rowitem{
+  width:100%; text-align:left; display:flex; align-items:center; gap:var(--s3);
+  padding:var(--s3) var(--s4); border-radius:13px; min-height:0;
+  background:var(--surface-raised); color:var(--text);
+  border:1px solid var(--glass-line); box-shadow:none;
+  font-family:var(--font-sans); font-weight:500; font-size:14px;
+  transition:background .16s ease, border-color .16s ease, transform .16s ease;
+}
+.rowitem:hover:not(:disabled){background:var(--accent-tint); border-color:var(--accent-line);
+  transform:translateX(2px); box-shadow:none}
+.rowitem .rmain{min-width:0; flex:1; display:grid; gap:3px}
+.rowitem .rname{color:var(--text); font-weight:600; overflow:hidden;
+  text-overflow:ellipsis; white-space:nowrap}
+.rowitem .rmeta{font-size:12px; color:var(--text-subtle); display:flex;
+  align-items:center; gap:var(--s2); flex-wrap:wrap}
+.rowitem .chev{flex:none; color:var(--text-subtle); transition:transform .16s ease}
+.rowitem:hover .chev{color:var(--accent-ink); transform:translateX(2px)}
+.rowitem.current{border-color:var(--accent-hover); background:var(--accent-tint)}
+
+/* Status marker: an icon AND a word, never colour alone. */
+.stat{display:inline-flex; align-items:center; gap:6px; font-size:12px;
+      font-weight:600; white-space:nowrap}
+.stat .dotmark{width:9px; height:9px; border-radius:50%; flex:none;
+      border:2px solid var(--text-subtle)}
+.stat.solved{color:var(--success)}
+.stat.solved .dotmark{background:var(--success); border-color:var(--success)}
+.stat.progress{color:var(--warning)}
+.stat.progress .dotmark{border-color:var(--warning);
+      background:linear-gradient(90deg,var(--warning) 50%,transparent 50%)}
+.stat.todo{color:var(--text-subtle)}
+
+/* --- filter bar: a search field plus chips --- */
+.filters{display:flex; gap:var(--s2); align-items:center; flex-wrap:wrap;
+         margin-bottom:var(--s3)}
+.filters .search{flex:1; min-width:180px; max-width:320px}
+.chipset{display:flex; gap:6px; flex-wrap:wrap}
+.chip{font-size:12px; padding:7px var(--s3); min-height:32px; display:inline-flex;
+      align-items:center; border-radius:var(--r-pill); cursor:pointer;
+      background:var(--accent-tint); border:1px solid var(--glass-line);
+      color:var(--accent-ink); font-family:var(--font-sans); font-weight:600;
+      box-shadow:none;
+      transition:background .18s ease, color .18s ease, border-color .18s ease}
+.chip:hover{background:var(--accent-tint-strong); color:var(--text);
+      border-color:var(--accent-line); transform:none; box-shadow:none}
+.chip[aria-pressed="true"]{background:var(--accent); color:var(--on-accent);
+      border-color:var(--accent)}
+.chip:focus-visible{outline:2px solid var(--accent-ink); outline-offset:2px}
+
+/* --- empty state. Every list that can be empty says what to do next. --- */
+.empty{text-align:center; padding:var(--s8) var(--s4); color:var(--text-muted)}
+.empty .eicon{width:38px; height:38px; margin:0 auto var(--s3); border-radius:var(--r-md);
+  display:grid; place-items:center; color:var(--accent-ink);
+  background:var(--accent-tint); border:1px solid var(--accent-line)}
+.empty p{margin:0 0 var(--s2); font-size:14px}
+.empty .esub{font-size:12.5px; color:var(--text-subtle); margin:0}
+
+/* --- drop zone, with every state it needs --- */
+.drop{
+  border:1.5px dashed var(--accent-line); border-radius:16px;
+  padding:var(--s8) var(--s4); text-align:center; cursor:pointer;
+  background:var(--code-bg); transition:var(--transition);
+}
+:root[data-theme="light"] .drop{background:var(--surface-raised)}
+.drop:hover,.drop.over{background:var(--accent-tint); border-color:var(--accent-hover)}
+.drop.over{border-style:solid}
+.drop.bad{border-color:var(--danger); background:var(--danger-bg)}
+.drop .big{font-size:15px; font-weight:600; color:var(--text)}
+.drop .sm{font-size:12.5px; color:var(--text-subtle); margin-top:5px}
+
+/* The selected-file chip: name, size, and a way to take it back. */
+.filechip{display:inline-flex; align-items:center; gap:10px; max-width:100%;
+  padding:var(--s2) var(--s3); border-radius:11px;
+  background:var(--accent-tint); border:1px solid var(--accent-line);
+  font-size:13px; color:var(--text)}
+.filechip .fname{overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  max-width:min(300px,52vw); font-weight:600}
+.filechip .fsize{color:var(--text-subtle); font-size:12px; flex:none}
+.filechip .fx{background:none; border:0; color:var(--text-subtle); cursor:pointer;
+  font-size:16px; line-height:1; padding:0 2px; min-height:0; box-shadow:none; flex:none}
+.filechip .fx:hover{color:var(--danger); transform:none; box-shadow:none; background:none}
 
 /* ---------- CodeMirror, seated into the glass ---------- */
 .CodeMirror{
   height:auto; min-height:190px;
-  border-radius:12px; border:1px solid var(--card-border);
-  background:rgba(11,17,32,.75) !important;
+  border-radius:var(--r-md); border:1px solid var(--border);
+  background:var(--code-bg) !important;
   font-family:var(--font-mono);
   font-size:13px; line-height:1.65;
-  padding:8px 4px;
+  padding:var(--s2) var(--s1);
   transition:var(--transition);
 }
-.CodeMirror-focused{border-color:var(--indigo-500); box-shadow:0 0 0 3px rgba(99,102,241,.16)}
-.CodeMirror-gutters{background:transparent !important; border-right:1px solid rgba(38,49,73,.7)}
-.CodeMirror-linenumber{color:var(--text-dim)}
-.CodeMirror-cursor{border-left:2px solid var(--indigo-400)}
+.CodeMirror-focused{border-color:var(--accent-hover); box-shadow:0 0 0 3px var(--accent-halo)}
+.CodeMirror-gutters{background:transparent !important; border-right:1px solid var(--border)}
+.CodeMirror-linenumber{color:var(--text-subtle)}
+.CodeMirror-cursor{border-left:2px solid var(--accent-ink)}
 
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation:none !important; transition:none !important}
@@ -522,23 +573,26 @@ pre.code::-webkit-scrollbar-track{background:transparent}
 }
 
 @media (max-width:720px){
-  .page{padding:96px 12px 48px}
+  .page{padding:96px var(--s3) var(--s12)}
   h1{font-size:24px}
   /* iOS zooms the whole page when a focused input is under 16px. Bumping the
      font is the fix; disabling zoom in the viewport meta would be the
      accessibility violation. */
-  input[type=text],input[type=password],input[type=email],select,textarea{
-    font-size:16px}
+  input[type=text],input[type=password],input[type=email],input[type=search],
+  select,textarea{font-size:16px}
   .who .nm{display:none}
   .hbtn{padding:7px 9px}
   /* The label goes, the icon stays: a 36px icon button is still a real target,
      and the wordmark keeps the centre column it needs. */
   .hbtn .htext{display:none}
   .wordmark{font-size:12px; letter-spacing:.13em; text-indent:.13em}
-  .wordmark .dot{width:7px; height:7px; box-shadow:0 0 0 3px rgba(99,102,241,.16)}
+  .wordmark .dot{width:7px; height:7px; box-shadow:0 0 0 3px var(--accent-halo)}
+  .crumbs{display:none}          /* the nav buttons still go back one level */
+  .toasts{right:var(--s3); left:var(--s3); bottom:var(--s3); max-width:none}
+  .card{padding:var(--s4)}
 }
 /* Below this the three columns cannot all fit; the mark keeps the centre and
    the account collapses to its avatar. */
 @media (max-width:400px){
-  .hdr{gap:6px; padding:8px 10px}
+  .hdr{gap:6px; padding:var(--s2) 10px}
 }
