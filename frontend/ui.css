@@ -347,7 +347,11 @@ button.pill:hover:not(:disabled){transform:none; box-shadow:none;
             border-color:currentColor}
 
 .banner{padding:13px var(--s4); border-radius:var(--r-md); font-size:14px; margin-top:var(--s3);
-        white-space:pre-wrap; border:1px solid transparent}
+        border:1px solid transparent}
+/* Grader and reviewer text arrives with meaningful blank lines in it, so those
+   banners keep them. Banners whose text is authored here must NOT, or the
+   source file's own line wrapping shows up on screen. */
+.banner.pre{white-space:pre-wrap}
 .banner.ok{background:var(--success-bg); color:var(--success); border-color:var(--success-line)}
 .banner.bad{background:var(--danger-bg); color:var(--danger); border-color:var(--danger-line)}
 .banner.warn{background:var(--warning-bg); color:var(--warning); border-color:var(--warning-line)}

@@ -18,44 +18,64 @@
 <link rel="stylesheet" href="tokens.css">
 <link rel="stylesheet" href="ui.css">
 <style>
-  .drop{
-    border:1.5px dashed rgba(165,180,252,.28); border-radius:16px;
-    padding:28px 20px; text-align:center; cursor:pointer;
-    background:rgba(11,17,32,.35); transition:var(--transition);
-  }
-  .drop:hover,.drop.over{background:rgba(99,102,241,.11); border-color:var(--indigo-500)}
-  .drop .big{font-size:15px; font-weight:600; color:var(--text-bright)}
-  .drop .sm{font-size:12.5px; color:var(--text-dim); margin-top:5px}
-  .drop.has{border-style:solid; border-color:var(--indigo-500);
-            background:rgba(99,102,241,.11)}
+  /* The drop zone, progress bar, file chip, skeleton, empty state and toast
+     all come from ui.css now. What is left here is specific to this screen. */
 
-  .prog{height:5px; border-radius:999px; background:rgba(11,17,32,.6);
-        overflow:hidden; margin:18px 0 14px}
-  .prog>i{display:block; height:100%; width:0; border-radius:999px;
-          background:linear-gradient(90deg,var(--indigo-600),var(--indigo-400));
-          transition:width .35s cubic-bezier(.4,0,.2,1)}
-
-  ul.items{list-style:none; padding:0; margin:0; display:grid; gap:8px}
+  /* One row per problem in a preparation run. */
+  ul.items{list-style:none; padding:0; margin:0; display:grid; gap:var(--s2)}
   ul.items li{
-    display:flex; gap:12px; align-items:flex-start;
-    padding:12px 14px; border-radius:12px;
-    background:rgba(26,35,56,.5); border:1px solid var(--glass-line);
-    font-size:14px; animation:rise .3s cubic-bezier(.4,0,.2,1) both;
+    display:flex; gap:var(--s3); align-items:flex-start;
+    padding:var(--s3) var(--s3); border-radius:var(--r-md);
+    background:var(--surface-raised); border:1px solid var(--glass-line);
+    font-size:14px; animation:rise .3s var(--ease) both;
   }
   @keyframes rise{from{opacity:0; transform:translateY(6px)} to{opacity:1; transform:none}}
-  ul.items .pill{margin-top:1px}
-  ul.items .nm{font-weight:600; color:var(--text-bright)}
+  ul.items .pill{margin-top:1px; flex:none}
+  ul.items .body{min-width:0; flex:1}
+  ul.items .nm{font-weight:600; color:var(--text); overflow-wrap:anywhere}
   ul.items .why{color:var(--text-muted); font-size:12.5px; margin-top:3px; line-height:1.5}
-  .spin{display:inline-block; width:9px; height:9px; border-radius:50%;
-        border:2px solid rgba(165,180,252,.3); border-top-color:var(--indigo-400);
-        animation:sp .7s linear infinite; vertical-align:-1px}
-  @keyframes sp{to{transform:rotate(360deg)}}
-  summary{cursor:pointer; font-size:13.5px; color:var(--indigo-400); font-weight:500}
+  ul.items .el{margin-left:auto; flex:none; font-size:12px; color:var(--text-subtle);
+               font-variant-numeric:tabular-nums; padding-top:2px}
 
-  /* Light-theme fixes for the surfaces that hardcode a dark value above. */
-  :root[data-theme="light"] .drop{background:#f4f6fb}
-  :root[data-theme="light"] .prog{background:rgba(15,23,42,.08)}
-  :root[data-theme="light"] ul.items li{background:#fff}
+  .runhead{display:flex; align-items:center; gap:var(--s3); flex-wrap:wrap;
+           margin-bottom:var(--s2)}
+  .runhead h2{margin:0}
+  .runhead .count{font-size:13px; color:var(--text-subtle);
+                  font-variant-numeric:tabular-nums}
+  .runhead #cancel{margin-left:auto}
+
+  /* The stages a problem passes through. Shown once, above the list, rather
+     than repeated on every row - the backend reports one "preparing" event per
+     problem, not one per stage, so a per-row stage would be a guess. */
+  .stages{display:flex; gap:6px; flex-wrap:wrap; margin:0 0 var(--s3);
+          font-size:11.5px; color:var(--text-subtle)}
+  .stages span{padding:3px 9px; border-radius:var(--r-pill);
+               background:var(--surface-raised); border:1px solid var(--glass-line)}
+
+  /* The per-problem breakdown behind the ready badge. */
+  tr.breakdown > td{padding:0; border-bottom:1px solid var(--border)}
+  .bdWrap{padding:var(--s3) 6px var(--s4)}
+  .bdList{list-style:none; margin:0; padding:0; display:grid; gap:6px}
+  .bdList li{display:flex; gap:10px; align-items:flex-start; padding:9px 11px;
+    border-radius:10px; background:var(--surface-raised);
+    border:1px solid var(--glass-line); font-size:13px}
+  .bdList .bdName{font-weight:600; color:var(--text); flex:none; min-width:150px}
+  .bdList .bdWhy{color:var(--text-muted); font-size:12.5px; line-height:1.5;
+    overflow-wrap:anywhere}
+  .acts{display:flex; gap:6px; justify-content:flex-end}
+  .acts button{min-height:0; padding:5px 11px; font-size:12px;
+    font-family:var(--font-sans)}
+
+  /* The four-line example. It teaches the format faster than the paragraph
+     above it does, so it comes first and the full template comes second. */
+  .fmtLead{font-size:12.5px; color:var(--text-subtle); margin:11px 0 7px}
+
+  @media (max-width:720px){
+    /* A four-column table does not fit. Drop the created column; the row's
+       own detail view still carries the date. */
+    th.colWhen, td.colWhen{display:none}
+    .acts{flex-wrap:wrap}
+  }
 </style>
 </head>
 <body>
@@ -63,6 +83,8 @@
   <p class="eyebrow">Instructor</p>
   <h1>Prepare an assignment</h1>
   <p class="sub">Upload your solutions once. Students only ever see problems that are ready to grade.</p>
+
+  <div id="resumeNote"></div>
 
   <div class="card">
     <h2>Assignment file</h2>
@@ -73,13 +95,16 @@
       <code>#&nbsp;---&nbsp;problem:&nbsp;slug&nbsp;---</code> line above them.
     </p>
 
-    <details style="margin-bottom:16px">
+    <details style="margin-bottom:16px" id="fmt">
       <summary>Show the format</summary>
+      <p class="fmtLead">One problem, start to finish:</p>
+      <pre class="code" id="example"></pre>
+      <p class="fmtLead">The full template, with every option:</p>
       <!-- A scrollable code block must be reachable by keyboard, or a reader
            who cannot use a mouse can never see past the first 300px. -->
       <pre class="code" id="tmpl" tabindex="0" role="group"
            aria-label="Assignment file template, scrolls"
-           style="margin-top:11px; max-height:300px">loading...</pre>
+           style="max-height:300px">loading...</pre>
       <button class="ghost" id="dl" style="margin-top:11px">Download this template</button>
     </details>
 
@@ -90,8 +115,19 @@
       <div class="sm" id="dropSub">or click to choose one</div>
     </div>
 
+    <div id="picked" hidden style="margin-top:14px">
+      <span class="filechip">
+        <span class="fname" id="fname"></span>
+        <span class="fsize" id="fsize"></span>
+        <button type="button" class="fx" id="fclear"
+                aria-label="Remove this file">&times;</button>
+      </span>
+    </div>
+
+    <div id="fileErr"></div>
+
     <div class="row" style="margin-top:16px">
-      <button id="go" disabled>Upload and prepare</button>
+      <button id="go">Upload and prepare</button>
       <span class="hint" style="margin:0; flex:1; min-width:240px">
         Preparing writes test cases, checks they are strong enough to grade against,
         and splits each problem into steps. Expect a minute or two per problem.
@@ -100,11 +136,20 @@
   </div>
 
   <div class="card" id="run" hidden>
-    <h2 id="runTitle">Preparing</h2>
+    <div class="runhead">
+      <h2 id="runTitle">Preparing</h2>
+      <span class="count" id="runCount"></span>
+      <button class="ghost" id="cancel">Cancel</button>
+    </div>
     <!-- The visual bar conveys progress by width alone; the ARIA role is what
          carries the same fact to anyone who cannot see it. -->
-    <div class="prog" role="progressbar" aria-label="Preparing assignment"
-         aria-valuemin="0" aria-valuemax="100" id="prog"><i id="bar"></i></div>
+    <div class="bar" role="progressbar" aria-label="Preparing assignment"
+         aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="prog"
+         style="margin:0 0 14px"><i id="barFill"></i></div>
+    <p class="stages" aria-label="Stages each problem passes through">
+      <span>generating test cases</span><span>checking test strength</span>
+      <span>splitting into steps</span><span>ready</span>
+    </p>
     <ul class="items" id="items"></ul>
     <!-- Upload results land here. Without a live region a teacher uploads an
          assignment and is told nothing about whether it worked. -->
@@ -113,11 +158,9 @@
 
   <div class="card" id="list">
     <h2>Your assignments</h2>
-    <p class="hint">Only problems marked ready are visible to students.</p>
-    <table>
-      <thead><tr><th>Assignment</th><th>Ready</th><th>Created</th></tr></thead>
-      <tbody id="alist"><tr><td colspan="3" class="muted">loading...</td></tr></tbody>
-    </table>
+    <p class="hint">Only problems marked ready are visible to students.
+       Open the ready badge to see which ones did not make it, and why.</p>
+    <div id="listBody"></div>
   </div>
 </main>
 
@@ -127,21 +170,40 @@ const S = requireSession("teacher");
 mountHeader({variant: "instructor", active: "Home"});
 const $ = id => document.getElementById(id);
 let TEMPLATE = "";
+const MAX_UPLOAD = 2 * 1024 * 1024;   // a .py of assignments, not a data dump
+let chosen = null;
+let run = null;                        // {abort, started, timer} while preparing
 
-// Width and aria-valuenow must never drift apart, so nothing sets one without
-// the other. A progressbar whose value never updates is worse than none: it
-// reports 0% for the whole run. Defined after `$` because it uses it.
+/* Width and aria-valuenow must never drift apart, so nothing sets one without
+   the other. A progressbar whose value never updates is worse than none: it
+   reports 0% for the whole run. */
 function setProgress(pct){
-  pct = Math.max(0, Math.min(100, pct));
-  $("bar").style.width = pct + "%";
-  const p = $("prog");
-  if (p) p.setAttribute("aria-valuenow", String(pct));
+  pct = Math.max(0, Math.min(100, Math.round(pct)));
+  $("barFill").style.width = pct + "%";
+  $("prog").setAttribute("aria-valuenow", String(pct));
+  $("prog").classList.toggle("done", pct === 100);
 }
+
+/* ---------- the format example ----------
+   Four lines beat the paragraph above them. Highlighted with the tiny
+   tokeniser in ui.js rather than by pulling CodeMirror into a page with no
+   editor on it. */
+const EXAMPLE = `# --- problem: digit-sum ---
+def digit_sum(n):
+    """Return the sum of the digits of a non-negative integer n.
+
+    Example: digit_sum(407) -> 11
+    """
+    return sum(int(c) for c in str(n))`;
+$("example").innerHTML = hlPython(EXAMPLE);
 
 fetch(`${API}/assignment_template`).then(r => r.json()).then(d => {
   TEMPLATE = d.content;
-  $("tmpl").textContent = d.content;
-}).catch(() => { $("tmpl").textContent = "(could not reach the server)"; });
+  $("tmpl").innerHTML = hlPython(d.content);
+}).catch(() => {
+  $("tmpl").innerHTML = `<span class="t-com"># could not reach the server</span>`;
+  disable($("dl"), "The template could not be downloaded from the server.");
+});
 
 $("dl").onclick = () => {
   const b = new Blob([TEMPLATE], {type: "text/x-python"});
@@ -150,7 +212,7 @@ $("dl").onclick = () => {
   URL.revokeObjectURL(a.href);
 };
 
-// The drop zone doubles as the file picker.
+/* ---------- choosing a file ---------- */
 const drop = $("drop"), file = $("file");
 drop.onclick = () => file.click();
 drop.onkeydown = e => {
@@ -163,26 +225,145 @@ drop.onkeydown = e => {
   e.preventDefault(); drop.classList.remove("over");
 }));
 drop.addEventListener("drop", e => {
-  if (e.dataTransfer.files.length) { file.files = e.dataTransfer.files; picked(); }
+  if (e.dataTransfer.files.length) pick(e.dataTransfer.files[0]);
 });
-file.onchange = picked;
-function picked(){
-  const f = file.files[0];
-  if (!f) return;
-  drop.classList.add("has");
-  $("dropTitle").textContent = f.name;
-  $("dropSub").textContent = `${(f.size / 1024).toFixed(1)} KB, ready to prepare`;
-  $("go").disabled = false;
+file.onchange = e => pick(e.target.files && e.target.files[0]);
+$("fclear").onclick = () => { clearPick(); drop.focus(); };
+
+function fileErr(msg){
+  $("fileErr").innerHTML = msg ? `<div class="banner bad">${esc(msg)}</div>` : "";
 }
 
-$("go").onclick = async () => {
-  const f = file.files[0];
+function clearPick(){
+  chosen = null;
+  file.value = "";
+  $("picked").hidden = true;
+  drop.hidden = false;
+  drop.classList.remove("bad");
+  disable($("go"), "Choose a .py file first.");
+}
+
+/* Reject the two things that are wrong before a byte leaves the browser: the
+   wrong kind of file, and one large enough that "prepare" would mean an hour
+   of paid model work started by accident. */
+function pick(f){
   if (!f) return;
-  $("go").disabled = true;
+  if (!/\.py$/i.test(f.name)){
+    drop.classList.add("bad");
+    return fileErr(`${f.name} is not a .py file. Export your solutions as a `
+      + `plain Python file and try again.`);
+  }
+  if (f.size > MAX_UPLOAD){
+    drop.classList.add("bad");
+    return fileErr(`${f.name} is ${fmtBytes(f.size)}. The limit is `
+      + `${fmtBytes(MAX_UPLOAD)} — that is far more Python than one assignment.`);
+  }
+  if (f.size === 0){
+    drop.classList.add("bad");
+    return fileErr(`${f.name} is empty.`);
+  }
+  chosen = f;
+  fileErr("");
+  drop.classList.remove("bad");
+  drop.hidden = true;
+  $("picked").hidden = false;
+  $("fname").textContent = f.name;
+  $("fname").title = f.name;
+  $("fsize").textContent = fmtBytes(f.size);
+  enable($("go"));
+}
+
+/* ---------- the preparation run ----------
+   The server streams NDJSON, one event per problem, so there is nothing to
+   poll: `read()` below IS the live status. `handle()` is the single place an
+   event turns into a row, which is where a finer-grained stage event would be
+   wired in if prepare_assignment_stream ever emits one. */
+
+const RUN_KEY = "mt.run";              // survives a reload; see resumeNote()
+
+function elapsed(ms){
+  const s = Math.floor(ms / 1000);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
+function startRun(name){
+  run = {abort: new AbortController(), started: Date.now(), rows: {},
+         starts: {}, total: 0, done: 0};
+  try { sessionStorage.setItem(RUN_KEY, JSON.stringify(
+    {name, at: Date.now()})); } catch {}
+  // A tab closed mid-run leaves half an assignment prepared, and there is no
+  // job to come back to. Say so before it happens.
+  addEventListener("beforeunload", warnIfRunning);
+  run.timer = setInterval(tickElapsed, 1000);
+}
+
+function warnIfRunning(e){
+  if (!run) return;
+  e.preventDefault();
+  e.returnValue = "";
+}
+
+function endRun(){
+  if (!run) return;
+  clearInterval(run.timer);
+  removeEventListener("beforeunload", warnIfRunning);
+  run = null;
+  try { sessionStorage.removeItem(RUN_KEY); } catch {}
+  $("cancel").hidden = true;
+  enable($("go"));
+}
+
+function tickElapsed(){
+  if (!run) return;
+  Object.keys(run.starts).forEach(slug => {
+    const li = run.rows[slug];
+    if (!li || li.dataset.settled === "1") return;
+    li.querySelector(".el").textContent = elapsed(Date.now() - run.starts[slug]);
+  });
+  $("runCount").textContent = run.total
+    ? `Preparing ${Math.min(run.done + 1, run.total)} of ${run.total} · `
+      + `${elapsed(Date.now() - run.started)} elapsed`
+    : `${elapsed(Date.now() - run.started)} elapsed`;
+}
+
+/* A run interrupted by a reload or a closed tab. Nothing is lost that was
+   already saved, but the rest never happened, and the instructor has no other
+   way to find that out. */
+function resumeNote(){
+  let prior = null;
+  try { prior = JSON.parse(sessionStorage.getItem(RUN_KEY) || "null"); } catch {}
+  if (!prior) return;
+  try { sessionStorage.removeItem(RUN_KEY); } catch {}
+  $("resumeNote").innerHTML = `<div class="banner warn" style="margin:0 0 18px">
+    <strong>${esc(prior.name || "A preparation run")}</strong> was interrupted
+    ${esc(relTime(prior.at))}. Problems that finished before then were saved and
+    are listed below; the rest were not started. Upload the same file again to
+    finish them.</div>`;
+}
+resumeNote();
+
+$("cancel").onclick = () => {
+  if (!run) return;
+  run.abort.abort();
+  $("runTitle").textContent = "Preparation cancelled";
+  $("summary").innerHTML = `<div class="banner warn">Cancelled. Problems that
+    had already finished are saved and appear below; the rest were not
+    started.</div>`;
+  endRun();
+  loadAssignments();
+};
+
+$("go").onclick = async () => {
+  if (!chosen) return;
+  const f = chosen;
+  disable($("go"), "A preparation run is already in progress.");
   $("run").hidden = false;
+  $("cancel").hidden = false;
   $("items").innerHTML = ""; $("summary").innerHTML = "";
   setProgress(0);
   $("runTitle").textContent = "Reading file";
+  $("runCount").textContent = "";
+  startRun(f.name);
   $("run").scrollIntoView({behavior: "smooth", block: "nearest"});
 
   const content = await f.text();
@@ -190,11 +371,15 @@ $("go").onclick = async () => {
   try {
     resp = await fetch(`${API}/teacher/assignments`, {
       method: "POST", headers: {"Content-Type": "application/json"},
+      signal: run.abort.signal,
       // No teacher_name: the server records the signed-in instructor, so an
       // assignment's owner is not whatever the browser claimed it was.
       body: JSON.stringify({filename: f.name, content})
     });
-  } catch { return fail("Could not reach the server. Is the backend running?"); }
+  } catch (e) {
+    if (e.name === "AbortError") return;
+    return fail("Could not reach the server. Is the backend running?");
+  }
   if (!resp.ok) {
     let msg = "Upload failed.";
     try { const j = await resp.json(); msg = (j.detail && j.detail.message) || msg; } catch {}
@@ -202,21 +387,27 @@ $("go").onclick = async () => {
   }
 
   // NDJSON: one event per line, rendered the moment it lands, so a
-  // multi minute preparation shows progress instead of looking stuck.
+  // multi-minute preparation shows progress instead of looking stuck.
   const reader = resp.body.getReader(), dec = new TextDecoder();
-  let buf = "", rows = {};
-  for (;;) {
-    const {value, done} = await reader.read();
-    if (done) break;
-    buf += dec.decode(value, {stream: true});
-    const lines = buf.split("\n"); buf = lines.pop();
-    for (const line of lines) {
-      if (!line.trim()) continue;
-      let ev; try { ev = JSON.parse(line); } catch { continue; }
-      handle(ev, rows);
+  let buf = "";
+  try {
+    for (;;) {
+      const {value, done} = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, {stream: true});
+      const lines = buf.split("\n"); buf = lines.pop();
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        let ev; try { ev = JSON.parse(line); } catch { continue; }
+        handle(ev);
+      }
     }
+  } catch (e) {
+    if (e.name !== "AbortError") fail("The connection dropped mid-run. "
+      + "Problems that had finished are saved.");
+    return;
   }
-  $("go").disabled = false;
+  endRun();
   loadAssignments();
 };
 
@@ -224,69 +415,213 @@ function fail(msg){
   $("run").hidden = false;
   $("runTitle").textContent = "Upload failed";
   $("summary").innerHTML = `<div class="banner bad">${esc(msg)}</div>`;
-  $("go").disabled = false;
+  endRun();
+  toast(msg, "bad");
 }
 
-function handle(ev, rows){
+/* One event in, one row change out. The `preparing` event is the only signal
+   the server sends between "started this problem" and "finished this problem";
+   if prepare_assignment_stream grows a {"event":"stage"} message, this is the
+   one function that has to learn about it. */
+function handle(ev){
+  if (!run) return;
   if (ev.event === "parsed") {
-    $("runTitle").textContent = `${ev.name}: ${ev.n_problems} problem(s)`;
+    run.total = ev.n_problems;
+    $("runTitle").textContent = `${ev.name}`;
+    tickElapsed();
     (ev.parse_errors || []).forEach(e =>
-      addRow(rows, e.slug, "bad", e.slug, "Could not read this one. " + e.error));
+      addRow(e.slug, "bad", e.slug, "Could not read this one. " + e.error));
   } else if (ev.event === "preparing") {
-    addRow(rows, ev.slug, "run", ev.title || ev.slug, "preparing");
-    setProgress(Math.round((ev.index - 1) / ev.total * 100));
+    run.total = ev.total;
+    addRow(ev.slug, "run", ev.title || ev.slug, "preparing");
+    setProgress((ev.index - 1) / ev.total * 100);
+    tickElapsed();
   } else if (ev.event === "prepared") {
-    setProgress(Math.round(ev.index / ev.total * 100));
-    if (ev.ready) setRow(rows, ev.slug, "ok", `Ready. ${ev.chunks} steps, ${ev.n_tests} tests.`);
-    else          setRow(rows, ev.slug, "bad", ev.error || "could not be prepared");
+    run.done = ev.index;
+    setProgress(ev.index / ev.total * 100);
+    if (ev.ready) setRow(ev.slug, "ok", `Ready. ${ev.chunks} steps, ${ev.n_tests} tests.`);
+    else          setRow(ev.slug, "bad", ev.error || "could not be prepared");
+    tickElapsed();
   } else if (ev.event === "done") {
     setProgress(100);
     $("runTitle").textContent = "Preparation finished";
+    $("runCount").textContent = `${ev.total} problem${ev.total === 1 ? "" : "s"} in `
+      + `${elapsed(Date.now() - run.started)}`;
     const cls = ev.failed === 0 ? "ok" : (ev.ready === 0 ? "bad" : "warn");
-    let msg = `<strong>${ev.ready} of ${ev.total} ready for students.</strong>`;
+    let msg = `${ev.ready} of ${ev.total} ready for students.`;
     if (ev.failed) msg += ` ${ev.failed} need attention, and students will not see those.
       Fix the problem statement and upload again, or split that problem into steps yourself.`;
-    $("summary").innerHTML = `<div class="banner ${cls}">${msg}</div>`;
+    $("summary").innerHTML = `<div class="banner ${cls}">${esc(msg)}</div>`;
+    toast(msg, cls);
+    endRun();
   }
 }
 
-function addRow(rows, slug, state, title, why){
+function addRow(slug, state, title, why){
+  if (run.rows[slug]) return setRow(slug, state, why);
   const li = document.createElement("li");
-  li.innerHTML = `<span class="pill"></span><div><div class="nm"></div><div class="why"></div></div>`;
+  li.innerHTML = `<span class="pill"></span>
+    <div class="body"><div class="nm"></div><div class="why"></div></div>
+    <span class="el"></span>`;
   $("items").appendChild(li);
-  rows[slug] = li;
+  run.rows[slug] = li;
+  run.starts[slug] = Date.now();
   li.querySelector(".nm").textContent = title;
-  setRow(rows, slug, state, why);
+  setRow(slug, state, why);
 }
-function setRow(rows, slug, state, why){
-  const li = rows[slug]; if (!li) return;
+
+function setRow(slug, state, why){
+  const li = run && run.rows[slug];
+  if (!li) return;
   const p = li.querySelector(".pill");
   p.className = "pill " + (state === "ok" ? "ok" : state === "bad" ? "bad" : "");
   p.innerHTML = state === "ok" ? "ready"
               : state === "bad" ? "needs work"
-              : '<span class="spin"></span> working';
+              : '<span class="spin" aria-hidden="true"></span> working';
   li.querySelector(".why").textContent = why || "";
+  if (state !== "run"){
+    li.dataset.settled = "1";
+    li.querySelector(".el").textContent = elapsed(Date.now() - run.starts[slug]);
+  }
+}
+
+/* ---------- the assignments table ---------- */
+
+function assignmentsTable(rows){
+  return `<table>
+    <thead><tr>
+      <th>Assignment</th><th>Ready</th><th class="colWhen">Created</th>
+      <th style="text-align:right">Actions</th>
+    </tr></thead>
+    <tbody>${rows.map(a => {
+      const cls = a.total && a.ready === a.total ? "ok" : a.ready ? "warn" : "bad";
+      const blocked = (a.total || 0) - (a.ready || 0);
+      return `<tr data-id="${esc(a.id)}">
+        <td>${esc(a.name)}</td>
+        <td><button class="pill ${cls}" data-act="breakdown"
+              aria-expanded="false"
+              title="${blocked ? `${blocked} problem${blocked === 1 ? "" : "s"} `
+                + `did not pass preparation. Open for the reason.`
+                : "Every problem is ready. Open for the list."}"
+              >${a.ready} / ${a.total} &#9662;</button></td>
+        <td class="colWhen">${esc(fmtWhen(a.created_at))}<br>
+            <span class="hint" style="margin:0">${esc(relTime(a.created_at))}</span></td>
+        <td><div class="acts">
+          <button class="ghost" data-act="breakdown">View problems</button>
+          <button class="ghost" data-act="reprep">Re-prepare</button>
+        </div></td>
+      </tr>`;
+    }).join("")}</tbody></table>`;
+}
+
+function emptyAssignments(){
+  return `<div class="empty">
+    <span class="eicon" aria-hidden="true">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M4 4h9l3 3h4v13H4z"/><path d="M12 11v6M9 14h6"/></svg></span>
+    <p>No assignments yet.</p>
+    <p class="esub">Upload a <code>.py</code> file of solved problems above, or
+      <button class="ghost" id="openFmt" style="min-height:0; padding:4px 10px;
+        font-size:12px">see the format first</button>.</p>
+  </div>`;
 }
 
 async function loadAssignments(){
+  $("listBody").innerHTML = skeletonRows(2);
+  let d;
   try {
-    const d = await (await fetch(`${API}/assignments`)).json();
-    const tb = $("alist");
-    if (!d.assignments || !d.assignments.length) {
-      tb.innerHTML = `<tr><td colspan="3" class="muted">Nothing uploaded yet.</td></tr>`;
-      return;
-    }
-    tb.innerHTML = d.assignments.map(a => {
-      const cls = a.total && a.ready === a.total ? "ok" : a.ready ? "warn" : "bad";
-      return `<tr>
-        <td>${esc(a.name)}</td>
-        <td><span class="pill ${cls}">${a.ready} / ${a.total}</span></td>
-        <td class="muted">${new Date(a.created_at).toLocaleString()}</td></tr>`;
-    }).join("");
+    d = await (await fetch(`${API}/assignments`)).json();
   } catch {
-    $("alist").innerHTML = `<tr><td colspan="3" class="muted">Could not reach the server.</td></tr>`;
+    $("listBody").innerHTML = `<div class="banner bad">Could not reach the server.
+      <button class="retry" type="button">Try again</button></div>`;
+    $("listBody").querySelector(".retry").onclick = loadAssignments;
+    return;
   }
+  const rows = d.assignments || [];
+  if (!rows.length){
+    $("listBody").innerHTML = emptyAssignments();
+    $("openFmt").onclick = () => {
+      $("fmt").open = true;
+      $("fmt").scrollIntoView({behavior: "smooth", block: "center"});
+    };
+    return;
+  }
+  $("listBody").innerHTML = assignmentsTable(rows);
+  $("listBody").querySelectorAll("[data-act]").forEach(b => {
+    const tr = b.closest("tr");
+    const a = rows.find(x => String(x.id) === tr.dataset.id);
+    if (b.dataset.act === "breakdown") b.onclick = () => toggleBreakdown(tr, a);
+    if (b.dataset.act === "reprep")    b.onclick = () => reprepare(a);
+  });
 }
+
+/* The ready badge, made to explain itself. "16 / 17" on its own is a dead end:
+   the instructor can see one problem did not make it and has no way to find
+   out which or why. The teacher-only route carries prepare_error per problem,
+   which is exactly the missing answer. */
+async function toggleBreakdown(tr, a){
+  const open = tr.nextElementSibling && tr.nextElementSibling.classList.contains("breakdown");
+  tr.querySelectorAll('[data-act="breakdown"]').forEach(b =>
+    b.setAttribute("aria-expanded", String(!open)));
+  if (open){ tr.nextElementSibling.remove(); return; }
+
+  const row = document.createElement("tr");
+  row.className = "breakdown";
+  row.innerHTML = `<td colspan="4"><div class="bdWrap">${skeletonRows(2)}</div></td>`;
+  tr.after(row);
+  const wrap = row.querySelector(".bdWrap");
+
+  let d;
+  try {
+    const r = await fetch(`${API}/teacher/assignments/${a.id}/problems`);
+    if (!r.ok) throw new Error();
+    d = await r.json();
+  } catch {
+    wrap.innerHTML = `<div class="banner bad" style="margin:0">Could not load the
+      problems for this assignment.
+      <button class="retry" type="button">Try again</button></div>`;
+    wrap.querySelector(".retry").onclick = () => { row.remove(); toggleBreakdown(tr, a); };
+    return;
+  }
+
+  const probs = (d.problems || []).slice().sort(
+    (x, y) => (x.ready === y.ready) ? String(x.title || x.slug)
+        .localeCompare(String(y.title || y.slug)) : (x.ready ? 1 : -1));
+  if (!probs.length){
+    wrap.innerHTML = `<p class="hint" style="margin:0">This assignment has no
+      problems recorded.</p>`;
+    return;
+  }
+  wrap.innerHTML = `<ul class="bdList">${probs.map(p => `
+    <li>
+      <span class="pill ${p.ready ? "ok" : "bad"}">${p.ready ? "ready" : "blocked"}</span>
+      <span class="bdName">${esc(p.title || p.slug)}</span>
+      <span class="bdWhy">${p.ready
+        ? "Prepared and visible to students."
+        : esc(p.prepare_error || "Preparation did not finish for this problem.")}</span>
+    </li>`).join("")}</ul>
+    ${d.failed ? `<p class="hint" style="margin:12px 0 0">Fix the docstring or the
+      solution for the ${d.failed} blocked problem${d.failed === 1 ? "" : "s"} in
+      your <code>.py</code> file and upload it again — re-preparing only rewrites
+      what changed.</p>` : ""}`;
+}
+
+/* Re-preparing means uploading the file again: preparation reads the source,
+   and the server keeps the parsed problems, not the file. Sending the
+   instructor to the drop zone with the reason stated beats a button that
+   silently does nothing. */
+function reprepare(a){
+  toast(`Re-prepare “${a.name}” by uploading its .py file again — `
+      + `problems that still pass are simply rewritten.`, "info", 7000);
+  clearPick();
+  $("fileErr").innerHTML = `<div class="banner info">Choose the <code>.py</code>
+    file behind <strong>${esc(a.name)}</strong> to prepare it again.</div>`;
+  drop.scrollIntoView({behavior: "smooth", block: "center"});
+  drop.focus();
+}
+
+clearPick();
 loadAssignments();
 </script>
 </body>

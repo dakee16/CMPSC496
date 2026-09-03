@@ -764,7 +764,7 @@ const DESIGN_MAX = 10 * 1024 * 1024;
 
 function designMsg(kind, text){
   $("designMsg").innerHTML = text
-    ? `<div class="banner ${kind}">${esc(text)}</div>` : "";
+    ? `<div class="banner pre ${kind}">${esc(text)}</div>` : "";
 }
 
 function clearDesign(){
@@ -1206,8 +1206,9 @@ function alignToStep(code, columns){
     .join("\n");
 }
 
+/* `pre`: the grader writes its reason with real paragraph breaks in it. */
 function show(kind, text, extra){
-  $("msg").innerHTML = `<div class="banner ${kind}">${esc(text)}</div>` + (extra || "");
+  $("msg").innerHTML = `<div class="banner pre ${kind}">${esc(text)}</div>` + (extra || "");
 }
 
 $("submit").onclick = async () => {
