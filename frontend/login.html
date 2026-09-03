@@ -18,40 +18,33 @@
 <link rel="stylesheet" href="tokens.css">
 <link rel="stylesheet" href="ui.css">
 <style>
-  body{display:grid; place-items:center; padding:24px}
-  .gate{width:min(430px,100%)}
+  /* Everything here is layout. The field, button, note and error styles all
+     come from ui.css, so this card cannot drift from the rest of the app. */
+  body{display:grid; place-items:center; padding:var(--s6)}
+  .gate{width:min(440px,100%)}
+
   /* The wordmark is the SAME .wordmark element the floating header renders -
      one implementation, so the first screen and every screen after it cannot
      drift apart. This page only positions it. */
   .markrow{display:flex; margin-bottom:var(--s6)}
 
-  .field + .field{margin-top:14px}
-  .field label{display:block; font-size:12.5px; color:var(--text-muted);
-               margin-bottom:7px}
-  .field input{width:100%; padding:12px 14px; border-radius:12px;
-    background:rgba(26,35,56,.5); border:1px solid var(--glass-line);
-    color:var(--text-bright); font-size:14px; font-family:inherit;
-    transition:var(--transition)}
-  .field input:focus{outline:none; border-color:var(--indigo-500);
-    box-shadow:0 0 0 3px rgba(99,102,241,.16)}
-  .field input[aria-invalid="true"]{border-color:var(--red-text)}
-  .field .help{font-size:11.5px; color:var(--text-muted); margin:6px 0 0}
+  /* One rhythm for the whole card: 24 between blocks, 16 between fields,
+     8 inside a field. The card ran tall with uneven gaps before. */
+  .gate .card{padding:var(--s6); margin:0}
+  .gate h1{font-size:26px; margin-bottom:var(--s2)}
+  .gate .sub{margin-bottom:var(--s6)}
+  .gate .field + .field{margin-top:var(--s4)}
+  #go{width:100%; margin-top:var(--s6)}
 
-  .err{color:var(--red-text); font-size:12.5px; margin:12px 0 0; min-height:17px}
-  #go{width:100%; margin-top:18px}
-
-  .swap{margin-top:18px; padding-top:15px; border-top:1px solid var(--glass-line);
+  .swap{margin-top:var(--s6); padding-top:var(--s4);
+        border-top:1px solid var(--glass-line);
         font-size:12.5px; color:var(--text-muted); text-align:center}
   .swap button{background:none; border:0; padding:0; font:inherit; cursor:pointer;
-    color:var(--indigo-400); font-weight:600; box-shadow:none}
-  .swap button:hover{text-decoration:underline}
+    color:var(--accent-ink); font-weight:600; box-shadow:none; min-height:0}
+  .swap button:hover{text-decoration:underline; transform:none; box-shadow:none;
+    background:none}
 
-  /* A standing note about how access works, not an error - so it is muted
-     copy with only the label carrying colour. */
-  .note{margin-top:18px; padding:12px 14px; border-radius:11px;
-        background:rgba(99,102,241,.06); border:1px solid rgba(129,140,248,.16);
-        color:var(--text-muted); font-size:12.5px; line-height:1.55}
-  .note strong{color:var(--text-bright); font-weight:600}
+  .gate .note{margin-top:var(--s6)}
   form{margin:0}
 </style>
 </head>
@@ -63,29 +56,37 @@
   </div>
 
   <div class="card">
-    <p class="eyebrow" id="eyebrow">Sign in</p>
-    <h1 id="title">Pick up where you left off</h1>
+    <h1 id="title">Sign in</h1>
     <p class="sub" id="sub">Step by step programming practice, graded by running
       your code.</p>
 
-    <form id="gate" autocomplete="on">
+    <form id="gate" autocomplete="on" novalidate>
       <div class="field">
         <label for="u">Penn State email</label>
+        <!-- autofocus: this is the first thing anyone does on this page, and
+             there is nothing else on it to focus instead. -->
         <input id="u" name="username" type="email" inputmode="email"
                autocomplete="username" placeholder="abc1234@psu.edu"
-               spellcheck="false" required>
+               spellcheck="false" autofocus
+               aria-describedby="uErr" required>
+        <!-- Inline, under the field it is about. A single shared error line at
+             the bottom of a two-field form makes the reader work out which
+             field it meant. -->
+        <p class="fielderr" id="uErr" role="alert"></p>
       </div>
 
       <div class="field">
         <label for="p">Password</label>
         <input id="p" name="password" type="password"
-               autocomplete="current-password" required>
-        <p class="help" id="pwHelp" hidden>At least 8 characters.</p>
+               autocomplete="current-password" aria-describedby="pErr pwHelp"
+               required>
+        <p class="fielderr" id="pErr" role="alert"></p>
+        <p class="helptext" id="pwHelp" hidden>At least 8 characters.</p>
       </div>
 
-      <!-- assertive, not polite: this is a blocking error and the student
-           cannot proceed until they hear it. -->
-      <p class="err" id="err" role="alert" aria-live="assertive"></p>
+      <!-- The SERVER's message: a bad password, a rate limit, an outage. Field
+           problems never reach here. assertive, not polite: it is blocking. -->
+      <p class="fielderr" id="err" role="alert" aria-live="assertive"></p>
       <button type="submit" id="go">Sign in</button>
     </form>
 
@@ -109,24 +110,60 @@
    button label. */
 let mode = "login";
 
-const show = m => { document.getElementById("err").textContent = m; };
 const el = id => document.getElementById(id);
+const serverErr = m => { el("err").textContent = m; };
+
+/* One rule, stated once, in the same words the server uses. main/auth.py
+   allows psu.edu only, so anything else is a round trip that can only fail. */
+const PSU = /^[^\s@]+@([a-z0-9-]+\.)*psu\.edu$/i;
+
+function fieldErr(id, msg){
+  const input = el(id), out = el(id + "Err");
+  out.textContent = msg || "";
+  input.setAttribute("aria-invalid", msg ? "true" : "false");
+  return !msg;
+}
+
+/* Says what is wrong AND how to fix it. "Invalid email" is neither. */
+function checkEmail(){
+  const v = el("u").value.trim();
+  if (!v) return fieldErr("u", "Enter your Penn State email address.");
+  return fieldErr("u", PSU.test(v)
+    ? "" : "Use your Penn State address, like abc1234@psu.edu.");
+}
+function checkPassword(){
+  const v = el("p").value;
+  if (!v) return fieldErr("p", "Enter your password.");
+  if (mode === "register" && v.length < 8)
+    return fieldErr("p", "Use at least 8 characters.");
+  return fieldErr("p", "");
+}
+
+/* Validate on the way OUT of a field, never on every keystroke: telling
+   someone their address is wrong while they are still typing it is noise. */
+el("u").addEventListener("blur", () => { if (el("u").value.trim()) checkEmail(); });
+el("p").addEventListener("blur", () => { if (el("p").value) checkPassword(); });
+// Clear a standing error as soon as they start fixing it.
+["u","p"].forEach(id => el(id).addEventListener("input", () => {
+  if (el(id + "Err").textContent) fieldErr(id, "");
+  serverErr("");
+}));
 
 function paint(){
   const reg = mode === "register";
-  el("eyebrow").textContent = reg ? "Create account" : "Sign in";
-  el("title").textContent = reg ? "Set up your account"
-                                : "Pick up where you left off";
+  document.title = reg ? "Create an account · MicroTutor" : "Sign in · MicroTutor";
+  el("title").textContent = reg ? "Set up your account" : "Sign in";
   el("sub").textContent = reg
     ? "Use your Penn State email. Your work is saved against this account."
     : "Step by step programming practice, graded by running your code.";
   el("go").textContent = reg ? "Create account" : "Sign in";
-  el("go").disabled = false;
   el("p").setAttribute("autocomplete", reg ? "new-password" : "current-password");
   el("pwHelp").hidden = !reg;
   el("swapText").textContent = reg ? "Already have an account?" : "New here?";
   el("swapBtn").textContent = reg ? "Sign in" : "Create an account";
-  show("");
+  enable(el("go"));
+  serverErr("");
+  fieldErr("u", ""); fieldErr("p", "");
 }
 
 el("swapBtn").addEventListener("click", () => {
@@ -143,26 +180,23 @@ Session.check().then(me => {
 
 el("gate").addEventListener("submit", async e => {
   e.preventDefault();
-  const username = el("u").value.trim();
-  const password = el("p").value;
 
   /* Client-side checks are a COURTESY - they save a round trip on an obvious
      typo. The server re-checks all of it; nothing here admits anyone. */
-  const badUser = !username.includes("@");
-  el("u").setAttribute("aria-invalid", badUser ? "true" : "false");
-  if (badUser) return show("Enter your Penn State email address.");
-  if (!password) return show("Enter your password.");
-  if (mode === "register" && password.length < 8)
-    return show("Password must be at least 8 characters.");
+  const okUser = checkEmail(), okPass = checkPassword();
+  if (!okUser || !okPass){
+    el(okUser ? "p" : "u").focus();
+    return;
+  }
 
-  el("go").disabled = true;
-  el("go").textContent = mode === "register" ? "Creating…" : "Signing in…";
+  setBusy(el("go"), true, mode === "register" ? "Creating…" : "Signing in…");
   try {
-    const me = await Session.signIn(mode, username, password);
+    const me = await Session.signIn(mode, el("u").value.trim(), el("p").value);
     location.href = me.role === "teacher" ? "teacher.html" : "student.html";
   } catch (ex) {
-    paint();                    // restores the button before the message
-    show(ex.message);
+    setBusy(el("go"), false);
+    serverErr(ex.message);
+    el("p").focus();
   }
 });
 

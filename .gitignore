@@ -7,6 +7,7 @@ problems_raw.json
 .env
 chunk_pool.json
 migrations/
+microtutor-frontend-polish-prompt.md
 
 # runtime grading session store
 data/grading_sessions.sqlite3*
