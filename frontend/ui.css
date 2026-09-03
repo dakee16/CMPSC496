@@ -476,6 +476,7 @@ summary:focus-visible{outline:2px solid var(--accent-ink); outline-offset:3px}
    A row that is clickable has to LOOK clickable: hover, focus, and a chevron
    at the right edge. */
 .rows{list-style:none; margin:0; padding:0; display:grid; gap:var(--s2)}
+.rows > li{display:flex; min-width:0}
 .rows.two{grid-template-columns:1fr 1fr}
 @media (max-width:900px){ .rows.two{grid-template-columns:1fr} }
 .rowitem{

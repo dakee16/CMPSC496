@@ -29,6 +29,25 @@
 <style>
   /* Every value below comes from tokens.css. No hex, no rgba(). */
 
+  /* ---- the two list screens ----
+     The page is .wide because the WORKSPACE needs 1500px. A list of
+     assignments does not: at that width the rows ran to a third of the screen
+     and the other two thirds read as a page that had failed to load. A
+     deliberate 880px column reads as a decision. */
+  .listcol{max-width:880px; margin:0 auto}
+  .sumrow{display:flex; align-items:center; gap:var(--s3); margin-bottom:var(--s4)}
+  .sumrow .sumlab{font-size:13px; color:var(--text-muted); white-space:nowrap;
+                  font-variant-numeric:tabular-nums}
+  .sumrow .bar{flex:1}
+  /* The "carry on where you were" row. One per screen, on the assignment the
+     student touched most recently, so the common case is one click. */
+  .rowitem .go{flex:none; font-size:11.5px; font-weight:700; padding:4px 10px;
+    border-radius:var(--r-pill); background:var(--accent); color:var(--on-accent)}
+  /* The row's own background is --surface-raised, so the bar needs a darker
+     track or an empty bar is invisible and 0% looks like "no bar at all". */
+  .rowbar{width:110px; flex:none; background:var(--border)}
+  @media (max-width:560px){ .rowbar{display:none} }
+
   /* ---- the two-column workspace ----
      Solving on the left because it is the task, tutor on the right where a
      companion belongs. Below 1024px the columns stack and the tutor becomes a
@@ -378,21 +397,50 @@
 <main class="page wide" id="page">
 
   <section id="cAssign">
-    <p class="eyebrow">Practice</p>
-    <h1>Choose an assignment</h1>
-    <p class="sub">Only problems your instructor has prepared appear here.</p>
-    <div class="card">
-      <ul class="pick" id="assignments"><li class="muted">loading...</li></ul>
+    <div class="listcol">
+      <p class="eyebrow">Practice</p>
+      <h1>Choose an assignment</h1>
+      <p class="sub">Only problems your instructor has prepared appear here.</p>
+      <div class="card" id="assignCard"></div>
     </div>
   </section>
 
   <section id="cProblem" hidden>
-    <p class="eyebrow">Assignment</p>
-    <h1 id="assignName"></h1>
-    <p class="sub">Pick a problem to work through.</p>
-    <div class="card">
-      <ul class="pick" id="problems"></ul>
-      <button class="ghost" id="backA" style="margin-top:14px">All assignments</button>
+    <div class="listcol">
+      <p class="eyebrow">Assignment</p>
+      <h1 id="assignName"></h1>
+      <p class="sub">Pick a problem to work through.</p>
+
+      <div class="card">
+        <div class="sumrow">
+          <span class="sumlab" id="probSummary"></span>
+          <div class="bar slim" id="probSummaryBar" role="progressbar"
+               aria-label="Problems solved in this assignment"
+               aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i></i></div>
+        </div>
+
+        <!-- Sixteen items is already past comfortable scanning, and this list
+             is meant to grow. -->
+        <div class="filters">
+          <label class="sr-only" for="pfilter">Filter problems by name</label>
+          <input class="search" id="pfilter" type="search" autocomplete="off"
+                 placeholder="Filter problems…">
+          <div class="chipset" id="pchips" role="group" aria-label="Filter by status">
+            <button type="button" class="chip" data-f="all" aria-pressed="true">All</button>
+            <button type="button" class="chip" data-f="todo" aria-pressed="false">Not started</button>
+            <button type="button" class="chip" data-f="progress" aria-pressed="false">In progress</button>
+            <button type="button" class="chip" data-f="solved" aria-pressed="false">Solved</button>
+          </div>
+          <label class="sr-only" for="psort">Sort problems</label>
+          <select id="psort" style="width:auto; min-width:120px; flex:none">
+            <option value="alpha">A – Z</option>
+            <option value="status">Status</option>
+          </select>
+        </div>
+
+        <ul class="rows two" id="problems"></ul>
+        <button class="ghost" id="backA" style="margin-top:16px">All assignments</button>
+      </div>
     </div>
   </section>
 
@@ -862,21 +910,149 @@ async function uploadDesign(){
   }
 }
 
+/* ==========================================================
+   Choosing an assignment, then a problem
+   ----------------------------------------------------------
+   Both screens answer the same question: where was I? The server knows which
+   problems this student has SOLVED (GET /solved). It does not record which
+   ones were merely opened, or when — so "in progress" and "last worked on"
+   come from a local note this browser keeps. That is honest about what it is:
+   per-browser, and it never contradicts the server, because a solved problem
+   is solved whatever the note says.
+   ========================================================== */
+
+const CHEV = `<svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none"
+  stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"
+  aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>`;
+
+let SOLVED = new Set();
+let ASSIGNMENTS = [];          // enriched with slugs / solved / last
+let openAssign = null;         // the assignment currently open
+let PROBLEMS = [];             // its problems
+let pQuery = "", pFilter = "all", pSort = "alpha";
+
+const TOUCH_KEY = "mt.touched";
+function touchMap(){
+  try { return JSON.parse(localStorage.getItem(TOUCH_KEY) || "{}"); }
+  catch { return {}; }
+}
+function touch(slug){
+  const t = touchMap();
+  t[slug] = Date.now();
+  try { localStorage.setItem(TOUCH_KEY, JSON.stringify(t)); } catch {}
+}
+
+function statusOf(slug, touched){
+  if (SOLVED.has(slug)) return "solved";
+  return touched[slug] ? "progress" : "todo";
+}
+const STAT_LABEL = {solved: "Solved", progress: "In progress", todo: "Not started"};
+function statMark(state){
+  return `<span class="stat ${state}"><span class="dotmark" aria-hidden="true"></span>${
+    STAT_LABEL[state]}</span>`;
+}
+function bar(pct, done){
+  return `<span class="bar slim rowbar${done ? " done" : ""}" role="img"
+    aria-label="${pct}% solved"><i style="width:${pct}%"></i></span>`;
+}
+
+function listError(host, retry){
+  host.innerHTML = `<div class="banner bad" style="margin:0">Could not reach the
+    server. <button class="retry" type="button">Try again</button></div>`;
+  host.querySelector(".retry").onclick = retry;
+}
+
 async function loadAssignments(){
+  $("assignCard").innerHTML = skeletonRows(2);
+  let d, solved;
   try {
-    const d = await (await fetch(`${API}/assignments`)).json();
-    const list = (d.assignments || []).filter(a => a.ready > 0);
-    $("assignments").innerHTML = list.length
-      ? list.map(a => `<li><button data-id="${a.id}" data-name="${esc(a.name)}">
-          <span>${esc(a.name)}</span>
-          <span class="pill">${a.ready} problem${a.ready === 1 ? "" : "s"}</span>
-        </button></li>`).join("")
-      : `<li class="muted">No assignments are ready yet. Ask your instructor to upload one.</li>`;
-    $("assignments").querySelectorAll("button").forEach(b =>
-      b.onclick = () => openAssignment(b.dataset.id, b.dataset.name));
+    [d, solved] = await Promise.all([
+      fetch(`${API}/assignments`).then(r => r.json()),
+      // A student with no solves yet is a 200 with an empty list; a failure
+      // here must not cost them the assignment list, so it degrades to "none".
+      fetch(`${API}/solved`).then(r => r.ok ? r.json() : {slugs: []})
+                            .catch(() => ({slugs: []}))
+    ]);
   } catch {
-    $("assignments").innerHTML = `<li class="muted">Could not reach the server.</li>`;
+    return listError($("assignCard"), loadAssignments);
   }
+  SOLVED = new Set(solved.slugs || []);
+
+  const list = (d.assignments || []).filter(a => a.ready > 0);
+  if (!list.length){
+    $("assignCard").innerHTML = `<div class="empty">
+      <span class="eicon" aria-hidden="true">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 5h16v15H4z"/><path d="M8 10h8M8 14h5"/></svg></span>
+      <p>Nothing to practice yet.</p>
+      <p class="esub">Your instructor has not prepared an assignment. This page
+        fills in as soon as one is ready.</p></div>`;
+    return;
+  }
+
+  // One extra request per assignment, to learn which slugs it contains. With a
+  // handful of assignments that is cheaper than a new endpoint; if a course
+  // ever has fifty, /assignments should carry the slugs itself.
+  const touched = touchMap();
+  ASSIGNMENTS = await Promise.all(list.map(async a => {
+    let slugs = [], failed = false;
+    try {
+      const r = await fetch(`${API}/assignments/${a.id}/problems`);
+      if (!r.ok) throw new Error();
+      const j = await r.json();
+      a._problems = j.problems || [];
+      slugs = a._problems.map(p => p.slug);
+    } catch {
+      // The row still opens - openAssignment() retries the fetch. What it must
+      // NOT do is print "0 / 0 solved", which reads as "you have done nothing"
+      // when the truth is "we could not ask".
+      failed = true;
+    }
+    const solvedN = slugs.filter(s => SOLVED.has(s)).length;
+    const last = Math.max(0, ...slugs.map(s => touched[s] || 0));
+    return {...a, slugs, solvedN, last, failed};
+  }));
+
+  // The "Continue" affordance goes on the one they touched most recently, so
+  // the common case - come back, carry on - is one click.
+  const resumeId = ASSIGNMENTS.reduce(
+    (best, a) => (a.last && (!best || a.last > best.last)) ? a : best, null);
+
+  $("assignCard").innerHTML = `<ul class="rows" id="assignments">${
+    ASSIGNMENTS.map(a => {
+      const n = a.slugs.length || a.ready;
+      const pct = n ? Math.round(a.solvedN / n * 100) : 0;
+      // Never surface a number that contradicts the title: the count is the
+      // number of problems that are READY, and the ratio is only shown when
+      // some did not make it.
+      const readyLab = a.total && a.total !== a.ready
+        ? `${a.ready} of ${a.total} ready` : `${a.ready} ready`;
+      const readyTip = a.total && a.total !== a.ready
+        ? `${a.total - a.ready} problem${a.total - a.ready === 1 ? "" : "s"} in this `
+          + `assignment could not be prepared, so they are not shown.`
+        : "Every problem in this assignment is ready.";
+      return `<li><button class="rowitem" data-id="${esc(a.id)}">
+        <span class="rmain">
+          <span class="rname">${esc(a.name)}</span>
+          <span class="rmeta">
+            <span title="${esc(readyTip)}">${readyLab}</span>
+            ${a.failed ? "" : `
+              <span aria-hidden="true">·</span>
+              <span>${a.solvedN} / ${n} solved</span>
+              ${a.last ? `<span aria-hidden="true">·</span>
+                          <span>Last worked on ${esc(relTime(a.last))}</span>` : ""}`}
+          </span>
+        </span>
+        ${a.failed ? "" : bar(pct, pct === 100)}
+        ${!a.failed && resumeId && resumeId.id === a.id
+            ? `<span class="go">Continue</span>` : ""}
+        ${CHEV}
+      </button></li>`;
+    }).join("")}</ul>`;
+
+  $("assignments").querySelectorAll(".rowitem").forEach(b =>
+    b.onclick = () => openAssignment(ASSIGNMENTS.find(a => String(a.id) === b.dataset.id)));
 }
 
 function view(which){
@@ -884,21 +1060,122 @@ function view(which){
   scrollTo({top: 0, behavior: "smooth"});
 }
 
-async function openAssignment(id, name){
-  $("assignName").textContent = name;
-  $("crumb2").textContent = name;
-  view("cProblem");
-  const d = await (await fetch(`${API}/assignments/${id}/problems`)).json();
-  const ps = d.problems || [];
-  $("problems").innerHTML = ps.length
-    ? ps.map((p, i) => `<li><button data-i="${i}">
-        <span>${esc(p.title || p.slug)}</span>
-        ${p.difficulty ? `<span class="pill">${esc(p.difficulty)}</span>` : ""}
-      </button></li>`).join("")
-    : `<li class="muted">No problems ready in this assignment.</li>`;
-  $("problems").querySelectorAll("button").forEach(b =>
-    b.onclick = () => start(ps[+b.dataset.i]));
+function goAssignments(){
+  document.title = "Choose an assignment · MicroTutor";
+  setCrumbs([]);
+  openAssign = null;
+  view("cAssign");
+  loadAssignments();                    // solves may have landed since
 }
+
+async function openAssignment(a){
+  if (!a) return;
+  openAssign = a;
+  pQuery = ""; pFilter = "all"; pSort = "alpha";
+  $("pfilter").value = "";
+  $("psort").value = "alpha";
+  $("pchips").querySelectorAll(".chip").forEach(c =>
+    c.setAttribute("aria-pressed", String(c.dataset.f === "all")));
+  $("assignName").textContent = a.name;
+  document.title = `${a.name} · MicroTutor`;
+  // A breadcrumb in the header, so getting back one level does not mean going
+  // all the way Home.
+  setCrumbs([{label: a.name}]);
+  view("cProblem");
+
+  if (a._problems){ PROBLEMS = a._problems; return renderProblems(); }
+
+  // The list screen's own fetch for this assignment failed (or was never made).
+  // Try again here, where there is room to say so and offer a retry.
+  PROBLEMS = [];
+  $("probSummary").textContent = "";
+  $("problems").innerHTML = `<li style="grid-column:1/-1; display:block">${
+    skeletonRows(3)}</li>`;
+  try {
+    const r = await fetch(`${API}/assignments/${a.id}/problems`);
+    if (!r.ok) throw new Error();
+    a._problems = (await r.json()).problems || [];
+  } catch {
+    $("problems").innerHTML = `<li style="grid-column:1/-1; display:block">
+      <div class="banner bad" style="margin:0">Could not load the problems in
+      this assignment. <button class="retry" type="button">Try again</button>
+      </div></li>`;
+    $("problems").querySelector(".retry").onclick = () => openAssignment(a);
+    return;
+  }
+  PROBLEMS = a._problems;
+  renderProblems();
+}
+
+/* The problem list: left-aligned names, status on the right, filtered and
+   sorted in one place. */
+function renderProblems(){
+  const touched = touchMap();
+  const q = pQuery.trim().toLowerCase();
+  const rank = {progress: 0, todo: 1, solved: 2};
+
+  const rows = PROBLEMS
+    .map(p => ({p, state: statusOf(p.slug, touched)}))
+    .filter(({p, state}) =>
+      (pFilter === "all" || state === pFilter) &&
+      (!q || String(p.title || p.slug).toLowerCase().includes(q) ||
+             String(p.slug).toLowerCase().includes(q)))
+    .sort((a, b) => pSort === "status"
+      ? (rank[a.state] - rank[b.state]) ||
+        String(a.p.title || a.p.slug).localeCompare(String(b.p.title || b.p.slug))
+      : String(a.p.title || a.p.slug).localeCompare(String(b.p.title || b.p.slug)));
+
+  const solvedN = PROBLEMS.filter(p => SOLVED.has(p.slug)).length;
+  const pct = PROBLEMS.length ? Math.round(solvedN / PROBLEMS.length * 100) : 0;
+  $("probSummary").textContent = PROBLEMS.length
+    ? `${solvedN} of ${PROBLEMS.length} solved` : "";
+  $("probSummaryBar").querySelector("i").style.width = pct + "%";
+  $("probSummaryBar").setAttribute("aria-valuenow", String(pct));
+  $("probSummaryBar").classList.toggle("done", pct === 100);
+
+  if (!PROBLEMS.length){
+    $("problems").innerHTML = `<li style="grid-column:1/-1"><div class="empty"
+      style="width:100%">
+      <p>No problems are ready in this assignment.</p>
+      <p class="esub">Your instructor is still preparing them.</p></div></li>`;
+    return;
+  }
+  if (!rows.length){
+    $("problems").innerHTML = `<li style="grid-column:1/-1"><div class="empty"
+      style="width:100%">
+      <p>Nothing matches that.</p>
+      <p class="esub">Try a different word, or clear the filter.</p></div></li>`;
+    return;
+  }
+
+  $("problems").innerHTML = rows.map(({p, state}, i) => `
+    <li><button class="rowitem" data-slug="${esc(p.slug)}">
+      <span class="rmain">
+        <span class="rname">${esc(p.title || p.slug)}</span>
+        <span class="rmeta">
+          ${p.difficulty ? `<span>${esc(p.difficulty)}</span>` : ""}
+          ${(p.topic_tags || []).slice(0, 2).map(t =>
+              `<span>${esc(t)}</span>`).join('<span aria-hidden="true">·</span>')}
+        </span>
+      </span>
+      ${statMark(state)}
+      ${CHEV}
+    </button></li>`).join("");
+
+  $("problems").querySelectorAll(".rowitem").forEach(b =>
+    b.onclick = () => start(PROBLEMS.find(p => p.slug === b.dataset.slug)));
+}
+
+$("pfilter").addEventListener("input", e => { pQuery = e.target.value; renderProblems(); });
+$("psort").addEventListener("change", e => { pSort = e.target.value; renderProblems(); });
+$("pchips").addEventListener("click", e => {
+  const c = e.target.closest(".chip");
+  if (!c) return;
+  pFilter = c.dataset.f;
+  $("pchips").querySelectorAll(".chip").forEach(x =>
+    x.setAttribute("aria-pressed", String(x === c)));
+  renderProblems();
+});
 
 /* Render a problem statement.
 
@@ -945,12 +1222,19 @@ function renderExamples(blob){
 }
 
 async function start(p){
+  if (!p) return;
   view("cSolve");
-  document.title = `${p.title || p.slug} · MicroTutor`;
-  $("probTitle").textContent = p.title || p.slug;
-  const asg = ($("assignName").textContent || "").trim();
-  $("crumb2").textContent = asg ? `${asg}  ›  ${p.title || p.slug}`
-                                : (p.title || p.slug);
+  const name = p.title || p.slug;
+  document.title = `${name} · MicroTutor`;
+  $("probTitle").textContent = name;
+  // Opening a problem is what makes it "in progress" on the list behind us.
+  touch(p.slug);
+  const asg = openAssign ? openAssign.name : ($("assignName").textContent || "").trim();
+  $("crumb2").textContent = asg ? `${asg}  ›  ${name}` : name;
+  setCrumbs([
+    ...(openAssign ? [{label: openAssign.name, go: backToProblems}] : []),
+    {label: name}
+  ]);
   renderStatement(p.description);
   stepperLoading();
   $("stepCount").textContent = "";
@@ -1283,20 +1567,30 @@ async function finish(res){
       method: "POST", headers: {"Content-Type": "application/json"},
       body: JSON.stringify({session_id: sessionId})
     });
+    // Record it locally too, so going back one screen shows it as solved
+    // without a round trip to re-read /solved.
+    if (openProblem) SOLVED.add(openProblem.slug);
   } catch {}
   // Both graphs, now that there is a finished function to draw the second one
   // from. Awaited last so a slow render never delays the "solved" message.
   await showDualGraphs(sessionId);
 }
 
-$("backA").onclick = () => { document.title = "Choose an assignment · MicroTutor";
-                             view("cAssign"); };
-$("backP").onclick = () => {
-  document.title = "Choose a problem · MicroTutor";
+/* Back to the problem list, with the list redrawn: a problem just solved has
+   to show as solved, and the header summary has to move. */
+function backToProblems(){
   $("editorWrap").hidden = false;
   $("ctx").style.maxHeight = "";          // undo the finish() expansion
+  if (openAssign){
+    document.title = `${openAssign.name} · MicroTutor`;
+    setCrumbs([{label: openAssign.name}]);
+  }
+  renderProblems();
   view("cProblem");
-};
+}
+
+$("backA").onclick = goAssignments;
+$("backP").onclick = backToProblems;
 $("backToNow").onclick = leaveReview;
 
 /* ---------- the tutor ----------

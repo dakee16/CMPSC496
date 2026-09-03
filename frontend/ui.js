@@ -311,14 +311,18 @@ function setCrumbs(items){
   const host = document.getElementById("hcrumbs");
   if (!host) return;
   host.innerHTML = "";
+  const sepEl = () => {
+    const s = document.createElement("span");
+    s.className = "sep";
+    s.setAttribute("aria-hidden", "true");
+    s.textContent = "/";
+    return s;
+  };
   (items || []).forEach((it, i) => {
-    if (i){
-      const sep = document.createElement("span");
-      sep.className = "sep";
-      sep.setAttribute("aria-hidden", "true");
-      sep.textContent = "/";
-      host.appendChild(sep);
-    }
+    // A leading separator, because the trail continues from the Home button
+    // sitting immediately to its left. Repeating "Home" as the first crumb put
+    // the word on screen twice, 8px apart.
+    host.appendChild(sepEl());
     const last = i === items.length - 1;
     const b = document.createElement("button");
     b.type = "button";
