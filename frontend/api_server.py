@@ -1058,6 +1058,68 @@ def get_solved(request: Request):
     return {"slugs": [r["problem_slug"] for r in (result.data or [])]}
 
 
+@app.get("/history/{slug}")
+def student_problem_history(slug: str, request: Request):
+    """The signed-in student's own past work on one problem.
+
+    main/archive.py has been WRITING this since sign-in landed - chat turns,
+    designs, graph snapshots, every graded submission - and until now nothing
+    read any of it back. So reopening a finished problem showed an empty chat,
+    an empty plan graph and a locked editor, and the student reasonably
+    concluded their work had been thrown away. It never was; there was simply
+    no route to ask for it.
+
+    Only ever the CALLER's own rows: student_id comes from the cookie, never
+    from the query, so this cannot be pointed at a classmate. No reference
+    solution and no chunk reference is read here, so replaying a transcript
+    cannot leak an answer the student was not already given."""
+    from main.archive import student_history
+    from main.graphs import compare
+
+    claims = require_student(request)
+    sb = get_supabase()
+
+    empty = {"slug": slug, "found": False, "solved": False,
+             "design_approved": False, "messages": [], "plan": None,
+             "code": None, "comparison": None}
+    try:
+        h = student_history(sb, claims["sub"], slug)
+    except Exception as e:
+        # A missing archive must never stop a problem from OPENING. Degrade to
+        # "nothing recorded" - which is exactly how it behaved before this
+        # route existed - rather than 500 the page that calls it.
+        print(f"  \u26a0\ufe0f  history unavailable for {slug}: {str(e)[:160]}")
+        return empty
+
+    # Snapshots, newest wins: save_graph appends a row every time the plan
+    # changes, and what the student wants back is the last one they saw.
+    latest = {}
+    for g in h.get("graphs") or []:
+        if g.get("graph"):
+            latest[g.get("kind")] = g["graph"]
+    plan, code = latest.get("plan"), latest.get("code")
+
+    msgs = [{"role": m["role"], "content": m["content"], "at": m.get("created_at")}
+            for m in (h.get("messages") or [])
+            if m.get("phase") == "tutor" and m.get("role") in ("user", "assistant")]
+
+    solved = bool(sb.table("solved").select("problem_slug").eq(
+        "student_id", claims["sub"]).eq("problem_slug", slug).execute().data)
+
+    return {"slug": slug,
+            "found": bool(msgs or plan or code or h.get("designs")),
+            "solved": solved,
+            # Approved ONCE is approved: the gate exists to make a student plan
+            # before coding, and they already did that for this problem. Making
+            # them re-upload the same diagram to reread their own finished work
+            # would be a toll, not a lesson.
+            "design_approved": any(d.get("approved") for d in (h.get("designs") or [])),
+            "messages": msgs, "plan": plan, "code": code,
+            # Recomputed rather than stored: compare() is deterministic and free,
+            # and the snapshot rows hold the two graphs but not their diff.
+            "comparison": compare(plan, code) if (plan and code) else None}
+
+
 @app.post("/tutor_chat")
 def tutor_chat(req: TutorChatRequest, request: Request):
     """Socratic tutor for the problem currently open on the student page.

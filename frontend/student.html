@@ -138,7 +138,14 @@
   .steppill.reviewing{outline:2px solid var(--accent-ink); outline-offset:2px}
 
   .prompt{font-size:15.5px; font-weight:500; color:var(--text); margin:0 0 var(--s3)}
+  /* Both of these now sit BETWEEN the prompt and the code surface, so each
+     owns the gap below itself - the banner inside #msg carries only a top
+     margin. :not(:empty) so an unused slot collapses to nothing instead of
+     leaving a hole above the editor on every fresh step. */
   .attempts{font-size:12.5px; color:var(--text-subtle); margin:10px 0 0}
+  #msg:not(:empty){margin-bottom:13px}
+  #msg:not(:empty) + .attempts:not(:empty){margin-top:-4px}
+  .attempts:not(:empty){margin-bottom:13px}
   .stepcount{font-size:12.5px; font-weight:600; color:var(--accent-ink);
              letter-spacing:.02em; margin:0 0 9px; display:flex; align-items:center;
              gap:10px; flex-wrap:wrap}
@@ -264,12 +271,16 @@
            color:var(--text-muted)}
   .bub.me{align-self:flex-end; color:var(--on-accent); border-bottom-right-radius:5px;
           background:linear-gradient(135deg,var(--accent),var(--accent-active))}
-  /* Who said it and when, on hover or keyboard focus. Always present in the
-     accessibility tree; only the paint is conditional. */
-  .bmeta{display:block; font-size:10.5px; margin-top:6px; opacity:0;
-         transition:opacity .16s ease; font-variant-numeric:tabular-nums}
-  .bub:hover .bmeta,.bub:focus-within .bmeta{opacity:.75}
-  @media (hover:none){ .bmeta{opacity:.6} }
+  /* Who said it and when - ALWAYS shown, not on hover.
+     Hover-only meant the information did not exist for touch, for keyboard
+     scrolling, or for anyone reading back through a conversation, and it made
+     the transcript flicker as the pointer crossed it. It is small and dim
+     enough to stay out of the way of the message itself. */
+  .bmeta{display:block; font-size:10.5px; margin-top:6px; opacity:.62;
+         font-variant-numeric:tabular-nums}
+  /* The student's own bubble sits on the accent gradient, where .62 of white
+     is thinner than .62 of grey on the tutor's. Lift it back to parity. */
+  .bub.me .bmeta{opacity:.78}
 
   /* Suggestion chips sit directly under the tutor's opening message, where
      they read as answers to it, and disappear once there is a conversation. */
@@ -310,7 +321,10 @@
      These cards sit BELOW .split so they get the full page width. A flowchart
      is wide by nature; inside the 372px chat column it was unreadable. */
   .graphCard{margin-top:var(--s4)}
-  .gview{position:relative; border-radius:14px; overflow:hidden; touch-action:none;
+  /* pan-y, NOT none: `none` handed every touch gesture to the graph, so on a
+     tablet the page could not be scrolled past this card at all. Vertical
+     drags now scroll the document; horizontal ones still pan the drawing. */
+  .gview{position:relative; border-radius:14px; overflow:hidden; touch-action:pan-y;
     background:var(--code-bg); border:1px solid var(--glass-line)}
   :root[data-theme="light"] .gview{background:var(--surface-raised)}
   .gview svg{display:block; cursor:grab}
@@ -480,6 +494,23 @@
           <p class="stepcount" id="stepCount"></p>
           <p class="prompt" id="prompt"></p>
 
+          <!-- The grading verdict, ABOVE the code it is about.
+               It used to sit at the very bottom of the card, under the buttons:
+               on a long step the student pressed Submit and the answer appeared
+               off-screen, so a correct answer and a failed one looked identical
+               from where they were sitting. Here it lands in the same place the
+               "design accepted" notice occupied, and show() removes that notice
+               - the gate opened steps ago and has nothing left to say once
+               there is real feedback to read.
+
+               `attempts` travels with it: "Attempt 1 of 2" is half of the same
+               sentence, and splitting the two across the card was why neither
+               was read. Live regions because a student using a screen reader
+               otherwise submits an answer and is told nothing at all; polite,
+               so it is announced at a pause rather than cutting across them. -->
+          <div id="msg" role="status" aria-live="polite"></div>
+          <p class="attempts" id="attempts" role="status" aria-live="polite"></p>
+
           <!-- One code surface. The frozen part (function header + every step
                already accepted) and the editor for THIS step are the same
                listing, so nothing has to be scrolled away to see the rest.
@@ -573,12 +604,6 @@
             <button id="backToNow">Back to the current step</button>
           </div>
 
-          <p class="attempts" id="attempts" role="status" aria-live="polite"></p>
-          <!-- The grading verdict lands here. Without a live region a student
-               using a screen reader submits an answer and is told nothing at
-               all. "polite" rather than "assertive": it should not cut across
-               them mid-sentence, only be announced when they pause. -->
-          <div id="msg" role="status" aria-live="polite"></div>
         </div>
       </div>
 
@@ -806,6 +831,12 @@ async function showDualGraphs(sid){
     const payload = await r.json();
     $("dualCard").hidden = false;
     renderDual($("dualWrap"), payload);
+    // The standalone "Your plan so far" card is now a second, smaller copy of
+    // the graph sitting directly above one that shows the same thing beside the
+    // code. Retire it: it was there to grow WITH the conversation, and the
+    // conversation is over. openProblem() unhides it again for the next problem.
+    $("planCard").hidden = true;
+    const ping = $("planPing"); if (ping) ping.remove();
     $("dualCard").scrollIntoView({behavior: "smooth", block: "start"});
   } catch (e) {
     /* the comparison is a bonus, never the reason a finished session breaks */
@@ -1290,6 +1321,67 @@ async function start(p){
   ensureEditor();
   render();
   applyTutorGate();
+  await restoreHistory(p);
+}
+
+/* Put back what this student already did on this problem.
+
+   Everything below has been archived server-side all along (main/archive.py);
+   nothing read it, so reopening a problem showed an empty chat, an empty plan
+   graph and a locked editor - and looked exactly like the work had been
+   deleted. It never was.
+
+   Deliberately NOT restored: the accepted code and the step position. Those
+   belong to a GRADING SESSION, and /decompose_chunks just issued a fresh one -
+   replaying old answers into it would claim steps this session never graded.
+   Reopening a problem still starts the solving over; what comes back is the
+   thinking around it. */
+async function restoreHistory(p){
+  let h;
+  try {
+    const r = await fetch(`${API}/history/${encodeURIComponent(p.slug)}`);
+    if (!r.ok) return;
+    h = await r.json();
+  } catch { return; }                 // a cold archive is not a broken problem
+  if (!h || !h.found || openProblem !== p) return;   // they moved on while we waited
+
+  if (h.messages && h.messages.length){
+    $("clog").innerHTML = "";
+    hideChips();
+    chatLog = h.messages.map(m => ({role: m.role, content: m.content}));
+    h.messages.forEach(m => bubble(m.role === "user" ? "me" : "bot",
+                                   m.content, m.at));
+    bubble("bot", h.solved
+      ? "This is where we got to last time. You have already solved this one — "
+        + "work through it again whenever you like."
+      : "Picking up where we left off.");
+  }
+
+  if (h.plan && h.plan.nodes && h.plan.nodes.length){
+    planGraph = h.plan;
+    // Seed planSeen FIRST so a restored plan does not flash every node as new
+    // and ping "Plan updated" about a conversation that finished days ago.
+    h.plan.nodes.forEach(n => planSeen.add(n.id));
+    paintPlan(h.plan);
+  }
+
+  // The design gate is passed ONCE per problem. Re-demanding the same diagram
+  // to reread your own finished work is a toll, not a lesson.
+  if (h.design_approved || h.solved){
+    tutorReleased = true;
+    applyTutorGate();
+    if (!$("designOK")) show("ok", h.solved
+      ? "You solved this before. The editor is open — the steps start again from the top."
+      : "Your design for this problem was already accepted, so the editor is open.");
+  }
+
+  // The finished comparison, if there is one to show.
+  if (h.plan && h.code && h.comparison){
+    $("dualCard").hidden = false;
+    renderDual($("dualWrap"), {plan: h.plan, code: h.code,
+                               comparison: h.comparison});
+    $("planCard").hidden = true;
+  }
 }
 
 /* Decomposition never arrived. Drop the loading skeleton so it does not shimmer
@@ -1497,8 +1589,15 @@ function alignToStep(code, columns){
     .join("\n");
 }
 
-/* `pre`: the grader writes its reason with real paragraph breaks in it. */
+/* `pre`: the grader writes its reason with real paragraph breaks in it.
+
+   Also the one place the "design accepted" notice is retired. It reports a gate
+   that opened before the first step, and once there is a verdict to read it is
+   simply an older message sitting above a newer one in the same slot - so the
+   verdict takes its place rather than stacking under it. */
 function show(kind, text, extra){
+  const ok = $("designOK");
+  if (ok) ok.remove();
   $("msg").innerHTML = `<div class="banner pre ${kind}">${esc(text)}</div>` + (extra || "");
 }
 
@@ -1608,7 +1707,7 @@ const SUGGESTIONS = ["Explain this problem simply",
                      "Here is my approach…",
                      "I am stuck"];
 
-function bubble(who, text){
+function bubble(who, text, when){
   const b = document.createElement("div");
   b.className = "bub " + who;
   const body = document.createElement("span");
@@ -1618,8 +1717,13 @@ function bubble(who, text){
   // the log reads as a conversation rather than a wall of alternating text.
   const meta = document.createElement("span");
   meta.className = "bmeta";
+  // `when` is the archived timestamp for a replayed turn. Without it a
+  // conversation from last Tuesday would be stamped with the moment the page
+  // happened to reload, which is worse than no time at all.
+  const at = when ? new Date(when) : new Date();
   meta.textContent = `${who === "me" ? "You" : "Tutor"} · `
-    + new Date().toLocaleTimeString("en-US", {hour: "numeric", minute: "2-digit"});
+    + (isNaN(at) ? "earlier"
+       : at.toLocaleTimeString("en-US", {hour: "numeric", minute: "2-digit"}));
   b.append(body, meta);
   $("clog").appendChild(b);
   $("clog").scrollTop = $("clog").scrollHeight;

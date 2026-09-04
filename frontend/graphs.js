@@ -198,7 +198,19 @@ function gAttachView(box, svg, layer, size){
   };
   const zoomCentre = f => zoomAt(f, box.clientWidth / 2, box.clientHeight / 2);
 
+  /* A PLAIN wheel belongs to the page, never to this drawing.
+   *
+   * This used to preventDefault() every wheel event, and the plan card sits
+   * directly below the workspace - so scrolling down past it froze the
+   * document exactly there. The graph silently ate the gesture, the page
+   * stopped moving, and the student could not get back up to the editor or the
+   * submit button: the card read as a dead, static block.
+   *
+   * Ctrl/Cmd+wheel is the convention every map and diagram already uses, and
+   * the +/- buttons, the fit button and the keyboard shortcuts all still zoom
+   * with no modifier at all - so nothing is lost by giving the wheel back. */
   svg.addEventListener("wheel", e => {
+    if (!e.ctrlKey && !e.metaKey) return;      // let the page scroll
     e.preventDefault();
     const r = box.getBoundingClientRect();
     zoomAt(e.deltaY < 0 ? 1.12 : 1 / 1.12, e.clientX - r.left, e.clientY - r.top);

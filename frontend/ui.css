@@ -73,7 +73,14 @@ body::before{
   transform:translateX(-50%);
   z-index:var(--z-header);
   width:min(1180px,calc(100vw - var(--s8)));
-  display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:var(--s3);
+  /* minmax(0,...), not a bare 1fr: a plain `1fr` track has a CONTENT-BASED
+     minimum, so once the breadcrumb grew past its share the side track pushed
+     outwards instead of clipping - and the nav rode straight over the centred
+     wordmark. With a zero floor the track may shrink and the crumb ellipsises
+     inside it, which is what the crumb's max-width and text-overflow were
+     always waiting for. */
+  display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);
+  align-items:center; gap:var(--s3);
   padding:9px var(--s3);
   border-radius:16px;
   background:var(--glass-bg-strong);
@@ -86,7 +93,15 @@ body::before{
 .hdr.condensed{top:var(--s2); padding:5px var(--s3); box-shadow:var(--shadow-1),var(--glass-lift)}
 .hdr.wide{width:min(1500px,calc(100vw - var(--s8)))}
 
-.hnav{display:flex; align-items:center; gap:7px; justify-self:start; min-width:0}
+/* stretch, not start: `justify-self:start` sizes this box to its CONTENT, so
+   it happily grew wider than its track and spilled over the wordmark. Stretched
+   to the track and clipped, the nav buttons keep their size (flex:none) and the
+   breadcrumb is the one thing that gives - which is right, because it is the
+   only part whose length is not ours to choose. */
+.hnav{display:flex; align-items:center; gap:7px; justify-self:stretch;
+      min-width:0; overflow:hidden}
+.hnav > .hbtn{flex:none}
+.hnav > .crumbs{flex:0 1 auto; min-width:0}
 .hacct{justify-self:end}
 
 /* The wordmark. Uppercase and letter-spaced because this is a brand mark
@@ -150,6 +165,17 @@ body::before{
 .crumbs .crumb:hover{background:var(--accent-tint); color:var(--text);
                      transform:none; box-shadow:none}
 .crumbs .crumb[aria-current="page"]{color:var(--text); cursor:default}
+
+/* Not enough room for the whole trail: keep the crumb that says where you ARE
+   and drop its ancestors, rather than letting every label lose its ending.
+   Clipping the trail evenly produced "/ k 1 - Warn / Leap Ye" - three
+   half-words, none of them readable and none of them clickable to any useful
+   place. One complete label beats a row of stubs; Home is one button away and
+   the page repeats the full trail in its own eyebrow. */
+@media (max-width:1150px){
+  .crumbs .crumb:not([aria-current="page"]){display:none}
+  .crumbs .sep:not(:last-of-type){display:none}
+}
 .crumbs .crumb[aria-current="page"]:hover{background:none}
 
 /* Profile button + dropdown menu. */
