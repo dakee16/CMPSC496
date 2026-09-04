@@ -100,11 +100,17 @@
   .probprog .lab{font-size:12px; color:var(--text-subtle); white-space:nowrap;
                  font-variant-numeric:tabular-nums}
 
-  .stepper{list-style:none; margin:0; padding:0; display:flex; flex-wrap:wrap;
-           gap:6px}
+  /* Stacked, not a row: a step's prompt is a sentence, so pills run top to
+     bottom at full width and wrap rather than truncating - and 9 steps read as
+     a list instead of a wrapped jumble. */
+  .stepper{list-style:none; margin:0; padding:0; display:flex;
+           flex-direction:column; gap:6px}
   .steppill{
-    display:inline-flex; align-items:center; gap:8px; max-width:280px;
-    padding:5px 13px 5px 5px; border-radius:var(--r-pill); min-height:0;
+    /* flex-start beats ui.css's `button{justify-content:center}`, which would
+       otherwise centre a completed step's contents in the full-width row. */
+    display:flex; align-items:flex-start; justify-content:flex-start;
+    gap:8px; width:100%;
+    padding:6px 13px 6px 6px; border-radius:var(--r-md); min-height:0;
     background:var(--surface-raised); border:1px solid var(--glass-line);
     color:var(--text-subtle); box-shadow:none;
     font-family:var(--font-sans); font-size:12.5px; font-weight:500;
@@ -114,7 +120,8 @@
     display:grid; place-items:center; font-size:11px; font-weight:700;
     background:var(--surface); border:1.5px solid var(--border);
     color:var(--text-subtle)}
-  .steppill .t{overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  /* 1px nudge sits the digit's optical centre on the first line of the prompt. */
+  .steppill .t{line-height:1.45; padding-top:1px}
   button.steppill{cursor:pointer}
   button.steppill:hover{background:var(--accent-tint); border-color:var(--accent-line);
     color:var(--text); transform:none; box-shadow:none}
