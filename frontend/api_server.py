@@ -119,15 +119,15 @@ _DEV_ORIGINS = [o.strip() for o in os.environ.get(
     "http://localhost:8000,http://127.0.0.1:8000,"
     "http://localhost:5173,http://127.0.0.1:5173").split(",") if o.strip()]
 
-# A page opened straight off disk sends `Origin: null`, and that origin was
-# missing from the list above - so the browser blocked every sign-in response
-# before the page could read it, and all the page could report was that it
-# could not reach the server. That is the whole bug: not a VPN, not a gate, a
-# missing dev origin. DEV ONLY - `null` is also what a sandboxed iframe and a
-# data: URL send, so allowing it together with credentials in production would
-# let either of them make signed-in requests.
-if os.environ.get("MICROTUTOR_ENV", "dev") == "dev" and "null" not in _DEV_ORIGINS:
-    _DEV_ORIGINS.append("null")
+# `null` - the origin a page opened straight off disk sends - is deliberately
+# NOT in this list, and adding it is a trap worth naming. It does let the
+# request through, so sign-in answers 200 and the page looks like it worked.
+# But the session cookie is SameSite=Lax and (in dev) not Secure, so the
+# browser stores nothing for an opaque origin: the very next request is signed
+# out, and the user is bounced back to the login form with no error to read.
+# A loud "could not reach the server" beats a login that silently un-happens.
+# Serve the pages from this app instead - http://localhost:8000/login.html -
+# which is same-origin, needs no CORS at all, and is how it is deployed.
 
 app.add_middleware(
     CORSMiddleware,

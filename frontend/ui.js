@@ -16,6 +16,37 @@
    there is no origin to be the same as. */
 const API = location.protocol.startsWith("http") ? "" : "http://localhost:8000";
 
+/* Opened by double-clicking the .html instead of visiting the server.
+
+   This CANNOT work, and it fails in the most confusing way available: a
+   file:// page has an opaque origin, so the browser stores no SameSite=Lax
+   cookie from it. Sign-in answers 200 with the account, the page cheers, and
+   the very next request is signed out again - so the user is bounced back to
+   the login form having typed the right password. Saying so up front costs one
+   comparison and saves that entire loop. */
+const OFF_DISK = location.protocol === "file:";
+const OFF_DISK_WHY =
+  "Open the app at http://localhost:8000 instead of from a file. A page "
+  + "opened straight off disk cannot keep you signed in - the browser throws "
+  + "the session cookie away, so sign-in succeeds and then immediately "
+  + "forgets you.";
+
+/* One banner, on whatever page loaded, rather than only on the sign-in button:
+   every page is equally broken off disk, and the student page would otherwise
+   just redirect-loop back to login with nothing to read. */
+function offDiskBanner(){
+  if (!OFF_DISK || document.getElementById("mtOffDisk")) return;
+  const b = document.createElement("div");
+  b.id = "mtOffDisk";
+  b.className = "banner bad";
+  b.setAttribute("role", "alert");
+  b.style.cssText = "position:fixed; inset:auto 12px 12px; z-index:9999; margin:0;"
+    + " max-width:560px; margin-inline:auto";
+  b.textContent = OFF_DISK_WHY;
+  (document.body || document.documentElement).appendChild(b);
+}
+if (OFF_DISK) addEventListener("DOMContentLoaded", offDiskBanner);
+
 /* Theme: "dark" (default) or "light", per browser. Applied to <html
    data-theme> so the light token overrides in ui.css take effect. Each page's
    <head> sets this synchronously to avoid a flash on load; this is the setter
@@ -74,6 +105,9 @@ const Session = {
      for the student - the server writes it, so there is one wording for a bad
      password and not one per page. */
   async signIn(mode, username, password){
+    // Refuse before the round trip. The request would SUCCEED and the session
+    // would still be lost, which is the one failure the student cannot debug.
+    if (OFF_DISK) throw new Error(OFF_DISK_WHY);
     let r;
     try {
       r = await fetch(`${API}/${mode === "register" ? "register" : "login"}`, {
