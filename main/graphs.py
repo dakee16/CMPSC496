@@ -33,7 +33,9 @@ similarity but never for equality.
 import ast
 import difflib
 import json
+import textwrap
 
+from .indent import dedent_block
 from .ollama_client import TUTOR_MODEL, chat
 
 # The shared vocabulary. Both producers emit only these, which is what lets a
@@ -173,8 +175,24 @@ def code_graph(code: str, header: str = "") -> dict:
     `header` is the function signature the session holds; the chunks are a body
     without a def line, so it is prepended to make the source parseable. A
     syntax error returns a one-node graph rather than raising: a student mid-
-    edit should see "this does not parse yet", not a stack trace."""
-    source = (header.rstrip() + "\n" + code) if header.strip() else code
+    edit should see "this does not parse yet", not a stack trace.
+
+    The body is RE-SEATED under the header rather than concatenated to it. A
+    chunk's accepted code is stored at its depth WITHIN the body - column 0 for
+    a top-level step - and the function's own four columns are added at assembly
+    time by run_phase1.assemble_references() and grading._assemble(). Pasting
+    the body straight after `def f(nums):` therefore produced an
+    IndentationError for every problem whose first step sits at top level, so a
+    finished session drew "does not parse yet" instead of the code graph. That
+    was the dual-graph bug: this function was the one assembler that did not add
+    the indent its two siblings add."""
+    if header.strip():
+        body = textwrap.indent(dedent_block(code), "    ")
+        # An empty body is not a syntax error worth reporting to a student - a
+        # session with nothing accepted yet simply has no code to draw.
+        source = header.rstrip() + "\n" + (body if body.strip() else "    pass")
+    else:
+        source = code
     try:
         tree = ast.parse(source)
     except SyntaxError as e:
@@ -457,6 +475,21 @@ if __name__ == "__main__":
 
     bad = code_graph("for x in", "def f(n):")
     assert bad["meta"]["error"] == "syntax", "syntax error must not raise"
+
+    # THE DUAL-GRAPH BUG: chunk bodies are stored flat, the way the session
+    # actually holds them, and must still parse under the header.
+    flat = build_both({"header": "def f(nums):",
+                       "accepted": [{"code": "total = 0"},
+                                    {"code": "for x in nums:"},
+                                    {"code": "    total += x"},
+                                    {"code": "return total"}]}, None)
+    assert flat["code"]["meta"].get("error") != "syntax", \
+        "a flat-stored body must parse under its header"
+    assert [n["kind"] for n in flat["code"]["nodes"]] == \
+        ["start", "step", "loop", "step", "return", "end"], \
+        [n["kind"] for n in flat["code"]["nodes"]]
+    # A session with nothing accepted yet has no code, which is not an error.
+    assert code_graph("", "def f():")["meta"].get("error") is None
 
     # Unreachable code after a return must not be drawn as reachable.
     r = code_graph("    return 1\n    x = 2", "def f():")

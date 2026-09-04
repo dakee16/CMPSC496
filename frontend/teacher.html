@@ -65,6 +65,45 @@
   .acts{display:flex; gap:6px; justify-content:flex-end}
   .acts button{min-height:0; padding:5px 11px; font-size:12px;
     font-family:var(--font-sans)}
+  .bdList .bdFix{margin-left:auto; flex:none; min-height:0; padding:5px 11px;
+    font-size:12px; font-family:var(--font-sans)}
+
+  /* The fix-and-retry panel: the problem's own text on the left, what it still
+     has to pass on the right. Side by side because the checklist is what tells
+     you WHICH edit to make, and a checklist you have to scroll away from to
+     type is a checklist nobody reads. */
+  .fixPanel{margin-top:var(--s3); padding:var(--s4);
+    border:1px solid var(--accent-line); border-radius:var(--r-md);
+    background:var(--surface-raised)}
+  .fixHead{display:flex; align-items:center; gap:var(--s3); flex-wrap:wrap;
+    margin-bottom:var(--s3)}
+  .fixHead h3{margin:0; font-size:15px}
+  .fixHead .fixX{margin-left:auto; min-height:0; padding:4px 10px; font-size:12px}
+  .fixGrid{display:grid; grid-template-columns:minmax(0,1fr) 274px; gap:var(--s4);
+    align-items:start}
+  @media (max-width:820px){ .fixGrid{grid-template-columns:1fr} }
+  .fixGrid textarea{width:100%; min-height:300px; resize:vertical;
+    font-family:var(--font-mono); font-size:12.5px; line-height:1.65; tab-size:4}
+  .fixSide h4{margin:0 0 9px; font-size:12px; text-transform:uppercase;
+    letter-spacing:.09em; color:var(--text-subtle)}
+
+  ul.ckList{list-style:none; margin:0; padding:0; display:grid; gap:7px}
+  ul.ckList li{display:flex; gap:9px; align-items:flex-start; font-size:12.5px;
+    line-height:1.5; color:var(--text-muted)}
+  ul.ckList .ckMark{flex:none; width:16px; height:16px; border-radius:50%;
+    display:grid; place-items:center; font-size:10px; font-weight:700;
+    margin-top:1px}
+  ul.ckList li.ok      .ckMark{background:var(--success-bg); color:var(--success)}
+  ul.ckList li.fail    .ckMark{background:var(--danger-bg);  color:var(--danger)}
+  ul.ckList li.pending .ckMark{background:var(--surface); color:var(--text-subtle);
+    border:1px solid var(--glass-line)}
+  ul.ckList li.ok .ckLabel{color:var(--text)}
+  ul.ckList li.fail .ckLabel{color:var(--text); font-weight:600}
+  ul.ckList li.pending .ckLabel{color:var(--text-subtle)}
+  .ckWhy{display:block; margin-top:4px; font-size:12px; color:var(--danger);
+    font-weight:400; line-height:1.5; overflow-wrap:anywhere}
+  .fixActs{display:flex; gap:var(--s2); align-items:center; flex-wrap:wrap;
+    margin-top:var(--s4)}
 
   /* The four-line example. It teaches the format faster than the paragraph
      above it does, so it comes first and the full template comes second. */
@@ -564,7 +603,15 @@ async function toggleBreakdown(tr, a){
   const open = tr.nextElementSibling && tr.nextElementSibling.classList.contains("breakdown");
   tr.querySelectorAll('[data-act="breakdown"]').forEach(b =>
     b.setAttribute("aria-expanded", String(!open)));
-  if (open){ tr.nextElementSibling.remove(); return; }
+  if (open){
+    // Collapsing the row is the other way out of an open fix panel, so it has
+    // to refresh the stale counts too - otherwise a problem fixed here keeps
+    // showing as blocked in the badge above until the page is reloaded.
+    const host = tr.nextElementSibling.querySelector(".fixHost");
+    tr.nextElementSibling.remove();
+    if (host && host.dataset.changed === "1") loadAssignments();
+    return;
+  }
 
   const row = document.createElement("tr");
   row.className = "breakdown";
@@ -600,11 +647,175 @@ async function toggleBreakdown(tr, a){
       <span class="bdWhy">${p.ready
         ? "Prepared and visible to students."
         : esc(p.prepare_error || "Preparation did not finish for this problem.")}</span>
+      ${p.ready ? "" : `<button class="ghost bdFix" type="button"
+        data-slug="${esc(p.slug)}">Open and fix</button>`}
     </li>`).join("")}</ul>
-    ${d.failed ? `<p class="hint" style="margin:12px 0 0">Fix the docstring or the
-      solution for the ${d.failed} blocked problem${d.failed === 1 ? "" : "s"} in
-      your <code>.py</code> file and upload it again — re-preparing only rewrites
-      what changed.</p>` : ""}`;
+    <div class="fixHost"></div>
+    ${d.failed ? `<p class="hint" style="margin:12px 0 0">Open a blocked problem
+      to correct its text here and prepare just that one again. Re-uploading the
+      whole <code>.py</code> file still works and only rewrites what changed.</p>`
+      : ""}`;
+
+  const host = wrap.querySelector(".fixHost");
+  wrap.querySelectorAll(".bdFix").forEach(b =>
+    b.onclick = () => openFix(host, a, b.dataset.slug,
+                             probs.find(p => p.slug === b.dataset.slug)));
+}
+
+/* ---------- fix one blocked problem, in place ----------
+   A problem that failed preparation used to be a dead end on this page: the
+   reason was shown, and the only way to act on it was to edit the .py file and
+   re-upload the whole assignment, re-preparing every problem beside it. This
+   opens THAT problem's own text, says what it still has to pass, and prepares
+   just it. */
+
+const CK_MARK = {ok: "&#10003;", fail: "&times;", pending: "&middot;"};
+
+function ckList(items){
+  return `<ul class="ckList">${(items || []).map(c => `
+    <li class="${c.state}">
+      <span class="ckMark" aria-hidden="true">${CK_MARK[c.state] || ""}</span>
+      <span class="ckLabel">${esc(c.label)}
+        <span class="sr-only">— ${c.state === "ok" ? "passed"
+          : c.state === "fail" ? "failed" : "not reached yet"}</span>
+        ${c.error ? `<span class="ckWhy">${esc(c.error)}</span>` : ""}</span>
+    </li>`).join("")}</ul>`;
+}
+
+async function openFix(host, assignment, slug, prob){
+  if (!host) return;
+  // One panel at a time: two open editors on one screen invite editing the
+  // wrong problem's text and pressing retry on it.
+  if (host.dataset.slug === slug){ closeFix(host); return; }
+  host.dataset.slug = slug;
+  host.innerHTML = `<div class="fixPanel">${skeletonRows(2)}</div>`;
+
+  let d;
+  try {
+    const r = await fetch(
+      `${API}/teacher/problems/${encodeURIComponent(slug)}/source`
+      + `?assignment_id=${encodeURIComponent(assignment.id)}`);
+    if (!r.ok) throw new Error();
+    d = await r.json();
+  } catch {
+    host.innerHTML = `<div class="fixPanel"><div class="banner bad"
+      style="margin:0">Could not load this problem's text.
+      <button class="retry" type="button">Try again</button></div></div>`;
+    host.querySelector(".retry").onclick = () => {
+      host.dataset.slug = ""; openFix(host, assignment, slug, prob);
+    };
+    return;
+  }
+
+  host.innerHTML = `<div class="fixPanel">
+    <div class="fixHead">
+      <h3>${esc(d.title || slug)}</h3>
+      <span class="pill ${d.ready ? "ok" : "bad"}" id="fixPill"
+        >${d.ready ? "ready" : "blocked"}</span>
+      <button class="ghost fixX" type="button" id="fixClose">Close</button>
+    </div>
+    <div class="fixGrid">
+      <div>
+        <label for="fixSrc" class="hint" style="display:block; margin:0 0 7px">
+          This problem's Python. The docstring is the statement students see;
+          the body is your solution.</label>
+        <textarea id="fixSrc" spellcheck="false"
+          aria-describedby="fixCkTitle"></textarea>
+      </div>
+      <div class="fixSide">
+        <h4 id="fixCkTitle">What it has to pass</h4>
+        <div id="fixCk">${ckList(d.checklist)}</div>
+      </div>
+    </div>
+    <div class="fixActs">
+      <button id="fixGo" type="button">Save and retry</button>
+      <span class="hint" style="margin:0; flex:1; min-width:220px">
+        Preparing one problem takes about a minute — it writes fresh test cases
+        and re-splits it into steps.</span>
+    </div>
+    <div id="fixMsg"></div>
+  </div>`;
+
+  const src = host.querySelector("#fixSrc");
+  // .value, never innerHTML: this is Python, and </textarea> or an ampersand in
+  // a docstring would otherwise break out of the element or come back mangled.
+  src.value = d.source || "";
+  if (!d.source){
+    host.querySelector("#fixMsg").innerHTML = `<div class="banner warn">No text
+      was stored for this problem — it predates this panel. Paste its function
+      from your <code>.py</code> file and retry.</div>`;
+  }
+
+  host.querySelector("#fixClose").onclick = () => closeFix(host);
+  host.querySelector("#fixGo").onclick = () => retryFix(host, assignment, slug);
+  src.focus();
+  host.scrollIntoView({behavior: "smooth", block: "nearest"});
+}
+
+function closeFix(host){
+  const changed = host.dataset.changed === "1";
+  host.dataset.slug = "";
+  host.dataset.changed = "";
+  host.innerHTML = "";
+  // Refresh the counts HERE and not the moment a retry succeeds:
+  // loadAssignments() rebuilds the whole table, which would tear this panel out
+  // from under the instructor along with the result they just asked for.
+  if (changed) loadAssignments();
+}
+
+async function retryFix(host, assignment, slug){
+  const btn = host.querySelector("#fixGo");
+  const src = host.querySelector("#fixSrc");
+  const msg = host.querySelector("#fixMsg");
+  if (!src.value.trim()){
+    msg.innerHTML = `<div class="banner bad">There is nothing to prepare —
+      the editor is empty.</div>`;
+    return src.focus();
+  }
+  setBusy(btn, true, "Preparing…");
+  msg.innerHTML = `<div class="banner info">Preparing this problem. Writing test
+    cases, checking they are strong enough, and splitting it into steps.</div>`;
+
+  let d;
+  try {
+    const r = await fetch(`${API}/teacher/problems/retry`, {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({assignment_id: assignment.id, slug,
+                            source: src.value})
+    });
+    d = await r.json().catch(() => ({}));
+    if (!r.ok){
+      setBusy(btn, false);
+      msg.innerHTML = `<div class="banner bad">${esc(
+        (d.detail && d.detail.message) || "The server refused this retry.")}</div>`;
+      return;
+    }
+  } catch {
+    setBusy(btn, false);
+    msg.innerHTML = `<div class="banner bad">Could not reach the server. Your
+      edits are still in the box — try again.</div>`;
+    return;
+  }
+  setBusy(btn, false);
+
+  // The checklist is redrawn from the run that just happened, so a fix that
+  // cleared two gates and stalled on a third SHOWS that, rather than repeating
+  // the failure the teacher already read.
+  host.querySelector("#fixCk").innerHTML = ckList(d.checklist);
+  const pill = host.querySelector("#fixPill");
+  pill.className = "pill " + (d.ready ? "ok" : "bad");
+  pill.textContent = d.ready ? "ready" : "blocked";
+
+  if (d.ready){
+    host.dataset.changed = "1";          // the table's counts are now stale
+    msg.innerHTML = `<div class="banner ok">Prepared. ${d.chunks} step${
+      d.chunks === 1 ? "" : "s"}, ${d.n_tests} test${d.n_tests === 1 ? "" : "s"}
+      — students can see this problem now.</div>`;
+    toast(`“${slug}” is ready for students.`, "ok");
+  } else {
+    msg.innerHTML = `<div class="banner bad pre">${esc(
+      d.error || "It still could not be prepared.")}</div>`;
+  }
 }
 
 /* Re-preparing means uploading the file again: preparation reads the source,

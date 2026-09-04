@@ -42,8 +42,76 @@ def _reason(exc: Exception) -> str:
     return msg[:300]
 
 
+# The gates a problem passes, in the order prepare_problem applies them. This
+# is the list an instructor reads as a checklist while fixing a blocked problem,
+# so the labels say what a stage MEANS to them, not what it is called here.
+PREPARE_STAGES = (
+    ("parses",   "Reads as one Python function with a docstring"),
+    ("runs",     "The solution runs"),
+    ("tests",    "Test cases could be generated from it"),
+    ("strength", "Those tests are strong enough to grade with"),
+    ("steps",    "Splits into steps a student can work through"),
+)
+
+
+def checklist(stage: str | None, error: str | None = None) -> list[dict]:
+    """The stages as pass / fail / not-reached, for the teacher's fix panel.
+
+    `stage` is where preparation stopped, or None if it finished. Everything
+    before the failure passed by construction - preparation is strictly
+    sequential and never reaches a later gate without clearing the earlier
+    ones - and everything after it is genuinely UNKNOWN, which is why those are
+    "pending" rather than a second kind of failure."""
+    names = [s for s, _ in PREPARE_STAGES]
+    stop = names.index(stage) if stage in names else len(names)
+    return [{"id": sid, "label": label,
+             "state": "ok" if i < stop else "fail" if i == stop else "pending",
+             "error": error if i == stop else None}
+            for i, (sid, label) in enumerate(PREPARE_STAGES)]
+
+
+# Every message below is written either by prepare_problem() or by
+# assignments.parse_assignment_file(), so mapping one back to its stage is the
+# inverse of a table this package owns rather than a guess about arbitrary text.
+# It is needed because a stored problem row keeps only `prepare_error`: a retry
+# reports its stage exactly, and this recovers the stage for a row that was
+# prepared before any retry ran.
+_ERROR_STAGE = (
+    ("no solution provided",         "parses"),
+    ("could not read the function",  "parses"),
+    ("could not find the function",  "parses"),
+    ("not valid python",             "parses"),
+    ("no function found",            "parses"),
+    ("has no docstring",             "parses"),
+    ("class-based solutions",        "parses"),
+    ("duplicate slug",               "parses"),
+    ("block is empty",               "parses"),
+    ("must be lowercase letters",    "parses"),
+    ("could not be run",             "runs"),
+    ("test generation failed",       "tests"),
+    ("no usable test cases",         "tests"),
+    ("not strong enough",            "strength"),
+    ("could not split this problem", "steps"),
+)
+
+
+def stage_of_error(error: str | None) -> str | None:
+    """Which gate a stored prepare_error stopped at, or None if it is not a
+    failure at all. Unrecognised text falls through to the LAST stage: the
+    earlier gates are the ones we could have named, so the honest reading of an
+    unknown failure is that it got past them."""
+    text = (error or "").strip().lower()
+    if not text:
+        return None
+    for needle, stage in _ERROR_STAGE:
+        if needle in text:
+            return stage
+    return PREPARE_STAGES[-1][0]
+
+
 def prepare_problem(problem: dict) -> dict:
-    """Make one problem student-ready. Returns {slug, ready, chunks, error}.
+    """Make one problem student-ready. Returns {slug, ready, chunks, stage,
+    error}, where `stage` names the gate it stopped at - None once it passed.
 
     Never raises: a failure here is ordinary teacher feedback, not a server
     fault, and one bad problem must not abort an upload of twenty."""
@@ -52,49 +120,50 @@ def prepare_problem(problem: dict) -> dict:
 
     slug = problem.get("slug", "?")
 
-    def fail(msg):
-        return {"slug": slug, "ready": False, "chunks": 0, "error": msg}
+    def fail(stage, msg):
+        return {"slug": slug, "ready": False, "chunks": 0,
+                "stage": stage, "error": msg}
 
     if not (problem.get("solution") or "").strip():
-        return fail("no solution provided")
+        return fail("parses", "no solution provided")
 
     # The entry point must be resolvable and actually runnable, or every later
     # stage is measuring the wrong function.
     try:
         resolved = get_resolved_entry(problem)
     except Exception as e:
-        return fail(f"could not read the function: {_reason(e)}")
+        return fail("parses", f"could not read the function: {_reason(e)}")
     if not resolved.get("entry_name"):
-        return fail("could not find the function to test")
+        return fail("parses", "could not find the function to test")
     if not resolved.get("confirmed"):
-        return fail("the solution could not be run - check that it executes")
+        return fail("runs", "the solution could not be run - check that it executes")
 
     # ORACLE. The slow part: generate inputs, compute expected outputs from the
     # teacher's own solution, then mutation-test the resulting suite.
     try:
         tests = get_oracle_tests(problem)
     except Exception as e:
-        return fail(f"test generation failed: {_reason(e)}")
+        return fail("tests", f"test generation failed: {_reason(e)}")
     if not tests:
-        return fail("No usable test cases could be generated. This usually "
-                    "means the inputs aren't simple values.")
+        return fail("tests", "No usable test cases could be generated. This "
+                             "usually means the inputs aren't simple values.")
     try:
         if not is_oracle_strong(problem):
-            return fail("The generated tests were not strong enough to grade "
-                        "this reliably.")
+            return fail("strength", "The generated tests were not strong enough "
+                                    "to grade this reliably.")
     except Exception as e:
-        return fail(_reason(e))
+        return fail("strength", _reason(e))
 
     # DECOMPOSITION, gated. get_chunk_decomposition runs the same serve boundary
     # a student request would have, so "ready" means exactly what it says.
     try:
         decomp = get_chunk_decomposition(problem)
     except Exception as e:
-        return fail(_reason(e))
+        return fail("steps", _reason(e))
 
     return {"slug": slug, "ready": True,
             "chunks": len(decomp.get("chunks") or []),
-            "n_tests": len(tests), "error": None}
+            "n_tests": len(tests), "stage": None, "error": None}
 
 
 def prepare_assignment_stream(problems: list[dict]):
@@ -138,3 +207,35 @@ def save_manual_decomposition(problem: dict, header: str,
     pool.setdefault(key, []).append(_serialize(decomp))
     _save_pool(pool)
     return {"ready": True, "chunks": len(items)}
+
+
+if __name__ == "__main__":
+    # The checklist is the only logic here that runs with no oracle, no model
+    # and no database, and it is what the teacher's fix panel is drawn from.
+    #   python -m main.publish
+    ok = checklist(None)
+    assert [c["state"] for c in ok] == ["ok"] * len(PREPARE_STAGES), ok
+    assert all(c["error"] is None for c in ok)
+
+    mid = checklist("tests", "test generation failed: timeout")
+    assert [c["state"] for c in mid] == ["ok", "ok", "fail", "pending", "pending"], mid
+    # The reason is attached to the gate that failed, and to nothing else - a
+    # message repeated on every row reads as five separate problems.
+    assert [c["error"] for c in mid].count("test generation failed: timeout") == 1
+
+    # An unknown stage reads as "finished", never as a sixth failing row.
+    assert "fail" not in [c["state"] for c in checklist("nonsense", "x")], \
+        "an unrecognised stage must not invent a failing row"
+
+    assert stage_of_error(None) is None and stage_of_error("  ") is None
+    for text, want in (
+            ("function 'f' has no docstring. The docstring IS the...", "parses"),
+            ("not valid Python: invalid syntax (line 3)", "parses"),
+            ("the solution could not be run - check that it executes", "runs"),
+            ("No usable test cases could be generated.", "tests"),
+            ("The generated tests were not strong enough to grade this.", "strength"),
+            ("Could not split this problem into steps that hold together.", "steps"),
+            ("something nobody has ever written", "steps")):
+        assert stage_of_error(text) == want, (text, stage_of_error(text))
+
+    print("publish.py self-check OK")

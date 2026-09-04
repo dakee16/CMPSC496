@@ -365,18 +365,23 @@ function renderDual(el, payload){
      </div>
      <div class="graphPair">
        <div class="graphBox">
-         <h3><span class="gTag plan">Plan</span>What you said you would do</h3>
-         <div id="gPlan"></div></div>
-       <div class="graphBox">
          <h3><span class="gTag code">Code</span>What your code does</h3>
          <div id="gCode"></div></div>
+       <div class="graphBox">
+         <h3><span class="gTag plan">Plan</span>What you said you would do</h3>
+         <div id="gPlan"></div></div>
      </div>
      <div class="graphDiff" id="gDiff"></div>`;
 
-  renderGraph(document.getElementById("gPlan"), payload.plan,
-              "No plan was captured from your chat.", {height: 320});
+  // Code LEFT, plan RIGHT - the sides they were each built on. student.html's
+  // .split puts the editor on the left and the tutor chat in the 372px column
+  // on the right, so a plan extracted from that chat belongs on the right too.
+  // Reversed, the reader had to cross the page to match each graph to where it
+  // came from.
   renderGraph(document.getElementById("gCode"), payload.code,
               "No code submitted yet.", {height: 320});
+  renderGraph(document.getElementById("gPlan"), payload.plan,
+              "No plan was captured from your chat.", {height: 320});
 
   const c = payload.comparison || {};
   const rows = [];

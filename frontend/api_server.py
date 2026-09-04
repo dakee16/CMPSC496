@@ -119,6 +119,16 @@ _DEV_ORIGINS = [o.strip() for o in os.environ.get(
     "http://localhost:8000,http://127.0.0.1:8000,"
     "http://localhost:5173,http://127.0.0.1:5173").split(",") if o.strip()]
 
+# A page opened straight off disk sends `Origin: null`, and that origin was
+# missing from the list above - so the browser blocked every sign-in response
+# before the page could read it, and all the page could report was that it
+# could not reach the server. That is the whole bug: not a VPN, not a gate, a
+# missing dev origin. DEV ONLY - `null` is also what a sandboxed iframe and a
+# data: URL send, so allowing it together with credentials in production would
+# let either of them make signed-in requests.
+if os.environ.get("MICROTUTOR_ENV", "dev") == "dev" and "null" not in _DEV_ORIGINS:
+    _DEV_ORIGINS.append("null")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_DEV_ORIGINS,
@@ -684,6 +694,17 @@ class ManualSplitRequest(BaseModel, extra="forbid"):
     chunks: list[dict]
 
 
+class ProblemRetryRequest(BaseModel, extra="forbid"):
+    """One corrected problem, re-prepared on its own.
+
+    `slug` and `assignment_id` identify the EXISTING row - the pair the problems
+    table is unique on. `source` is the instructor's corrected Python for that
+    one problem; the slug inside it, if any, is ignored (see the route)."""
+    assignment_id: str
+    slug: str
+    source: str
+
+
 @app.get("/assignment_template")
 def assignment_template():
     """A starter file a teacher can download, edit and re-upload."""
@@ -734,7 +755,11 @@ def upload_assignment(req: AssignmentUpload, request: Request):
             try:
                 sb.table("problems").upsert({
                     "slug": bad["slug"], "title": bad["slug"],
-                    "description": "", "solution": "",
+                    # The block's own text, so the instructor can fix THIS
+                    # problem in place. Stored empty before, which is why the
+                    # only remedy for a bad problem used to be re-uploading the
+                    # whole file - there was no copy of it anywhere.
+                    "description": "", "solution": bad.get("source", ""),
                     "assignment_id": assignment_id, "ready": False,
                     "prepare_error": bad["error"]},
                     on_conflict="assignment_id,slug").execute()
@@ -817,6 +842,101 @@ def teacher_assignment_problems(assignment_id: str, request: Request):
             "ready": sum(1 for r in rows if r["ready"]),
             "failed": sum(1 for r in rows if not r["ready"]),
             "count": len(rows)}
+
+
+@app.get("/teacher/problems/{slug}/source")
+def teacher_problem_source(slug: str, assignment_id: str, request: Request):
+    """One problem's own text, plus WHICH preparation gate it stopped at.
+
+    Instructor-only, and the one route that deliberately returns `solution`:
+    this is the teacher's own file coming back to them to correct, which is the
+    whole point of the fix-and-retry panel. Every other route keeps it server-
+    side. Keyed on (assignment_id, slug) because that pair - not slug alone - is
+    what the problems table is unique on."""
+    from main.publish import checklist, stage_of_error
+
+    require_teacher(request)
+    rows = get_supabase().table("problems").select(
+        "slug, title, description, solution, ready, prepare_error").eq(
+        "assignment_id", assignment_id).eq("slug", slug).execute().data
+    if not rows:
+        raise HTTPException(status_code=404, detail={
+            "reason_code": "problem_not_found",
+            "message": f"No problem '{slug}' in this assignment."})
+    p = rows[0]
+    stage = None if p["ready"] else stage_of_error(p.get("prepare_error"))
+    return {"slug": p["slug"], "title": p["title"], "ready": bool(p["ready"]),
+            "error": p.get("prepare_error"),
+            "source": p.get("solution") or "",
+            "checklist": checklist(stage, p.get("prepare_error"))}
+
+
+@app.post("/teacher/problems/retry")
+def teacher_problem_retry(req: ProblemRetryRequest, request: Request):
+    """Re-prepare ONE problem from text the instructor just corrected.
+
+    The same pipeline an upload runs (main/publish.prepare_problem), on one
+    problem instead of twenty, so a fixed problem does not require re-uploading
+    the file and re-preparing everything beside it. Slow for the same reason an
+    upload is - it regenerates the oracle and the decomposition - so the page
+    shows it as work in progress.
+
+    The SLUG IS NOT TAKEN FROM THE EDITED TEXT. The instructor is correcting an
+    existing problem, so its identity is the row's; letting the marker line
+    rename it would silently create a second problem and leave the broken one
+    in place."""
+    from main.assignments import AssignmentParseError, parse_assignment_file
+    from main.publish import checklist, prepare_problem
+
+    # Minutes of paid model work, and it decides what students are served.
+    require_teacher(request)
+
+    def blocked(stage, message):
+        """A refusal the teacher can act on - never a 4xx. The panel redraws its
+        checklist from this exactly as it does from a finished run."""
+        return {"ready": False, "stage": stage, "error": message,
+                "checklist": checklist(stage, message)}
+
+    # Parse first: a source that cannot be read costs nothing to reject, and
+    # spending an oracle run to discover a missing docstring is pure waste.
+    try:
+        parsed = parse_assignment_file(req.source, f"{req.slug}.py")
+    except AssignmentParseError as e:
+        return blocked("parses", str(e))
+    if parsed["problems"]:
+        problem = parsed["problems"][0]
+    elif parsed["errors"]:
+        return blocked("parses", parsed["errors"][0]["error"])
+    else:
+        return blocked("parses", "no problem found in this text")
+    if len(parsed["problems"]) > 1:
+        return blocked("parses", "this is one problem's text - it defines "
+                                 f"{len(parsed['problems'])} problems. Give "
+                                 "each its own entry.")
+
+    problem["slug"] = req.slug                     # identity is the row's
+    result = prepare_problem(problem)
+
+    sb = get_supabase()
+    try:
+        sb.table("problems").upsert({
+            "slug": req.slug, "title": problem["title"],
+            "description": problem["description"],
+            "solution": problem["solution"],
+            "assignment_id": req.assignment_id,
+            "ready": bool(result["ready"]),
+            "prepare_error": result.get("error")},
+            on_conflict="assignment_id,slug").execute()
+    except Exception as e:
+        # Same rule as the upload path: a problem that did not SAVE is not
+        # ready, whatever preparation decided. Reporting success over a missing
+        # row is how an assignment shows a green badge and still serves nothing.
+        return blocked("steps", f"prepared, but could not be saved: {e}"[:300])
+
+    return {"ready": bool(result["ready"]), "stage": result.get("stage"),
+            "error": result.get("error"), "chunks": result.get("chunks", 0),
+            "n_tests": result.get("n_tests", 0),
+            "checklist": checklist(result.get("stage"), result.get("error"))}
 
 
 @app.post("/teacher/split")

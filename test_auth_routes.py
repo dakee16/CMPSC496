@@ -53,8 +53,12 @@ class FakeTable:
         if self._pending is not None:
             row = dict(self._pending)
             # The unique index on username, which is what makes a duplicate
-            # signup an error rather than a second account.
-            if any(r["username"] == row.get("username") for r in self.rows):
+            # signup an error rather than a second account. Guarded on the
+            # column being present at all: `problems` rows have no username,
+            # and indexing blindly made every problems upsert raise KeyError -
+            # which the routes report as "could not be saved".
+            if "username" in row and any(r.get("username") == row["username"]
+                                         for r in self.rows):
                 raise RuntimeError("duplicate key value violates "
                                    "students_username_uniq")
             row.setdefault("id", str(uuid.uuid4()))
@@ -71,10 +75,12 @@ class FakeSupabase:
     def __init__(self):
         self.students = []
         self.solved = []
+        self.problems = []
 
     def table(self, name):
         return FakeTable({"students": self.students,
-                          "solved": self.solved}.get(name, []))
+                          "solved": self.solved,
+                          "problems": self.problems}.get(name, []))
 
 
 def client():
@@ -282,6 +288,94 @@ def test_a_teacher_row_reaches_them():
     assert r.json()["role"] == "teacher"
     # Past the role gate; the empty fake `problems` table is what it sees next.
     assert c.get("/teacher/assignments/any-id/problems").status_code == 200
+
+
+def teacher_client(monkeypatch=None):
+    """A signed-in teacher, with one blocked problem to fix."""
+    c = client()
+    sb = api_server.get_supabase()
+    c.post("/register", json={"username": "prof@psu.edu", "password": PW})
+    sb.students[0]["role"] = "teacher"
+    c.post("/logout")
+    c.post("/login", json={"username": "prof@psu.edu", "password": PW})
+    sb.problems.append({
+        "slug": "is-armstrong", "title": "Is Armstrong",
+        "description": "Given n, ...", "assignment_id": "a-1",
+        "solution": 'def is_armstrong(n):\n    """Given n, ..."""\n    return n == 0\n',
+        "ready": False,
+        "prepare_error": "The generated tests were not strong enough to grade "
+                         "this reliably."})
+    return c, sb
+
+
+def test_the_fix_panel_gets_the_source_and_the_failing_stage():
+    """The instructor's own text comes back, with the gate it stopped at."""
+    c, _ = teacher_client()
+    r = c.get("/teacher/problems/is-armstrong/source?assignment_id=a-1")
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert "def is_armstrong" in d["source"], "no text to fix"
+    states = [x["state"] for x in d["checklist"]]
+    # "not strong enough" is the fourth gate: three cleared, one failed, one
+    # never reached. A checklist that failed everything would be a lie.
+    assert states == ["ok", "ok", "ok", "fail", "pending"], states
+    assert d["checklist"][3]["error"] == d["error"]
+
+
+def test_a_student_cannot_read_a_problems_source_or_retry_it():
+    """`solution` is the answer key. This is the one route that returns it."""
+    c = client()
+    c.post("/register", json={"username": "abc123@psu.edu", "password": PW})
+    assert c.get(
+        "/teacher/problems/is-armstrong/source?assignment_id=a-1").status_code == 403
+    assert c.post("/teacher/problems/retry", json={
+        "assignment_id": "a-1", "slug": "is-armstrong",
+        "source": "def f():\n    pass\n"}).status_code == 403
+
+
+def test_a_retry_that_cannot_parse_spends_nothing_and_keeps_the_stored_text():
+    """The parse gate runs BEFORE preparation, so a bad edit costs no model
+    work - and must not overwrite the version that is already stored."""
+    c, sb = teacher_client()
+    before = sb.problems[0]["solution"]
+    r = c.post("/teacher/problems/retry", json={
+        "assignment_id": "a-1", "slug": "is-armstrong",
+        "source": "def is_armstrong(n):\n    return False\n"})   # no docstring
+    assert r.status_code == 200, r.text          # teacher feedback, not a 4xx
+    d = r.json()
+    assert d["ready"] is False and d["stage"] == "parses"
+    assert "docstring" in d["error"]
+    assert [x["state"] for x in d["checklist"]] == \
+        ["fail", "pending", "pending", "pending", "pending"]
+    assert sb.problems[0]["solution"] == before, "a bad edit destroyed the source"
+
+
+def test_a_successful_retry_publishes_the_problem(monkeypatch):
+    """The pipeline itself is stubbed - it is minutes of paid model work and is
+    covered elsewhere. What is tested here is the ROUTE: that a prepared problem
+    is written back as ready, under the row's own slug."""
+    c, sb = teacher_client()
+    monkeypatch.setattr(
+        "main.publish.prepare_problem",
+        lambda p: {"slug": p["slug"], "ready": True, "chunks": 4,
+                   "n_tests": 9, "stage": None, "error": None})
+    r = c.post("/teacher/problems/retry", json={
+        "assignment_id": "a-1",
+        "slug": "is-armstrong",
+        # A marker naming a DIFFERENT problem: identity is the row's, or a
+        # rename would quietly create a second problem and leave this one
+        # blocked.
+        "source": '# --- problem: something-else ---\n'
+                  'def is_armstrong(n):\n    """Given n, ..."""\n'
+                  '    return n == 0\n'})
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert d["ready"] is True and d["chunks"] == 4
+    assert all(x["state"] == "ok" for x in d["checklist"]), d["checklist"]
+    saved = [p for p in sb.problems if p["slug"] == "is-armstrong"]
+    assert saved and saved[-1]["ready"] is True, "the fix was not saved"
+    assert not any(p["slug"] == "something-else" for p in sb.problems), \
+        "the edited marker renamed the problem"
 
 
 def test_no_signing_key_refuses_to_issue_sessions():

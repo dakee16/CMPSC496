@@ -150,13 +150,20 @@ def parse_assignment_file(text: str, filename: str = "assignment.py") -> dict:
 
     problems, errors, seen = [], [], set()
     for i, (slug, src) in enumerate(blocks):
+        # The block's own text rides along with its error. Without it a problem
+        # that failed to parse had its source stored nowhere, so the only way to
+        # fix one was to re-upload the whole file; the teacher page can now put
+        # this exact text in front of the instructor to correct in place.
+        text = _dedent_block(src)
         try:
             p = _problem_from_block(slug, src, i)
         except ValueError as e:
-            errors.append({"slug": slug or f"block {i + 1}", "error": str(e)})
+            errors.append({"slug": slug or f"block {i + 1}", "error": str(e),
+                           "source": text})
             continue
         if p["slug"] in seen:
-            errors.append({"slug": p["slug"], "error": "duplicate slug in this file"})
+            errors.append({"slug": p["slug"], "error": "duplicate slug in this file",
+                           "source": text})
             continue
         seen.add(p["slug"])
         problems.append(p)
@@ -247,6 +254,9 @@ if __name__ == "__main__":
     mx = parse_assignment_file(mixed, "m.py")
     assert [p["slug"] for p in mx["problems"]] == ["ok-one"]
     assert mx["errors"][0]["slug"] == "no-doc" and "docstring" in mx["errors"][0]["error"]
+    # The failed block's own text comes back with it, or there is nothing for
+    # the teacher's fix-and-retry panel to open.
+    assert "def no_doc(x):" in mx["errors"][0]["source"], mx["errors"][0]
 
     for bad, why in ((" ", "empty"), ("def f(:\n  pass", "valid Python"),
                      ("x = 1\n", "no problems")):

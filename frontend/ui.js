@@ -83,7 +83,14 @@ const Session = {
         body: JSON.stringify({username, password}),
       });
     } catch {
-      throw new Error("Could not reach the server. Are you on the VPN?");
+      // fetch() only throws on a TRANSPORT failure - the server is down, or the
+      // browser refused the request before sending it (a page opened straight
+      // off disk, blocked by CORS). It cannot tell those apart, so it must not
+      // guess: this used to say "are you on the VPN?", naming the one cause it
+      // had no evidence for and sending people to check a connection that was
+      // never the problem. Sign-in has NO VPN gate - see main/auth.py.
+      throw new Error("Could not reach the server. Check that it is running, "
+                      + "then try again.");
     }
     const body = await r.json().catch(() => ({}));
     if (!r.ok){
@@ -109,9 +116,20 @@ const Session = {
    `const S = requireSession("student")` at the top of a plain script. That
    cache is only a HINT - it is revalidated against /auth/me a moment later,
    and it decides nothing on the server. */
+/* May an account with `role` open a page pinned to `page`?
+
+   A teacher may open the student pages - that IS the "View as student" switch
+   in the header, and it is the same permission they already have: every
+   student route asks only for a signed-in account, so a teacher working
+   through a problem is an ordinary student session bound to their own id. A
+   student on an instructor page is still turned away here, and again by
+   require_teacher() on every instructor route, which is the check that
+   actually decides anything. */
+const allowedOn = (page, role) => !page || role === page || role === "teacher";
+
 function requireSession(role){
   const s = Session.get();
-  if (!s || !s.name || (role && s.role !== role)) {
+  if (!s || !s.name || !allowedOn(role, s.role)) {
     location.replace("login.html");
     return null;
   }
@@ -119,7 +137,7 @@ function requireSession(role){
   // while the tab sat open lands back on sign-in instead of failing later, on
   // a save the student thought had gone through.
   Session.check().then(me => {
-    if (!me || (role && me.role !== role)) location.replace("login.html");
+    if (!me || !allowedOn(role, me.role)) location.replace("login.html");
   });
   return s;
 }
@@ -176,6 +194,11 @@ function mountHeader({active = "", wide = false, variant = "", crumbs = null} = 
     stroke="currentColor" stroke-width="2" stroke-linecap="round"
     stroke-linejoin="round" aria-hidden="true">
     <path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></svg>`;
+  const eyeIcon = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+    stroke="currentColor" stroke-width="2" stroke-linecap="round"
+    stroke-linejoin="round" aria-hidden="true">
+    <path d="M1.6 12S5.3 5.3 12 5.3 22.4 12 22.4 12 18.7 18.7 12 18.7 1.6 12 1.6 12z"/>
+    <circle cx="12" cy="12" r="3.1"/></svg>`;
 
   // "Practice" is gone. It was a single-item nav pointing at the page the
   // student was already on, so it navigated nowhere and cost the centre of the
@@ -188,6 +211,21 @@ function mountHeader({active = "", wide = false, variant = "", crumbs = null} = 
     nav.push(`<a class="hbtn ${active === "Assignments" ? "on" : ""}"
       href="teacher.html#list"${active === "Assignments" ? ' aria-current="page"' : ""}
       >${listIcon}<span class="htext">Assignments</span></a>`);
+  }
+
+  // An instructor may work through the student side exactly as a student does,
+  // and this is the only control that switches between the two. It stores no
+  // "mode" anywhere: which label it shows is decided by the page it is drawn
+  // on, so there is no state to get stuck in and nothing to reset on sign-out.
+  // Only ever rendered for a real teacher - the ROW's role, not the variant.
+  if (s && s.role === "teacher"){
+    const toStudent = role === "instructor";
+    nav.push(`<a class="hbtn viewas" href="${toStudent ? "student.html" : "teacher.html"}"
+      title="${toStudent
+        ? "Open the student side and work through it the way a student does."
+        : "Back to the instructor side."}"
+      >${eyeIcon}<span class="htext">View as ${
+        toStudent ? "student" : "instructor"}</span></a>`);
   }
 
   const hdr = document.createElement("header");

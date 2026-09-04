@@ -129,6 +129,13 @@ body::before{
          border-color:var(--glass-line)}
 .hbtn svg{flex:none; opacity:.85}
 
+/* The instructor's student-view switch. Tinted apart from the nav items beside
+   it because it changes WHICH SIDE of the app you are on, not where you are in
+   it - undifferentiated, the same button in two places with two labels would
+   read as a third destination. */
+.hbtn.viewas{color:var(--accent-ink)}
+.hbtn.viewas svg{opacity:1}
+
 /* Breadcrumb, rendered into the header's nav zone. It exists so a student
    three levels deep can go back ONE level instead of all the way Home. */
 .crumbs{display:flex; align-items:center; gap:2px; min-width:0; overflow:hidden}
