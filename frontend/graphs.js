@@ -1,8 +1,8 @@
-/* graphs.js — draws the dual-graph artifact.
+/* graphs.js - draws the dual-graph artifact.
  *
  * Consumes exactly what main/graphs.py emits: {nodes:[{id,kind,label,line}],
  * edges:[{src,dst,label}], meta:{source}}. One renderer for both graphs, which
- * is the whole reason the plan and the code share a schema — two renderers
+ * is the whole reason the plan and the code share a schema - two renderers
  * would drift and the pictures would stop being comparable.
  *
  * Plain SVG, no library. A layered top-down layout is enough for straight-line
@@ -10,7 +10,7 @@
  *
  * Nodes SIZE TO THEIR CONTENT. The old renderer used a fixed 178px box and
  * hard-truncated the label to 23 characters, so "Take absolute value of n" was
- * clipped mid-word — the most visible defect on that screen. Labels now wrap to
+ * clipped mid-word - the most visible defect on that screen. Labels now wrap to
  * two lines and the box widens to fit the longest line in the graph.
  */
 
@@ -23,7 +23,7 @@ const G_MINW = 150, G_MAXW = 280; // node width bounds
 
 // Kind → colour role. Every value is a TOKEN, never a literal: the earlier
 // version hardcoded #2c3358 / #4a5580 / #8892b8, which meant the flowchart drew
-// the same dark greys on the light theme — edge labels came out at 3.07:1 and
+// the same dark greys on the light theme - edge labels came out at 3.07:1 and
 // the arrows were nearly invisible. Tokens flip with the theme for free.
 const G_STYLE = {
   start:  {fill: "var(--glass-bg-strong)", stroke: "var(--accent-hover)", text: "var(--accent-ink)"},
@@ -36,7 +36,7 @@ const G_STYLE = {
 
 // Node labels are code on one side and the student's own words on the other.
 // Both read better monospaced here: they are short, scanned rather than read,
-// and a fixed advance width stops similar labels jittering between rows — and
+// and a fixed advance width stops similar labels jittering between rows - and
 // it is what lets the character-count wrap below predict the pixel width.
 const G_FONT = "'JetBrains Mono','SF Mono',Monaco,monospace";
 
@@ -321,7 +321,7 @@ function renderGraph(el, graph, emptyText, opts = {}){
     parts.push(`<rect x="${p.x}" y="${p.y}" width="${W}" height="${H}" `
              + `rx="${r}" fill="${s.fill}" stroke="${s.stroke}" stroke-width="1.5"/>`);
     // A colour bar along the TOP edge keeps the kind legible for a reader who
-    // cannot separate the amber and green outlines — colour is never the only
+    // cannot separate the amber and green outlines - colour is never the only
     // cue. Centred on the top, it frames the label instead of fighting it.
     if (n.kind !== "start" && n.kind !== "end"){
       parts.push(`<rect x="${p.x + 14}" y="${p.y + 1}" width="${W - 28}" `
@@ -407,7 +407,7 @@ function renderDual(el, payload){
 
   document.getElementById("gDiff").innerHTML =
     `<h3>Where they differ</h3><ul>${rows.join("")}</ul>`
-    + `<p class="hint">A difference is not automatically a mistake — you may `
+    + `<p class="hint">A difference is not automatically a mistake - you may `
     + `have simplified while writing. It is worth knowing which ones you chose `
     + `and which ones surprised you.</p>`;
 }

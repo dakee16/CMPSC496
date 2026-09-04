@@ -179,6 +179,13 @@ class AuthRequest(BaseModel):
     username: str
     password: str
 
+class RegisterRequest(AuthRequest):
+    """Registration also carries a name. Separate from AuthRequest so /login
+    cannot quietly accept fields it would then ignore - and so the one route
+    that stores a name is the only one that can be handed one."""
+    first_name: str = ""
+    last_name: str = ""
+
 class TutorChatRequest(BaseModel, extra="forbid"):
     """The tutor is given the problem SLUG, never a solution. The server looks
     up only the public fields; the reference solution never enters this path."""
@@ -844,6 +851,46 @@ def teacher_assignment_problems(assignment_id: str, request: Request):
             "count": len(rows)}
 
 
+@app.get("/teacher/assignments/{assignment_id}/grades")
+def teacher_grades(assignment_id: str, request: Request):
+    """The grade sheet for one assignment: every student, one row each.
+
+    Instructor-only, and it has to be - this hands back the whole class's
+    standing, which is the one thing a student must never be able to read about
+    anyone but themselves. The arithmetic lives in main/grades.py; this route
+    only checks the role and passes the client through."""
+    from main.grades import grade_sheet
+
+    require_teacher(request)
+    return grade_sheet(get_supabase(), assignment_id)
+
+
+@app.get("/teacher/assignments/{assignment_id}/transcript/{student_id}")
+def teacher_transcript(assignment_id: str, student_id: str, request: Request):
+    """One student's whole record on one assignment, as a text file.
+
+    Plain text on purpose: it is read once, next to a grade book, and a format
+    that opens in any editor beats one that needs the app that wrote it.
+    Content-Disposition is what makes the browser save it rather than render it
+    in a tab the instructor then has to copy out of."""
+    from fastapi.responses import PlainTextResponse
+    from main.grades import transcript
+
+    require_teacher(request)
+    try:
+        filename, body = transcript(get_supabase(), assignment_id, student_id)
+    except LookupError:
+        raise HTTPException(status_code=404, detail={
+            "reason_code": "student_not_found",
+            "message": "That student no longer exists."}) from None
+    return PlainTextResponse(body, headers={
+        "Content-Disposition": f'attachment; filename="{filename}"',
+        # The filename is derived from a student name the student typed, so it
+        # is quoted above and kept to alphanumerics by transcript() itself; a
+        # header cannot carry a raw name safely.
+        "Cache-Control": "no-store"})
+
+
 @app.get("/teacher/problems/{slug}/source")
 def teacher_problem_source(slug: str, assignment_id: str, request: Request):
     """One problem's own text, plus WHICH preparation gate it stopped at.
@@ -970,7 +1017,7 @@ def manual_split(req: ManualSplitRequest, request: Request):
 
 
 # ══════════════════════════════════════════════════════════════════════════
-# SIGN-IN — username (PSU email) + password, against Supabase.
+# SIGN-IN - username (PSU email) + password, against Supabase.
 #
 # Microsoft/Entra sign-in is ON HOLD until PSU IT issues Azure credentials;
 # main/psu_auth.py keeps that work intact and unwired. The site itself sits
@@ -992,17 +1039,18 @@ def _session_response(body: dict, student: dict) -> JSONResponse:
 
 def _account(student: dict) -> dict:
     return {"student_id": student["id"], "username": student["username"],
-            "name": student.get("name") or student["username"].split("@")[0],
+            "name": auth_mod.full_name(student),
             "role": student.get("role") or "student"}
 
 
 @app.post("/register")
-def register(req: AuthRequest):
+def register(req: RegisterRequest):
     """Create an account. Always as a student - see main/auth.py for why role
     is not something the browser gets to ask for."""
     _require_auth_configured()
     try:
-        row = auth_mod.register_student(get_supabase(), req.username, req.password)
+        row = auth_mod.register_student(get_supabase(), req.username, req.password,
+                                        req.first_name, req.last_name)
     except auth_mod.AuthError as e:
         if e.detail:
             print(f"  ⚠️  registration refused: {e.detail}")
@@ -1133,7 +1181,7 @@ def tutor_chat(req: TutorChatRequest, request: Request):
     if len(req.messages) > MAX_TURNS * 2:
         raise HTTPException(status_code=400, detail={
             "reason_code": "conversation_too_long",
-            "message": "This conversation is very long — start a fresh one."})
+            "message": "This conversation is very long - start a fresh one."})
 
     row = get_supabase().table("problems").select(
         "slug, title, description").eq("slug", req.slug).execute().data
@@ -1164,7 +1212,7 @@ def tutor_chat(req: TutorChatRequest, request: Request):
 
 
 # ══════════════════════════════════════════════════════════════════════════
-# MICROSOFT / ENTRA SIGN-IN — ON HOLD
+# MICROSOFT / ENTRA SIGN-IN - ON HOLD
 #
 # The full PKCE flow lives in main/psu_auth.py, written and self-tested. It is
 # waiting on Azure credentials from PSU IT, which is not our schedule, so the
@@ -1175,7 +1223,7 @@ def tutor_chat(req: TutorChatRequest, request: Request):
 # find or create the students row for the verified PSU address and call the
 # same auth.issue_session(). current_student() and require_teacher() do not
 # change. Usernames are already PSU emails, which is the same string Entra
-# returns as `preferred_username` — so that lookup is a join, not a migration.
+# returns as `preferred_username` - so that lookup is a join, not a migration.
 # ══════════════════════════════════════════════════════════════════════════
 
 

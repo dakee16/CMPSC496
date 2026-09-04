@@ -295,7 +295,7 @@ function pick(f){
   if (f.size > MAX_UPLOAD){
     drop.classList.add("bad");
     return fileErr(`${f.name} is ${fmtBytes(f.size)}. The limit is `
-      + `${fmtBytes(MAX_UPLOAD)} — that is far more Python than one assignment.`);
+      + `${fmtBytes(MAX_UPLOAD)} - that is far more Python than one assignment.`);
   }
   if (f.size === 0){
     drop.classList.add("bad");
@@ -676,7 +676,7 @@ function ckList(items){
     <li class="${c.state}">
       <span class="ckMark" aria-hidden="true">${CK_MARK[c.state] || ""}</span>
       <span class="ckLabel">${esc(c.label)}
-        <span class="sr-only">— ${c.state === "ok" ? "passed"
+        <span class="sr-only">- ${c.state === "ok" ? "passed"
           : c.state === "fail" ? "failed" : "not reached yet"}</span>
         ${c.error ? `<span class="ckWhy">${esc(c.error)}</span>` : ""}</span>
     </li>`).join("")}</ul>`;
@@ -730,7 +730,7 @@ async function openFix(host, assignment, slug, prob){
     <div class="fixActs">
       <button id="fixGo" type="button">Save and retry</button>
       <span class="hint" style="margin:0; flex:1; min-width:220px">
-        Preparing one problem takes about a minute — it writes fresh test cases
+        Preparing one problem takes about a minute - it writes fresh test cases
         and re-splits it into steps.</span>
     </div>
     <div id="fixMsg"></div>
@@ -742,7 +742,7 @@ async function openFix(host, assignment, slug, prob){
   src.value = d.source || "";
   if (!d.source){
     host.querySelector("#fixMsg").innerHTML = `<div class="banner warn">No text
-      was stored for this problem — it predates this panel. Paste its function
+      was stored for this problem - it predates this panel. Paste its function
       from your <code>.py</code> file and retry.</div>`;
   }
 
@@ -768,7 +768,7 @@ async function retryFix(host, assignment, slug){
   const src = host.querySelector("#fixSrc");
   const msg = host.querySelector("#fixMsg");
   if (!src.value.trim()){
-    msg.innerHTML = `<div class="banner bad">There is nothing to prepare —
+    msg.innerHTML = `<div class="banner bad">There is nothing to prepare -
       the editor is empty.</div>`;
     return src.focus();
   }
@@ -793,7 +793,7 @@ async function retryFix(host, assignment, slug){
   } catch {
     setBusy(btn, false);
     msg.innerHTML = `<div class="banner bad">Could not reach the server. Your
-      edits are still in the box — try again.</div>`;
+      edits are still in the box - try again.</div>`;
     return;
   }
   setBusy(btn, false);
@@ -810,7 +810,7 @@ async function retryFix(host, assignment, slug){
     host.dataset.changed = "1";          // the table's counts are now stale
     msg.innerHTML = `<div class="banner ok">Prepared. ${d.chunks} step${
       d.chunks === 1 ? "" : "s"}, ${d.n_tests} test${d.n_tests === 1 ? "" : "s"}
-      — students can see this problem now.</div>`;
+      - students can see this problem now.</div>`;
     toast(`“${slug}” is ready for students.`, "ok");
   } else {
     msg.innerHTML = `<div class="banner bad pre">${esc(
@@ -823,7 +823,7 @@ async function retryFix(host, assignment, slug){
    instructor to the drop zone with the reason stated beats a button that
    silently does nothing. */
 function reprepare(a){
-  toast(`Re-prepare “${a.name}” by uploading its .py file again — `
+  toast(`Re-prepare “${a.name}” by uploading its .py file again - `
       + `problems that still pass are simply rewritten.`, "info", 7000);
   clearPick();
   $("fileErr").innerHTML = `<div class="banner info">Choose the <code>.py</code>

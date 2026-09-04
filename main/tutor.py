@@ -1,5 +1,5 @@
 """
-tutor.py — the Socratic chat tutor for the student practice page.
+tutor.py - the Socratic chat tutor for the student practice page.
 
 The single most important design decision here: THE TUTOR IS NEVER GIVEN THE
 SOLUTION. Not the reference solution, not the chunk references, not the oracle

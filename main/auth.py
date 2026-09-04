@@ -142,6 +142,33 @@ def verify_password(password: str, stored_hash: str) -> bool:
         return False
 
 
+# ── names ────────────────────────────────────────────────────────────────
+# Collected at registration so an instructor's grade sheet can name a person
+# instead of an address. Not a security control and never trusted for identity:
+# two students may legitimately share a name, and the account is the username.
+
+MAX_NAME = 60          # a name field, not a free-text box
+
+
+def clean_name(value: str) -> str:
+    """Collapse whitespace and bound the length.
+
+    Splitting on whitespace also strips tabs and newlines, so a pasted name
+    cannot inject a line break into the transcript this ends up printed in."""
+    return " ".join((value or "").split())[:MAX_NAME]
+
+
+def full_name(student: dict) -> str:
+    """What to show for a students row.
+
+    Falls back to the local part of the address, because accounts created
+    before names were collected have none and a blank header is a bug the
+    student cannot fix."""
+    both = f"{student.get('first_name') or ''} {student.get('last_name') or ''}"
+    return (both.strip() or (student.get("name") or "").strip()
+            or (student.get("username") or "").split("@")[0])
+
+
 # ── session cookie ───────────────────────────────────────────────────────
 # Signed with SESSION_SECRET, not encrypted: the payload is the student's own
 # id, name and role, which they already know. Signing is what matters - it
@@ -170,10 +197,9 @@ def issue_session(student: Dict[str, Any]) -> str:
     `sub` is the row id, not the username: an address can be reassigned when a
     student changes their name, and re-pointing years of saved work at the
     wrong person is not a recoverable mistake."""
-    username = student["username"]
     return sign_session({"sub": student["id"],
-                         "username": username,
-                         "name": student.get("name") or username.split("@")[0],
+                         "username": student["username"],
+                         "name": full_name(student),
                          "role": student.get("role") or "student"})
 
 
@@ -210,22 +236,32 @@ def cookie_kwargs(secure: bool = True) -> Dict[str, Any]:
 
 # ── the two things the routes actually call ──────────────────────────────
 
-def register_student(sb, username: str, password: str) -> Dict[str, Any]:
+def register_student(sb, username: str, password: str,
+                     first_name: str = "", last_name: str = "") -> Dict[str, Any]:
     """Create an account and return the row. Raises AuthError on any refusal.
 
     Role is NOT a parameter. Every account is created as a student and an
     instructor is promoted by hand in SQL; a self-service role field would let
-    anyone on the VPN grant themselves the assignment-upload screen."""
+    anyone on the VPN grant themselves the assignment-upload screen.
+
+    The name IS a parameter, and required: it is the only thing that lets an
+    instructor read their grade sheet as a class list rather than a column of
+    PSU addresses. It is never used to decide anything - see full_name()."""
     username = normalize_username(username)
     if not valid_username(username):
         raise AuthError("Use your Penn State email address "
                         f"({', '.join('@' + d for d in ALLOWED_DOMAINS)}).",
                         detail=f"rejected username: {username!r}")
+    first, last = clean_name(first_name), clean_name(last_name)
+    if not first or not last:
+        raise AuthError("Enter your first and last name.",
+                        detail=f"missing name for {username}")
     pw_hash = hash_password(password)             # raises on a weak password
 
     try:
         rows = sb.table("students").insert(
             {"username": username, "password_hash": pw_hash,
+             "first_name": first, "last_name": last,
              "role": "student"}).execute().data
     except Exception as e:
         # Only a UNIQUE violation is "already exists". Reporting every failed
@@ -353,6 +389,13 @@ if __name__ == "__main__":
         except m.AuthError:
             pass
 
+    assert m.clean_name("  Ada   Lovelace\n") == "Ada Lovelace"
+    assert m.clean_name(None) == ""
+    assert len(m.clean_name("x" * 200)) == m.MAX_NAME
+    assert m.full_name({"first_name": "Ada", "last_name": "Lovelace"}) == "Ada Lovelace"
+    # An account made before names existed must still render something.
+    assert m.full_name({"username": "abc123@psu.edu"}) == "abc123"
+
     tok = m.issue_session({"id": "u-1", "username": "abc123@psu.edu",
                            "role": "teacher"})
     claims = m.read_session(tok)
@@ -360,7 +403,11 @@ if __name__ == "__main__":
     assert claims["name"] == "abc123", "name defaults to the local part"
     body, sig = tok.split(".")
     assert m.read_session(f"{body}x.{sig}") is None, "tampered body accepted"
-    assert m.read_session(f"{body}.{sig[:-1]}A") is None, "bad signature accepted"
+    # Flip the last character to one it is NOT. Hard-coding "A" made this a
+    # 1-in-64 flake: `exp` moves every second, so roughly that often the
+    # signature already ended in "A" and the "tampered" token was the real one.
+    flipped = sig[:-1] + ("B" if sig[-1] == "A" else "A")
+    assert m.read_session(f"{body}.{flipped}") is None, "bad signature accepted"
     assert m.read_session("") is None and m.read_session("junk") is None
 
     m.SESSION_HOURS = -1

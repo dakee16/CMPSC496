@@ -104,7 +104,7 @@ const Session = {
   /* `mode` is "login" or "register". Throws an Error whose message is meant
      for the student - the server writes it, so there is one wording for a bad
      password and not one per page. */
-  async signIn(mode, username, password){
+  async signIn(mode, username, password, extra = {}){
     // Refuse before the round trip. The request would SUCCEED and the session
     // would still be lost, which is the one failure the student cannot debug.
     if (OFF_DISK) throw new Error(OFF_DISK_WHY);
@@ -114,7 +114,8 @@ const Session = {
         method: "POST",
         headers: {"Content-Type": "application/json"},
         credentials: "include",
-        body: JSON.stringify({username, password}),
+        body: JSON.stringify({username, password,
+                              ...(mode === "register" ? extra : {})}),
       });
     } catch {
       // fetch() only throws on a TRANSPORT failure - the server is down, or the
@@ -234,6 +235,12 @@ function mountHeader({active = "", wide = false, variant = "", crumbs = null} = 
     <path d="M1.6 12S5.3 5.3 12 5.3 22.4 12 22.4 12 18.7 18.7 12 18.7 1.6 12 1.6 12z"/>
     <circle cx="12" cy="12" r="3.1"/></svg>`;
 
+  const gradeIcon = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+    stroke="currentColor" stroke-width="2" stroke-linecap="round"
+    stroke-linejoin="round" aria-hidden="true">
+    <path d="M4 19.5V5a2 2 0 0 1 2-2h13v17H6a2 2 0 0 1-2-1.5z"/>
+    <path d="M9 8.5l2 2 4-4"/></svg>`;
+
   // "Practice" is gone. It was a single-item nav pointing at the page the
   // student was already on, so it navigated nowhere and cost the centre of the
   // bar. Home covers it. An instructor keeps one extra destination, which sits
@@ -245,6 +252,9 @@ function mountHeader({active = "", wide = false, variant = "", crumbs = null} = 
     nav.push(`<a class="hbtn ${active === "Assignments" ? "on" : ""}"
       href="teacher.html#list"${active === "Assignments" ? ' aria-current="page"' : ""}
       >${listIcon}<span class="htext">Assignments</span></a>`);
+    nav.push(`<a class="hbtn ${active === "Grades" ? "on" : ""}"
+      href="grades.html"${active === "Grades" ? ' aria-current="page"' : ""}
+      >${gradeIcon}<span class="htext">Grades</span></a>`);
   }
 
   // An instructor may work through the student side exactly as a student does,
@@ -254,12 +264,15 @@ function mountHeader({active = "", wide = false, variant = "", crumbs = null} = 
   // Only ever rendered for a real teacher - the ROW's role, not the variant.
   if (s && s.role === "teacher"){
     const toStudent = role === "instructor";
+    const viewLabel = `View as ${toStudent ? "student" : "instructor"}`;
+    // aria-label as well as the visible span: below 1240px the span is hidden
+    // and the button would otherwise be an unnamed icon to a screen reader.
     nav.push(`<a class="hbtn viewas" href="${toStudent ? "student.html" : "teacher.html"}"
+      aria-label="${viewLabel}"
       title="${toStudent
         ? "Open the student side and work through it the way a student does."
         : "Back to the instructor side."}"
-      >${eyeIcon}<span class="htext">View as ${
-        toStudent ? "student" : "instructor"}</span></a>`);
+      >${eyeIcon}<span class="htext">${viewLabel}</span></a>`);
   }
 
   const hdr = document.createElement("header");
@@ -353,7 +366,7 @@ function openSettings(s){
   }
   ov.querySelector("#mtsBody").innerHTML = `
     <div class="setRow"><span>Account</span><b>${esc(s ? s.name : "guest")}</b></div>
-    <div class="setRow"><span>Role</span><b>${esc(s ? s.role : "—")}</b></div>
+    <div class="setRow"><span>Role</span><b>${esc(s ? s.role : "-")}</b></div>
     <div class="setRow"><span>Theme</span>
       <span class="seg" id="mtsTheme">
         <button type="button" data-t="dark">Dark</button>
@@ -511,7 +524,7 @@ function skeletonRows(n = 3, widths = [78, 62, 88, 54, 70]){
    grew up. */
 function fmtWhen(iso){
   const d = new Date(iso);
-  if (isNaN(d)) return "—";
+  if (isNaN(d)) return "-";
   const date = d.toLocaleDateString("en-US",
     {month: "short", day: "numeric", year: "numeric"});
   const time = d.toLocaleTimeString("en-US",

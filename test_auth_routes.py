@@ -98,9 +98,20 @@ def client():
 PW = "a-good-enough-password"
 
 
+def register(c, username, password=PW, **extra):
+    """Create an account the way the sign-in page does.
+
+    Registration takes a name now, and every test that only needs *an* account
+    would otherwise restate one. The tests that are ABOUT the name override
+    these through **extra."""
+    return c.post("/register", json={"username": username, "password": password,
+                                     "first_name": "Test", "last_name": "Student",
+                                     **extra})
+
+
 def test_register_login_me_and_logout():
     c = client()
-    r = c.post("/register", json={"username": "Abc123@PSU.edu", "password": PW})
+    r = register(c, "Abc123@PSU.edu", PW)
     assert r.status_code == 200, r.text
     # Lowercased on the way in, so one person cannot become two accounts.
     assert r.json()["username"] == "abc123@psu.edu"
@@ -115,20 +126,40 @@ def test_register_login_me_and_logout():
     assert c.get("/auth/me").status_code == 401
 
 
+def test_the_name_is_required_and_is_what_gets_shown():
+    """A grade sheet full of `abc1234@psu.edu` is not a class list, so the name
+    is collected at registration and is not optional."""
+    c = client()
+    sb = api_server.get_supabase()
+    for first, last in (("", "Student"), ("Test", ""), ("   ", "  ")):
+        r = register(c, "abc123@psu.edu", first_name=first, last_name=last)
+        assert r.status_code == 400, f"{first!r} {last!r} was accepted"
+        assert "first and last name" in r.json()["detail"]["message"]
+
+    r = register(c, "abc123@psu.edu", first_name="  Ada  ", last_name="Lovelace")
+    assert r.status_code == 200, r.text
+    # Whitespace is collapsed on the way in, and the two columns are what the
+    # display name is built from - never a third `name` column to keep in step.
+    assert r.json()["name"] == "Ada Lovelace"
+    assert sb.students[0]["first_name"] == "Ada"
+    assert sb.students[0]["last_name"] == "Lovelace"
+    # And the cookie carries it, so every page header agrees with the sheet.
+    assert c.get("/auth/me").json()["name"] == "Ada Lovelace"
+
+
 def test_register_refuses_non_psu_and_weak_passwords():
     c = client()
     for user, pw in (("someone@gmail.com", PW),
                      ("attacker@notpsu.edu", PW),   # suffix confusion
                      ("abc123@psu.edu", "short")):
-        r = c.post("/register", json={"username": user, "password": pw})
+        r = register(c, user, pw)
         assert r.status_code == 400, f"{user} / {pw} was accepted"
 
 
 def test_duplicate_registration_is_refused():
     c = client()
-    assert c.post("/register", json={"username": "a@psu.edu",
-                                     "password": PW}).status_code == 200
-    r = c.post("/register", json={"username": "A@psu.edu", "password": PW})
+    assert register(c, "a@psu.edu", PW).status_code == 200
+    r = register(c, "A@psu.edu", PW)
     assert r.status_code == 400, "the same address registered twice"
     assert "already exists" in r.json()["detail"]["message"]
 
@@ -146,14 +177,14 @@ def test_a_broken_insert_does_not_claim_the_account_exists():
             return t
 
     api_server.set_supabase(Broken())
-    r = c.post("/register", json={"username": "new@psu.edu", "password": PW})
+    r = register(c, "new@psu.edu", PW)
     assert r.status_code == 400
     assert "already exists" not in r.json()["detail"]["message"]
 
 
 def test_login_is_case_insensitive_and_rejects_a_wrong_password():
     c = client()
-    c.post("/register", json={"username": "abc123@psu.edu", "password": PW})
+    register(c, "abc123@psu.edu", PW)
     c.post("/logout")
 
     assert c.post("/login", json={"username": " ABC123@psu.edu ",
@@ -166,7 +197,7 @@ def test_login_is_case_insensitive_and_rejects_a_wrong_password():
 
 def test_repeated_wrong_passwords_lock_the_account():
     c = client()
-    c.post("/register", json={"username": "abc123@psu.edu", "password": PW})
+    register(c, "abc123@psu.edu", PW)
     c.post("/logout")
 
     for _ in range(auth.FAIL_LIMIT):
@@ -186,8 +217,8 @@ def test_the_lock_is_per_account_not_shared():
     """Everyone on the VPN shares an egress IP, so a limit that is not keyed
     per username locks out the whole lab when one person fat-fingers."""
     c = client()
-    c.post("/register", json={"username": "victim@psu.edu", "password": PW})
-    c.post("/register", json={"username": "bystander@psu.edu", "password": PW})
+    register(c, "victim@psu.edu", PW)
+    register(c, "bystander@psu.edu", PW)
     c.post("/logout")
 
     for _ in range(auth.FAIL_LIMIT + 1):
@@ -201,7 +232,7 @@ def test_the_lock_is_per_account_not_shared():
 
 def test_the_lock_expires_and_a_success_clears_the_count():
     c = client()
-    c.post("/register", json={"username": "abc123@psu.edu", "password": PW})
+    register(c, "abc123@psu.edu", PW)
     c.post("/logout")
 
     for _ in range(auth.FAIL_LIMIT):
@@ -227,7 +258,7 @@ def test_the_lock_expires_and_a_success_clears_the_count():
 
 def test_a_forged_cookie_is_not_a_session():
     c = client()
-    c.post("/register", json={"username": "abc123@psu.edu", "password": PW})
+    register(c, "abc123@psu.edu", PW)
     good = c.cookies[auth.SESSION_COOKIE]
     body, sig = good.split(".")
 
@@ -239,7 +270,7 @@ def test_a_forged_cookie_is_not_a_session():
 def test_solved_is_scoped_to_the_signed_in_student():
     c = client()
     sb = api_server.get_supabase()
-    c.post("/register", json={"username": "mine@psu.edu", "password": PW})
+    register(c, "mine@psu.edu", PW)
     mine = c.get("/auth/me").json()["student_id"]
 
     sb.solved.append({"student_id": mine, "problem_slug": "two-sum"})
@@ -261,7 +292,7 @@ def test_signed_out_callers_cannot_start_or_upload():
 def test_decompose_refuses_a_student_id_in_the_body():
     """extra="forbid" is what stops the old field being quietly honoured."""
     c = client()
-    c.post("/register", json={"username": "abc123@psu.edu", "password": PW})
+    register(c, "abc123@psu.edu", PW)
     r = c.post("/decompose_chunks", json={
         "slug": "two-sum", "description": "d", "solution": "x",
         "student_id": "somebody-else"})
@@ -270,7 +301,7 @@ def test_decompose_refuses_a_student_id_in_the_body():
 
 def test_a_student_cannot_reach_the_teacher_routes():
     c = client()
-    c.post("/register", json={"username": "abc123@psu.edu", "password": PW})
+    register(c, "abc123@psu.edu", PW)
     # 403, not 401: signed in, but the DATABASE says student. The old gate was
     # a radio button on the sign-in page.
     assert c.post("/teacher/assignments", json={
@@ -281,7 +312,7 @@ def test_a_student_cannot_reach_the_teacher_routes():
 def test_a_teacher_row_reaches_them():
     c = client()
     sb = api_server.get_supabase()
-    c.post("/register", json={"username": "prof@psu.edu", "password": PW})
+    register(c, "prof@psu.edu", PW)
     sb.students[0]["role"] = "teacher"          # what the migration does by hand
     c.post("/logout")
     r = c.post("/login", json={"username": "prof@psu.edu", "password": PW})
@@ -294,7 +325,7 @@ def teacher_client(monkeypatch=None):
     """A signed-in teacher, with one blocked problem to fix."""
     c = client()
     sb = api_server.get_supabase()
-    c.post("/register", json={"username": "prof@psu.edu", "password": PW})
+    register(c, "prof@psu.edu", PW)
     sb.students[0]["role"] = "teacher"
     c.post("/logout")
     c.post("/login", json={"username": "prof@psu.edu", "password": PW})
@@ -325,7 +356,7 @@ def test_the_fix_panel_gets_the_source_and_the_failing_stage():
 def test_a_student_cannot_read_a_problems_source_or_retry_it():
     """`solution` is the answer key. This is the one route that returns it."""
     c = client()
-    c.post("/register", json={"username": "abc123@psu.edu", "password": PW})
+    register(c, "abc123@psu.edu", PW)
     assert c.get(
         "/teacher/problems/is-armstrong/source?assignment_id=a-1").status_code == 403
     assert c.post("/teacher/problems/retry", json={

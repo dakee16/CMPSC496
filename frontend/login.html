@@ -34,6 +34,16 @@
   .gate h1{font-size:26px; margin-bottom:var(--s2)}
   .gate .sub{margin-bottom:var(--s6)}
   .gate .field + .field{margin-top:var(--s4)}
+  /* First and last sit on one line: they are one fact, and stacking them makes
+     a four-field form out of a two-field one. */
+  .names{display:grid; grid-template-columns:1fr 1fr; gap:var(--s3)}
+  /* The card's rhythm comes from `.field + .field`, so the inner fields must
+     not also carry ui.css's own bottom margin - two rules stacking is what put
+     a wider gap under this row than under every other field. */
+  .names .field{margin-bottom:0}
+  .names .field + .field{margin-top:0}
+  .names + .field{margin-top:var(--s4)}
+  @media (max-width:380px){ .names{grid-template-columns:1fr} }
   #go{width:100%; margin-top:var(--s6)}
 
   .swap{margin-top:var(--s6); padding-top:var(--s4);
@@ -61,6 +71,24 @@
       your code.</p>
 
     <form id="gate" autocomplete="on" novalidate>
+      <!-- Registration only. Hidden on sign-in rather than living on a second
+           page, for the same reason the password field is reused: the two modes
+           differ by a couple of fields, not by a screen. -->
+      <div class="names" id="nameRow" hidden>
+        <div class="field">
+          <label for="fn">First name</label>
+          <input id="fn" name="given-name" type="text" autocomplete="given-name"
+                 spellcheck="false" aria-describedby="fnErr">
+          <p class="fielderr" id="fnErr" role="alert"></p>
+        </div>
+        <div class="field">
+          <label for="ln">Last name</label>
+          <input id="ln" name="family-name" type="text" autocomplete="family-name"
+                 spellcheck="false" aria-describedby="lnErr">
+          <p class="fielderr" id="lnErr" role="alert"></p>
+        </div>
+      </div>
+
       <div class="field">
         <label for="u">Penn State email</label>
         <!-- autofocus: this is the first thing anyone does on this page, and
@@ -97,7 +125,7 @@
 
     <div class="note">
       <strong>Instructors:</strong> sign in with the same form. Staff accounts
-      are marked as staff by us, so there is nothing to choose here — the site
+      are marked as staff by us, so there is nothing to choose here - the site
       sends you to the right place.
     </div>
   </div>
@@ -131,6 +159,10 @@ function checkEmail(){
   return fieldErr("u", PSU.test(v)
     ? "" : "Use your Penn State address, like abc1234@psu.edu.");
 }
+function checkName(id, what){
+  const v = el(id).value.trim();
+  return fieldErr(id, v ? "" : `Enter your ${what} name.`);
+}
 function checkPassword(){
   const v = el("p").value;
   if (!v) return fieldErr("p", "Enter your password.");
@@ -144,7 +176,7 @@ function checkPassword(){
 el("u").addEventListener("blur", () => { if (el("u").value.trim()) checkEmail(); });
 el("p").addEventListener("blur", () => { if (el("p").value) checkPassword(); });
 // Clear a standing error as soon as they start fixing it.
-["u","p"].forEach(id => el(id).addEventListener("input", () => {
+["u","p","fn","ln"].forEach(id => el(id).addEventListener("input", () => {
   if (el(id + "Err").textContent) fieldErr(id, "");
   serverErr("");
 }));
@@ -159,17 +191,22 @@ function paint(){
   el("go").textContent = reg ? "Create account" : "Sign in";
   el("p").setAttribute("autocomplete", reg ? "new-password" : "current-password");
   el("pwHelp").hidden = !reg;
+  el("nameRow").hidden = !reg;
+  // Required only while they are shown, or sign-in would refuse to submit over
+  // two fields nobody can see.
+  ["fn","ln"].forEach(id => { el(id).required = reg; el(id).value = ""; });
   el("swapText").textContent = reg ? "Already have an account?" : "New here?";
   el("swapBtn").textContent = reg ? "Sign in" : "Create an account";
   enable(el("go"));
   serverErr("");
   fieldErr("u", ""); fieldErr("p", "");
+  fieldErr("fn", ""); fieldErr("ln", "");
 }
 
 el("swapBtn").addEventListener("click", () => {
   mode = mode === "login" ? "register" : "login";
   paint();
-  el("u").focus();
+  el(mode === "register" ? "fn" : "u").focus();
 });
 
 /* Already signed in? The cookie is the authority, so ask the server rather
@@ -183,15 +220,21 @@ el("gate").addEventListener("submit", async e => {
 
   /* Client-side checks are a COURTESY - they save a round trip on an obvious
      typo. The server re-checks all of it; nothing here admits anyone. */
-  const okUser = checkEmail(), okPass = checkPassword();
-  if (!okUser || !okPass){
-    el(okUser ? "p" : "u").focus();
+  const reg = mode === "register";
+  const checks = [
+    ...(reg ? [["fn", checkName("fn", "first")], ["ln", checkName("ln", "last")]] : []),
+    ["u", checkEmail()], ["p", checkPassword()],
+  ];
+  const bad = checks.find(([, ok]) => !ok);
+  if (bad){
+    el(bad[0]).focus();
     return;
   }
 
   setBusy(el("go"), true, mode === "register" ? "Creating…" : "Signing in…");
   try {
-    const me = await Session.signIn(mode, el("u").value.trim(), el("p").value);
+    const me = await Session.signIn(mode, el("u").value.trim(), el("p").value,
+      {first_name: el("fn").value.trim(), last_name: el("ln").value.trim()});
     location.href = me.role === "teacher" ? "teacher.html" : "student.html";
   } catch (ex) {
     setBusy(el("go"), false);

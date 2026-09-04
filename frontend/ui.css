@@ -178,6 +178,17 @@ body::before{
 }
 .crumbs .crumb[aria-current="page"]:hover{background:none}
 
+/* An instructor now has three destinations plus the view-as toggle, and the
+   header is capped at 1180px however wide the window is - so below roughly
+   1240px the four labels stop fitting and the last one was being clipped
+   mid-word ("Vie"), straight over the wordmark. The view-as label is the one
+   to lose: it is a mode switch rather than a destination, its eye icon is
+   distinct, and it carries an aria-label and a title that say the same thing.
+   Same rule as the 720px breakpoint below, applied one button earlier. */
+@media (max-width:1240px){
+  .hbtn.viewas .htext{display:none}
+}
+
 /* Profile button + dropdown menu. */
 .account{position:relative; display:flex}
 .who{display:flex; align-items:center; gap:var(--s2); font-size:13px; color:var(--text-muted);

@@ -379,6 +379,19 @@ def _load_pool() -> dict:
     return {}
 
 
+def pooled_step_count(problem: dict) -> int:
+    """How many steps this problem splits into, from the pool, without
+    generating anything. 0 when it has never been decomposed.
+
+    The grade sheet needs a denominator for a problem a student never opened,
+    and that number cannot come from their own records - there are none. The
+    pool holds what they WOULD have been served. Never triggers generation:
+    an instructor loading a grade sheet must not start minutes of model work.
+    Newest entry wins, matching what get_chunk_decomposition would serve."""
+    entries = _load_pool().get(content_hash(problem), [])
+    return len(entries[-1].get("chunks", [])) if entries else 0
+
+
 def _save_pool(pool: dict) -> None:
     try:
         json.dump(pool, open(_CHUNK_POOL_PATH, "w"), indent=2)

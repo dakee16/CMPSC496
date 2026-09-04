@@ -454,7 +454,7 @@
           </div>
           <label class="sr-only" for="psort">Sort problems</label>
           <select id="psort" style="width:auto; min-width:120px; flex:none">
-            <option value="alpha">A – Z</option>
+            <option value="alpha">A - Z</option>
             <option value="status">Status</option>
           </select>
         </div>
@@ -694,7 +694,7 @@ function applyTutorGate(){
   const wrap = $("editorWrap"), panel = $("designPanel"), code = $("code");
   const btn = $("submit");
   if (btn){
-    if (!tutorReleased) disable(btn, "Submit your design first — the editor "
+    if (!tutorReleased) disable(btn, "Submit your design first - the editor "
       + "unlocks once the tutor accepts it.");
     else if (btn.dataset.busy === "1") disable(btn, "Grading your last answer…");
     else enable(btn);
@@ -741,7 +741,7 @@ function openGate(){
       <span>Design accepted. The editor is unlocked for this problem.</span>`;
     $("workCard").insertBefore(ok, $("stepCount"));
   }
-  toast("Design accepted — the editor is unlocked.", "ok");
+  toast("Design accepted - the editor is unlocked.", "ok");
   if (editor){
     // The editor has been sized to a hidden box until now. Re-seat the step's
     // indent and re-measure the gutter against a laid-out element.
@@ -761,7 +761,7 @@ let designFileRef = null;
 
 // The plan graph lives here between calls. It round-trips to the server on each
 // refresh because it belongs to a STUDENT and there is nobody to key it to yet
-// — see main/archive.py for where it goes once PSU login is live.
+// - see main/archive.py for where it goes once PSU login is live.
 let planGraph = null, planBusy = false, planSeen = new Set();
 
 /* Draw the plan graph, flashing whatever is new since the last draw.
@@ -874,7 +874,7 @@ function pickDesign(file){
   if (file.size > DESIGN_MAX){
     $("designDrop").classList.add("bad");
     designMsg("bad", `${file.name} is ${fmtBytes(file.size)}. The limit is `
-      + `${fmtBytes(DESIGN_MAX)} — a photo at a lower resolution will do.`);
+      + `${fmtBytes(DESIGN_MAX)} - a photo at a lower resolution will do.`);
     return;
   }
   designFileRef = file;
@@ -941,7 +941,7 @@ async function uploadDesign(){
     refreshPlanGraph();
   } catch (e) {
     designMsg("bad", "Could not reach the reviewer. Check your connection and "
-      + "try again — nothing was submitted.");
+      + "try again - nothing was submitted.");
   } finally {
     setBusy(btn, false);
     if (!designFileRef) disable(btn, "Choose a PNG, JPEG or PDF first.");
@@ -953,7 +953,7 @@ async function uploadDesign(){
    ----------------------------------------------------------
    Both screens answer the same question: where was I? The server knows which
    problems this student has SOLVED (GET /solved). It does not record which
-   ones were merely opened, or when — so "in progress" and "last worked on"
+   ones were merely opened, or when - so "in progress" and "last worked on"
    come from a local note this browser keeps. That is honest about what it is:
    per-browser, and it never contradicts the server, because a solved problem
    is solved whatever the note says.
@@ -1352,7 +1352,7 @@ async function restoreHistory(p){
     h.messages.forEach(m => bubble(m.role === "user" ? "me" : "bot",
                                    m.content, m.at));
     bubble("bot", h.solved
-      ? "This is where we got to last time. You have already solved this one — "
+      ? "This is where we got to last time. You have already solved this one - "
         + "work through it again whenever you like."
       : "Picking up where we left off.");
   }
@@ -1371,7 +1371,7 @@ async function restoreHistory(p){
     tutorReleased = true;
     applyTutorGate();
     if (!$("designOK")) show("ok", h.solved
-      ? "You solved this before. The editor is open — the steps start again from the top."
+      ? "You solved this before. The editor is open - the steps start again from the top."
       : "Your design for this problem was already accepted, so the editor is open.");
   }
 
@@ -1754,7 +1754,7 @@ function resetChat(title){
   $("clog").innerHTML = "";
   chatLog = [];
   bubble("bot", `We are on ${title}. Ask me to explain it, or tell me how you `
-               + `are thinking of approaching it — I will not give you the `
+               + `are thinking of approaching it - I will not give you the `
                + `answer. When your plan is ready, submit a design (PNG, JPEG, `
                + `or PDF) to unlock the editor.`);
   showChips();
@@ -1763,7 +1763,7 @@ function resetChat(title){
 async function sendToTutor(text){
   if (chatBusy) return;
   if (!openProblem){
-    bubble("bot", "Open a problem on the left first — I can only help with the one you are working on.");
+    bubble("bot", "Open a problem on the left first - I can only help with the one you are working on.");
     return;
   }
   chatBusy = true;
@@ -1800,7 +1800,7 @@ async function sendToTutor(text){
     // plan has not shown they have one, and that is exactly the case this gate
     // exists to catch. `ready` now only tells them what to do next.
     if (data.ready && !tutorReleased){
-      bubble("bot", "Your plan sounds workable — draw it up and submit it as a "
+      bubble("bot", "Your plan sounds workable - draw it up and submit it as a "
                   + "PNG, JPEG, or PDF to unlock the editor.");
     }
   } catch (e) {

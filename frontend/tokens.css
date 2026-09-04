@@ -1,5 +1,5 @@
 /* ============================================================
-   MicroTutor design tokens — the single source of colour, space,
+   MicroTutor design tokens - the single source of colour, space,
    radius and elevation for every page.
    ------------------------------------------------------------
    These lived in ui.css's :root. They are here instead so that a
@@ -13,7 +13,7 @@
 
 :root{
   /* ---- type: three faces, one job each ------------------------------
-     LEXEND for headings, the wordmark and buttons — drawn to raise reading
+     LEXEND for headings, the wordmark and buttons - drawn to raise reading
      proficiency, which is the whole premise of this page.
      IBM PLEX SANS for body copy at the 13-14px this UI actually runs at.
      JETBRAINS MONO for anything read as CODE OR DATA. */
@@ -41,12 +41,12 @@
      for body text; --text-subtle is the one that used to sit on the line. */
   --text:#f1f5f9;          /* 15.9:1 */
   --text-muted:#9aa8bd;    /*  7.1:1 */
-  --text-subtle:#8593ae;   /*  5.5:1 — was #7c8aa5 (4.9:1), a thin margin once
+  --text-subtle:#8593ae;   /*  5.5:1 - was #7c8aa5 (4.9:1), a thin margin once
                               the aurora tints the card underneath it */
 
   /* ---- accent: ONE decorative colour ----
      Green, amber and red are STATUS ONLY below. They mean something passed,
-     was shown, or failed — never decoration. That is what makes them
+     was shown, or failed - never decoration. That is what makes them
      readable as status. */
   --accent:#6366f1;
   --accent-hover:#818cf8;
@@ -150,7 +150,7 @@
 
   --text:#0f172a;
   --text-muted:#475569;    /* 7.5:1 on white */
-  --text-subtle:#667080;   /* 5.0:1 on white — was #8a94a6 (3.1:1) */
+  --text-subtle:#667080;   /* 5.0:1 on white - was #8a94a6 (3.1:1) */
 
   --accent:#4f46e5;
   --accent-hover:#6366f1;
