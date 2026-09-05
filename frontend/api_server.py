@@ -235,6 +235,10 @@ class LiveRunRequest(BaseModel):
     title: str | None = None
     description: str | None = None
     solution: str | None = None
+    # Playground knob overrides, keyed by PLAYGROUND_PARAMS keys. Values are
+    # clamped server-side to each knob's registered bounds; unknown keys are
+    # dropped. Omitting this runs the pipeline exactly as production does.
+    params: dict | None = None
 
 
 @app.get("/health")
@@ -461,17 +465,96 @@ def grade_chunk_route(req: ChunkRequest, request: Request):
 # breakdown is not currently persisted (only the aggregate rates are).
 
 @app.get("/playground/problems")
-def playground_problems():
-    """Every problem with a cached verdict, for the showcase picker."""
+def playground_problems(request: Request):
+    """Every problem in Supabase, with its whole pipeline story in one row:
+    did preparation succeed, where did it stop, is there a validated oracle,
+    how many pooled decompositions exist. This is the troubleshooter's list -
+    teacher-gated, because the page it feeds also shows ground truths."""
+    require_teacher(request)
+    from main.identity import content_hash
+    from main.publish import stage_of_error
+    from main.run_phase1 import _load_pool
     from tests.sandbox import _load_cache
+
+    sb = get_supabase()
+    rows = sb.table("problems").select(
+        "slug, title, difficulty, description, solution, ready, prepare_error,"
+        " assignment_id").execute().data or []
+    asg = {a["id"]: a["name"] for a in (sb.table("assignments").select(
+        "id, name").execute().data or [])}
+    cache = _load_cache()
+    pool = _load_pool()
+
     out = []
-    for entry in _load_cache().values():
-        if isinstance(entry, dict) and "strong" in entry:
-            out.append({"slug": entry.get("slug", ""),
-                        "strong": bool(entry["strong"]),
-                        "kill_rate_direct": entry.get("kill_rate_direct", 0.0),
-                        "n_tests": len(entry.get("final_tests", []))})
-    return sorted(out, key=lambda r: (not r["strong"], r["slug"]))
+    for p in rows:
+        key = content_hash({"description": p.get("description") or "",
+                            "solution": p.get("solution") or ""})
+        oracle = cache.get(key)
+        oracle_state = (None if not (isinstance(oracle, dict) and "strong" in oracle)
+                        else "strong" if oracle["strong"] else "weak")
+        out.append({
+            "slug": p["slug"], "title": p.get("title") or p["slug"],
+            "difficulty": p.get("difficulty"),
+            "assignment": asg.get(p.get("assignment_id"), ""),
+            "ready": bool(p.get("ready")),
+            "prepare_error": p.get("prepare_error"),
+            # Which gate preparation stopped at ("parses"/"runs"/"tests"/
+            # "strength"/"steps"), or None once it passed - same mapping the
+            # teacher's fix panel uses.
+            "stage": None if p.get("ready") else stage_of_error(p.get("prepare_error")),
+            "has_solution": bool((p.get("solution") or "").strip()),
+            "oracle": oracle_state,
+            "kill_rate_direct": (oracle or {}).get("kill_rate_direct")
+                                if oracle_state else None,
+            "pool_entries": len(pool.get(key) or []),
+        })
+    # Broken first - this list exists to find them.
+    return {"problems": sorted(out, key=lambda r: (r["ready"], r["slug"]))}
+
+
+@app.get("/playground/params")
+def playground_params(request: Request):
+    """The tunable-knob registry, straight from the pipeline. The page builds
+    its sliders from this, so bounds and defaults have exactly one home
+    (main/live_playground.PLAYGROUND_PARAMS)."""
+    require_teacher(request)
+    from main.live_playground import current_params
+    return {"params": current_params()}
+
+
+@app.get("/playground/problem/{slug}")
+def playground_problem(slug: str, request: Request):
+    """One problem WITH its ground truth, for the troubleshooter's left panel.
+    Teacher-gated for exactly that reason - this is the one read path that
+    hands a solution to a browser."""
+    require_teacher(request)
+    from main.identity import content_hash
+    from main.run_phase1 import _load_pool
+    from tests.sandbox import _load_cache
+
+    row = get_supabase().table("problems").select(
+        "slug, title, description, difficulty, solution, ready, prepare_error"
+    ).eq("slug", slug).execute().data
+    if not row:
+        raise HTTPException(status_code=404, detail=f"Problem '{slug}' not found.")
+    p = row[0]
+    key = content_hash({"description": p.get("description") or "",
+                        "solution": p.get("solution") or ""})
+    oracle = _load_cache().get(key)
+    if not (isinstance(oracle, dict) and "strong" in oracle):
+        oracle = None
+    return {"slug": p["slug"], "title": p.get("title") or p["slug"],
+            "description": p.get("description") or "",
+            "difficulty": p.get("difficulty"),
+            "solution": p.get("solution") or "",
+            "ready": bool(p.get("ready")),
+            "prepare_error": p.get("prepare_error"),
+            "oracle": None if oracle is None else {
+                "strong": bool(oracle["strong"]),
+                "kill_rate_direct": oracle.get("kill_rate_direct", 0.0),
+                "n_tests": len(oracle.get("final_tests", [])),
+                "validated_at": oracle.get("validated_at", "")},
+            "pool_entries": len(_load_pool().get(key) or [])}
 
 
 @app.get("/playground/{slug}")
@@ -610,8 +693,12 @@ def playground_detail(slug: str):
 # warmup would, so a live run is never wasted work.
 
 @app.post("/playground/live")
-def playground_live(req: LiveRunRequest):
+def playground_live(req: LiveRunRequest, request: Request):
     from fastapi.responses import StreamingResponse
+
+    # Teacher-gated: the stream narrates the ground truth, the oracle suite and
+    # every chunk reference - the complete answer key for the problem.
+    require_teacher(request)
 
     problem = {"slug": req.slug, "title": req.title or req.slug,
                "description": req.description or "",
@@ -637,7 +724,7 @@ def playground_live(req: LiveRunRequest):
 
     from main.live_playground import ndjson_stream
     return StreamingResponse(
-        ndjson_stream(problem),
+        ndjson_stream(problem, req.params),
         media_type="application/x-ndjson",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 

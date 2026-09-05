@@ -218,6 +218,15 @@ body::before{
 .menu .mi:hover{background:var(--accent-tint-strong); color:var(--text)}
 .menu .mi-danger{color:var(--danger)}
 .menu .mi-danger:hover{background:var(--danger-bg); color:var(--danger)}
+/* An <a> in the menu (Playground) rather than a <button>, so it middle-clicks
+   and opens in a tab like the destination it is. Needs the two things a link
+   brings that a button does not: an underline to remove, and its own baseline
+   alignment for the leading icon. */
+.menu a.mi-link{display:flex; align-items:center; gap:var(--s2);
+                text-decoration:none}
+.menu a.mi-link svg{flex:none; opacity:.85}
+.menu a.mi-link[aria-current="page"]{color:var(--text);
+                background:var(--accent-tint)}
 
 /* Settings modal (opened from the profile menu). */
 .modal{

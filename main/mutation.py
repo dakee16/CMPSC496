@@ -76,58 +76,85 @@ _CMP_FLIP = {
     # one comparison a hash-map/set-lookup solution (two-sum, contains-
     # duplicate, ...) actually uses, so without this a solution with no
     # <, >, +, -, *, // and no int/bool literals yields ZERO mutants.
+    ast.Is: ast.IsNot, ast.IsNot: ast.Is,   # `x is None` guards
 }
 _BOOL_FLIP = {ast.And: ast.Or, ast.Or: ast.And}
 _BIN_FLIP = {
     ast.Add: ast.Sub, ast.Sub: ast.Add,
     ast.Mult: ast.Div, ast.Div: ast.Mult,
     ast.FloorDiv: ast.Mult,                 # digit-stripping loops are everywhere here
+    ast.Mod: ast.FloorDiv,                  # `n % 10` vs `n // 10` - digit extraction
+    ast.Pow: ast.Mult,                      # `x ** k` vs `x * k`
+    # Bit twiddling: hamming distance and power-of-two checks are built on it,
+    # and without these they yield mutants only from their loop bounds.
+    ast.BitXor: ast.BitAnd, ast.BitAnd: ast.BitOr, ast.BitOr: ast.BitAnd,
+    ast.LShift: ast.RShift, ast.RShift: ast.LShift,
 }
 _OP_SYMBOL = {
     ast.Lt: "<", ast.LtE: "<=", ast.Gt: ">", ast.GtE: ">=",
     ast.Eq: "==", ast.NotEq: "!=", ast.And: "and", ast.Or: "or",
     ast.Add: "+", ast.Sub: "-", ast.Mult: "*", ast.Div: "/", ast.FloorDiv: "//",
-    ast.In: "in", ast.NotIn: "not in",
+    ast.In: "in", ast.NotIn: "not in", ast.Is: "is", ast.IsNot: "is not",
+    ast.Mod: "%", ast.Pow: "**",
+    ast.BitXor: "^", ast.BitAnd: "&", ast.BitOr: "|",
+    ast.LShift: "<<", ast.RShift: ">>",
 }
 
 
-def _sites(tree: ast.AST) -> list[tuple[int, str, str]]:
-    """Find every mutable point as (walk_index, kind, label).
+def _sites(tree: ast.AST) -> list[tuple[int, str, str, int]]:
+    """Find every mutable point as (walk_index, kind, label, slot).
 
     Positions are indices into `ast.walk`, whose order is deterministic for a
     given tree - and `copy.deepcopy` preserves that order - so an index found
-    on the original tree addresses the same node in any copy of it."""
+    on the original tree addresses the same node in any copy of it. `slot` is
+    the position WITHIN that node for the one kind that has several (a chained
+    comparison's ops); every other kind ignores it."""
     found = []
     for i, node in enumerate(ast.walk(tree)):
         line = getattr(node, "lineno", 0)
-        if isinstance(node, ast.Compare) and len(node.ops) == 1:
-            old = type(node.ops[0])
-            if old in _CMP_FLIP:
-                new = _CMP_FLIP[old]
-                found.append((i, "cmp", f"line {line}: {_OP_SYMBOL[old]} -> {_OP_SYMBOL[new]}"))
+        if isinstance(node, ast.Compare):
+            # Every operator in the chain, not just the first. The old guard
+            # was `len(node.ops) == 1`, which skipped `0 <= i < n` entirely -
+            # and a bounds check is exactly where an off-by-one hides.
+            for slot, op in enumerate(node.ops):
+                old = type(op)
+                if old in _CMP_FLIP:
+                    new = _CMP_FLIP[old]
+                    found.append((i, "cmp",
+                                  f"line {line}: {_OP_SYMBOL[old]} -> {_OP_SYMBOL[new]}",
+                                  slot))
         elif isinstance(node, ast.BoolOp):
             old = type(node.op)
             if old in _BOOL_FLIP:
                 new = _BOOL_FLIP[old]
-                found.append((i, "bool", f"line {line}: {_OP_SYMBOL[old]} -> {_OP_SYMBOL[new]}"))
-        elif isinstance(node, ast.BinOp):
+                found.append((i, "bool",
+                              f"line {line}: {_OP_SYMBOL[old]} -> {_OP_SYMBOL[new]}", 0))
+        elif isinstance(node, (ast.BinOp, ast.AugAssign)):
+            # AugAssign holds its operator DIRECTLY (`node.op`), it is not
+            # wrapped in a BinOp - so matching only BinOp left every `+=`,
+            # `-=`, `*=` and `//=` in the codebase unmutated. Those are the
+            # accumulator updates first-year solutions are mostly made of:
+            # `total += digit`, `n //= 10`, `count -= 1`.
             old = type(node.op)
             if old in _BIN_FLIP:
                 new = _BIN_FLIP[old]
-                found.append((i, "bin", f"line {line}: {_OP_SYMBOL[old]} -> {_OP_SYMBOL[new]}"))
+                aug = "=" if isinstance(node, ast.AugAssign) else ""
+                found.append((i, "bin",
+                              f"line {line}: {_OP_SYMBOL[old]}{aug} -> "
+                              f"{_OP_SYMBOL[new]}{aug}", 0))
         elif isinstance(node, ast.Constant):
             # bool must be checked first: isinstance(True, int) is True.
             if isinstance(node.value, bool):
-                found.append((i, "const", f"line {line}: {node.value} -> {not node.value}"))
+                found.append((i, "const", f"line {line}: {node.value} -> {not node.value}", 0))
             elif isinstance(node.value, (int, float)):
-                found.append((i, "const", f"line {line}: {node.value} -> {node.value + 1}"))
+                found.append((i, "const", f"line {line}: {node.value} -> {node.value + 1}", 0))
     return found
 
 
-def _apply(node: ast.AST, kind: str) -> None:
+def _apply(node: ast.AST, kind: str, slot: int = 0) -> None:
     """Apply this site's single edit in place."""
     if kind == "cmp":
-        node.ops[0] = _CMP_FLIP[type(node.ops[0])]()
+        node.ops[slot] = _CMP_FLIP[type(node.ops[slot])]()
     elif kind == "bool":
         node.op = _BOOL_FLIP[type(node.op)]()
     elif kind == "bin":
@@ -150,9 +177,9 @@ def generate_mutants(solution_code: str) -> list[dict]:
 
     original_src = ast.unparse(tree)
     mutants = []
-    for index, kind, label in _sites(tree):
+    for index, kind, label, slot in _sites(tree):
         mutated = copy.deepcopy(tree)
-        _apply(list(ast.walk(mutated))[index], kind)
+        _apply(list(ast.walk(mutated))[index], kind, slot)
         try:
             code = ast.unparse(mutated)
         except Exception:
@@ -170,7 +197,7 @@ def _key(inp) -> str:
 
 
 def _candidate_inputs(problem: dict, original: str, mutant_code: str,
-                      n: int = CUTOFF_4_MAX_COUNTEREXAMPLE_CANDIDATES,
+                      n: int | None = None,
                       emit=None) -> list[list]:
     """Ask the LLM for up to n input argument-lists that might make the two
     programs disagree. INPUTS ONLY - the model never reports outputs, and its
@@ -178,6 +205,11 @@ def _candidate_inputs(problem: dict, original: str, mutant_code: str,
 
     `emit`, when given, is called with progress-event dicts for live UIs.
     It never changes behaviour - leaving it None is the production path."""
+    # Late-bound rather than a def-time default: the playground tunes these
+    # module constants per run, and a default frozen at import time would
+    # silently ignore the override while the UI claimed it was in effect.
+    if n is None:
+        n = CUTOFF_4_MAX_COUNTEREXAMPLE_CANDIDATES
     resolved = get_resolved_entry(problem)
     name, params = resolved["entry_name"], resolved["params"]
     sig = f"{name}({', '.join(params)})" if name else problem.get("title", "")
@@ -233,13 +265,15 @@ def _probe_inputs(tests: list) -> list[list]:
     return list({_key(c): c for c in out}.values())[:_MAX_PROBE_INPUTS]
 
 
-def _sweep_inputs(tests: list, n: int = _EQUIVALENCE_SWEEP_SIZE) -> list[list]:
+def _sweep_inputs(tests: list, n: int | None = None) -> list[list]:
     """A broad, deterministic, type-directed input sweep - no LLM involved.
 
     Shapes are taken from the inputs we already have, then each argument is
     varied far more widely than _probe_inputs does: signs, zeros, boundaries,
     long and empty sequences, duplicates, sorted and reversed orders. Seeded,
     so two runs produce byte-identical sweeps."""
+    if n is None:                       # late-bound: see _candidate_inputs
+        n = _EQUIVALENCE_SWEEP_SIZE
     seeds = [t["input"] for t in tests]
     if not seeds:
         return []
@@ -597,7 +631,7 @@ def evaluate_oracle(problem: dict, oracle_tests: list, emit=None) -> dict:
 # ── orchestrator ──────────────────────────────────────────────────────────
 
 def validate_oracle(problem: dict, initial_tests: list,
-                    max_rounds: int = CUTOFF_2_MAX_EXPAND_ROUNDS,
+                    max_rounds: int | None = None,
                     emit=None) -> dict:
     """Evaluate the oracle, and while it is still weak pull in a fresh batch of
     LLM-generated + ground-truth-verified tests and try again, up to
@@ -605,6 +639,8 @@ def validate_oracle(problem: dict, initial_tests: list,
 
     Returns the final evaluation plus `rounds` and `final_tests` (the full
     grown suite - persist this to keep the improvement)."""
+    if max_rounds is None:              # late-bound: see _candidate_inputs
+        max_rounds = CUTOFF_2_MAX_EXPAND_ROUNDS
     tests = list(initial_tests)
     result, rnd = None, 0
 

@@ -32,9 +32,152 @@ from datetime import datetime, timezone
 
 from tests.sandbox import _load_cache, _save_cache, make_oracle_tests
 
+from . import mutation
 from .gates import check_necessity
 from .identity import content_hash, get_resolved_entry
-from .mutation import CUTOFF_1_KILL_RATE, validate_oracle
+from .mutation import validate_oracle
+
+
+# ── the tunables ──────────────────────────────────────────────────────────
+# Every knob the pipeline exposes, in ONE table the UI renders its sliders
+# from. The server is the source of truth for names, bounds and defaults; the
+# page never hardcodes a constant, so adding a row here is all it takes to
+# grow a new slider.
+#
+# `module`/`attr` name where the value lives; None means the value is passed
+# as a call argument by _pipeline instead of patched. All the mutation-module
+# constants are read late (module-global lookup at call time - the def-time
+# defaults were rebound for exactly this), so patching the attribute for the
+# duration of a run is sufficient and is undone in the same `finally` that
+# restores stdout. The run holds _RUN_LOCK throughout, so two runs can never
+# interleave their patches.
+PLAYGROUND_PARAMS = [
+    {"key": "oracle_n_tests", "group": "Oracle generation",
+     "label": "Oracle inputs requested",
+     "help": "How many test inputs the model is asked to propose. The ground "
+             "truth computes every expected output; ambiguous inputs are "
+             "filtered afterwards, so the kept suite is usually smaller.",
+     "min": 4, "max": 30, "step": 1, "default": 12,
+     "module": None, "attr": None},
+
+    {"key": "kill_rate_cutoff", "group": "Mutation testing",
+     "label": "STRONG cutoff (kill rate)",
+     "help": "Fraction of mutants the suite must kill, as handed in, to be "
+             "trusted for grading. Lower accepts weaker oracles.",
+     "min": 0.5, "max": 1.0, "step": 0.05, "default": mutation.CUTOFF_1_KILL_RATE,
+     "module": "mutation", "attr": "CUTOFF_1_KILL_RATE"},
+
+    {"key": "max_expand_rounds", "group": "Mutation testing",
+     "label": "Max repair rounds",
+     "help": "How many times a weak suite is topped up with fresh verified "
+             "tests and re-scored before giving up.",
+     "min": 1, "max": 6, "step": 1, "default": mutation.CUTOFF_2_MAX_EXPAND_ROUNDS,
+     "module": None, "attr": None},   # passed as validate_oracle(max_rounds=)
+
+    {"key": "counterexample_candidates", "group": "Mutation testing",
+     "label": "LLM inputs per survivor",
+     "help": "Input guesses the model may propose to kill one surviving "
+             "mutant. The model only ever supplies inputs; execution decides.",
+     "min": 1, "max": 12, "step": 1,
+     "default": mutation.CUTOFF_4_MAX_COUNTEREXAMPLE_CANDIDATES,
+     "module": "mutation", "attr": "CUTOFF_4_MAX_COUNTEREXAMPLE_CANDIDATES"},
+
+    {"key": "max_probe_inputs", "group": "Mutation testing",
+     "label": "Free boundary probes",
+     "help": "Deterministic boundary variants tried on each survivor before "
+             "any model is asked - these cost nothing.",
+     "min": 0, "max": 40, "step": 2, "default": mutation._MAX_PROBE_INPUTS,
+     "module": "mutation", "attr": "_MAX_PROBE_INPUTS"},
+
+    {"key": "mutant_timeout", "group": "Mutation testing",
+     "label": "Mutant timeout (seconds)",
+     "help": "Wall-clock leash per mutant run. Mutants can loop forever where "
+             "the original did not, so this is tighter than a real solution's.",
+     "min": 1, "max": 15, "step": 1, "default": mutation._MUTANT_TIMEOUT,
+     "module": "mutation", "attr": "_MUTANT_TIMEOUT"},
+
+    {"key": "equivalence_sweep_size", "group": "Mutation testing",
+     "label": "Equivalence sweep size",
+     "help": "Inputs in the deterministic sweep that must agree EXACTLY before "
+             "a survivor is excused as genuinely equivalent. Bigger = more "
+             "confident exclusions, slower runs.",
+     "min": 25, "max": 500, "step": 25, "default": mutation._EQUIVALENCE_SWEEP_SIZE,
+     "module": "mutation", "attr": "_EQUIVALENCE_SWEEP_SIZE"},
+
+    {"key": "min_mutants", "group": "Mutation testing",
+     "label": "Minimum mutants to judge",
+     "help": "Below this many mutants the solution is too trivial for a kill "
+             "rate to mean anything - flagged insufficient, never STRONG.",
+     "min": 1, "max": 10, "step": 1, "default": mutation._MIN_MUTANTS,
+     "module": "mutation", "attr": "_MIN_MUTANTS"},
+
+    {"key": "decompose_max_tries", "group": "Decomposition",
+     "label": "Decomposition attempts",
+     "help": "How many times the model may re-split the problem after a "
+             "failed assembly or necessity gate before the run is blocked. "
+             "Temperature climbs with each retry.",
+     "min": 1, "max": 8, "step": 1, "default": 5,
+     "module": None, "attr": None},   # passed as decompose_into_chunks(max_tries=)
+]
+
+_PARAM_BY_KEY = {p["key"]: p for p in PLAYGROUND_PARAMS}
+
+
+def clean_overrides(raw: dict | None) -> dict:
+    """Clamp caller-supplied overrides to the registry's bounds.
+
+    Unknown keys are dropped rather than erroring: the page and the server can
+    be one deploy apart, and a stale slider must not kill the whole run."""
+    out = {}
+    for key, val in (raw or {}).items():
+        spec = _PARAM_BY_KEY.get(key)
+        if spec is None:
+            continue
+        try:
+            v = float(val)
+        except (TypeError, ValueError):
+            continue
+        v = max(spec["min"], min(spec["max"], v))
+        # An integer knob stays an integer - range(1, 3.0) is a TypeError.
+        if float(spec["step"]).is_integer() and float(spec["min"]).is_integer():
+            v = int(round(v))
+        out[key] = v
+    return out
+
+
+def current_params() -> list[dict]:
+    """The registry with LIVE defaults, for the UI to build sliders from."""
+    live = []
+    for p in PLAYGROUND_PARAMS:
+        cur = p["default"]
+        if p["module"] == "mutation":
+            cur = getattr(mutation, p["attr"], cur)
+        live.append({k: p[k] for k in ("key", "group", "label", "help",
+                                       "min", "max", "step")} | {"default": cur})
+    return live
+
+
+class _applied_overrides:
+    """Patch the mutation-module knobs for the duration of one run, and
+    guarantee the originals come back whatever the pipeline does. Only ever
+    entered while holding _RUN_LOCK."""
+
+    def __init__(self, overrides: dict):
+        self._overrides = overrides
+        self._saved = {}
+
+    def __enter__(self):
+        for key, val in self._overrides.items():
+            spec = _PARAM_BY_KEY[key]
+            if spec["module"] == "mutation":
+                self._saved[spec["attr"]] = getattr(mutation, spec["attr"])
+                setattr(mutation, spec["attr"], val)
+        return self
+
+    def __exit__(self, *exc):
+        for attr, val in self._saved.items():
+            setattr(mutation, attr, val)
+        return False
 
 
 # One live run at a time. Two reasons: (1) sys.stdout is process-global, so
@@ -107,13 +250,24 @@ def _persist_verdict(problem: dict, report: dict) -> None:
     _save_cache(cache)
 
 
-def _pipeline(problem: dict, emit) -> None:
+def _pipeline(problem: dict, emit, overrides: dict | None = None) -> None:
     """The run itself. Raises nothing to the caller - every failure becomes an
     event, because a demo that dies silently teaches nothing."""
+    overrides = overrides or {}
     slug = problem.get("slug") or problem.get("title") or "<unnamed>"
 
     emit({"type": "stage", "name": "start",
           "label": f"Live run: {problem.get('title') or slug}"})
+    # The knobs this run is actually using - defaults with the caller's clamped
+    # overrides on top. Emitted first so the UI can pin them to the transcript:
+    # a run is only comparable to another run if both wear their settings.
+    effective = {p["key"]: overrides.get(
+                     p["key"],
+                     getattr(mutation, p["attr"]) if p["module"] == "mutation"
+                     else p["default"])
+                 for p in PLAYGROUND_PARAMS}
+    emit({"type": "params", "values": effective,
+          "overridden": sorted(overrides.keys())})
     emit({"type": "ground_truth", "code": problem.get("solution", "")})
 
     # ── entry resolution ──────────────────────────────────────────────────
@@ -127,7 +281,7 @@ def _pipeline(problem: dict, emit) -> None:
     emit({"type": "stage", "name": "oracle_gen",
           "label": "Generating oracle tests - model proposes INPUTS only, "
                    "the ground truth computes every expected output"})
-    tests = make_oracle_tests(problem)
+    tests = make_oracle_tests(problem, n=int(effective["oracle_n_tests"]))
     if not tests:
         emit({"type": "blocked", "at": "oracle_generation",
               "error_type": "NoOracleTests",
@@ -142,15 +296,17 @@ def _pipeline(problem: dict, emit) -> None:
     emit({"type": "stage", "name": "mutation",
           "label": f"Mutation testing - deterministically breaking the ground "
                    f"truth one edit at a time and checking the oracle notices "
-                   f"(STRONG needs kill_rate_direct ≥ {CUTOFF_1_KILL_RATE})"})
-    report = validate_oracle(problem, tests, emit=emit)
+                   f"(STRONG needs kill_rate_direct ≥ "
+                   f"{mutation.CUTOFF_1_KILL_RATE})"})
+    report = validate_oracle(problem, tests, emit=emit,
+                             max_rounds=int(effective["max_expand_rounds"]))
 
     _persist_verdict(problem, report)
     emit({"type": "verdict",
           "strong": report["strong"],
           "kill_rate": report["kill_rate"],
           "kill_rate_direct": report["kill_rate_direct"],
-          "cutoff": CUTOFF_1_KILL_RATE,
+          "cutoff": mutation.CUTOFF_1_KILL_RATE,
           "insufficient_mutants": report.get("insufficient_mutants", False),
           "rounds": report.get("rounds", 1),
           "n_tests": len(report["final_tests"]),
@@ -167,7 +323,8 @@ def _pipeline(problem: dict, emit) -> None:
           "label": "Decomposing into 2-3 chunks - exactly the path a student "
                    "request takes, including every retry and gate"})
     try:
-        result = decompose_into_chunks(problem)
+        result = decompose_into_chunks(
+            problem, max_tries=int(effective["decompose_max_tries"]))
     except (OracleNotStrongError, NoOracleTestsError,
             DecompositionUnavailableError) as e:
         emit({"type": "blocked", "at": "decomposition",
@@ -196,16 +353,23 @@ def _pipeline(problem: dict, emit) -> None:
     emit({"type": "stage", "name": "finished", "label": "Run complete"})
 
 
-def live_run(problem: dict):
+def live_run(problem: dict, overrides: dict | None = None):
     """Generator yielding one JSON-serialisable event dict at a time.
 
     The pipeline runs in a worker thread pushing events into a queue; this
     generator drains it. That is what makes the stream LIVE: FastAPI's
     StreamingResponse pulls from here while the pipeline is still working,
     instead of waiting for one big result at the end. All pipeline print()
-    output is also captured and streamed as {"type": "log"} events."""
+    output is also captured and streamed as {"type": "log"} events.
+
+    `overrides` are playground knob values (see PLAYGROUND_PARAMS), clamped to
+    their registered bounds and applied only for this run - the module-global
+    patches are made and undone while _RUN_LOCK is held, so a concurrent
+    student-facing request can never observe them mid-flip on the paths that
+    matter (validation runs only from upload, warmup and here)."""
     q: queue.Queue = queue.Queue()
     _DONE = object()
+    overrides = clean_overrides(overrides)
 
     def emit(event: dict) -> None:
         q.put(event)
@@ -221,7 +385,8 @@ def live_run(problem: dict):
         real_stdout = sys.stdout
         try:
             sys.stdout = _ThreadLineStream(threading.get_ident(), emit, real_stdout)
-            _pipeline(problem, emit)
+            with _applied_overrides(overrides):
+                _pipeline(problem, emit, overrides)
         except Exception as e:                      # belt and braces
             emit({"type": "error", "message": f"{type(e).__name__}: {e}"})
         finally:
@@ -239,7 +404,7 @@ def live_run(problem: dict):
     yield {"type": "done"}
 
 
-def ndjson_stream(problem: dict):
+def ndjson_stream(problem: dict, overrides: dict | None = None):
     """live_run, framed as newline-delimited JSON for a StreamingResponse."""
-    for ev in live_run(problem):
+    for ev in live_run(problem, overrides):
         yield json.dumps(ev, default=str) + "\n"

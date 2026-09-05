@@ -240,6 +240,11 @@ function mountHeader({active = "", wide = false, variant = "", crumbs = null} = 
     stroke-linejoin="round" aria-hidden="true">
     <path d="M4 19.5V5a2 2 0 0 1 2-2h13v17H6a2 2 0 0 1-2-1.5z"/>
     <path d="M9 8.5l2 2 4-4"/></svg>`;
+  const flaskIcon = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+    stroke="currentColor" stroke-width="2" stroke-linecap="round"
+    stroke-linejoin="round" aria-hidden="true">
+    <path d="M9.5 2.5h5M10 2.5v6.7L4.8 18.6A1.8 1.8 0 0 0 6.4 21.5h11.2a1.8 1.8 0 0 0 1.6-2.9L14 9.2V2.5"/>
+    <path d="M7.2 14.5h9.6"/></svg>`;
 
   // "Practice" is gone. It was a single-item nav pointing at the page the
   // student was already on, so it navigated nowhere and cost the centre of the
@@ -256,6 +261,13 @@ function mountHeader({active = "", wide = false, variant = "", crumbs = null} = 
       href="grades.html"${active === "Grades" ? ' aria-current="page"' : ""}
       >${gradeIcon}<span class="htext">Grades</span></a>`);
   }
+  // The Playground lives in the profile MENU, not the nav bar. Four labelled
+  // destinations plus the view-as toggle overflow the left track at every
+  // window width the header supports (the track is capped near 490px and the
+  // five buttons want ~615px), and .hnav clips - which is what chopped the
+  // view-as label to a stray glyph. It is also the right home for it: a
+  // pipeline troubleshooter is not somewhere an instructor goes daily, and the
+  // menu is already where the other system-level items live.
 
   // An instructor may work through the student side exactly as a student does,
   // and this is the only control that switches between the two. It stores no
@@ -289,6 +301,9 @@ function mountHeader({active = "", wide = false, variant = "", crumbs = null} = 
         <span class="caret" aria-hidden="true">&#9662;</span>
       </button>
       <div class="menu" id="whoMenu" role="menu" hidden>
+        ${role === "instructor" ? `<a class="mi mi-link" href="playground.html"
+          role="menuitem"${active === "Playground" ? ' aria-current="page"' : ""}
+          >${flaskIcon}Playground</a>` : ""}
         <button class="mi" id="miSettings" role="menuitem">Settings</button>
         <button class="mi mi-danger" id="miLogout" role="menuitem">Log out</button>
       </div>
