@@ -24,6 +24,9 @@ import copy
 import json
 import random
 
+from .equivalence import proves_harmless
+from .probe import (NEVER_REACHED, NO_INFECTION, PROPAGATION, UNKNOWN,
+                    probe_site)
 from .identity import get_resolved_entry
 from .ollama_client import chat
 from tests.sandbox import (
@@ -64,6 +67,28 @@ _MIN_MUTANTS = 3
 
 # Fixed seed: the sweep must be exactly repeatable, like mutant generation.
 _SWEEP_SEED = 20260823
+
+# B3. How many decisions the probe must have watched before "it never behaved
+# differently" is worth stopping the round loop over. Three observations is a
+# coincidence; hundreds is a pattern. Deliberately far below the 1,470 seen on
+# combination-sum and far above the handful a barely-exercised line produces.
+_B3_MIN_DECISIONS = 25
+
+# What each probe finding MEANS, in one line, for whoever reads the transcript.
+# Three very different situations that used to look identical from outside.
+_PROBE_DETAIL = {
+    NEVER_REACHED: "no oracle test executes this line at all - this is a gap "
+                   "in the test suite, not an equivalence question. Write a "
+                   "test that reaches it and the mutant resolves itself.",
+    NO_INFECTION:  "the line runs, but the edit never changed the decision it "
+                   "makes - not once across the whole suite. Strong evidence "
+                   "it is harmless, though not proof.",
+    PROPAGATION:   "the line runs AND the edit really did change the decision, "
+                   "but the difference never reached the answer. Could be "
+                   "genuinely harmless, could be a real bug the output format "
+                   "cannot show. Worth a look.",
+    UNKNOWN:       "the probe could not run, so nothing was learned here.",
+}
 
 
 # ── mutation operators (deterministic, no model call) ─────────────────────
@@ -176,16 +201,61 @@ def generate_mutants(solution_code: str) -> list[dict]:
         return []
 
     original_src = ast.unparse(tree)
+    walked = list(ast.walk(tree))
+    # Parent links, so a mutated CONSTANT can be judged through the comparison
+    # that encloses it: `remain < 0` -> `remain < 1` edits the Constant, but
+    # the thing whose behaviour changed is the Compare around it.
+    parent = {id(c): p for p in walked for c in ast.iter_child_nodes(p)}
     mutants = []
     for index, kind, label, slot in _sites(tree):
         mutated = copy.deepcopy(tree)
-        _apply(list(ast.walk(mutated))[index], kind, slot)
+        mut_walked = list(ast.walk(mutated))
+        mut_node = mut_walked[index]
+        _apply(mut_node, kind, slot)
+
+        # A3 - never generate a mutant we can PROVE changes nothing.
+        #
+        # Skipping beats generating-then-excusing: a mutant that never exists
+        # cannot inflate the total, cannot be mistaken for a survivor, and
+        # costs nothing downstream to judge. The alternative (create it, then
+        # remove it from the denominator later) reaches the same rate by a
+        # longer route and leaves phantom rows in the playground.
+        #
+        # proves_harmless is deliberately conservative: it answers True only
+        # for the guarded-`elif` shape it can actually prove, and False for
+        # everything it cannot reason about. It is the only check whose answer
+        # DELETES a mutant, so a false positive would hide a real bug - see
+        # main/equivalence.py, whose self-check pins the three ways earlier
+        # versions of it got this wrong.
+        #
+        # Both mutation kinds that can alter a comparison are checked: the
+        # operator itself (`< -> <=`) and a constant inside it (`< 0 -> < 1`).
+        # Those are the same edit to the same predicate by two routes, and
+        # skipping only the first left the second to be generated and then
+        # puzzled over.
+        orig_cmp = mut_cmp = None
+        if kind == "cmp":
+            orig_cmp, mut_cmp = walked[index], mut_node
+        elif kind == "const":
+            p_o, p_m = parent.get(id(walked[index])), None
+            if isinstance(p_o, ast.Compare):
+                # same position in the copied tree
+                p_m = {id(c): p for p in mut_walked
+                       for c in ast.iter_child_nodes(p)}.get(id(mut_node))
+                orig_cmp, mut_cmp = p_o, p_m
+        if orig_cmp is not None and isinstance(mut_cmp, ast.Compare) \
+                and proves_harmless(tree, orig_cmp, mut_cmp):
+            continue
+
         try:
             code = ast.unparse(mutated)
         except Exception:
             continue
         if code != original_src:            # a no-op edit is not a mutant
-            mutants.append({"code": code, "label": label})
+            # The site coordinates ride along so main/probe.py can instrument
+            # the SAME expression later without re-deriving which one changed.
+            mutants.append({"code": code, "label": label,
+                            "index": index, "kind": kind, "slot": slot})
     return mutants
 
 
@@ -194,6 +264,97 @@ def generate_mutants(solution_code: str) -> list[dict]:
 def _key(inp) -> str:
     """Stable dedupe key for an input argument-list."""
     return json.dumps(inp, sort_keys=True, default=str)
+
+
+_DIVERGENCE_SYSTEM = (
+    "You locate where two near-identical programs diverge. Answer as strict "
+    "JSON only, no prose.")
+
+
+def _ask_divergence_point(problem: dict, original: str, mutant_code: str,
+                          emit=None) -> tuple[str | None, list]:
+    """A5 tier 2 - ask the model for the DIVERGENCE POINT, not for an input.
+
+    Measured, not assumed. Asking for inputs fails on this class of mutant no
+    matter how the request is worded: on reverse_integer's overflow guard, the
+    plain prompt missed, a hint that the edit was on an internal variable
+    missed, and explicit step-by-step inversion instructions missed. Three
+    independent tries of the SAME prompt at temperature 0.6 returned nearly
+    byte-identical lists - so retrying buys nothing either.
+
+    What worked first time was asking a different question. The model reliably
+    names the variable and the exact value where the two branches part
+    (`result`, 2147483648); it is the ARITHMETIC of working backwards to an
+    input that it fumbles - it once reversed 2147483647 instead of the
+    2147483648 it had just correctly identified, one sentence earlier.
+
+    So the labour splits along the grain: the model does the semantics, and
+    _candidates_from_target does the exact computation, which code gets right
+    every time and can be unit-tested.
+
+    Returns (variable_name, [candidate divergence values])."""
+    user = (
+        f"Problem: {problem.get('title','')}\n\n"
+        f"PROGRAM A (correct):\n{original}\n\n"
+        f"PROGRAM B (a single-point edit of A):\n{mutant_code}\n\n"
+        "Do NOT give me inputs to the function. Identify the divergence point "
+        "only.\n"
+        "The edit may sit on an INTERNAL variable rather than on an argument. "
+        "Name that variable, and give the EXACT value(s) of it for which A and "
+        "B take different branches or produce different results. Usually this "
+        "is a single boundary value.\n"
+        'Return JSON only: {"variable": "<name>", "values": [<number>, ...]}')
+    if emit:
+        emit({"type": "llm_asking",
+              "detail": "asking the model WHERE the two programs diverge - "
+                        "the variable and its boundary value, not an input"})
+    raw = chat(GEN_MODEL, _DIVERGENCE_SYSTEM, [{"role": "user", "content": user}],
+               temperature=0.2, fmt="json")
+    data = _first_json_obj(raw) or {}
+    var = data.get("variable")
+    values = [v for v in (data.get("values") or [])
+              if isinstance(v, (int, float)) and not isinstance(v, bool)]
+    if emit:
+        emit({"type": "divergence_point", "variable": var, "values": values})
+    return (var if isinstance(var, str) else None), values[:4]
+
+
+def _candidates_from_target(shape: list, target) -> list[list]:
+    """Inputs that might drive an internal variable to `target`.
+
+    The exact half of A5. Given the argument SHAPE of a real oracle test and a
+    value the internal state must reach, derive candidate arguments by the
+    transformations these problems actually use - the digits reversed (which is
+    literally reverse_integer's computation), the sign flipped, the value
+    itself, and its immediate neighbours.
+
+    This is deliberately a small, honest set rather than a general inverter.
+    Inverting an arbitrary function is not something we can do, and pretending
+    otherwise would produce confident wrong answers. When none of these
+    separate the two programs the caller learns nothing and the mutant stays
+    undetermined, which is the correct outcome for "we could not tell"."""
+    if not isinstance(target, int) or isinstance(target, bool):
+        return []
+    # Neighbours FIRST, then transform each of them - not the other way round.
+    #
+    # The model is reliable about which variable and roughly which boundary,
+    # and unreliable by exactly one: asked about `> 2147483647 -> > 2147483648`
+    # it has named the divergence value as 2147483648 on one run and 2147483647
+    # on another. Transforming only the value it gave makes the whole search
+    # hostage to that off-by-one; transforming its neighbours too costs a
+    # handful of extra executions and absorbs it.
+    derived = set()
+    for base in (target, target + 1, target - 1):
+        reversed_digits = int(str(abs(base))[::-1] or "0")
+        derived.update({base, -base, reversed_digits, -reversed_digits})
+    out = []
+    for value in derived:
+        for pos, arg in enumerate(shape):
+            if isinstance(arg, bool) or not isinstance(arg, int):
+                continue
+            out.append([*shape[:pos], value, *shape[pos + 1:]])
+    # Dedupe, keep order - the search must be repeatable.
+    return list({_key(c): c for c in out}.values())
 
 
 def _candidate_inputs(problem: dict, original: str, mutant_code: str,
@@ -318,47 +479,63 @@ def _sweep_inputs(tests: list, n: int | None = None) -> list[list]:
     return list({_key(c): c for c in out}.values())[:n]
 
 
-def _proves_equivalent(original: str, mutant_code: str, entry: str | None,
-                       tests: list) -> bool:
-    """POSITIVE evidence that a mutation changed nothing.
+# A1 REMOVED _proves_equivalent().
+#
+# It ran the generated sweep and, on full agreement, marked a mutant
+# `proven_equivalent` - which took it OUT of the denominator entirely. That is
+# a proof-strength conclusion drawn from a sample, and the sample cannot bear
+# it: reverse_integer's `> 2147483647 -> > 2147483648` is a real off-by-one in
+# an overflow guard, and it was excused because none of the 183 generated
+# inputs happened to produce the one internal value where the two differ. It
+# shipped as STRONG at 100%. Sixty-six mutants across eighteen problems were
+# excused the same way.
+#
+# Only main/equivalence.proves_harmless may remove a mutant now, because it
+# returns a proof rather than an absence of counterexamples - and A3 applies it
+# at GENERATION time, so those mutants are never created in the first place.
+# The sweep survives below as what it always actually was: a free way to hunt
+# for counterexamples, run BEFORE anything paid (B2).
 
-    Runs both programs across the broad deterministic sweep and requires exact
-    agreement on EVERY input - including agreeing on which inputs raise. Only
-    that earns exclusion from the denominator. A sweep that cannot run (either
-    program failing to execute at all) proves nothing and returns False."""
-    inputs = _sweep_inputs(tests)
-    if not inputs:
-        return False
-    orig = run_solution(original, inputs, entry_name=entry, timeout=_MUTANT_TIMEOUT)
-    if not orig["ok"]:
-        return False                        # no baseline ⇒ nothing proven
-    mut = run_solution(mutant_code, inputs, entry_name=entry, timeout=_MUTANT_TIMEOUT)
-    if not mut["ok"]:
-        return False                        # died where the original ran ⇒ not equivalent
-    return all(_norm(a) == _norm(b)
-               for a, b in zip(orig["results"], mut["results"]))
+# B1 - how many inputs share one subprocess and one timeout.
+#
+# The sweep used to run as a single batch. Some generated inputs make a
+# solution loop forever (negative candidates for combination-sum, a target of
+# two billion), and one such input killed the process and discarded ALL 183
+# results - which is why combination-sum's kill rate never moved across six
+# rounds. Batching bounds the damage to one chunk instead of everything.
+_CHUNK = 16
 
 
 def _first_disagreement(original: str, mutant_code: str, entry: str | None,
                         candidates: list, seen: set) -> dict | None:
     """Run BOTH programs on `candidates` and compare the real results. Returns
-    the first genuine disagreement as {"input", "expected"}, else None."""
+    the first genuine disagreement as {"input", "expected"}, else None.
+
+    Runs in chunks so a single non-terminating input costs its own chunk rather
+    than the whole search - see _CHUNK."""
     candidates = [c for c in candidates if _key(c) not in seen]
     if not candidates:
         return None
 
-    orig = run_solution(original, candidates, entry_name=entry, timeout=_MUTANT_TIMEOUT)
-    if not orig["ok"]:
-        return None                         # can't trust these inputs at all
-    mut = run_solution(mutant_code, candidates, entry_name=entry, timeout=_MUTANT_TIMEOUT)
-
-    for i, inp in enumerate(candidates):
-        expected = orig["results"][i]
-        if isinstance(expected, dict) and "__error__" in expected:
-            continue                        # original fails here → not a valid oracle test
-        got = mut["results"][i] if mut["ok"] else {"__error__": mut["error"]}
-        if _norm(got) != _norm(expected):
-            return {"input": inp, "expected": expected}
+    for start in range(0, len(candidates), _CHUNK):
+        part = candidates[start:start + _CHUNK]
+        orig = run_solution(original, part, entry_name=entry,
+                            timeout=_MUTANT_TIMEOUT)
+        if not orig["ok"]:
+            continue                        # this chunk hangs the ORIGINAL;
+                                            # it proves nothing either way
+        mut = run_solution(mutant_code, part, entry_name=entry,
+                           timeout=_MUTANT_TIMEOUT)
+        for i, inp in enumerate(part):
+            expected = orig["results"][i]
+            if isinstance(expected, dict) and "__error__" in expected:
+                continue                    # original fails here → not a valid
+                                            # oracle test, so not a witness
+            # A mutant that hangs where the original completed IS a real
+            # difference, and the whole chunk failing is the only signal we get.
+            got = mut["results"][i] if mut["ok"] else {"__error__": mut["error"]}
+            if _norm(got) != _norm(expected):
+                return {"input": inp, "expected": expected}
     return None
 
 
@@ -392,20 +569,84 @@ def _counterexample_test(problem: dict, original: str, mutant_code: str,
             emit({"type": "disagreement", "source": "probe",
                   "input": found["input"], "expected": found["expected"]})
         return found
+
+    # B2 - the broad free sweep runs HERE, before anything is paid for.
+    #
+    # It used to run last, after the model call, purely because it was framed
+    # as an equivalence proof rather than a search. But running two programs
+    # and comparing answers is one operation that settles both questions at
+    # once: a disagreement is a counterexample, and total agreement is
+    # evidence of harmlessness. So the free version goes first, and the model
+    # is only paid once ~180 deterministic inputs have come up empty.
+    sweep = _sweep_inputs(tests)
+    if emit:
+        emit({"type": "sweep", "n": len(sweep),
+              "detail": f"{len(sweep)} generated inputs, still free "
+                        f"(deterministic, no LLM cost)"})
+    found = _first_disagreement(original, mutant_code, entry, sweep, seen)
+    if found:
+        if emit:
+            emit({"type": "disagreement", "source": "sweep",
+                  "input": found["input"], "expected": found["expected"]})
+        return found
+
     if emit:
         emit({"type": "probes_exhausted",
-              "detail": "no probe made the programs disagree; asking the model"})
+              "detail": "no free input made the programs disagree; asking the model"})
     found = _first_disagreement(
         original, mutant_code, entry,
         _candidate_inputs(problem, original, mutant_code, emit=emit), seen)
-    if emit:
-        if found:
+    if found:
+        if emit:
             emit({"type": "disagreement", "source": "llm",
                   "input": found["input"], "expected": found["expected"]})
-        else:
+        return found
+
+    # ── A5 tier 2 - ask a different question, then do the arithmetic here ──
+    #
+    # Tier 1 asked for inputs and got boundary values that are not inputs. That
+    # fails whenever the edited line works on a COMPUTED value: separating the
+    # programs then needs the pre-image of a boundary under the function's own
+    # computation, and that is exact arithmetic rather than reasoning.
+    #
+    # Only two tiers, and no repeats. Both were settled by experiment: three
+    # identical tries returned near-identical answers, and a ladder of
+    # progressively stronger hints (name the variable / work backwards / invert
+    # explicitly) missed every time. Changing WHAT is asked worked; changing
+    # how firmly, or how often, did not.
+    shape = next((t["input"] for t in tests if t.get("input")), None)
+    if shape is None:
+        if emit:
             emit({"type": "search_empty",
-                  "detail": "none of the model's inputs made the programs "
-                            "disagree - this alone proves nothing"})
+                  "detail": "no oracle input to derive candidates from"})
+        return None
+    try:
+        var, targets = _ask_divergence_point(problem, original, mutant_code,
+                                             emit=emit)
+    except Exception as e:
+        if emit:
+            emit({"type": "search_error", "error": f"{type(e).__name__}: {e}"})
+        return None
+    for target in targets:
+        derived = _candidates_from_target(shape, target)
+        if not derived:
+            continue
+        if emit:
+            emit({"type": "inverted_candidates", "variable": var,
+                  "target": target, "inputs": derived[:8],
+                  "detail": f"model says {var} must reach {target}; these are "
+                            f"the inputs that computation could come from"})
+        found = _first_disagreement(original, mutant_code, entry, derived, seen)
+        if found:
+            if emit:
+                emit({"type": "disagreement", "source": "inversion",
+                      "input": found["input"], "expected": found["expected"]})
+            return found
+
+    if emit:
+        emit({"type": "search_empty",
+              "detail": "no input from either tier separated the programs - "
+                        "that alone proves nothing, so this stays undetermined"})
     return found
 
 
@@ -448,18 +689,17 @@ def evaluate_oracle(problem: dict, oracle_tests: list, emit=None) -> dict:
       killed_on_retry    the counterexample search found a real distinguishing
                          input -> it becomes a new oracle test, mutant counts
                          as KILLED (numerator +1, denominator +1)
-      proven_equivalent  the broad deterministic sweep found EXACT agreement on
-                         every one of _EQUIVALENCE_SWEEP_SIZE inputs. Positive
-                         evidence, so excluded from the denominator entirely
-      unresolved         neither -> counts AGAINST the oracle (denominator +1,
-                         numerator +0)
+      undetermined       nothing separated the two programs - not the free
+                         probes, not the generated sweep, not the model. That
+                         is ambiguity, not proof of harmlessness, so it is
+                         REPORTED rather than resolved (see A4's range below)
 
     The distinction that matters: "the search found nothing" is not evidence of
-    equivalence, it is absence of evidence, and treating it as proof is what
-    fabricated the old near-universal 1.00 scores. Only the sweep's positive
-    result buys an exclusion. Search errors are unresolved, never excluded.
+    equivalence, it is absence of evidence. Nothing is excused on that basis any
+    more (A1); mutants that CAN be proved harmless are never generated (A3).
 
-        kill_rate = (killed + killed_on_retry) / (total - proven_equivalent)
+        kill_rate_lower = killed_direct / total              (all undetermined are bugs)
+        kill_rate_upper = killed_direct / (total - undetermined)   (all harmless)
 
     A solution yielding fewer than _MIN_MUTANTS mutants is reported
     insufficient_mutants and is never strong, however the ratio comes out.
@@ -482,12 +722,15 @@ def evaluate_oracle(problem: dict, oracle_tests: list, emit=None) -> dict:
                 "insufficient_mutants": len(mutants) < _MIN_MUTANTS,
                 "status": "error", "total_mutants": len(mutants), "killed": 0,
                 "killed_on_retry": 0, "killed_direct": 0,
-                "proven_equivalent": 0, "unresolved": 0,
+                "proven_equivalent": 0, "unresolved": 0, "undetermined": 0,
+                "kill_rate_lower": 0.0, "kill_rate_upper": 0.0,
+                "needs_review": False,
                 "new_tests": [], "mutants": [], "error": base["error"]}
     expected = base["results"]              # ground truth, parallel to `tests`
 
     seen = {_key(t["input"]) for t in tests}
     status = [None] * len(mutants)
+    probes = [None] * len(mutants)
     new_tests = []
 
     # Phase 1 - the oracle exactly as handed in. Kept separate from the repair
@@ -547,10 +790,10 @@ def evaluate_oracle(problem: dict, oracle_tests: list, emit=None) -> dict:
             # an unanswered question counts against the oracle.
             print(f"  ⚠️  counterexample search failed ({type(e).__name__}); "
                   f"{m['label']} left UNRESOLVED")
-            status[i] = "unresolved"
+            status[i] = "undetermined"
             if em:
                 em({"type": "search_error", "error": f"{type(e).__name__}: {e}"})
-                em({"type": "mutant_final", "status": "unresolved"})
+                em({"type": "mutant_final", "status": "undetermined"})
             continue
         if found:
             seen.add(_key(found["input"]))
@@ -563,68 +806,115 @@ def evaluate_oracle(problem: dict, oracle_tests: list, emit=None) -> dict:
                               "test, mutant killed on retry"})
                 em({"type": "mutant_final", "status": "killed_on_retry"})
         else:
-            # The LLM-guided search came up empty. That alone is NOT evidence of
-            # equivalence - it is just as likely a gap the search missed. Demand
-            # positive proof from the broad deterministic sweep; anything less
-            # stays UNRESOLVED and counts against us.
-            if em:
-                em({"type": "equivalence_sweep_start",
-                    "sweep_size": _EQUIVALENCE_SWEEP_SIZE,
-                    "detail": "searched hard and found nothing - that is not "
-                              "proof of harmlessness. Running the broad "
-                              "deterministic sweep to demand positive evidence"})
-            equivalent = _proves_equivalent(solution, m["code"], entry, tests)
-            status[i] = "proven_equivalent" if equivalent else "unresolved"
-            if em:
-                em({"type": "equivalence_sweep_result", "equivalent": equivalent,
-                    "detail": ("exact agreement on every sweep input - proven "
-                               "equivalent, excluded from the score"
-                               if equivalent else
-                               "sweep could not prove equivalence - UNRESOLVED, "
-                               "counts AGAINST the oracle")})
-                em({"type": "mutant_final", "status": status[i]})
+            # A1 - the search came up empty, and that is where it stops.
+            #
+            # Every free input and then the model failed to separate the two
+            # programs. That is genuinely ambiguous: the mutant may be harmless,
+            # or it may be a real bug whose one distinguishing input nothing
+            # reached. The old code resolved the ambiguity by running the sweep
+            # and calling full agreement a proof, which is how a real overflow
+            # bug got excused. We now say what is true - we do not know - and
+            # let A4's range carry it to a human.
+            status[i] = "undetermined"
 
-    results = [{"label": m["label"], "status": s} for m, s in zip(mutants, status)]
+            # A2a - now ask WHY it survived, by watching the edited line while
+            # the real oracle tests run. This changes no verdict (A1: evidence
+            # never excuses); it turns a bare "undetermined" into one of three
+            # findings a person can actually act on. See main/probe.py.
+            pr = probe_site(solution, entry, [t["input"] for t in tests],
+                            m.get("index", -1), m.get("kind", ""),
+                            m.get("slot", 0))
+            probes[i] = pr
+            if em:
+                em({"type": "probe_result", **pr,
+                    "detail": _PROBE_DETAIL.get(pr["verdict"], "")})
+                em({"type": "mutant_final", "status": "undetermined",
+                    "detail": "no free input and no model-suggested input "
+                              "separated the two programs. That is not proof "
+                              "of harmlessness, so this one is reported as "
+                              "undetermined rather than guessed either way."})
+
+    results = [{"label": m["label"], "status": s,
+                **({"probe": p} if p else {})}
+               for m, s, p in zip(mutants, status, probes)]
     killed = status.count("killed") + status.count("killed_on_retry")
     killed_on_retry = status.count("killed_on_retry")
-    proven_equivalent = status.count("proven_equivalent")
-    unresolved = status.count("unresolved")
+    undetermined = status.count("undetermined")
     total = len(mutants)
 
-    # Only PROVEN equivalence leaves the denominator. Unresolved survivors stay
-    # in it and drag the rate down - when in doubt, it counts against us.
-    denom = total - proven_equivalent
-    kill_rate = killed / denom if denom else 0.0
+    # ── A4 - report what is known, as a RANGE ────────────────────────────
+    #
+    # An undetermined mutant is exactly that: we could not tell whether it is a
+    # real bug or a harmless edit. The old code forced it into one of two
+    # verdicts and stated the guess as fact - `unresolved` counted it as a
+    # confirmed bug, `proven_equivalent` deleted it as confirmed harmless. Both
+    # are guesses wearing a verdict's clothing.
+    #
+    # So bound it instead. The two ends are the two ways the ambiguity could
+    # resolve, and the truth is somewhere between:
+    #
+    #   lower = every undetermined mutant is a REAL BUG      (worst case)
+    #   upper = every undetermined mutant is HARMLESS        (best case)
+    #
+    # Combination-sum was reported "67%, WEAK". The truthful statement was
+    # "between 67% and 100%, and we could not tell which".
+    kill_rate_lower = killed_direct / total if total else 0.0
+    scored = total - undetermined
+    kill_rate_upper = killed_direct / scored if scored else 0.0
 
-    # THE RATE THAT DECIDES TRUST. kill_rate above is the POST-REPAIR figure: it
-    # credits the suite for counterexamples the search had to add during this
-    # very pass, which is how the all-True palindrome oracle scored 1.00 STRONG
-    # while missing every negative input. kill_rate_direct is the suite exactly
-    # as it entered this pass. A repaired suite still improves - the new tests
-    # are kept - but it earns STRONG only on a LATER pass, once those tests are
-    # part of the suite it starts with. STRONG is always about the as-handed-in
-    # suite. (No mutants ⇒ 0.0, never a free perfect score.)
-    kill_rate_direct = killed_direct / denom if denom else 0.0
+    # THE DECISION. If the WORST case already clears the bar, the undetermined
+    # mutants cannot change the answer and no human ever needs to look. If even
+    # the BEST case fails, it is weak whatever they turn out to be. Only when
+    # the bar falls between the two ends does the ambiguity actually decide the
+    # verdict - and that is the one case worth a person's time.
+    #
+    # This is what keeps the review queue small: modelled over the old cache,
+    # 34 of 48 problems cleared on the lower bound alone.
+    strong = kill_rate_lower >= CUTOFF_1_KILL_RATE
+    hopeless = kill_rate_upper < CUTOFF_1_KILL_RATE
 
-    # A solution too trivial to mutate cannot earn a verdict at all.
-    insufficient = total < _MIN_MUTANTS
-    strong = (not insufficient) and kill_rate_direct >= CUTOFF_1_KILL_RATE
+    # A solution too trivial to mutate cannot earn a verdict at all. Measured
+    # against the mutants that actually carry the score. (A6: this used to test
+    # `total`, which is a different number the moment anything leaves the
+    # denominator - rotate-list passed a floor of 3 on 9 generated mutants and
+    # was then scored 1/1 = 100% STRONG on the single one that remained.)
+    insufficient = total < _MIN_MUTANTS or (not hopeless and scored < _MIN_MUTANTS)
+    if insufficient:
+        strong = False
+
+    verdict = ("insufficient_mutants" if insufficient
+               else "strong" if strong
+               else "weak" if hopeless
+               else "needs_review")
+
+    # kill_rate_direct stays the headline number - the suite exactly as handed
+    # in, worst case. kill_rate is the post-repair figure, which credits tests
+    # this very pass had to add and so can never earn STRONG on its own.
+    kill_rate_direct = kill_rate_lower
+    kill_rate = killed / total if total else 0.0
 
     out = {"kill_rate": kill_rate,
            "kill_rate_direct": kill_rate_direct,
+           "kill_rate_lower": kill_rate_lower,
+           "kill_rate_upper": kill_rate_upper,
            "strong": strong,
+           "needs_review": verdict == "needs_review",
            "insufficient_mutants": insufficient,
-           "status": ("insufficient_mutants" if insufficient
-                      else "strong" if strong else "weak"),
+           "status": verdict,
            "total_mutants": total, "killed": killed,
            "killed_on_retry": killed_on_retry, "killed_direct": killed_direct,
-           "proven_equivalent": proven_equivalent, "unresolved": unresolved,
+           # Kept at 0: nothing is excused after A1, and A3 stops the provable
+           # ones being generated. Retained so older readers of this dict do
+           # not KeyError.
+           "proven_equivalent": 0,
+           "undetermined": undetermined, "unresolved": undetermined,
            "new_tests": new_tests, "mutants": results, "error": None}
     if emit:
         emit({"type": "evaluation_done", **{k: out[k] for k in (
             "kill_rate", "kill_rate_direct", "strong", "insufficient_mutants",
             "status", "total_mutants", "killed", "killed_on_retry",
-            "killed_direct", "proven_equivalent", "unresolved")}})
+            "killed_direct", "undetermined", "kill_rate_lower",
+            "kill_rate_upper", "needs_review")}})
     return out
 
 
@@ -662,10 +952,39 @@ def validate_oracle(problem: dict, initial_tests: list,
               f"post_repair={result['kill_rate']:.2f} "
               f"killed={result['killed']}/{result['total_mutants']} "
               f"(on_retry={result['killed_on_retry']}) "
-              f"unresolved={result['unresolved']} "
-              f"proven_equiv={result['proven_equivalent']} "
+              f"undetermined={result['undetermined']} "
               f"{result['status'].upper()}")
         if result["strong"] or rnd == max_rounds:
+            break
+
+        # B3 - stop when the SURVIVORS cannot be killed, not when the score
+        # stops moving.
+        #
+        # The first version of this rule stopped as soon as a round failed to
+        # improve the number, which is wrong: fresh test batches are generated
+        # by a model and genuinely vary, so a batch that misses in round 2 can
+        # hit in round 3. The repair phase has really earned kills that way.
+        #
+        # What DOES justify stopping is evidence about the mutants themselves.
+        # If every remaining survivor was probed and the edited line never once
+        # behaved differently across the whole suite, more tests of the same
+        # kind are not going to separate them - combination-sum bought five
+        # rounds of exactly that. A survivor whose line was never REACHED is
+        # the opposite case: more tests are precisely what it needs, so those
+        # keep the loop running.
+        probes = [m.get("probe") for m in result["mutants"]
+                  if m["status"] == "undetermined"]
+        if probes and all(p and p.get("verdict") == NO_INFECTION
+                          and p.get("reached", 0) >= _B3_MIN_DECISIONS
+                          for p in probes):
+            msg = (f"every remaining survivor was watched across "
+                   f"{sum(p['reached'] for p in probes)} decisions and never "
+                   f"once behaved differently - more tests cannot separate "
+                   f"them, stopping")
+            print(f"  [mutation] {msg}")
+            if emit:
+                emit({"type": "stopping_early", "reason": "no_infection",
+                      "detail": msg})
             break
 
         seen = {_key(t["input"]) for t in tests}
@@ -688,3 +1007,162 @@ def validate_oracle(problem: dict, initial_tests: list,
                   "new_tests": fresh})
 
     return {**result, "rounds": rnd, "final_tests": tests}
+
+if __name__ == "__main__":
+    # ── self-check ────────────────────────────────────────────────────────
+    # Pure and free: AST rewriting, the seeded sweep, and the scoring
+    # arithmetic. No oracle, no subprocess, no model call.
+    #     python -m main.mutation
+    #
+    # Every case below is a real observation, not an invented example. The
+    # operator cases are lines from assignment_20.py that generated ZERO
+    # mutants before; the scoring cases are verdicts read out of the live
+    # cache; the divergence cases are bugs that shipped into three separate
+    # prototypes of the structural equivalence check.
+
+    def _labels(src):
+        return [m["label"] for m in generate_mutants(src)]
+
+    # ── operators the generator was blind to (A0) ─────────────────────────
+    # AugAssign stores its operator in node.op rather than wrapping a BinOp,
+    # so matching only BinOp missed every += -= *= //= in the codebase.
+    for op, want in (("+=", "+= -> -="), ("-=", "-= -> +="),
+                     ("*=", "*= -> /="), ("//=", "//= -> *=")):
+        src = f"def f(n):\n    t = 0\n    t {op} n\n    return t\n"
+        assert any(want in l for l in _labels(src)), (op, _labels(src))
+
+    # Binary operators that had no entry in the flip table.
+    for src, want in (("def f(a,b):\n    return a % b\n",  "% -> //"),
+                      ("def f(a,b):\n    return a ** b\n", "** -> *"),
+                      ("def f(a,b):\n    return a ^ b\n",  "^ -> &"),
+                      ("def f(a,b):\n    return a << b\n", "<< -> >>")):
+        assert any(want in l for l in _labels(src)), (want, _labels(src))
+
+    assert any("is -> is not" in l
+               for l in _labels("def f(x):\n    return x is None\n"))
+
+    # A chained comparison is ONE Compare node carrying several operators. The
+    # old guard was `len(node.ops) == 1`, which skipped `0 <= i < n` entirely -
+    # and a bounds check is exactly where an off-by-one hides.
+    chained = _labels("def f(i, n):\n    return 0 <= i < n\n")
+    assert any("<= -> <" in l for l in chained), chained
+    assert any(": < -> <=" in l for l in chained), chained
+
+    # is_armstrong: two mutable sites on one line, both previously invisible.
+    # It produced 2 mutants - under _MIN_MUTANTS - so it could never be STRONG
+    # however good its tests were.
+    armstrong = ("def f(n):\n    digits = str(n)\n    power = len(digits)\n"
+                 "    total = 0\n    for ch in digits:\n"
+                 "        total += int(ch) ** power\n    return total == n\n")
+    assert len(_labels(armstrong)) >= _MIN_MUTANTS, _labels(armstrong)
+
+    # Every mutant must be valid Python that actually differs from the source.
+    for m in generate_mutants(armstrong):
+        ast.parse(m["code"])
+        assert m["code"] != ast.unparse(ast.parse(armstrong))
+
+    # ── the seeded sweep is reproducible ──────────────────────────────────
+    # Two runs must produce byte-identical sweeps, or a verdict stops being
+    # repeatable and two identical problems can disagree.
+    seed_tests = [{"input": [3, 7], "expected": 10}]
+    assert _sweep_inputs(seed_tests) == _sweep_inputs(seed_tests)
+    assert len(_sweep_inputs(seed_tests, n=25)) <= 25
+
+    # ── scoring arithmetic: A4's range and A6's floor ────────────────────
+    def _score(total, killed_direct, undetermined):
+        """The lines evaluate_oracle uses to reach a verdict, in isolation."""
+        lower = killed_direct / total if total else 0.0
+        scored = total - undetermined
+        upper = killed_direct / scored if scored else 0.0
+        strong = lower >= CUTOFF_1_KILL_RATE
+        hopeless = upper < CUTOFF_1_KILL_RATE
+        insufficient = total < _MIN_MUTANTS or (not hopeless and scored < _MIN_MUTANTS)
+        return ("insufficient" if insufficient else "strong" if strong
+                else "weak" if hopeless else "needs_review"), lower, upper
+
+    # No ambiguity at all: the range collapses to a point.
+    assert _score(10, 10, 0)[0] == "strong"
+    assert _score(10,  5, 0)[0] == "weak"
+
+    # combination-sum: 4 killed, 2 undetermined of 6. Worst case 67% (fails),
+    # best case 100% (passes) - so the undetermined ones actually decide it.
+    verdict, lo, hi = _score(6, 4, 2)
+    assert verdict == "needs_review" and lo == 4/6 and hi == 1.0, (verdict, lo, hi)
+
+    # THE RULE THAT KEEPS THE QUEUE SMALL: if the WORST case already clears the
+    # bar, the undetermined mutants cannot change the answer - no human needed.
+    assert _score(20, 18, 2)[0] == "strong", "18/20 worst case = 90% >= 85%"
+
+    # And if the BEST case still fails, it is weak whatever they turn out to be.
+    assert _score(20, 5, 3)[0] == "weak", "5/17 best case = 29% < 85%"
+
+    # A6: a floor on the mutants actually carrying the score. rotate-list had 9
+    # generated and 8 that never resolved - one mutant cannot decide a verdict.
+    assert _score(9, 1, 8)[0] == "insufficient"
+    assert _score(5, 1, 4)[0] == "insufficient"
+    # ...but only when the ambiguity is what shrank it. An honestly weak
+    # 9-mutant suite stays weak rather than hiding behind "insufficient".
+    assert _score(9, 1, 0)[0] == "weak"
+    # Too trivial to mutate at all, as always.
+    assert _score(2, 2, 0)[0] == "insufficient"
+
+    # ── divergence sets: three bugs that shipped into prototypes ──────────
+    # The structural check (A2b) proves equivalence by deriving WHERE two
+    # predicates disagree, then showing every such value is unreachable. All
+    # three failures below were false answers about that first step.
+    def _divergence(orig_src, mut_src, var):
+        """Search band derived from the CONSTANTS, never hardcoded."""
+        consts = [n.value
+                  for src in (orig_src, mut_src)
+                  for n in ast.walk(ast.parse(src, mode="eval"))
+                  if isinstance(n, ast.Constant) and isinstance(n.value, int)]
+        lo, hi = min(consts) - 2, max(consts) + 2
+        f_o = eval(f"lambda {var}: {orig_src}")
+        f_m = eval(f"lambda {var}: {mut_src}")
+        return [v for v in range(lo, hi + 1) if f_o(v) != f_m(v)]
+
+    # Prototype 3 hardcoded range(-10000, 10001). Any constant outside it
+    # returned [] - read as "they never differ" - read as EQUIVALENT. The last
+    # case is reverse_integer's real overflow bug, which it excused.
+    assert _divergence("remain < 0", "remain <= 0", "remain") == [0]
+    assert _divergence("remain < 0", "remain < 1", "remain") == [0]
+    assert _divergence("r < 20000", "r <= 20000", "r") == [20000]
+    assert _divergence("r > 2147483647", "r > 2147483648", "r") == [2147483648]
+    assert _divergence("x >= 100", "x > 100", "x") == [100]
+
+    # The derived band must be complete, not merely lucky: a search 500,000
+    # values wider finds nothing more.
+    for o, m, v in (("r < 20000", "r <= 20000", "r"),
+                    ("r > 2147483647", "r > 2147483648", "r")):
+        f_o, f_m = eval(f"lambda {v}: {o}"), eval(f"lambda {v}: {m}")
+        c = [n.value for s in (o, m) for n in ast.walk(ast.parse(s, mode="eval"))
+             if isinstance(n, ast.Constant)]
+        wide = [x for x in range(min(c) - 500_000, max(c) + 500_001)
+                if f_o(x) != f_m(x)]
+        assert wide == _divergence(o, m, v), (o, m, wide)
+
+    # ── A5: the exact half - deriving inputs from a divergence target ────
+    # The model supplies `target`; this must turn it into candidate arguments
+    # without any model involvement. reverse_integer is the case it exists for:
+    # result must reach 2147483648, and the input that produces it is that
+    # number's digits reversed.
+    derived = _candidates_from_target([123], 2147483648)
+    assert [8463847412] in derived, derived
+    # ...and it must survive the model being off by one, which it observably is.
+    off_by_one = _candidates_from_target([123], 2147483647)
+    assert [8463847412] in off_by_one, "neighbours are transformed too"
+    assert [2147483648] in derived, "the boundary itself is still worth trying"
+    assert [-8463847412] in derived, "sign flips are cheap and often right"
+
+    # It must substitute into the right argument position, and leave the others.
+    two = _candidates_from_target([5, 7], 21)
+    assert [12, 7] in two and [5, 12] in two, two
+    # A non-integer argument is never substituted into.
+    mixed = _candidates_from_target([[1, 2], 9], 21)
+    assert all(c[0] == [1, 2] for c in mixed), mixed
+    # Repeatable, and nothing derived from a non-integer target.
+    assert _candidates_from_target([1], 21) == _candidates_from_target([1], 21)
+    assert _candidates_from_target([1], "x") == []
+    assert _candidates_from_target([1], True) == []
+
+    print("mutation.py self-check OK")

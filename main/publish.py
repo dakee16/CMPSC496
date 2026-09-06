@@ -91,6 +91,7 @@ _ERROR_STAGE = (
     ("test generation failed",       "tests"),
     ("no usable test cases",         "tests"),
     ("not strong enough",            "strength"),
+    ("waiting on your review",       "strength"),
     ("could not split this problem", "steps"),
 )
 
@@ -149,6 +150,33 @@ def prepare_problem(problem: dict) -> dict:
                              "usually means the inputs aren't simple values.")
     try:
         if not is_oracle_strong(problem):
+            # A4 - "not strong" is now two different situations, and only one of
+            # them is a failure the instructor can fix by editing the problem.
+            #
+            #   weak          even in the best case the tests miss too much
+            #   needs_review  the tests may well be fine; a handful of
+            #                 deliberate errors could not be judged either way,
+            #                 and a person has to look
+            #
+            # The second is NOT the instructor writing a bad problem, so it must
+            # not be reported as one. It gets its own outcome, and the upload
+            # page offers to walk them through it.
+            from main.identity import content_hash
+            from main.oracle_store import load_cache
+            verdict = (load_cache().get(content_hash(problem)) or {})
+            if verdict.get("status") == "needs_review":
+                return {"slug": slug, "ready": False, "chunks": 0,
+                        "stage": "strength", "needs_review": True,
+                        "undetermined": verdict.get("undetermined", 0),
+                        "kill_rate_lower": verdict.get("kill_rate_lower", 0.0),
+                        "kill_rate_upper": verdict.get("kill_rate_upper", 0.0),
+                        # Still an error string, because that column is the
+                        # only thing a stored row keeps and a row with no
+                        # explanation reads as an unexplained failure later.
+                        # The wording says who has to act and that the problem
+                        # itself may be fine.
+                        "error": ("Waiting on your review: a few checks on the "
+                                  "generated tests came back inconclusive.")}
             return fail("strength", "The generated tests were not strong enough "
                                     "to grade this reliably.")
     except Exception as e:
@@ -174,13 +202,26 @@ def prepare_assignment_stream(problems: list[dict]):
     total = len(problems)
     yield {"event": "start", "total": total}
     ready = 0
+    review: list[dict] = []
     for i, p in enumerate(problems, 1):
         yield {"event": "preparing", "index": i, "total": total,
                "slug": p.get("slug", "?"), "title": p.get("title", "")}
         res = prepare_problem(p)
         ready += 1 if res["ready"] else 0
+        if res.get("needs_review"):
+            review.append({"slug": res["slug"], "title": p.get("title", ""),
+                           "undetermined": res.get("undetermined", 0),
+                           "kill_rate_lower": res.get("kill_rate_lower", 0.0),
+                           "kill_rate_upper": res.get("kill_rate_upper", 0.0)})
         yield {"event": "prepared", "index": i, "total": total, **res}
-    yield {"event": "done", "total": total, "ready": ready, "failed": total - ready}
+    # `blocked` is the count the teacher can act on by editing the problem.
+    # Review problems are held back from students too, but the fix is a person
+    # looking at a test suite, not a rewrite - so they are counted separately
+    # and `failed` no longer conflates the two.
+    yield {"event": "done", "total": total, "ready": ready,
+           "failed": total - ready - len(review),
+           "review": review,
+           "n_review": len(review)}
 
 
 def save_manual_decomposition(problem: dict, header: str,
@@ -234,8 +275,48 @@ if __name__ == "__main__":
             ("the solution could not be run - check that it executes", "runs"),
             ("No usable test cases could be generated.", "tests"),
             ("The generated tests were not strong enough to grade this.", "strength"),
+            ("Waiting on your review: a few checks came back inconclusive.", "strength"),
             ("Could not split this problem into steps that hold together.", "steps"),
             ("something nobody has ever written", "steps")):
         assert stage_of_error(text) == want, (text, stage_of_error(text))
+
+    # The summary event is what the upload page counts on, and its whole point
+    # is that "held for review" is NOT "failed". Stub preparation so the three
+    # outcomes are exercised without a model, a sandbox or a database.
+    _outcomes = {
+        "a": {"slug": "a", "ready": True, "chunks": 3, "n_tests": 9,
+              "stage": None, "error": None},
+        "b": {"slug": "b", "ready": False, "chunks": 0, "stage": "tests",
+              "error": "test generation failed"},
+        "c": {"slug": "c", "ready": False, "chunks": 0, "stage": "strength",
+              "needs_review": True, "undetermined": 2,
+              "kill_rate_lower": 0.67, "kill_rate_upper": 1.0,
+              "error": "Waiting on your review: ..."},
+    }
+    # Patched in THIS module's globals - run as __main__ that is the namespace
+    # prepare_assignment_stream actually resolves the name in.
+    _real = prepare_problem
+    globals()["prepare_problem"] = lambda p: _outcomes[p["slug"]]
+    try:
+        events = list(prepare_assignment_stream(
+            [{"slug": s, "title": s.upper()} for s in ("a", "b", "c")]))
+    finally:
+        globals()["prepare_problem"] = _real
+
+    done = events[-1]
+    assert done["event"] == "done" and done["total"] == 3, done
+    assert done["ready"] == 1, done
+    # The one held for review must not be counted as a failure: a teacher told
+    # "2 need attention" goes and edits a problem that may need no edit at all.
+    assert done["failed"] == 1, done
+    assert done["n_review"] == 1 and len(done["review"]) == 1, done
+    assert done["review"][0] == {"slug": "c", "title": "C", "undetermined": 2,
+                                 "kill_rate_lower": 0.67,
+                                 "kill_rate_upper": 1.0}, done["review"]
+    assert done["ready"] + done["failed"] + done["n_review"] == done["total"]
+    # And the review row still carries its flag on the per-problem event, which
+    # is what picks the third badge instead of "needs work".
+    prepared = [e for e in events if e["event"] == "prepared"]
+    assert [bool(e.get("needs_review")) for e in prepared] == [False, False, True]
 
     print("publish.py self-check OK")

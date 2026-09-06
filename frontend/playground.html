@@ -417,6 +417,13 @@ function renderList(filter){
         tags.push(`<span class="tag bad">${esc(STAGE_WORDS[p.stage] || p.stage)}</span>`);
       if (p.oracle === "strong")
         tags.push(`<span class="tag ok">oracle ${Math.round((p.kill_rate_direct || 0) * 100)}%</span>`);
+      else if (p.oracle === "review")
+        tags.push(`<span class="tag warn" title="${
+          p.undetermined || 0} mutant${p.undetermined === 1 ? "" : "s"} undetermined. Best case ${
+          Math.round((p.kill_rate_upper || 0) * 100)}%, worst case ${
+          Math.round((p.kill_rate_lower || 0) * 100)}%.">oracle ${
+          Math.round((p.kill_rate_lower || 0) * 100)}–${
+          Math.round((p.kill_rate_upper || 0) * 100)}%</span>`);
       else if (p.oracle === "weak")
         tags.push(`<span class="tag warn">oracle weak</span>`);
       else
@@ -951,7 +958,13 @@ $("rawBtn").onclick = () => {
   $("rawBtn").setAttribute("aria-expanded", String(showing));
 };
 
-loadProblems();
+// ?slug=... opens straight onto one problem. This is what the upload page's
+// "Review now" links to, so an instructor lands on the problem they were just
+// told about instead of hunting for it in a list of twenty.
+loadProblems().then(() => {
+  const want = new URLSearchParams(location.search).get("slug");
+  if (want && problems.some(p => p.slug === want)) openProblem(want);
+});
 loadParams();
 </script>
 </body>

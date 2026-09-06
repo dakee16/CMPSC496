@@ -490,8 +490,13 @@ def playground_problems(request: Request):
         key = content_hash({"description": p.get("description") or "",
                             "solution": p.get("solution") or ""})
         oracle = cache.get(key)
+        # Three states, not two. "review" is a suite that may well be fine but
+        # carries checks nothing could decide; calling that "weak" sends the
+        # instructor rewriting a problem that might need no change at all.
         oracle_state = (None if not (isinstance(oracle, dict) and "strong" in oracle)
-                        else "strong" if oracle["strong"] else "weak")
+                        else "strong" if oracle["strong"]
+                        else "review" if oracle.get("status") == "needs_review"
+                        else "weak")
         out.append({
             "slug": p["slug"], "title": p.get("title") or p["slug"],
             "difficulty": p.get("difficulty"),
@@ -506,6 +511,9 @@ def playground_problems(request: Request):
             "oracle": oracle_state,
             "kill_rate_direct": (oracle or {}).get("kill_rate_direct")
                                 if oracle_state else None,
+            "kill_rate_lower": (oracle or {}).get("kill_rate_lower"),
+            "kill_rate_upper": (oracle or {}).get("kill_rate_upper"),
+            "undetermined": (oracle or {}).get("undetermined"),
             "pool_entries": len(pool.get(key) or []),
         })
     # Broken first - this list exists to find them.

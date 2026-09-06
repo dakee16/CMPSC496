@@ -105,6 +105,33 @@
   .fixActs{display:flex; gap:var(--s2); align-items:center; flex-wrap:wrap;
     margin-top:var(--s4)}
 
+  /* The end-of-run review prompt. */
+  .rvScrim{position:fixed; inset:0; z-index:50; display:grid; place-items:center;
+    padding:var(--s4); background:rgba(8,11,18,.62); backdrop-filter:blur(3px);
+    animation:rvIn .18s var(--ease) both}
+  .rvScrim[hidden]{display:none}
+  @keyframes rvIn{from{opacity:0} to{opacity:1}}
+  .rvBox{width:min(560px,100%); max-height:88vh; overflow:auto;
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:var(--r-lg); padding:var(--s4); box-shadow:var(--shadow-lg);
+    animation:rise .22s var(--ease) both}
+  .rvBox h3{margin:0 0 var(--s3); font-size:17px}
+  .rvLead{margin:0 0 var(--s3); font-size:13.5px; line-height:1.65;
+    color:var(--text-muted)}
+  .rvList{list-style:none; margin:var(--s4) 0 0; padding:0; display:grid; gap:8px}
+  .rvList li{display:flex; gap:var(--s3); align-items:center; padding:10px 12px;
+    border-radius:var(--r-md); background:var(--surface-raised);
+    border:1px solid var(--glass-line)}
+  .rvList .nm{font-weight:600; font-size:13.5px; min-width:0;
+    overflow-wrap:anywhere}
+  .rvList .sub{display:block; margin-top:3px; font-weight:400; font-size:12px;
+    color:var(--text-subtle); font-variant-numeric:tabular-nums}
+  .rvList a{margin-left:auto; flex:none; font-size:12.5px}
+  .rvActs{display:flex; gap:var(--s2); justify-content:flex-end;
+    margin-top:var(--s4); flex-wrap:wrap}
+  .rvFoot{margin:var(--s3) 0 0; font-size:12px; color:var(--text-subtle);
+    line-height:1.55}
+
   /* The four-line example. It teaches the format faster than the paragraph
      above it does, so it comes first and the full template comes second. */
   .fmtLead{font-size:12.5px; color:var(--text-subtle); margin:11px 0 7px}
@@ -193,6 +220,35 @@
     <!-- Upload results land here. Without a live region a teacher uploads an
          assignment and is told nothing about whether it worked. -->
     <div id="summary" role="status" aria-live="polite"></div>
+  </div>
+
+  <!-- Shown once, at the end of a run, when preparation finished but a few
+       problems could not be signed off automatically. Deliberately written
+       without a word of the machinery behind it: the instructor is being asked
+       to make a judgement about their own problem, not to read a test report. -->
+  <div class="rvScrim" id="rvScrim" hidden>
+    <div class="rvBox" role="dialog" aria-modal="true" aria-labelledby="rvTitle">
+      <h3 id="rvTitle">A few problems need a second opinion</h3>
+      <p class="rvLead">
+        MicroTutor writes test cases for every problem, then checks them by
+        breaking your solution on purpose. If a test notices the break, the
+        tests are doing their job.
+      </p>
+      <p class="rvLead">
+        For the problems below, a few of those deliberate breaks slipped past.
+        That means one of two things, and MicroTutor cannot tell which on its
+        own: either the break made no difference to the answer (harmless), or
+        it did and a test case is missing. Until someone looks, these stay
+        hidden from students.
+      </p>
+      <ul class="rvList" id="rvList"></ul>
+      <div class="rvActs">
+        <button class="ghost" id="rvLater">Ignore for now</button>
+        <button id="rvNow">Review the first one</button>
+      </div>
+      <p class="rvFoot">Ignoring is safe. Nothing is lost, and you can come
+        back from Playground in the profile menu whenever you want.</p>
+    </div>
   </div>
 
   <div class="card" id="list">
@@ -478,21 +534,32 @@ function handle(ev){
   } else if (ev.event === "prepared") {
     run.done = ev.index;
     setProgress(ev.index / ev.total * 100);
-    if (ev.ready) setRow(ev.slug, "ok", `Ready. ${ev.chunks} steps, ${ev.n_tests} tests.`);
-    else          setRow(ev.slug, "bad", ev.error || "could not be prepared");
+    if (ev.ready)            setRow(ev.slug, "ok", `Ready. ${ev.chunks} steps, ${ev.n_tests} tests.`);
+    // Held back, but not because the problem is wrong - the tests could not be
+    // signed off without a person. A different word and a different colour,
+    // because telling an instructor their problem failed when it may be
+    // perfectly fine sends them off editing something that needs no edit.
+    else if (ev.needs_review) setRow(ev.slug, "warn",
+      "Waiting on your review. The tests look close, but a few checks came back inconclusive.");
+    else                      setRow(ev.slug, "bad", ev.error || "could not be prepared");
     tickElapsed();
   } else if (ev.event === "done") {
     setProgress(100);
     $("runTitle").textContent = "Preparation finished";
     $("runCount").textContent = `${ev.total} problem${ev.total === 1 ? "" : "s"} in `
       + `${elapsed(Date.now() - run.started)}`;
-    const cls = ev.failed === 0 ? "ok" : (ev.ready === 0 ? "bad" : "warn");
+    const review = ev.review || [];
+    const cls = (ev.failed === 0 && !review.length) ? "ok"
+              : (ev.ready === 0 ? "bad" : "warn");
     let msg = `${ev.ready} of ${ev.total} ready for students.`;
     if (ev.failed) msg += ` ${ev.failed} need attention, and students will not see those.
       Fix the problem statement and upload again, or split that problem into steps yourself.`;
+    if (review.length) msg += ` ${review.length} ${review.length === 1 ? "is" : "are"} `
+      + `waiting on your review.`;
     $("summary").innerHTML = `<div class="banner ${cls}">${esc(msg)}</div>`;
     toast(msg, cls);
     endRun();
+    if (review.length) openReview(review);
   }
 }
 
@@ -509,13 +576,51 @@ function addRow(slug, state, title, why){
   setRow(slug, state, why);
 }
 
+/* ---------- the end-of-run review prompt ---------- */
+
+function openReview(review){
+  // The range is the honest statement of what is known: the low end assumes
+  // every inconclusive check is a real gap, the high end assumes none is. The
+  // instructor is being asked to close that gap, so it is the one number worth
+  // showing - and it is shown as plain percentages with no vocabulary attached.
+  $("rvList").innerHTML = review.map(r => {
+    const lo = Math.round((r.kill_rate_lower || 0) * 100);
+    const hi = Math.round((r.kill_rate_upper || 0) * 100);
+    const n  = r.undetermined || 0;
+    return `<li>
+      <span class="nm">${esc(r.title || r.slug)}
+        <span class="sub">${n} check${n === 1 ? "" : "s"} inconclusive &middot;
+          between ${lo}% and ${hi}% of the deliberate breaks were caught</span>
+      </span>
+      <a href="playground.html?slug=${encodeURIComponent(r.slug)}">Open</a>
+    </li>`;
+  }).join("");
+  $("rvNow").textContent = review.length === 1
+    ? "Review it now" : "Review the first one";
+  $("rvNow").onclick = () => {
+    location.href = `playground.html?slug=${encodeURIComponent(review[0].slug)}`;
+  };
+  $("rvScrim").hidden = false;
+  $("rvLater").focus();
+}
+
+function closeReview(){ $("rvScrim").hidden = true; $("go").focus(); }
+$("rvLater").onclick = closeReview;
+$("rvScrim").addEventListener("click",
+  e => { if (e.target === $("rvScrim")) closeReview(); });
+addEventListener("keydown", e => {
+  if (e.key === "Escape" && !$("rvScrim").hidden) closeReview();
+});
+
 function setRow(slug, state, why){
   const li = run && run.rows[slug];
   if (!li) return;
   const p = li.querySelector(".pill");
-  p.className = "pill " + (state === "ok" ? "ok" : state === "bad" ? "bad" : "");
+  p.className = "pill " + (state === "ok" ? "ok" : state === "bad" ? "bad"
+                        : state === "warn" ? "warn" : "");
   p.innerHTML = state === "ok" ? "ready"
               : state === "bad" ? "needs work"
+              : state === "warn" ? "your review"
               : '<span class="spin" aria-hidden="true"></span> working';
   li.querySelector(".why").textContent = why || "";
   if (state !== "run"){
