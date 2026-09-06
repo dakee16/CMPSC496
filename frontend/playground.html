@@ -157,6 +157,7 @@
   .sline b{color:var(--text); font-weight:600}
   .sline.good{color:var(--success)}
   .sline.bad{color:var(--danger)}
+  .sline.warn{color:var(--warning)}
 
   /* console for captured pipeline prints (decomposition retries live here) */
   .konsole{background:var(--code-bg-deep); border:1px solid var(--border);
@@ -200,15 +201,33 @@
   .mchip.retry{background:var(--warning-bg); color:var(--warning)}
   .mchip.equiv{background:var(--accent-tint); color:var(--accent-ink)}
   .mchip.unres{background:var(--danger-bg); color:var(--danger)}
+  /* Undetermined is not a failure and not a pass - it is the one outcome that
+     asks a person for something, so it gets the warning tone, not the red. */
+  .mchip.undet{background:var(--warning-bg); color:var(--warning)}
+  /* The probe finding: why this survivor survived. */
+  .probe{margin-top:5px; padding:7px 10px; border-radius:7px;
+    background:var(--warning-bg); border:1px solid var(--warning-line, transparent);
+    font-size:12px; line-height:1.55}
+  .probe b{color:var(--warning); font-family:var(--font-mono); font-size:11px;
+    letter-spacing:.05em}
+  .probe .pnum{font-variant-numeric:tabular-nums; color:var(--text-subtle)}
 
   /* verdict + chunk cards */
-  .verdict{display:flex; align-items:center; gap:12px; padding:12px 14px;
+  /* align-items:flex-start, not center: the review copy runs to several lines
+     and a centred title drifts into the middle of the paragraph. */
+  .verdict{display:flex; align-items:flex-start; gap:12px; padding:12px 14px;
            border-radius:var(--r-sm); font-size:13.5px; line-height:1.5}
-  .verdict b{font-family:var(--font-display); font-size:15px; letter-spacing:.02em}
+  .verdict b{font-family:var(--font-display); font-size:15px; letter-spacing:.02em;
+             flex:none; white-space:nowrap}
+  .verdict span b{font-family:inherit; font-size:inherit; white-space:normal}
   .verdict.strong{background:var(--success-bg); color:var(--success);
                   border:1px solid var(--success-line)}
-  .verdict.weak{background:var(--warning-bg); color:var(--warning);
-                border:1px solid var(--warning-line)}
+  /* Three outcomes need three colours. Review is the one that asks a person
+     for something (warning); weak is the one that failed outright (danger). */
+  .verdict.review{background:var(--warning-bg); color:var(--warning);
+                  border:1px solid var(--warning-line)}
+  .verdict.weak{background:var(--danger-bg); color:var(--danger);
+                border:1px solid var(--danger-line, var(--warning-line))}
   .chunkCard{border:1px solid var(--glass-line); border-radius:var(--r-sm);
              padding:10px 12px}
   .chunkCard .cp{font-size:12.5px; color:var(--text); margin:0 0 8px; line-height:1.5}
@@ -626,11 +645,16 @@ function mutantRow(m){
 
 function setChip(el, status){
   const chip = el.querySelector(".mchip");
+  // "undetermined" is the outcome A1 introduced and the one this screen exists
+  // to help resolve, so it needs its own word and its own colour. It used to
+  // fall through to the grey "pending" chip, which reads as "still running".
+  // "proven_equivalent" is gone: nothing is excused by a failed search any
+  // more, and the only mutants that ARE provably harmless are never generated.
   const map = {
     killed:            ["killed", "killed"],
     killed_on_retry:   ["retry", "killed on retry"],
-    proven_equivalent: ["equiv", "equivalent"],
-    unresolved:        ["unres", "unresolved"],
+    undetermined:      ["undet", "undetermined"],
+    unresolved:        ["undet", "undetermined"],   // legacy name, same thing
     survived:          ["retry", "survived"],
   };
   const [cls, text] = map[status] || ["pend", status];
@@ -759,7 +783,28 @@ const HANDLERS = {
     mutLog(ev.index, `Trying <b>${(ev.inputs || []).length}</b> free boundary
       probes (deterministic, no model cost).`);
   },
+  // B2 - the free sweep now runs BEFORE any model call, so the transcript has
+  // to show it in that position or the cost story reads backwards.
+  sweep(ev){
+    mutLog(ev.index, `Sweeping <b>${ev.n}</b> generated inputs — deterministic,
+      seeded, and still free. The model is only asked once these come up empty.`);
+  },
   probes_exhausted(ev){ mutLog(ev.index, esc(ev.detail || "No probe separated them — asking the model.")); },
+
+  // A5 tier 2. Asking for the divergence POINT rather than for inputs is the
+  // change that killed the reverse_integer overflow bug, so it is worth
+  // narrating: the model supplies a target, the arithmetic happens locally.
+  divergence_point(ev){
+    mutLog(ev.index, `Tier 2 — asked where the two programs must diverge rather
+      than for an input. Model says <b>${esc(String(ev.variable))}</b> must reach
+      <b>${esc((ev.values || []).join(", "))}</b>.`);
+  },
+  inverted_candidates(ev){
+    mutLog(ev.index, `Working backwards from ${esc(String(ev.variable))} =
+      <b>${esc(String(ev.target))}</b> (and its neighbours) to inputs whose
+      computation could land there:
+      <code>${esc(JSON.stringify(ev.inputs || []))}</code>`);
+  },
   llm_asking(ev){ mutLog(ev.index, esc(ev.detail || "Asking the model for distinguishing inputs…")); },
   llm_candidates(ev){
     mutLog(ev.index, `Model proposed: <code>${esc(j(ev.inputs || []))}</code>
@@ -776,15 +821,44 @@ const HANDLERS = {
       <b>${ev.n_tests}</b> tests.`);
   },
   search_empty(ev){ mutLog(ev.index, esc(ev.detail || "")); },
-  search_error(ev){ mutLog(ev.index, `Search failed: <code>${esc(ev.error || "")}</code> — left UNRESOLVED.`); },
-  equivalence_sweep_start(ev){
-    mutLog(ev.index, `Running the ${ev.sweep_size}-input deterministic sweep —
-      only EXACT agreement on every input excuses a survivor.`);
+  search_error(ev){ mutLog(ev.index, `Search failed: <code>${esc(ev.error || "")}</code> — left undetermined.`); },
+  // equivalence_sweep_start / equivalence_sweep_result were removed with A1.
+  // Nothing emits them any more, and their text stated the rule that was
+  // deleted - that total agreement across the sweep "excuses a survivor". The
+  // sweep still runs, earlier and for free, but only as a SEARCH: see sweep()
+  // above. Leaving dead handlers that document a repealed rule is how the old
+  // rule comes back.
+  // A2a. The backend was already emitting this and the page was dropping it on
+  // the floor - which left "undetermined" with no explanation at all, on the
+  // one screen whose job is to explain it. The three verdicts need opposite
+  // responses, so the response is spelled out rather than left implied.
+  probe_result(ev){
+    const WHAT = {
+      never_reached: ["NEVER REACHED",
+        "No test ever runs this line, so the edit cannot matter. This is a gap "
+        + "in the tests, not an equivalence question — a test that reaches here "
+        + "would settle it."],
+      no_infection: ["NO INFECTION",
+        "The line runs, but the edit never changed the decision it makes. More "
+        + "tests of the same kind cannot separate these two programs."],
+      propagation: ["PROPAGATION",
+        "The edit really does change the decision, but the difference is "
+        + "swallowed before it reaches the output. Separating them needs a "
+        + "structurally different test, not more of the same."],
+      unknown: ["UNKNOWN",
+        "The probe itself could not run, so nothing was learned either way."],
+    };
+    const [name, why] = WHAT[ev.verdict] || [String(ev.verdict || "?").toUpperCase(),
+                                             ev.detail || ""];
+    mutLog(ev.index, `<div class="probe"><b>${esc(name)}</b>
+      <span class="pnum">· reached ${ev.reached ?? 0} ×, differed ${ev.differed ?? 0} ×</span>
+      <div>${esc(why)}</div></div>`);
   },
-  equivalence_sweep_result(ev){ mutLog(ev.index, esc(ev.detail || "")); },
+
   mutant_final(ev){
     const row = mutRows.get(ev.index);
     if (row) setChip(row, ev.status);
+    if (ev.detail) mutLog(ev.index, esc(ev.detail));
   },
 
   round_summary(ev){
@@ -793,6 +867,12 @@ const HANDLERS = {
       (needs ${pct(ev.cutoff)}) · after repair ${pct(ev.kill_rate)} ·
       ${ev.n_tests} tests · <b>${esc(ev.status.toUpperCase())}</b>`,
       ev.status === "strong" ? "good" : "");
+  },
+  // B3. The loop stops on evidence about the mutants, not on a stalled score,
+  // and saying which is the difference between "we gave up" and "more tests
+  // provably cannot help here".
+  stopping_early(ev){
+    line(`<b>Stopping early.</b> ${esc(ev.detail || "")}`, "warn");
   },
   expanding_suite(ev){ line(esc(ev.detail || "Still weak — expanding the suite.")); },
   suite_expanded(ev){
@@ -803,16 +883,45 @@ const HANDLERS = {
   base_run_failed(ev){ line(`Ground truth failed on the suite: <code>${esc(ev.error || "")}</code>`, "bad"); },
   evaluation_done(){ /* the verdict event right after carries the story */ },
 
+  // A4. Three outcomes, not two. `strong` is a single bit and a needs_review
+  // problem also has strong=false — rendering that as "ORACLE WEAK" tells the
+  // instructor their problem is broken when it may need no change at all, on
+  // the exact screen the upload page's "Review now" button sends them to.
   verdict(ev){
     const pct = x => Math.round(x * 100) + "%";
+    const review = ev.needs_review || ev.status === "needs_review";
+    const cls   = ev.strong ? "strong" : review ? "review" : "weak";
+    const title = ev.strong ? "ORACLE STRONG"
+                : review    ? "NEEDS YOUR REVIEW" : "ORACLE WEAK";
+
+    // The range is the honest number whenever anything was left undetermined:
+    // the low end assumes every one is a real bug, the high end assumes none is.
+    const scored = (ev.kill_rate_lower !== undefined
+                    && ev.kill_rate_upper !== undefined
+                    && ev.kill_rate_lower !== ev.kill_rate_upper);
+    const rate = scored
+      ? `between <b>${pct(ev.kill_rate_lower)}</b> and <b>${pct(ev.kill_rate_upper)}</b>
+         of mutants killed`
+      : `${pct(ev.kill_rate_direct)} of mutants killed as handed in`;
+
+    const why = review
+      ? ` — ${ev.undetermined} mutant${ev.undetermined === 1 ? "" : "s"} could not
+          be judged either way, and the verdict genuinely hangs on ${
+          ev.undetermined === 1 ? "it" : "them"}. Open the mutants above: a
+          <b>never reached</b> finding means a missing test, while
+          <b>no infection</b> means more tests of the same kind cannot help.`
+      : ev.strong && scored
+        ? ` — the worst case already clears the cutoff, so the undetermined
+            ${ev.undetermined === 1 ? "mutant" : "mutants"} cannot change the answer.`
+        : "";
+
     const v = document.createElement("div");
-    v.className = "verdict " + (ev.strong ? "strong" : "weak");
-    v.innerHTML = `<b>${ev.strong ? "ORACLE STRONG" : "ORACLE WEAK"}</b>
-      <span>${pct(ev.kill_rate_direct)} of mutants killed as handed in
-      (cutoff ${pct(ev.cutoff)}) · ${pct(ev.kill_rate)} after repair ·
+    v.className = "verdict " + cls;
+    v.innerHTML = `<b>${title}</b>
+      <span>${rate} (cutoff ${pct(ev.cutoff)}) · ${pct(ev.kill_rate)} after repair ·
       ${ev.n_tests} tests over ${ev.rounds} round${ev.rounds === 1 ? "" : "s"}${
       ev.insufficient_mutants
-        ? " · too few mutants to judge — never STRONG" : ""}. Verdict persisted.</span>`;
+        ? " · too few mutants to judge — never STRONG" : ""}.${why} Verdict persisted.</span>`;
     curBody.appendChild(v);
   },
 

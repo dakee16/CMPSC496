@@ -28,7 +28,6 @@ import json
 import queue
 import sys
 import threading
-from datetime import datetime, timezone
 
 from tests.sandbox import _load_cache, _save_cache, make_oracle_tests
 
@@ -228,25 +227,14 @@ class _ThreadLineStream(io.TextIOBase):
 def _persist_verdict(problem: dict, report: dict) -> None:
     """Write the validation result to the oracle cache in the exact shape
     tests/sandbox.get_oracle_tests writes, so downstream readers (playground
-    replay, is_oracle_strong, get_oracle_tests) see a normal validated entry."""
-    validated = {
-        "final_tests": report["final_tests"],
-        "strong": report["strong"],
-        "kill_rate": report["kill_rate"],
-        "kill_rate_direct": report["kill_rate_direct"],
-        "validated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "breakdown": {
-            "total_mutants": report.get("total_mutants", 0),
-            "killed": report.get("killed", 0),
-            "killed_on_retry": report.get("killed_on_retry", 0),
-            "proven_equivalent": report.get("proven_equivalent", 0),
-            "unresolved": report.get("unresolved", 0),
-            "mutants": [{"label": m["label"], "status": m["status"]}
-                        for m in report.get("mutants", [])],
-        },
-    }
+    replay, is_oracle_strong, get_oracle_tests) see a normal validated entry.
+
+    That sentence used to be a promise this function had to keep by hand, and
+    it broke the moment A4 added fields on the other side. The shape now comes
+    from oracle_store.verdict_entry, which both callers share."""
+    from .oracle_store import verdict_entry
     cache = _load_cache()
-    cache[content_hash(problem)] = {**validated, "slug": problem.get("slug", "")}
+    cache[content_hash(problem)] = verdict_entry(report, problem.get("slug", ""))
     _save_cache(cache)
 
 
@@ -307,6 +295,18 @@ def _pipeline(problem: dict, emit, overrides: dict | None = None) -> None:
           "kill_rate": report["kill_rate"],
           "kill_rate_direct": report["kill_rate_direct"],
           "cutoff": mutation.CUTOFF_1_KILL_RATE,
+          # A4 - `strong` is one bit and cannot express the third outcome. A
+          # needs_review problem has strong=False, and a panel that reads that
+          # as WEAK tells the instructor their problem is broken when it may be
+          # perfectly fine. The bounds travel with the verdict so the panel can
+          # state the range it actually knows.
+          "status": report.get("status", ""),
+          "needs_review": bool(report.get("needs_review")),
+          "undetermined": report.get("undetermined", 0),
+          "kill_rate_lower": report.get("kill_rate_lower",
+                                        report["kill_rate_direct"]),
+          "kill_rate_upper": report.get("kill_rate_upper",
+                                        report["kill_rate_direct"]),
           "insufficient_mutants": report.get("insufficient_mutants", False),
           "rounds": report.get("rounds", 1),
           "n_tests": len(report["final_tests"]),

@@ -298,7 +298,8 @@ from main.oracle_store import (OracleUnusableError, cache_path,  # noqa: E402
                                is_validated as _is_validated,
                                load_cache as _load_cache_impl,
                                load_strong_cached_oracle,
-                               save_cache as _save_cache_impl)
+                               save_cache as _save_cache_impl,
+                               verdict_entry)
 _CACHE_PATH = cache_path()
 
 # A cache entry is:
@@ -354,44 +355,17 @@ def get_oracle_tests(problem: dict, n: int = 10) -> list[dict]:
     print(f"  [oracle] {slug or '?'}: validation RUNNING on {len(tests)} "
           f"{origin} tests")
     report = validate_oracle(problem, tests)
-    validated = {
-        "final_tests": report["final_tests"],
-        "strong": report["strong"],
-        "kill_rate": report["kill_rate"],
-        "kill_rate_direct": report["kill_rate_direct"],
-        # A4 - `strong` is one bit, and it cannot distinguish "the tests miss
-        # too much" from "a few deliberate errors could not be judged either
-        # way". Both are strong=False; only the first is the teacher's fault.
-        # The status and the two bounds are what the upload page needs to say
-        # which one happened, so they are persisted beside the bit.
-        "status": report.get("status", ""),
-        "needs_review": bool(report.get("needs_review")),
-        "undetermined": report.get("undetermined", 0),
-        "kill_rate_lower": report.get("kill_rate_lower", report["kill_rate_direct"]),
-        "kill_rate_upper": report.get("kill_rate_upper", report["kill_rate_direct"]),
-        "validated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        # Per-mutant breakdown, so a verdict stays auditable after the fact and
-        # the showcase can replay it instead of recomputing. Labels + statuses
-        # only - never mutant source, which would bloat the cache for nothing.
-        # ADDITIVE: entries written before this existed have no "breakdown"
-        # key, and readers must treat that as "not available", not an error.
-        "breakdown": {
-            "total_mutants": report.get("total_mutants", 0),
-            "killed": report.get("killed", 0),
-            "killed_on_retry": report.get("killed_on_retry", 0),
-            "proven_equivalent": report.get("proven_equivalent", 0),
-            "unresolved": report.get("unresolved", 0),
-            "mutants": [{"label": m["label"], "status": m["status"]}
-                        for m in report.get("mutants", [])],
-        },
-    }
+    # Shape owned by main.oracle_store, not built here: main.live_playground
+    # writes the same entry from the same report, and two hand-built copies
+    # drift the moment a field is added (A4 added four).
+    validated = verdict_entry(report, slug)
     print(f"  [oracle] {slug or '?'}: {len(tests)} -> "
           f"{len(validated['final_tests'])} tests, "
           f"kill_rate={validated['kill_rate']:.2f} "
           f"(direct {validated['kill_rate_direct']:.2f}) "
           f"{'STRONG' if validated['strong'] else 'WEAK'}")
 
-    cache[key] = {**validated, "slug": slug}   # slug stored for humans, not a key
+    cache[key] = validated          # verdict_entry already carries the slug
     _save_cache(cache)
     return validated["final_tests"]
 
