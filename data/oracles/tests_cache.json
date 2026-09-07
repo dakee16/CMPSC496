@@ -1,1 +1,512 @@
-{}
+{
+  "badc903336e818c1ede21c9adadf4efb052206a3c259e10542962c202fba9293": {
+    "final_tests": [
+      {
+        "input": [
+          "3 + 5",
+          "calculate"
+        ],
+        "expected": 8.0
+      },
+      {
+        "input": [
+          "10 / 2",
+          "calculate"
+        ],
+        "expected": 5.0
+      },
+      {
+        "input": [
+          "2 ^ 3",
+          "calculate"
+        ],
+        "expected": 8.0
+      },
+      {
+        "input": [
+          "(1 + 2) * 3",
+          "calculate"
+        ],
+        "expected": 9.0
+      },
+      {
+        "input": [
+          "-4 + 5",
+          "calculate"
+        ],
+        "expected": 1.0
+      },
+      {
+        "input": [
+          "(3 + 2) / (1 - 5)",
+          "calculate"
+        ],
+        "expected": -1.25
+      },
+      {
+        "input": [
+          "1.5 * 2.5",
+          "calculate"
+        ],
+        "expected": 3.75
+      },
+      {
+        "input": [
+          "(2 + 3) ^ 2",
+          "calculate"
+        ],
+        "expected": 25.0
+      },
+      {
+        "input": [
+          "1 / 0",
+          "postfix"
+        ],
+        "expected": "1.0 0.0 /"
+      },
+      {
+        "input": [
+          "-3.14",
+          "is_number"
+        ],
+        "expected": true
+      },
+      {
+        "input": [
+          "25 +",
+          "postfix"
+        ],
+        "expected": null
+      },
+      {
+        "input": [
+          "",
+          "calculate"
+        ],
+        "expected": null
+      },
+      {
+        "input": [
+          "",
+          "is_number"
+        ],
+        "expected": false
+      },
+      {
+        "input": [
+          "2.56p",
+          "is_number"
+        ],
+        "expected": false
+      },
+      {
+        "input": [
+          "(2 * ( ( 5 + 3) ^ 2 + (1 + 4 )))",
+          "postfix"
+        ],
+        "expected": "2.0 5.0 3.0 + 2.0 ^ 1.0 4.0 + + *"
+      },
+      {
+        "input": [
+          "2 * ( 5 + 3 ) ^  2 + ) 1 + 4 (",
+          "postfix"
+        ],
+        "expected": null
+      },
+      {
+        "input": [
+          "2 * (3 + 4)",
+          "calculate"
+        ],
+        "expected": 14.0
+      },
+      {
+        "input": [
+          "5 - 3 ^ 2",
+          "calculate"
+        ],
+        "expected": -4.0
+      },
+      {
+        "input": [
+          "(1 + 2) * (3 - 4)",
+          "calculate"
+        ],
+        "expected": -3.0
+      },
+      {
+        "input": [
+          "-5 + 10",
+          "calculate"
+        ],
+        "expected": 5.0
+      },
+      {
+        "input": [
+          "(2.5 + 3.5) * 2",
+          "calculate"
+        ],
+        "expected": 12.0
+      },
+      {
+        "input": [
+          "(1 - 2) ^ 3",
+          "postfix"
+        ],
+        "expected": "1.0 2.0 - 3.0 ^"
+      },
+      {
+        "input": [
+          "-3.5",
+          "is_number"
+        ],
+        "expected": true
+      },
+      {
+        "input": [
+          "5.0 + 4.0",
+          "postfix"
+        ],
+        "expected": "5.0 4.0 +"
+      },
+      {
+        "input": [
+          "5 - 3 * 2",
+          "calculate"
+        ],
+        "expected": -1.0
+      },
+      {
+        "input": [
+          "(1 + 2) ^ 3",
+          "calculate"
+        ],
+        "expected": 27.0
+      },
+      {
+        "input": [
+          "-4 + 2",
+          "calculate"
+        ],
+        "expected": -2.0
+      },
+      {
+        "input": [
+          "1.5 + 2.5",
+          "calculate"
+        ],
+        "expected": 4.0
+      },
+      {
+        "input": [
+          "(3 + 2) / (1 - 0.5)",
+          "calculate"
+        ],
+        "expected": 10.0
+      },
+      {
+        "input": [
+          "(2 + 3) * 4",
+          "postfix"
+        ],
+        "expected": "2.0 3.0 + 4.0 *"
+      },
+      {
+        "input": [
+          "-5.5",
+          "is_number"
+        ],
+        "expected": true
+      },
+      {
+        "input": [
+          "abc",
+          "is_number"
+        ],
+        "expected": false
+      }
+    ],
+    "strong": false,
+    "kill_rate": 0.7910447761194029,
+    "kill_rate_direct": 0.7910447761194029,
+    "validated_at": "2026-09-07T00:04:34+00:00",
+    "breakdown": {
+      "total_mutants": 67,
+      "killed": 53,
+      "killed_on_retry": 0,
+      "proven_equivalent": 0,
+      "unresolved": 14,
+      "mutants": [
+        {
+          "label": "line 219: not in -> in",
+          "status": "killed"
+        },
+        {
+          "label": "line 221: and -> or",
+          "status": "killed"
+        },
+        {
+          "label": "line 130: or -> and",
+          "status": "undetermined"
+        },
+        {
+          "label": "line 133: == -> !=",
+          "status": "killed"
+        },
+        {
+          "label": "line 141: True -> False",
+          "status": "killed"
+        },
+        {
+          "label": "line 142: 0 -> 1",
+          "status": "killed"
+        },
+        {
+          "label": "line 143: < -> <=",
+          "status": "killed"
+        },
+        {
+          "label": "line 187: or -> and",
+          "status": "killed"
+        },
+        {
+          "label": "line 190: == -> !=",
+          "status": "killed"
+        },
+        {
+          "label": "line 221: == -> !=",
+          "status": "killed"
+        },
+        {
+          "label": "line 221: or -> and",
+          "status": "killed"
+        },
+        {
+          "label": "line 222: False -> True",
+          "status": "killed"
+        },
+        {
+          "label": "line 135: is -> is not",
+          "status": "killed"
+        },
+        {
+          "label": "line 140: 1 -> 2",
+          "status": "undetermined"
+        },
+        {
+          "label": "line 140: 1 -> 2",
+          "status": "killed"
+        },
+        {
+          "label": "line 140: 2 -> 3",
+          "status": "undetermined"
+        },
+        {
+          "label": "line 140: 2 -> 3",
+          "status": "undetermined"
+        },
+        {
+          "label": "line 140: 3 -> 4",
+          "status": "undetermined"
+        },
+        {
+          "label": "line 146: += -> -=",
+          "status": "killed"
+        },
+        {
+          "label": "line 187: in -> not in",
+          "status": "killed"
+        },
+        {
+          "label": "line 217: == -> !=",
+          "status": "killed"
+        },
+        {
+          "label": "line 136: False -> True",
+          "status": "killed"
+        },
+        {
+          "label": "line 146: 1 -> 2",
+          "status": "killed"
+        },
+        {
+          "label": "line 149: == -> !=",
+          "status": "killed"
+        },
+        {
+          "label": "line 151: += -> -=",
+          "status": "killed"
+        },
+        {
+          "label": "line 156: += -> -=",
+          "status": "killed"
+        },
+        {
+          "label": "line 168: False -> True",
+          "status": "killed"
+        },
+        {
+          "label": "line 169: == -> !=",
+          "status": "killed"
+        },
+        {
+          "label": "line 175: += -> -=",
+          "status": "killed"
+        },
+        {
+          "label": "line 198: < -> <=",
+          "status": "killed"
+        },
+        {
+          "label": "line 202: == -> !=",
+          "status": "killed"
+        },
+        {
+          "label": "line 212: or -> and",
+          "status": "undetermined"
+        },
+        {
+          "label": "line 217: 1 -> 2",
+          "status": "killed"
+        },
+        {
+          "label": "line 217: 0 -> 1",
+          "status": "killed"
+        },
+        {
+          "label": "line 151: 1 -> 2",
+          "status": "killed"
+        },
+        {
+          "label": "line 157: is not -> is",
+          "status": "undetermined"
+        },
+        {
+          "label": "line 162: += -> -=",
+          "status": "undetermined"
+        },
+        {
+          "label": "line 170: and -> or",
+          "status": "killed"
+        },
+        {
+          "label": "line 175: 1 -> 2",
+          "status": "killed"
+        },
+        {
+          "label": "line 176: in -> not in",
+          "status": "killed"
+        },
+        {
+          "label": "line 184: += -> -=",
+          "status": "killed"
+        },
+        {
+          "label": "line 198: 2 -> 3",
+          "status": "killed"
+        },
+        {
+          "label": "line 203: + -> -",
+          "status": "killed"
+        },
+        {
+          "label": "line 204: == -> !=",
+          "status": "killed"
+        },
+        {
+          "label": "line 159: or -> and",
+          "status": "undetermined"
+        },
+        {
+          "label": "line 170: != -> ==",
+          "status": "killed"
+        },
+        {
+          "label": "line 177: and -> or",
+          "status": "killed"
+        },
+        {
+          "label": "line 183: True -> False",
+          "status": "killed"
+        },
+        {
+          "label": "line 184: 1 -> 2",
+          "status": "undetermined"
+        },
+        {
+          "label": "line 205: - -> +",
+          "status": "killed"
+        },
+        {
+          "label": "line 206: == -> !=",
+          "status": "killed"
+        },
+        {
+          "label": "line 159: is -> is not",
+          "status": "undetermined"
+        },
+        {
+          "label": "line 159: not in -> in",
+          "status": "undetermined"
+        },
+        {
+          "label": "line 177: != -> ==",
+          "status": "killed"
+        },
+        {
+          "label": "line 178: or -> and",
+          "status": "killed"
+        },
+        {
+          "label": "line 207: * -> /",
+          "status": "killed"
+        },
+        {
+          "label": "line 208: == -> !=",
+          "status": "killed"
+        },
+        {
+          "label": "line 178: > -> >=",
+          "status": "undetermined"
+        },
+        {
+          "label": "line 179: and -> or",
+          "status": "killed"
+        },
+        {
+          "label": "line 209: / -> *",
+          "status": "killed"
+        },
+        {
+          "label": "line 211: ** -> *",
+          "status": "killed"
+        },
+        {
+          "label": "line 170: 1 -> 2",
+          "status": "killed"
+        },
+        {
+          "label": "line 179: == -> !=",
+          "status": "killed"
+        },
+        {
+          "label": "line 179: != -> ==",
+          "status": "undetermined"
+        },
+        {
+          "label": "line 177: 1 -> 2",
+          "status": "killed"
+        },
+        {
+          "label": "line 178: 1 -> 2",
+          "status": "killed"
+        },
+        {
+          "label": "line 179: 1 -> 2",
+          "status": "killed"
+        }
+      ]
+    },
+    "slug": "calculator"
+  }
+}

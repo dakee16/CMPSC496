@@ -34,6 +34,15 @@
   ul.items .body{min-width:0; flex:1}
   ul.items .nm{font-weight:600; color:var(--text); overflow-wrap:anywhere}
   ul.items .why{color:var(--text-muted); font-size:12.5px; margin-top:3px; line-height:1.5}
+  /* "watch" opens this one problem's preparation transcript in a new tab. It
+     sits with the elapsed time because that is where a teacher looks when a
+     problem is taking longer than the others - which is exactly when they want
+     to see what it is doing. */
+  ul.items .watch{margin-left:auto; flex:none; font-size:12px; font-weight:600;
+    color:var(--accent-ink); text-decoration:none; padding:2px 8px;
+    border:1px solid var(--accent-line); border-radius:999px; white-space:nowrap}
+  ul.items .watch:hover{background:var(--accent-tint)}
+  ul.items .watch + .el{margin-left:var(--s2)}
   ul.items .el{margin-left:auto; flex:none; font-size:12px; color:var(--text-subtle);
                font-variant-numeric:tabular-nums; padding-top:2px}
 
@@ -522,6 +531,7 @@ function handle(ev){
   if (!run) return;
   if (ev.event === "parsed") {
     run.total = ev.n_problems;
+    run.assignmentId = ev.assignment_id;      // addresses this run's channels
     $("runTitle").textContent = `${ev.name}`;
     tickElapsed();
     (ev.parse_errors || []).forEach(e =>
@@ -566,9 +576,17 @@ function handle(ev){
 function addRow(slug, state, title, why){
   if (run.rows[slug]) return setRow(slug, state, why);
   const li = document.createElement("li");
+  // The link stays after the problem finishes: a completed run replays its
+  // whole transcript, so this is also how a teacher reads back what happened
+  // to a problem that came out "needs work".
+  const watch = (state === "run" && run.assignmentId)
+    ? `<a class="watch" target="_blank" rel="noopener"
+         href="playground.html?watch=${encodeURIComponent(run.assignmentId)}&slug=${encodeURIComponent(slug)}"
+         title="Watch this problem being prepared, in a new tab">watch</a>`
+    : "";
   li.innerHTML = `<span class="pill"></span>
     <div class="body"><div class="nm"></div><div class="why"></div></div>
-    <span class="el"></span>`;
+    ${watch}<span class="el"></span>`;
   $("items").appendChild(li);
   run.rows[slug] = li;
   run.starts[slug] = Date.now();

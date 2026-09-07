@@ -110,46 +110,80 @@ def stage_of_error(error: str | None) -> str | None:
     return PREPARE_STAGES[-1][0]
 
 
-def prepare_problem(problem: dict) -> dict:
+def prepare_problem(problem: dict, emit=None) -> dict:
     """Make one problem student-ready. Returns {slug, ready, chunks, stage,
     error}, where `stage` names the gate it stopped at - None once it passed.
 
     Never raises: a failure here is ordinary teacher feedback, not a server
-    fault, and one bad problem must not abort an upload of twenty."""
-    from tests.sandbox import get_oracle_tests, is_oracle_strong
+    fault, and one bad problem must not abort an upload of twenty.
+
+    `emit`, when given, narrates the run in main/live_playground.py's event
+    vocabulary so a teacher can WATCH this problem being prepared instead of
+    watching a spinner - see main/prepare_bus.py for why the watching tab
+    mirrors this run rather than starting its own. It never changes behaviour
+    and never affects the return value; leaving it None is the production path,
+    and a failure inside a watcher must never fail an upload."""
+    from tests.sandbox import get_oracle_tests, is_oracle_certified
     from .run_phase1 import get_chunk_decomposition
 
     slug = problem.get("slug", "?")
+    emit = emit or (lambda ev: None)
 
     def fail(stage, msg):
+        # The same sentence the teacher's row shows, on the transcript too - a
+        # watcher whose stream just stopped cannot tell "failed" from "hung".
+        emit({"type": "blocked", "at": stage, "error_type": "PrepareFailed",
+              "message": msg})
         return {"slug": slug, "ready": False, "chunks": 0,
                 "stage": stage, "error": msg}
+
+    emit({"type": "stage", "name": "start",
+          "label": f"Preparing {problem.get('title') or slug}"})
+    emit({"type": "ground_truth", "code": problem.get("solution", "")})
 
     if not (problem.get("solution") or "").strip():
         return fail("parses", "no solution provided")
 
     # The entry point must be resolvable and actually runnable, or every later
     # stage is measuring the wrong function.
+    emit({"type": "stage", "name": "entry",
+          "label": "Resolving the entry point (which function to call)"})
     try:
         resolved = get_resolved_entry(problem)
     except Exception as e:
         return fail("parses", f"could not read the function: {_reason(e)}")
     if not resolved.get("entry_name"):
         return fail("parses", "could not find the function to test")
+    emit({"type": "entry", "entry_name": resolved.get("entry_name"),
+          "params": resolved.get("params", [])})
     if not resolved.get("confirmed"):
         return fail("runs", "the solution could not be run - check that it executes")
 
     # ORACLE. The slow part: generate inputs, compute expected outputs from the
     # teacher's own solution, then mutation-test the resulting suite.
+    emit({"type": "stage", "name": "oracle_gen",
+          "label": "Generating oracle tests - the model proposes INPUTS only, "
+                   "the teacher's own solution computes every expected output"})
     try:
-        tests = get_oracle_tests(problem)
+        tests = get_oracle_tests(problem, emit=emit)
     except Exception as e:
         return fail("tests", f"test generation failed: {_reason(e)}")
     if not tests:
         return fail("tests", "No usable test cases could be generated. This "
                              "usually means the inputs aren't simple values.")
+    # The verdict, read back from what validation just persisted, so a watcher
+    # sees the same numbers the badge on the upload row will show.
     try:
-        if not is_oracle_strong(problem):
+        from main.identity import content_hash as _ch
+        from main.oracle_store import load_cache as _lc, verdict_event
+        _entry = _lc().get(_ch(problem))
+        if isinstance(_entry, dict) and "strong" in _entry:
+            emit(verdict_event(_entry))
+    except Exception:
+        pass                            # narration must never fail preparation
+
+    try:
+        if not is_oracle_certified(problem):
             # A4 - "not strong" is now two different situations, and only one of
             # them is a failure the instructor can fix by editing the problem.
             #
@@ -184,29 +218,49 @@ def prepare_problem(problem: dict) -> dict:
 
     # DECOMPOSITION, gated. get_chunk_decomposition runs the same serve boundary
     # a student request would have, so "ready" means exactly what it says.
+    emit({"type": "stage", "name": "decomposition",
+          "label": "Decomposing into steps - exactly the path a student request "
+                   "takes, including every retry and Gate 1"})
     try:
         decomp = get_chunk_decomposition(problem)
     except Exception as e:
         return fail("steps", _reason(e))
 
+    chunks = decomp.get("chunks") or []
+    emit({"type": "chunks", "header": decomp.get("header", ""),
+          "chunks": [{"step_id": c.step_id, "prompt": c.prompt,
+                      "reference": c.reference or ""} for c in chunks]})
+    emit({"type": "stage", "name": "finished", "label": "Ready for students"})
+
     return {"slug": slug, "ready": True,
-            "chunks": len(decomp.get("chunks") or []),
+            "chunks": len(chunks),
             "n_tests": len(tests), "stage": None, "error": None}
 
 
-def prepare_assignment_stream(problems: list[dict]):
+def prepare_assignment_stream(problems: list[dict], emit_for=None):
     """Yield one dict per problem as preparation finishes, then a summary.
 
     A generator so the upload page can show progress: preparing twenty problems
-    is minutes of work, and a silent wait is indistinguishable from a hang."""
+    is minutes of work, and a silent wait is indistinguishable from a hang.
+
+    `emit_for`, when given, is called with a slug and returns either an `emit`
+    callback for that problem's narration or None. That indirection is what lets
+    the upload open one watchable channel per problem (main/prepare_bus.py)
+    without this module knowing anything about channels, HTTP or who is
+    watching."""
     total = len(problems)
     yield {"event": "start", "total": total}
     ready = 0
     review: list[dict] = []
     for i, p in enumerate(problems, 1):
+        # The channel is opened BEFORE the row is announced. The other order has
+        # a real gap in it: the upload page draws the row, the teacher clicks it
+        # immediately - which is the whole point of the feature - and the
+        # watcher arrives at an address nothing has opened yet.
+        emit = emit_for(p.get("slug", "?")) if emit_for else None
         yield {"event": "preparing", "index": i, "total": total,
                "slug": p.get("slug", "?"), "title": p.get("title", "")}
-        res = prepare_problem(p)
+        res = prepare_problem(p, emit=emit)
         ready += 1 if res["ready"] else 0
         if res.get("needs_review"):
             review.append({"slug": res["slug"], "title": p.get("title", ""),

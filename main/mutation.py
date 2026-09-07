@@ -27,6 +27,8 @@ import random
 from .equivalence import proves_harmless
 from .probe import (NEVER_REACHED, NO_INFECTION, PROPAGATION, UNKNOWN,
                     probe_site)
+from .context import (build_program, doctest_covers, is_method,
+                      solution_body)
 from .identity import get_resolved_entry
 from .ollama_client import chat
 from tests.sandbox import (
@@ -173,12 +175,46 @@ def _sites(tree: ast.AST) -> list[tuple[int, str, str, int]]:
                 found.append((i, "const", f"line {line}: {node.value} -> {not node.value}", 0))
             elif isinstance(node.value, (int, float)):
                 found.append((i, "const", f"line {line}: {node.value} -> {node.value + 1}", 0))
+
+        # STATEMENT DELETION. Every operator above rewrites an expression, so a
+        # solution made of straight-line statements - which is what a stateful
+        # method IS - offered almost nothing to mutate: HW3's push and pop are
+        # four lines each and yielded two mutants apiece, under the floor, so
+        # their oracles could never earn a verdict at all however good they were.
+        #
+        # It is also the operator that matches the bug: "forgot to decrement the
+        # count" is a removed statement, not a flipped operator, and it is the
+        # single most common way a stateful method is wrong.
+        for field in ("body", "orelse", "finalbody"):
+            block = getattr(node, field, None)
+            # A block of one cannot lose its only statement - that unparses to
+            # an invalid function, not to a mutant. Module and ClassDef are
+            # skipped because deleting a whole def is not a single-point edit
+            # of the logic under test.
+            if (not isinstance(block, list) or len(block) < 2
+                    or isinstance(node, (ast.Module, ast.ClassDef))):
+                continue
+            for pos, stmt in enumerate(block):
+                if isinstance(stmt, ast.Pass):
+                    continue
+                if (isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Constant)
+                        and isinstance(stmt.value.value, str)):
+                    continue                 # a docstring is not behaviour, and
+                                             # removing it survives every test
+                text = ast.unparse(stmt).splitlines()[0]
+                if len(text) > 40:
+                    text = text[:37] + "..."
+                found.append((i, f"del:{field}",
+                              f"line {getattr(stmt, 'lineno', line)}: "
+                              f"remove `{text}`", pos))
     return found
 
 
 def _apply(node: ast.AST, kind: str, slot: int = 0) -> None:
     """Apply this site's single edit in place."""
-    if kind == "cmp":
+    if kind.startswith("del:"):
+        del getattr(node, kind[4:])[slot]
+    elif kind == "cmp":
         node.ops[slot] = _CMP_FLIP[type(node.ops[slot])]()
     elif kind == "bool":
         node.op = _BOOL_FLIP[type(node.op)]()
@@ -193,7 +229,8 @@ def generate_mutants(solution_code: str) -> list[dict]:
 
     Pure AST rewriting - deterministic, no model call, no side effects on the
     input. Covers comparison flips (< <= > >= == !=), and/or flips, arithmetic
-    flips (+ - * / //), int/float bumps (+1) and boolean literal flips.
+    flips (+ - * / //), int/float bumps (+1), boolean literal flips, and the
+    deletion of any statement from a block that holds more than one.
     Returns [{"code": mutant_source, "label": "line 3: < -> <="}, ...]."""
     try:
         tree = ast.parse(solution_code)
@@ -506,6 +543,17 @@ def _sweep_inputs(tests: list, n: int | None = None) -> list[list]:
 _CHUNK = 16
 
 
+def _runnable(problem: dict, source: str) -> str:
+    """A method source made executable inside the class it belongs to.
+
+    Everything below this point runs plain code strings through the sandbox, so
+    seating happens ONCE here rather than being threaded through eight run
+    helpers. A plain function is returned untouched."""
+    if not is_method(problem):
+        return source
+    return build_program(problem, solution_body({"solution": source}))
+
+
 def _first_disagreement(original: str, mutant_code: str, entry: str | None,
                         candidates: list, seen: set) -> dict | None:
     """Run BOTH programs on `candidates` and compare the real results. Returns
@@ -707,11 +755,21 @@ def evaluate_oracle(problem: dict, oracle_tests: list, emit=None) -> dict:
     strength of the suite exactly as handed in, for comparing two suites."""
     solution = problem.get("solution", "")
     entry = get_resolved_entry(problem)["entry_name"]
+    # Mutants are generated from the METHOD ALONE, then seated back into its
+    # class. Mutating the assembled module instead would spend the budget
+    # damaging Node.__init__, the sibling methods the teacher wrote, and the
+    # injected driver - none of which is the code this problem asks a student
+    # for, so a suite that missed those edits would be called weak for no
+    # reason. A plain function is its own module, so both are the same string.
     mutants = generate_mutants(solution)
     if emit:
+        # Unseated on purpose: the playground shows the one-line edit, not the
+        # whole class wrapped around it.
         emit({"type": "mutants", "total": len(mutants),
               "mutants": [{"index": i, "label": m["label"], "code": m["code"]}
                           for i, m in enumerate(mutants)]})
+    solution = _runnable(problem, solution)
+    mutants = [{**m, "code": _runnable(problem, m["code"])} for m in mutants]
 
     tests = list(oracle_tests)              # working set grows; caller's list untouched
     base = run_solution(solution, [t["input"] for t in tests], entry_name=entry)
@@ -882,7 +940,24 @@ def evaluate_oracle(problem: dict, oracle_tests: list, emit=None) -> dict:
     if insufficient:
         strong = False
 
-    verdict = ("insufficient_mutants" if insufficient
+    # A method too trivial to mutate, whose behaviour the TEACHER wrote down.
+    #
+    # `return self.count` has no plausible wrong single-point implementation, so
+    # there is nothing for a mutation operator to generate and no kill rate that
+    # could ever mean anything - insufficient_mutants here is "we cannot
+    # measure", not "this is weak". Blocking on it would leave three of HW3's
+    # five Stack methods permanently unservable however good their tests are.
+    #
+    # So a second, narrower basis for trust, and deliberately NOT folded into
+    # `strong`: strong keeps meaning "cleared mutation testing". This means "a
+    # person stated what this method does, in a `>>>` example, and that
+    # statement is in the suite" - see context.doctest_covers. It applies ONLY
+    # when mutation testing could not reach a verdict; a method with enough
+    # mutants is judged on them, doctest or no doctest.
+    doctest_verified = insufficient and doctest_covers(problem)
+
+    verdict = ("doctest_verified" if doctest_verified
+               else "insufficient_mutants" if insufficient
                else "strong" if strong
                else "weak" if hopeless
                else "needs_review")

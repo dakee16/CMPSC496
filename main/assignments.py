@@ -31,6 +31,7 @@ writes, no model calls - so it can be tested on its own.
 """
 import ast
 import re
+import textwrap
 
 # A slug marker opens a problem block. Everything up to the next marker (or EOF)
 # belongs to it, so a problem may carry helper functions without them being
@@ -64,6 +65,139 @@ def _dedent_block(src: str) -> str:
     return "\n".join(ln.rstrip() for ln in src.strip("\n").splitlines()).strip("\n")
 
 
+# Methods that are scaffolding in every class we have seen, never the exercise:
+# the constructor and the two printers. Everything else is a candidate step.
+_SCAFFOLD = {"__init__", "__str__", "__repr__", "__new__"}
+
+# The marker a handout leaves where the student is meant to write. When a
+# teacher fills these in and uploads the solved file, the comments usually
+# survive - and they are then an EXACT record of which methods were the
+# exercise, which no heuristic can match.
+_TODO_MARK = re.compile(r"#\s*YOUR\s+CODE\s+STARTS\s+HERE", re.IGNORECASE)
+
+# ...and the explicit override, for a file where they did not survive:
+#     # --- steps: push, pop, peek ---
+_STEPS_MARK = re.compile(
+    r"^[ \t]*#[ \t]*-{2,}[ \t]*steps?[ \t]*:[ \t]*([^\n]+?)[ \t]*-*[ \t]*$",
+    re.MULTILINE)
+
+
+def _method_span(src_lines: list[str], node: ast.FunctionDef) -> tuple[int, int]:
+    """Line span of one method INCLUDING its decorators, 0-based, end-exclusive."""
+    start = node.lineno - 1
+    for d in node.decorator_list:
+        start = min(start, d.lineno - 1)
+    return start, node.end_lineno
+
+
+def _class_steps(cls: ast.ClassDef, class_src: str,
+                 module_lines: list[str]) -> list[ast.FunctionDef]:
+    """Which methods of this class are the exercise, in source order.
+
+    Three sources, most explicit first. A teacher who says nothing gets every
+    method except the scaffolding, which is right far more often than it is
+    wrong - and the upload page lists what was chosen, so a wrong guess is
+    visible rather than silent."""
+    methods = [n for n in cls.body if isinstance(n, ast.FunctionDef)]
+
+    named = _STEPS_MARK.search(class_src)
+    if named:
+        want = {w.strip() for w in named.group(1).split(",") if w.strip()}
+        picked = [m for m in methods if m.name in want]
+        if picked:
+            return picked
+
+    # MODULE lines, not class_src: ast line numbers are module-relative, and
+    # slicing them into a class-relative list read a window from the wrong part
+    # of the file - which is how Stack came back as {__init__, __str__, isEmpty}
+    # instead of the five methods the handout actually leaves blank.
+    todo = []
+    for m in methods:
+        a, b = _method_span(module_lines, m)
+        if any(_TODO_MARK.search(ln) for ln in module_lines[a:b]):
+            todo.append(m)
+    if todo:
+        return todo
+
+    return [m for m in methods if m.name not in _SCAFFOLD]
+
+
+def _class_problems(cls: ast.ClassDef, module_src: str, preamble: str,
+                    index: int) -> tuple[list[dict], list[dict]]:
+    """One class -> one problem GROUP whose steps are its methods.
+
+    Returns (problems, errors). Each method becomes an ordinary problem the
+    existing pipeline can prepare on its own: `solution` is just that method,
+    dedented to top level, so decomposition splits the METHOD and not the whole
+    class. What makes it runnable is `context_prefix`/`context_suffix` - the
+    module and the rest of the class, with a hole where this method's body goes.
+    Everything downstream that assembles a program fills that hole instead of
+    concatenating a bare function."""
+    lines = module_src.splitlines()
+    class_a, class_b = cls.lineno - 1, cls.end_lineno
+    class_src = "\n".join(lines[class_a:class_b])
+    group_slug = _slugify(cls.name)
+    group_doc = (ast.get_docstring(cls) or "").strip()
+
+    steps = _class_steps(cls, class_src, lines)
+    if not steps:
+        # A class with nothing to implement is a HELPER the exercise builds on -
+        # HW3's Node is exactly this - not a broken problem. It stays in the
+        # file (every method-problem carries the whole module as context, so it
+        # is still in scope) and simply contributes no steps of its own.
+        return [], []
+
+    problems, errors = [], []
+    for pos, m in enumerate(steps):
+        a, b = _method_span(lines, m)
+        method_src = textwrap.dedent("\n".join(lines[a:b])).rstrip()
+        slug = f"{group_slug}-{_slugify(m.name.strip('_') or m.name)}"
+        if not _SLUG_OK.match(slug):
+            errors.append({"slug": slug, "error": f"method '{m.name}' does not "
+                           f"make a usable slug", "source": method_src})
+            continue
+
+        # The program around this method: everything before it, and everything
+        # after. The student's body is dropped in between at the class's own
+        # indent depth, so the rest of the class - and any helper class the file
+        # defines above it - is in scope exactly as the teacher wrote it.
+        body_a = m.body[0].lineno - 1
+        if (isinstance(m.body[0], ast.Expr)
+                and isinstance(m.body[0].value, ast.Constant)
+                and isinstance(m.body[0].value.value, str) and len(m.body) > 1):
+            body_a = m.body[1].lineno - 1          # keep the docstring in prefix
+        problems.append({
+            "slug": slug,
+            "title": m.name,
+            # A method's own docstring is its statement; classes like Stack put
+            # the whole specification on the CLASS instead, so fall back to it
+            # rather than refusing a perfectly well documented exercise.
+            "description": (ast.get_docstring(m) or "").strip() or group_doc,
+            "solution": method_src,
+            "entry_hint": m.name,
+            "order": index + pos,
+            "context_prefix": "\n".join(lines[:body_a]),
+            "context_suffix": "\n".join(lines[m.end_lineno:]),
+            "context_indent": (len(lines[body_a]) - len(lines[body_a].lstrip())
+                               if body_a < len(lines) else 8),
+            "group_slug": group_slug,
+            "group_title": cls.name,
+            "group_description": group_doc,
+            "group_kind": "class",
+            "group_order": index,
+            "member_order": pos,
+            "member_of": len(steps),
+        })
+    if not group_doc and not any(p["description"] for p in problems):
+        errors.append({"slug": group_slug,
+                       "error": f"class '{cls.name}' and its methods have no "
+                                f"docstring. The docstring IS the problem "
+                                f"statement students see, so one is required.",
+                       "source": class_src})
+        return [], errors
+    return problems, errors
+
+
 def _problem_from_block(slug: str | None, src: str, index: int) -> dict:
     """Turn one block of source into a problem dict, or raise ValueError."""
     src = _dedent_block(src)
@@ -76,13 +210,14 @@ def _problem_from_block(slug: str | None, src: str, index: int) -> dict:
 
     funcs = [n for n in tree.body if isinstance(n, ast.FunctionDef)]
     if not funcs:
-        # A class-based solution is legitimate Python, but the header the
-        # decomposer builds is a bare `def`. Refuse clearly rather than let it
-        # fail later inside decomposition where the teacher cannot see why.
+        # A class reaching HERE means it was inside a `# --- problem: ---`
+        # block, which asks for one problem; a class is a GROUP of them and is
+        # handled by _class_problems on the top-level scan instead.
         if any(isinstance(n, ast.ClassDef) for n in tree.body):
             raise ValueError(
-                "class-based solutions are not supported in an assignment file; "
-                "write a plain top-level function instead")
+                "a class is a group of problems, one per method - take it out "
+                "of the '# --- problem: ---' block and leave it at the top "
+                "level of the file, where each method becomes its own step")
         raise ValueError("no function found - each problem needs one")
 
     entry = funcs[-1]                    # helpers first, entry point last
@@ -131,24 +266,39 @@ def parse_assignment_file(text: str, filename: str = "assignment.py") -> dict:
             end = marks[i + 1].start() if i + 1 < len(marks) else len(text)
             blocks.append((m.group(1), text[m.end():end]))
     else:
-        # No markers: every top-level function is its own problem. Forgiving for
-        # a simple file, but it cannot group helpers - hence the hint below.
+        # No markers: every top-level function is its own problem, and every
+        # top-level CLASS is a group of them - one per method it asks the
+        # student to write. Forgiving for a simple file, but it cannot group
+        # loose helpers - hence the hint below.
         tree = ast.parse(text)
         lines = text.splitlines(keepends=True)
         funcs = [n for n in tree.body if isinstance(n, ast.FunctionDef)]
-        if not funcs:
+        classes = [n for n in tree.body if isinstance(n, ast.ClassDef)]
+        if not funcs and not classes:
             raise AssignmentParseError(
                 "no problems found. Each problem is a function whose docstring "
-                "is the problem statement; group helpers under a "
+                "is the problem statement, or a class whose methods are the "
+                "exercise; group helpers under a "
                 "'# --- problem: some-slug ---' marker")
         for i, fn in enumerate(funcs):
             start = fn.lineno - 1
             for d in fn.decorator_list:                # keep decorators with it
                 start = min(start, d.lineno - 1)
-            end = funcs[i + 1].lineno - 1 if i + 1 < len(funcs) else len(lines)
+            nxt = [n.lineno - 1 for n in tree.body if n.lineno - 1 > start]
+            end = min(nxt) if nxt else len(lines)
             blocks.append((None, "".join(lines[start:end])))
 
     problems, errors, seen = [], [], set()
+
+    # Classes are expanded on the WHOLE file, not per block: a method needs the
+    # module around it to run (HW3's Calculator uses Stack, which is a different
+    # class entirely), and that context is only available here.
+    if not marks:
+        for ci, cls in enumerate(classes):
+            got, bad = _class_problems(cls, text, "", ci * 100)
+            problems.extend(got)
+            errors.extend(bad)
+            seen.update(p["slug"] for p in got)
     for i, (slug, src) in enumerate(blocks):
         # The block's own text rides along with its error. Without it a problem
         # that failed to parse had its source stored nowhere, so the only way to
@@ -158,6 +308,12 @@ def parse_assignment_file(text: str, filename: str = "assignment.py") -> dict:
         try:
             p = _problem_from_block(slug, src, i)
         except ValueError as e:
+            # A file that also defines classes is a real assignment, and its
+            # loose `run_tests()` / `main()` plumbing is not a problem the
+            # teacher forgot to document. Only complain about an undocumented
+            # function when it was the only thing that could have been one.
+            if not marks and classes and "has no docstring" in str(e):
+                continue
             errors.append({"slug": slug or f"block {i + 1}", "error": str(e),
                            "source": text})
             continue

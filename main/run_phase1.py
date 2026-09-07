@@ -12,6 +12,7 @@ from .schemas import DecomposeOutput, EvalResult, StepItem
 from research.student_agent import get_student_answer
 from tests.semantic import ast_equivalent
 from tests.sandbox import get_oracle_tests, passes_tests
+from .context import build_program, header_of
 from .identity import content_hash, get_resolved_entry
 from .gates import assert_serveable, check_necessity
 from .prompts import DECOMPOSE_SYSTEM, EVAL_SYSTEM, CHUNK_DECOMPOSE_SYSTEM
@@ -261,8 +262,11 @@ def _gate_code(code: str, problem: dict) -> dict:
     if not tests:
         return {"status": "skipped", "detail": "no oracle tests (non-JSON inputs / no ground truth)",
                 "code": code, "failures": []}
-    m = re.search(r'def\s+(\w+)', code)
-    entry = m.group(1) if m else None
+    # The FIRST def in the file is not the entry point once a problem can be a
+    # method: for HW3's Stack that regex named `Node.__init__`, so the gate ran
+    # the wrong callable and every class problem failed to gate. Ask identity,
+    # which is what generated the oracle these tests came from.
+    entry = get_resolved_entry(problem)["entry_name"]
     res = passes_tests(code, tests, entry_name=entry)
     if res["ok"] and res["fraction"] == 1.0:
         return {"status": "pass", "detail": f"{res['passed']}/{res['total']} pass",
@@ -271,15 +275,24 @@ def _gate_code(code: str, problem: dict) -> dict:
             "code": code, "failures": res.get("failures", [])}
 
 
-def assemble_references(header: str, chunks: list[StepItem]) -> str:
+def assemble_references(problem: dict, header: str, chunks: list[StepItem]) -> str:
+    """The reference solution rebuilt from its decomposed steps.
+
+    Through main/context.py, not string concatenation: for a METHOD the steps
+    are a method body and the program around them is the whole class. Assembling
+    it any other way here would gate a decomposition against a program that is
+    not the one a student is later graded against."""
     body = "\n".join((c.reference or "").rstrip() for c in chunks if (c.reference or "").strip())
-    return header + "\n" + textwrap.indent(body, "    ")
+    return build_program(problem, body, header)
 
 
 def decompose_into_chunks(problem: dict, max_tries: int = 5) -> dict:
     resolved = get_resolved_entry(problem)
     name, params = resolved["entry_name"], resolved["params"]
-    header = f"def {name or 'solve'}({', '.join(params)}):"
+    # For a method the resolved entry is the injected sequence driver, which is
+    # not what the student writes under. header_of() gives the method's own def
+    # line; a plain function still builds one from the resolved signature.
+    header = header_of(problem) or f"def {name or 'solve'}({', '.join(params)}):"
     text = problem.get("description") or problem.get("title", "")
     qid = problem.get("slug") or problem.get("title", "problem")
 
@@ -325,7 +338,7 @@ def decompose_into_chunks(problem: dict, max_tries: int = 5) -> dict:
                         "is returned, or at any other natural boundary.")
             continue
 
-        code = assemble_references(header, chunks)
+        code = assemble_references(problem, header, chunks)
         print(f"\n  🔍 ASSEMBLED attempt {attempt}:\n{code}\n  ---")
         report = _gate_code(code, problem)
         print(f"  🔍 FAILURES: {report.get('failures', [])}\n")
@@ -417,7 +430,10 @@ def _deserialize(entry: dict) -> dict:
 def decompose_into_chunks_best(problem: dict, max_tries: int = 5) -> dict:
     resolved = get_resolved_entry(problem)
     name, params = resolved["entry_name"], resolved["params"]
-    header = f"def {name or 'solve'}({', '.join(params)}):"
+    # For a method the resolved entry is the injected sequence driver, which is
+    # not what the student writes under. header_of() gives the method's own def
+    # line; a plain function still builds one from the resolved signature.
+    header = header_of(problem) or f"def {name or 'solve'}({', '.join(params)}):"
     text = problem.get("description") or problem.get("title", "")
     qid = problem.get("slug") or problem.get("title", "problem")
     best = None
@@ -444,7 +460,7 @@ def decompose_into_chunks_best(problem: dict, max_tries: int = 5) -> dict:
         ]
         if not chunks:
             continue
-        code = assemble_references(header, chunks)
+        code = assemble_references(problem, header, chunks)
         report = _gate_code(code, problem)
         # "skipped" means no oracle ran, i.e. nothing was checked. It is no
         # longer worth 0.5 and no longer short-circuits into a return

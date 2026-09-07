@@ -1186,8 +1186,8 @@ function renderProblems(){
     return;
   }
 
-  $("problems").innerHTML = rows.map(({p, state}, i) => `
-    <li><button class="rowitem" data-slug="${esc(p.slug)}">
+  const rowHTML = ({p, state}) => `
+    <button class="rowitem" data-slug="${esc(p.slug)}">
       <span class="rmain">
         <span class="rname">${esc(p.title || p.slug)}</span>
         <span class="rmeta">
@@ -1198,7 +1198,56 @@ function renderProblems(){
       </span>
       ${statMark(state)}
       ${CHEV}
-    </button></li>`).join("");
+    </button>`;
+
+  /* A class is ONE assignment with steps, not five unrelated problems. Its
+     methods arrive as separate rows carrying the same group_slug, so they are
+     folded back into a single card here, in the order the teacher wrote them
+     (member_order) rather than the list's own sort - "peek before push" is not
+     a thing anyone was asked to do.
+
+     <details> rather than a JS open/closed map: the browser already keeps that
+     state, exposes it to a screen reader, and makes the summary keyboard-
+     operable for free. */
+  const groups = [], byKey = new Map();
+  for (const r of rows){
+    const key = r.p.group_slug;
+    if (!key){ groups.push({solo: r}); continue; }
+    let g = byKey.get(key);
+    if (!g){
+      g = {key, title: r.p.group_title || key, members: []};
+      byKey.set(key, g);
+      groups.push(g);
+    }
+    g.members.push(r);
+  }
+  for (const g of groups)
+    if (g.members)
+      g.members.sort((a, b) => (a.p.member_order ?? 0) - (b.p.member_order ?? 0));
+
+  $("problems").innerHTML = groups.map(g => {
+    if (g.solo) return `<li>${rowHTML(g.solo)}</li>`;
+    /* Counted over every offered member of the class, not just the ones
+       surviving the current filter - otherwise typing in the search box would
+       quietly change the denominator and read as lost progress. */
+    const all = PROBLEMS.filter(p => p.group_slug === g.key);
+    const done = all.filter(p => SOLVED.has(p.slug)).length;
+    const complete = done === all.length;
+    return `<li class="grouprow"><details class="pgroup"${complete ? "" : " open"}>
+      <summary>
+        <span class="rmain">
+          <span class="rname">${esc(g.title)}</span>
+          <span class="rmeta"><span>${all.length} step${
+            all.length === 1 ? "" : "s"}</span></span>
+        </span>
+        <span class="gcount${complete ? " done" : ""}">${done} of ${
+          all.length} solved</span>
+        ${CHEV}
+      </summary>
+      <ul class="rows gmembers">${
+        g.members.map(m => `<li>${rowHTML(m)}</li>`).join("")}</ul>
+    </details></li>`;
+  }).join("");
 
   $("problems").querySelectorAll(".rowitem").forEach(b =>
     b.onclick = () => start(PROBLEMS.find(p => p.slug === b.dataset.slug)));

@@ -227,7 +227,7 @@ class _ThreadLineStream(io.TextIOBase):
 def _persist_verdict(problem: dict, report: dict) -> None:
     """Write the validation result to the oracle cache in the exact shape
     tests/sandbox.get_oracle_tests writes, so downstream readers (playground
-    replay, is_oracle_strong, get_oracle_tests) see a normal validated entry.
+    replay, is_oracle_certified, get_oracle_tests) see a normal validated entry.
 
     That sentence used to be a promise this function had to keep by hand, and
     it broke the moment A4 added fields on the other side. The shape now comes

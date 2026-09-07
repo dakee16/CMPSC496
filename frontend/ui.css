@@ -657,3 +657,36 @@ summary:focus-visible{outline:2px solid var(--accent-ink); outline-offset:3px}
 @media (max-width:400px){
   .hdr{gap:6px; padding:var(--s2) 10px}
 }
+
+/* ── A class in the problem list ──────────────────────────────────────────
+   One card per class, its methods inside. <details> owns the open/closed
+   state, so there is no JS here and the summary is keyboard-operable and
+   announced as a disclosure without any aria- attributes of our own. */
+.rows > li.grouprow{display:block}
+.pgroup{
+  width:100%; border-radius:13px; background:var(--surface-raised);
+  border:1px solid var(--glass-line); overflow:hidden;
+}
+.pgroup > summary{
+  display:flex; align-items:center; gap:var(--s3); cursor:pointer;
+  padding:var(--s3) var(--s4); font-weight:600; font-size:14px;
+  list-style:none; transition:background .16s ease;
+}
+.pgroup > summary::-webkit-details-marker{display:none}
+.pgroup > summary:hover{background:var(--accent-tint)}
+/* The chevron is the open/closed indicator, so it turns rather than sliding
+   the way a navigating row's does. */
+.pgroup > summary .chev{flex:none; color:var(--text-subtle);
+  transition:transform .16s ease}
+.pgroup[open] > summary .chev{transform:rotate(90deg)}
+.pgroup .gcount{flex:none; font-size:12px; font-weight:600;
+  color:var(--text-subtle); white-space:nowrap}
+.pgroup .gcount.done{color:var(--success)}
+/* Members are indented and hang off a rule, so a step reads as belonging to
+   the class above it rather than as another top-level problem. */
+.pgroup .gmembers{
+  padding:0 var(--s3) var(--s3) calc(var(--s4) + var(--s3));
+  border-top:1px solid var(--glass-line);
+  padding-top:var(--s3);
+}
+.pgroup .gmembers .rowitem{background:var(--surface); font-size:13.5px}

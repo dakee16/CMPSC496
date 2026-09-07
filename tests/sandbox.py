@@ -187,12 +187,102 @@ def _first_json_obj(text: str) -> dict | None:
     return None
 
 
+def _clean_sequences(raw: list) -> list[list]:
+    """Keep only well-formed call sequences: a list of [name, *json-args].
+
+    The model is asked for a nested structure, and a nested structure is exactly
+    what it gets subtly wrong - a bare string instead of a one-element list, a
+    call with no name. A malformed sequence is dropped rather than repaired,
+    because a repaired guess would silently become part of the oracle."""
+    out = []
+    for seq in raw if isinstance(raw, list) else []:
+        if not isinstance(seq, list) or not seq:
+            continue
+        calls = []
+        for call in seq:
+            if isinstance(call, str):
+                call = [call]                     # "pop" is a call with no args
+            if (isinstance(call, list) and call
+                    and isinstance(call[0], str) and call[0]):
+                calls.append(call)
+        if calls:
+            out.append(calls)
+    return out
+
+
+def _generate_call_sequences(problem: dict, n: int) -> list[list]:
+    """Test inputs for a METHOD: sequences of calls, not argument lists.
+
+    push(2) returns None and pop() only means 6 after three pushes, so the unit
+    the oracle compares has to be a whole run against one object. The teacher's
+    own `>>>` examples are the first sequence - they are a recorded oracle
+    someone already thought about - and the model grows the rest around them."""
+    from main.context import calls_from_docstring, class_methods
+
+    cls = problem.get("group_title") or "Solution"
+    target = problem.get("entry_hint") or problem.get("title", "")
+    methods = [m for m in class_methods(problem) if m != "__init__"]
+    seed = calls_from_docstring(problem.get("description") or "", cls) \
+        or calls_from_docstring(problem.get("group_description") or "", cls)
+
+    callable_names = ", ".join(m for m in methods if not m.startswith("__")) or "none"
+    dunders = [m for m in methods if m.startswith("__")]
+    extra = ""
+    if "__len__" in dunders:
+        extra += '- Use ["len"] to call len(obj).\n'
+    if "__str__" in dunders or "__repr__" in dunders:
+        extra += '- Use ["str"] to call str(obj).\n'
+
+    prompt = (
+        f"Class: {cls}\n\n"
+        f"Specification:\n{(problem.get('group_description') or problem.get('description') or '')[:900]}\n\n"
+        f"The method under test is {cls}.{target}.\n"
+        f"Methods you may call: {callable_names}\n"
+        f"{extra}\n"
+        f"Generate {n} diverse CALL SEQUENCES. Each sequence runs against a "
+        f"fresh {cls}() and is a JSON array of calls; each call is "
+        f'["method_name", arg1, arg2, ...] with no arguments beyond what the '
+        f"method takes.\n\n"
+        f"CRITICAL:\n"
+        f"- EVERY sequence must actually call {target} at least once - a "
+        f"sequence that never reaches it tests nothing.\n"
+        f"- Build up state first. A sequence that calls {target} on an empty "
+        f"object is a good edge case, but it must not be the only kind.\n"
+        f"- Vary length: some 2-3 calls, some 8-12, interleaving different "
+        f"methods so ordering bugs show up.\n"
+        f"- Only JSON-serializable arguments (numbers, strings, booleans, "
+        f"arrays). Integers within -1000..1000, strings under 30 chars.\n"
+        f"- Do NOT include expected results. Only the calls.\n\n"
+        f'Return JSON only: {{"sequences": [[["push", 2], ["pop"]], ...]}}'
+    )
+
+    generated = []
+    for temp in (0.2, 0.6):
+        raw = chat(GEN_MODEL, "You generate call sequences as strict JSON. No prose.",
+                   [{"role": "user", "content": prompt}], temperature=temp, fmt="json")
+        generated = _clean_sequences((_first_json_obj(raw) or {}).get("sequences", []))
+        if generated:
+            break
+
+    # The seed goes FIRST and is never dropped: it is the one sequence in the
+    # suite whose expected values a human has already checked by hand.
+    sequences = ([seed] if seed else []) + generated
+    if not sequences:
+        print(f"  ⚠️  sequence-gen empty for {problem.get('slug','?')}")
+    # One positional argument - the whole sequence - because the driver's
+    # signature is _mt_run_calls(calls). See main/context.py.
+    return [[seq] for seq in sequences]
+
+
 def generate_test_inputs(problem: dict, n: int = 10) -> list[list]:
     """Ask the LLM for n diverse input argument-lists (edge cases included).
     INPUTS ONLY - never expected outputs. Retries once if the model returns junk."""
     # Local import: main.identity imports this module, so a top-level import
     # here would be circular.
+    from main.context import is_method
     from main.identity import get_resolved_entry
+    if is_method(problem):
+        return _generate_call_sequences(problem, n)
     resolved = get_resolved_entry(problem)
     name, params = resolved["entry_name"], resolved["params"]
     sig = f"{name}({', '.join(params)})" if name else problem.get("title", "")
@@ -264,7 +354,10 @@ def make_oracle_tests(problem: dict, n: int = 12) -> list[dict]:
     """Generate inputs, run ground-truth to compute expected outputs.
     Filters out ambiguous inputs (multiple valid answers, duplicates that
     break common approaches) so the gate only tests unambiguous cases."""
-    solution = problem.get("solution", "")
+    # For a METHOD this is the whole module the method lives in, not the bare
+    # `def` - a method has no ground truth outside its class.
+    from main.context import reference_program
+    solution = reference_program(problem)
     if not solution.strip():
         return []
     from main.identity import get_resolved_entry
@@ -323,7 +416,7 @@ def _save_cache(cache: dict) -> None:
 
 
 
-def get_oracle_tests(problem: dict, n: int = 10) -> list[dict]:
+def get_oracle_tests(problem: dict, n: int = 10, emit=None) -> list[dict]:
     """Cached oracle tests for `problem`, mutation-tested before they are
     trusted. Tests are generated (or loaded) and then handed to
     validate_oracle, which may GROW the suite with counterexamples that kill
@@ -331,7 +424,16 @@ def get_oracle_tests(problem: dict, n: int = 10) -> list[dict]:
 
     Validation runs at most once per problem - an entry that already carries a
     verdict is returned as-is, weak or strong. Always returns a plain list of
-    tests, so existing callers are unaffected."""
+    tests, so existing callers are unaffected.
+
+    `emit`, when given, narrates the run for a live UI - the same callback and
+    the same event vocabulary main/live_playground.py uses, so a teacher
+    watching an upload sees the mutation detail rather than a spinner. It is
+    accepted HERE rather than in the caller because this function owns the one
+    boundary the caller cannot see: whether the tests were generated or read
+    from cache, and when generation ends and validation begins. Never changes
+    behaviour; leaving it None is the production path."""
+    emit = emit or (lambda ev: None)
     from main.identity import content_hash
     slug = problem.get("slug", "")          # for humans reading the logs only
     key = content_hash(problem)             # cache identity: content, not title
@@ -341,11 +443,17 @@ def get_oracle_tests(problem: dict, n: int = 10) -> list[dict]:
     if _is_validated(entry):
         print(f"  [oracle] {slug}: validation SKIPPED (cached "
               f"strong={entry['strong']}, kill_rate={entry.get('kill_rate', 0):.2f})")
-        return _entry_tests(entry)
+        cached_tests = _entry_tests(entry)
+        # A watcher must be told the suite was REUSED. Silence here reads as a
+        # mutation stage that never started, which looks like a hang.
+        emit({"type": "oracle_tests", "tests": cached_tests, "origin": "cached"})
+        return cached_tests
 
     tests = _entry_tests(entry) if entry is not None else make_oracle_tests(problem, n=n)
     if not tests:
         return []
+    emit({"type": "oracle_tests", "tests": tests,
+          "origin": "cached (old format)" if entry is not None else "fresh"})
 
     # Local import: main.mutation imports this module, so a top-level import
     # here would be circular.
@@ -354,7 +462,12 @@ def get_oracle_tests(problem: dict, n: int = 10) -> list[dict]:
     origin = "cached (old format)" if entry is not None else "freshly generated"
     print(f"  [oracle] {slug or '?'}: validation RUNNING on {len(tests)} "
           f"{origin} tests")
-    report = validate_oracle(problem, tests)
+    from main.mutation import CUTOFF_1_KILL_RATE
+    emit({"type": "stage", "name": "mutation",
+          "label": f"Mutation testing - deterministically breaking the ground "
+                   f"truth one edit at a time and checking the oracle notices "
+                   f"(STRONG needs kill_rate_direct \u2265 {CUTOFF_1_KILL_RATE})"})
+    report = validate_oracle(problem, tests, emit=emit)
     # Shape owned by main.oracle_store, not built here: main.live_playground
     # writes the same entry from the same report, and two hand-built copies
     # drift the moment a field is added (A4 added four).
@@ -370,23 +483,29 @@ def get_oracle_tests(problem: dict, n: int = 10) -> list[dict]:
     return validated["final_tests"]
 
 
-def is_oracle_strong(problem: dict) -> bool:
-    """Did this problem's oracle clear mutation testing?
+def is_oracle_certified(problem: dict) -> bool:
+    """May this problem's oracle be graded with?
+
+    Renamed from is_oracle_strong: "strong" is now one of TWO ways to earn it,
+    and a predicate named after one of its branches reads as a stricter promise
+    than it makes. The verdict itself is unchanged and still available - see
+    oracle_store.certified for the two claims and why they are kept apart.
 
     Reads the cached verdict, running validation once to populate it if it is
     missing. Takes the problem dict, not a slug: the cache is keyed by content
     now, and a slug can no longer identify an entry - that ambiguity is exactly
     the collision this change removes."""
     from main.identity import content_hash
+    from main.oracle_store import certified
     slug = problem.get("slug", "")
     entry = _load_cache().get(content_hash(problem))
     if _is_validated(entry):
         print(f"  [oracle] {slug}: validation SKIPPED "
-              f"(cached strong={entry['strong']})")
+              f"(cached status={entry.get('status') or ('strong' if entry['strong'] else 'weak')})")
     else:
         get_oracle_tests(problem)               # validates and persists the verdict
         entry = _load_cache().get(content_hash(problem))
-    return bool(_is_validated(entry) and entry["strong"])
+    return certified(entry)
 
 
 # ── self-test: run `python sandbox.py` ──

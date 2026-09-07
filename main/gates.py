@@ -25,7 +25,8 @@ detected by a test that exercises the removed chunk's code path. Oracle strength
 Gate 2 will live here as well.
 """
 from .identity import get_resolved_entry
-from tests.sandbox import get_oracle_tests, is_oracle_strong, passes_tests
+from tests.sandbox import (get_oracle_tests, is_oracle_certified,
+                           passes_tests)
 
 _NOOP = "pass"
 
@@ -58,7 +59,7 @@ def assert_serveable(problem: dict, decomposition: dict) -> dict:
 
     Enforced in order, raising a typed exception on the first failure:
       a. the oracle exists (NoOracleTestsError) and is STRONG
-         (OracleNotStrongError) - STRONG per is_oracle_strong, which now keys
+         (OracleNotStrongError) - CERTIFIED per is_oracle_certified, which keys
          off kill_rate_direct; never reimplemented here
       b. at least _MIN_CHUNKS chunks (DecompositionUnavailableError)
       c. no chunk reference is a no-op (DecompositionUnavailableError)
@@ -80,7 +81,7 @@ def assert_serveable(problem: dict, decomposition: dict) -> dict:
         raise NoOracleTestsError(
             f"'{slug}' has no oracle tests, so nothing about this decomposition "
             f"has actually been verified. Refusing to serve unverified material.")
-    if not is_oracle_strong(problem):
+    if not is_oracle_certified(problem):
         raise OracleNotStrongError(
             f"'{slug}' has an oracle that did not clear mutation testing, so a "
             f"necessity verdict on it would be unreliable. Strengthen the oracle "
@@ -177,7 +178,7 @@ def check_necessity(header: str, chunks: list, problem: dict) -> dict:
     # get_oracle_tests above already validated on a miss, so this reads the
     # stored verdict. False here means the oracle was validated and came back
     # WEAK - regenerating the decomposition cannot fix that.
-    if not is_oracle_strong(problem):
+    if not is_oracle_certified(problem):
         slug = problem.get("slug") or problem.get("title", "<unnamed problem>")
         return {"status": "oracle_not_strong", "passed": False, "per_chunk": [],
                 "summary": (
@@ -193,7 +194,8 @@ def check_necessity(header: str, chunks: list, problem: dict) -> dict:
 
     for i, chunk in enumerate(chunks):
         knocked = [_knock_out(c) if j == i else c for j, c in enumerate(chunks)]
-        necessary, detail = _outcome(assemble_references(header, knocked), tests, entry)
+        necessary, detail = _outcome(
+            assemble_references(problem, header, knocked), tests, entry)
         step_id = getattr(chunk, "step_id", f"Part {i + 1}")
         per_chunk.append({"index": i, "step_id": step_id,
                           "necessary": necessary, "outcome": detail})

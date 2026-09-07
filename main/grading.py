@@ -20,6 +20,7 @@ from .indent import align_to_chunk
 from .ollama_client import GRADING_MODEL, chat
 from . import trace
 from .schemas import GradeResult
+from .context import build_program
 from .sessions import MAX_ATTEMPTS, accepted_prefix, problem_of
 
 MAX_ADAPT_TRIES = 2
@@ -39,9 +40,17 @@ def _indent(code: str) -> str:
     return "\n".join("    " + ln if ln.strip() else ln for ln in code.splitlines())
 
 
-def _assemble(header: str, *bodies: str) -> str:
+def _assemble(problem: dict, header: str, *bodies: str) -> str:
+    """The runnable program for this problem with `bodies` as its implementation.
+
+    Delegates to main/context.py rather than concatenating here, because a
+    METHOD is not `header + indented body` at all - it is the whole module it
+    was carved out of, with the body dropped in at the class's own depth. That
+    module has to be assembled the SAME way here as it was when the oracle was
+    generated, or a correct submission fails against tests it never had a chance
+    against. One assembler, one shape."""
     body = "\n".join(b.rstrip() for b in bodies if b and b.strip())
-    return header + "\n" + (_indent(body) if body.strip() else "    pass")
+    return build_program(problem, body, header)
 
 
 def _parse_body(code: str):
@@ -291,12 +300,12 @@ def _tail_is_sane(tail: str, current_outputs: set, solution: str) -> bool:
     return True
 
 
-def _calibrate(header, trusted_prefix, alias_lines, tail, tests, entry):
+def _calibrate(problem, header, trusted_prefix, alias_lines, tail, tests, entry):
     """An adapter must prove itself on TRUSTED work before it may judge a
     student. A random LLM tail that fails proves nothing about the student:
     it may simply be a broken tail. Only a tail that passes here has earned
     the right to produce a verdict."""
-    cand = _assemble(header, trusted_prefix, "\n".join(alias_lines), tail)
+    cand = _assemble(problem, header, trusted_prefix, "\n".join(alias_lines), tail)
     return classify_run(cand, tests, entry_name=entry).outcome == "pass"
 
 
@@ -398,7 +407,7 @@ def grade_submission(session: dict, student_code: str,
     if not student_code:
         return _ok("incorrect", "syntax", "No answer submitted.", "blank_answer")
     upto = "\n".join(b for b in (prefix, student_code) if b.strip())
-    probe = classify_run(_assemble(header, upto), [], entry_name=entry)
+    probe = classify_run(_assemble(problem, header, upto), [], entry_name=entry)
     if probe.outcome == "policy_violation":
         return _ok("incorrect", "policy",
                    f"That answer uses something not allowed here - "
@@ -419,7 +428,7 @@ def grade_submission(session: dict, student_code: str,
 
     # ── LAST CHUNK - whole function, no borrowed tail ──
     if is_last:
-        res = classify_run(_assemble(header, upto), tests, entry_name=entry)
+        res = classify_run(_assemble(problem, header, upto), tests, entry_name=entry)
         if res.outcome == "pass":
             return _ok("correct", "execution-final",
                        "Correct - your full solution passes every test.",
@@ -440,7 +449,7 @@ def grade_submission(session: dict, student_code: str,
     # ── NON-LAST - trusted reference tail ──
     ref_tail = "\n".join((chunks[j].get("reference") or "")
                          for j in range(idx + 1, len(chunks)))
-    res = classify_run(_assemble(header, upto, ref_tail), tests, entry_name=entry)
+    res = classify_run(_assemble(problem, header, upto, ref_tail), tests, entry_name=entry)
     if res.outcome == "pass":
         return _ok("correct", "execution-reference",
                    "Correct - your step works with the rest of the solution.",
@@ -488,7 +497,8 @@ def _tier3(problem, session, chunk, header, prefix, student_code, upto,
             continue
 
         # CALIBRATION - prove the adapter on trusted work first.
-        if not _calibrate(header, trusted_prefix, alias_lines, tail, tests, entry):
+        if not _calibrate(problem, header, trusted_prefix, alias_lines, tail,
+                          tests, entry):
             _trace(trace.record_adapter, corr, GRADING_MODEL, attempt, "calibration_failed")
             continue                                # uncalibrated: prove nothing
 
@@ -496,11 +506,11 @@ def _tier3(problem, session, chunk, header, prefix, student_code, upto,
         # reference's names onto the tail's interface; the student already
         # produces those names, so injecting it here would assign from an
         # undefined reference name and raise NameError on every run.
-        cand = classify_run(_assemble(header, upto, tail), tests, entry_name=entry)
+        cand = classify_run(_assemble(problem, header, upto, tail), tests, entry_name=entry)
         if cand.outcome == "pass":
             # ANTI-BYPASS - knock out ONLY the student chunk; if it still
             # passes, the tail was doing the student's work for them.
-            ko = classify_run(_assemble(header, prefix, "pass", tail),
+            ko = classify_run(_assemble(problem, header, prefix, "pass", tail),
                               tests, entry_name=entry)
             if ko.outcome == "pass":
                 _trace(trace.record_adapter, corr, GRADING_MODEL, attempt, "bypass_rejected")

@@ -25,6 +25,7 @@ from supabase import create_client
 from tests.sandbox import _is_validated, _load_cache, _save_cache, get_oracle_tests
 
 from .identity import content_hash
+from .oracle_store import certified
 
 load_dotenv()
 SB = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_KEY"])
@@ -100,9 +101,9 @@ def warm_up_oracles(problems: list[dict] | None = None,
         # Pure cache read - never triggers a validation pass. Keyed by content,
         # so two problems sharing a slug can't be mistaken for each other.
         cached = _load_cache().get(content_hash(problem))
-        if _is_validated(cached) and cached["strong"]:
+        if _is_validated(cached) and certified(cached):
             summary["already_strong"] += 1
-            print(f"{head}: SKIP (cached strong)")
+            print(f"{head}: SKIP (cached {cached.get('status') or 'strong'})")
             continue
 
         # Already carries a verdict but did not clear the bar. get_oracle_tests
@@ -134,6 +135,14 @@ def warm_up_oracles(problems: list[dict] | None = None,
         entry = _load_cache().get(content_hash(problem))
         if not isinstance(entry, dict):
             entry = {}
+        # A method too trivial to mutate but covered by the teacher's own
+        # doctest is finished, not blocked - it is served on that basis.
+        if entry.get("status") == "doctest_verified":
+            summary["newly_validated"] += 1
+            print(f"{head}: DOCTEST-VERIFIED (too trivial to mutate; the "
+                  f"teacher's own example covers it) {len(tests)} tests "
+                  f"in {time.time() - t0:.1f}s")
+            continue
         if entry.get("insufficient_mutants"):
             summary["blocked"].append({"slug": slug,
                                        "reason": "insufficient mutants to score"})

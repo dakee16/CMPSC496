@@ -36,7 +36,7 @@ def verdict_entry(report: dict, slug: str = "") -> dict:
     failure. Both callers now go through here, so the shape cannot drift again.
 
     `strong` is deliberately kept alongside `status`: every existing reader
-    (is_oracle_strong, load_strong_cached_oracle, assert_serveable) keys off it,
+    (is_oracle_certified, load_strong_cached_oracle, assert_serveable) reads it,
     and this is additive."""
     from datetime import datetime, timezone
     return {
@@ -111,6 +111,52 @@ def entry_tests(entry) -> list[dict]:
     return []
 
 
+def verdict_event(entry: dict) -> dict:
+    """The `verdict` UI event for an already-persisted cache entry.
+
+    main/live_playground.py builds the same event from the in-memory report it
+    just produced; this builds it from what was written. They are deliberately
+    NOT merged: the report carries `rounds`, which the cache does not store, and
+    a shared builder would have to either drop it there or invent it here. What
+    matters is that both speak the vocabulary main/live_playground documents -
+    one page renders both."""
+    from .mutation import CUTOFF_1_KILL_RATE
+    direct = entry.get("kill_rate_direct", 0.0)
+    return {
+        "type": "verdict",
+        "strong": bool(entry.get("strong")),
+        "kill_rate": entry.get("kill_rate", 0.0),
+        "kill_rate_direct": direct,
+        "cutoff": CUTOFF_1_KILL_RATE,
+        "status": entry.get("status", ""),
+        "needs_review": bool(entry.get("needs_review")),
+        "undetermined": entry.get("undetermined", 0),
+        "kill_rate_lower": entry.get("kill_rate_lower", direct),
+        "kill_rate_upper": entry.get("kill_rate_upper", direct),
+        "insufficient_mutants": entry.get("status") == "insufficient_mutants",
+        "n_tests": len(entry.get("final_tests") or []),
+        "detail": "verdict read back from the oracle cache this run just wrote",
+    }
+
+
+def certified(entry) -> bool:
+    """May this oracle be graded with? The single readiness predicate.
+
+    Two ways to earn it, and they are different claims:
+
+      strong             it cleared mutation testing - nothing we could break
+                         it with survived.
+      doctest_verified   there was nothing to break it with (a one-line getter
+                         generates no mutants at all), but the teacher's own
+                         `>>>` example states what it does and that statement is
+                         in the suite. See main/mutation.py for why the two are
+                         kept apart rather than both written as strong=True: a
+                         reader that wants the MUTATION verdict must still be
+                         able to ask for it."""
+    return bool(is_validated(entry)
+                and (entry["strong"] or entry.get("status") == "doctest_verified"))
+
+
 def is_validated(entry) -> bool:
     """A prior validation left a verdict here."""
     return isinstance(entry, dict) and "strong" in entry
@@ -119,7 +165,8 @@ def is_validated(entry) -> bool:
 def load_strong_cached_oracle(problem: dict) -> list[dict]:
     """READ-ONLY oracle access for the answer-checking path.
 
-    Returns the tests when the content-hash entry exists and is STRONG.
+    Returns the tests when the content-hash entry exists and is CERTIFIED -
+    mutation-strong, or doctest-verified for a method too trivial to mutate.
     Raises OracleUnusableError otherwise. Never generates, never validates,
     never writes."""
     from .identity import content_hash
@@ -138,7 +185,7 @@ def load_strong_cached_oracle(problem: dict) -> list[dict]:
     if not isinstance(entry, dict) or "strong" not in entry:
         raise OracleUnusableError(
             f"'{slug}' has no validation verdict.", "oracle_unvalidated")
-    if not entry["strong"]:
+    if not certified(entry):
         raise OracleUnusableError(
             f"'{slug}' has an oracle that did not clear mutation testing.",
             "oracle_weak")

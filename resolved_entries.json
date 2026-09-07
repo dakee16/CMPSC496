@@ -22,5 +22,32 @@
     ],
     "confirmed": true,
     "slug": "reverse-integer"
+  },
+  "adff88a42865108c274a41ad3fc149400fb0b83fb33380418e3b488a6a7638a9": {
+    "entry_name": "stack",
+    "params": [
+      "operations"
+    ],
+    "confirmed": true,
+    "slug": "stack"
+  },
+  "badc903336e818c1ede21c9adadf4efb052206a3c259e10542962c202fba9293": {
+    "entry_name": "calculator",
+    "params": [
+      "expression",
+      "mode"
+    ],
+    "confirmed": true,
+    "slug": "calculator"
+  },
+  "a6319fd88df80038062ce9205b85396129868a942ffa2ad7554522c641c11054": {
+    "entry_name": "advanced_calculator",
+    "params": [
+      "expressions",
+      "mode",
+      "states"
+    ],
+    "confirmed": true,
+    "slug": "advanced-calculator"
   }
 }

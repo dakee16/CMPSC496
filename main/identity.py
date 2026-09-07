@@ -26,6 +26,9 @@ import hashlib
 import json
 import os
 
+from main.context import (build_program, entry_name as _context_entry,
+                          entry_params as _context_params, is_method,
+                          solution_body)
 from tests.sandbox import _extract_signature, run_solution
 
 # Repo root, alongside the other regenerable caches.
@@ -51,7 +54,15 @@ def content_hash(problem: dict) -> str:
     the problem changing, and two genuinely different problems can share a
     title. CACHE KEY ONLY - never a primary identifier."""
     payload = (_norm(problem.get("description", "")) + "\x00"
-               + _norm(problem.get("solution", "")))
+               + _norm(problem.get("solution", "")) + "\x00"
+               # The module a METHOD lives in is part of what it is. Without
+               # this, Calculator._isNumber and AdvancedCalculator._isNumber -
+               # same docstring, same body, different class around them - hash
+               # identically and share one oracle, while build_program() builds
+               # two different programs for them. Empty for a plain function, so
+               # every existing cache key is unchanged.
+               + _norm(problem.get("context_prefix", ""))
+               + _norm(problem.get("context_suffix", "")))
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
@@ -114,6 +125,20 @@ def resolve_entry_point(problem: dict) -> dict:
 
     Returns {"entry_name", "params", "confirmed"}."""
     solution = problem.get("solution", "") or ""
+
+    # A METHOD is never resolved by looking at its own source: `push` alone is
+    # not runnable and, run in isolation, observes nothing. main/context.py
+    # names the injected sequence driver instead, and confirmation runs the
+    # WHOLE assembled module - which is also the only real check that the class
+    # this method was carved out of still compiles around it.
+    if is_method(problem):
+        name, params = _context_entry(problem), _context_params(problem) or []
+        program = build_program(problem, solution_body(problem))
+        run = run_solution(program, [[[]]], entry_name=name,
+                           timeout=_CONFIRM_TIMEOUT)
+        return {"entry_name": name, "params": params,
+                "confirmed": bool(run["ok"])}
+
     name, params = _mirror_resolve(solution)
     confirmed = False
 

@@ -307,6 +307,17 @@ def decompose_chunks_route(req: DecomposeRequest, request: Request):
                         f"mutation validation and the necessity gate all depend "
                         f"on it. Supply `solution` with the request."))
 
+        # The module a METHOD lives in is loaded here, server-side, and never
+        # taken from the request. context_prefix contains the teacher's
+        # implementations of the class's other methods, so a browser allowed to
+        # supply it is a browser that can read it back.
+        from main.sessions import CONTEXT_FIELDS
+        ctx = get_supabase().table("problems").select("context").eq(
+            "slug", req.slug).limit(1).execute().data
+        if ctx and isinstance(ctx[0].get("context"), dict):
+            problem.update({k: v for k, v in ctx[0]["context"].items()
+                            if k in CONTEXT_FIELDS})
+
         result = get_chunk_decomposition(problem)
         # Register a server-owned session. From here the browser never sees a
         # reference, the solution, or oracle data again.
@@ -495,6 +506,12 @@ def playground_problems(request: Request):
         # instructor rewriting a problem that might need no change at all.
         oracle_state = (None if not (isinstance(oracle, dict) and "strong" in oracle)
                         else "strong" if oracle["strong"]
+                        # A one-line getter generates no mutants at all, so it
+                        # can never be strong. Shown as its own state rather
+                        # than as "weak": nothing about it is weak, and sending
+                        # the instructor to rewrite a correct `return self.count`
+                        # is the one thing this list must not do.
+                        else "doctest" if oracle.get("status") == "doctest_verified"
                         else "review" if oracle.get("status") == "needs_review"
                         else "weak")
         out.append({
@@ -661,7 +678,9 @@ def playground_detail(slug: str):
     # the solution yielded too few mutants to judge at all.
     from main.mutation import _MIN_MUTANTS, CUTOFF_1_KILL_RATE
     weak_reason = None
-    if not cached["strong"]:
+    if cached.get("status") == "doctest_verified":
+        weak_reason = None                  # not weak - see oracle_store.certified
+    elif not cached["strong"]:
         if len(mutants) < _MIN_MUTANTS:
             weak_reason = (f"only {len(mutants)} way(s) to break this solution could be "
                            f"found - too few to judge the tests fairly "
@@ -699,6 +718,44 @@ def playground_detail(slug: str):
 # COSTS REAL MONEY per click: same OpenAI usage as a warmup pass on one
 # problem. It also persists its verdict to tests/tests_cache.json exactly as
 # warmup would, so a live run is never wasted work.
+
+@app.get("/teacher/prepare/live/{assignment_id}/{slug}")
+def prepare_live_mirror(assignment_id: str, slug: str, request: Request):
+    """Watch one problem being prepared by an upload that is ALREADY running.
+
+    The mirror half of /playground/live. That route STARTS a pipeline run; this
+    one attaches to the run an upload is in the middle of, replaying what has
+    happened so far and then following along - see main/prepare_bus.py for why
+    a second run would be the wrong answer (it costs a second set of model calls
+    and races the first one to write the same oracle cache entry).
+
+    Teacher-gated for the same reason /playground/live is: the transcript
+    carries the ground truth, the oracle suite and every chunk reference, which
+    together are the complete answer key."""
+    import json as _json
+    from fastapi.responses import StreamingResponse
+    from main.prepare_bus import is_open, key, subscribe
+
+    require_teacher(request)
+    k = key(assignment_id, slug)
+    if not is_open(k):
+        raise HTTPException(status_code=404, detail={
+            "reason_code": "no_run_to_watch",
+            "message": (f"Nothing is preparing '{slug}' right now. A run can "
+                        f"only be watched while it is happening - if the upload "
+                        f"has finished, open the problem in the playground to "
+                        f"run it again.")})
+
+    def events():
+        # None is a heartbeat: an idle connection has to put something on the
+        # wire or a proxy closes it, and the readers already skip blank lines.
+        for ev in subscribe(k):
+            yield "\n" if ev is None else _json.dumps(ev) + "\n"
+
+    return StreamingResponse(events(), media_type="application/x-ndjson",
+                             headers={"Cache-Control": "no-cache",
+                                      "X-Accel-Buffering": "no"})
+
 
 @app.post("/playground/live")
 def playground_live(req: LiveRunRequest, request: Request):
@@ -757,7 +814,27 @@ def list_problems(limit: int = 100, difficulty: str = None):
 # problem click, so selecting `solution` here handed the reference answer to
 # anyone who asked. /decompose_chunks reads the solution server-side from the
 # database instead - the browser never needs to carry it.
-_PUBLIC_PROBLEM_COLS = "id, slug, title, difficulty, description, topic_tags"
+_PUBLIC_PROBLEM_COLS = ("id, slug, title, difficulty, description, topic_tags,"
+                        " group_slug, group_title, group_description,"
+                        " group_order, member_order")
+# `context` is NOT in that list and must never be added to it. It holds the
+# module a method was carved out of, which includes the teacher's reference
+# implementations of the class's OTHER methods - for Stack.pop it contains a
+# finished push(). Serving it to a student hands them four of the five answers.
+
+
+def _group_columns(problem: dict) -> dict:
+    """The class-group columns for one problem row, or all-null for a plain
+    function. See migrations/007_class_groups.sql for why the grouping is
+    columns and the context is one jsonb."""
+    from main.sessions import CONTEXT_FIELDS
+    context = {k: problem[k] for k in CONTEXT_FIELDS if k in problem}
+    return {"group_slug": problem.get("group_slug"),
+            "group_title": problem.get("group_title"),
+            "group_description": problem.get("group_description"),
+            "group_order": problem.get("group_order"),
+            "member_order": problem.get("member_order"),
+            "context": context or None}
 
 
 @app.get("/problems/{slug}")
@@ -846,6 +923,19 @@ def upload_assignment(req: AssignmentUpload, request: Request):
         "source_file": req.filename}).execute().data
     assignment_id = row[0]["id"]
 
+    # One watchable channel per problem, so a teacher can open any row in a new
+    # tab and watch the pipeline reason about that one problem. The upload owns
+    # channel lifetime; main/publish.py knows only that it was handed an `emit`.
+    from main.prepare_bus import finish as bus_finish, key as bus_key
+    from main.prepare_bus import open_channel, publish as bus_publish
+    opened: list[str] = []
+
+    def emit_for(slug: str):
+        k = bus_key(assignment_id, slug)
+        open_channel(k)
+        opened.append(k)
+        return lambda ev: bus_publish(k, ev)
+
     def events():
         yield _json.dumps({"event": "parsed", "assignment_id": assignment_id,
                            "name": parsed["name"],
@@ -868,29 +958,42 @@ def upload_assignment(req: AssignmentUpload, request: Request):
             except Exception:
                 pass
 
-        for ev in prepare_assignment_stream(parsed["problems"]):
-            if ev.get("event") == "prepared":
-                src = next((p for p in parsed["problems"]
-                            if p["slug"] == ev["slug"]), None)
-                if src:
-                    try:
-                        sb.table("problems").upsert({
-                            "slug": src["slug"], "title": src["title"],
-                            "description": src["description"],
-                            "solution": src["solution"],
-                            "assignment_id": assignment_id,
-                            "ready": bool(ev["ready"]),
-                            "prepare_error": ev.get("error")},
-                            on_conflict="assignment_id,slug").execute()
-                    except Exception as e:
-                        # A problem that did not SAVE is not ready, whatever
-                        # preparation decided. Reporting it as ready while the
-                        # row is missing is exactly how an assignment showed
-                        # green badges and still sat at 0 / 0 - the failure has
-                        # to reach the teacher, not a swallowed warning field.
-                        ev = {**ev, "ready": False,
-                              "error": f"prepared, but could not be saved: {e}"[:300]}
-            yield _json.dumps(ev) + "\n"
+        try:
+            for ev in prepare_assignment_stream(parsed["problems"],
+                                                emit_for=emit_for):
+                if ev.get("event") == "prepared":
+                    # A finished problem releases its watchers. Without this, a
+                    # tab that opened mid-run sits on an open connection for
+                    # ever: the stream's only other ending is the whole run.
+                    bus_finish(bus_key(assignment_id, ev.get("slug", "?")))
+                    src = next((p for p in parsed["problems"]
+                                if p["slug"] == ev["slug"]), None)
+                    if src:
+                        try:
+                            sb.table("problems").upsert({
+                                "slug": src["slug"], "title": src["title"],
+                                "description": src["description"],
+                                "solution": src["solution"],
+                                "assignment_id": assignment_id,
+                                "ready": bool(ev["ready"]),
+                                "prepare_error": ev.get("error"),
+                                **_group_columns(src)},
+                                on_conflict="assignment_id,slug").execute()
+                        except Exception as e:
+                            # A problem that did not SAVE is not ready, whatever
+                            # preparation decided. Reporting it as ready while
+                            # the row is missing is exactly how an assignment
+                            # showed green badges and still sat at 0 / 0 - the
+                            # failure has to reach the teacher, not a swallowed
+                            # warning field.
+                            ev = {**ev, "ready": False,
+                                  "error": f"prepared, but could not be saved: {e}"[:300]}
+                yield _json.dumps(ev) + "\n"
+        finally:
+            # A disconnect or a crash must not leave watchers hanging on a run
+            # that is never going to send them anything again.
+            for k in opened:
+                bus_finish(k)
 
     return StreamingResponse(events(), media_type="application/x-ndjson",
                              headers={"Cache-Control": "no-cache",

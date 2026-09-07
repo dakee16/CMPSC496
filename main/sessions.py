@@ -87,8 +87,18 @@ def _connect(db_path: str | None = None) -> sqlite3.Connection:
             expires_at        TEXT NOT NULL,
             last_submission_id TEXT,
             last_result_json  TEXT,
-            revision          INTEGER NOT NULL DEFAULT 0
+            revision          INTEGER NOT NULL DEFAULT 0,
+            context_json      TEXT
         )""")
+    # ONE json column, not five. A class-derived problem carries the module it
+    # was carved out of (main/context.py); nothing here ever queries inside it,
+    # it only has to come back out intact in problem_of(). CREATE TABLE above
+    # does not touch a database that already exists, so the column is also added
+    # explicitly - a session DB predating class support must keep working.
+    try:
+        conn.execute("ALTER TABLE sessions ADD COLUMN context_json TEXT")
+    except sqlite3.OperationalError:
+        pass                                    # already there
     # Idempotency is persisted per (session, submission) rather than only
     # remembering the latest submission - a retry of an older id must still
     # replay its own stored result instead of being graded again.
@@ -123,11 +133,13 @@ def create_session(problem: dict, decomposition: dict, content_hash: str,
         conn.execute(
             "INSERT INTO sessions (session_id, student_id, slug, content_hash,"
             " decomposition_id, solution, description, title, header, chunks_json,"
-            " created_at, updated_at, expires_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            " created_at, updated_at, expires_at, context_json)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (sid, student_id, problem.get("slug", ""), content_hash, did,
              problem.get("solution", ""), problem.get("description", ""),
              problem.get("title", ""), decomposition["header"],
-             json.dumps(chunks), now, now, exp))
+             json.dumps(chunks), now, now, exp,
+             json.dumps({k: problem[k] for k in CONTEXT_FIELDS if k in problem})))
     finally:
         conn.close()
     return {"session_id": sid, "decomposition_id": did,
@@ -161,6 +173,7 @@ def _row_to_session(r: sqlite3.Row) -> dict:
             "state": r["state"], "expires_at": r["expires_at"],
             "last_submission_id": r["last_submission_id"],
             "revision": r["revision"],
+            "context": json.loads(r["context_json"] or "{}"),
             "last_result": json.loads(r["last_result_json"]) if r["last_result_json"] else None}
 
 
@@ -183,11 +196,24 @@ def load_session(session_id: str, db_path: str | None = None) -> dict:
     return s
 
 
+# What a class-derived problem carries beyond the plain four. Named once here
+# because create_session writes it and problem_of reads it, and the two drifting
+# apart would mean a method graded against a program it was not decomposed from.
+CONTEXT_FIELDS = ("context_prefix", "context_suffix", "context_indent",
+                  "entry_hint", "group_slug", "group_title", "group_description")
+
+
 def problem_of(session: dict) -> dict:
     """Rebuild the authoritative problem dict from the session - never the
-    client's copy."""
+    client's copy.
+
+    The context fields ride along so main/context.py can assemble the same
+    program the oracle was built from. Without them a method problem would grade
+    as a bare function and every submission would fail on the class that is not
+    there."""
     return {"slug": session["slug"], "title": session["title"],
-            "description": session["description"], "solution": session["solution"]}
+            "description": session["description"], "solution": session["solution"],
+            **(session.get("context") or {})}
 
 
 def accepted_prefix(session: dict) -> list[str]:

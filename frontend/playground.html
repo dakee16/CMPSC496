@@ -974,8 +974,9 @@ const HANDLERS = {
   done(){ /* handled by the reader loop */ },
 };
 
-async function runLive(){
-  if (running || !selected) return;
+/* Reset the transcript panel for a new run. Shared by the two ways to watch
+   one: starting a run here, and mirroring a run an upload is already doing. */
+function beginRun(){
   running = true;
   aborter = new AbortController();
   $("runBtn").disabled = true;
@@ -988,23 +989,14 @@ async function runLive(){
   curStage = curBody = curKonsole = null;
   mutRows = new Map(); mutBar = null; mutRound = 0;
   $("runWrap").scrollIntoView({behavior: "smooth", block: "start"});
+}
 
-  let resp;
-  try {
-    resp = await fetch(`${API}/playground/live`, {
-      method: "POST", headers: {"Content-Type": "application/json"},
-      signal: aborter.signal,
-      body: JSON.stringify({slug: selected, params: overrides()}),
-    });
-  } catch { finishRun("could not reach the server"); return; }
-  if (!resp.ok){
-    let msg = `HTTP ${resp.status}`;
-    try { const d = await resp.json(); msg = (d.detail && d.detail.message) || d.detail || msg; } catch {}
-    HANDLERS.error({message: String(msg)});
-    finishRun("failed");
-    return;
-  }
-
+/* Read one NDJSON pipeline stream to its end and render it. The event
+   vocabulary is main/live_playground.py's, and the upload path emits the same
+   one (main/publish.py), so this renders either without knowing which it got.
+   Blank lines are heartbeats from a mirrored run - skipped, same as any other
+   empty line. Returns true if the run reported a failure. */
+async function consumeRun(resp){
   const reader = resp.body.getReader();
   const dec = new TextDecoder();
   let buf = "", sawError = false;
@@ -1030,11 +1022,61 @@ async function runLive(){
     if (e.name !== "AbortError") HANDLERS.error({message: String(e)});
     else konsole("— stopped watching; the run continues on the server —");
   }
+  return sawError;
+}
+
+async function streamFailed(resp){
+  let msg = `HTTP ${resp.status}`;
+  try { const d = await resp.json(); msg = (d.detail && d.detail.message) || d.detail || msg; } catch {}
+  HANDLERS.error({message: String(msg)});
+  finishRun("failed");
+}
+
+async function runLive(){
+  if (running || !selected) return;
+  beginRun();
+
+  let resp;
+  try {
+    resp = await fetch(`${API}/playground/live`, {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      signal: aborter.signal,
+      body: JSON.stringify({slug: selected, params: overrides()}),
+    });
+  } catch { finishRun("could not reach the server"); return; }
+  if (!resp.ok) return streamFailed(resp);
+
+  const sawError = await consumeRun(resp);
   finishRun(sawError ? "finished with a failure" : "finished");
   // The run wrote to the oracle cache and possibly the pool - refresh both
   // panels so the list's badges tell the new truth.
   loadProblems(true);
   if (selected) openProblemStatusOnly(selected);
+}
+
+/* MIRROR MODE. Attach to the preparation run an upload is already doing for
+   one problem, rather than starting a second one - see main/prepare_bus.py.
+   Nothing is started, nothing is paid for twice, and Stop only stops WATCHING.
+
+   A run that has already finished replays its whole transcript and ends
+   immediately, so a teacher can click a row after the fact and read back
+   exactly what happened to that problem. */
+async function watchPrepare(assignmentId, slug){
+  if (running) return;
+  beginRun();
+  $("runBtn").hidden = true;              // there is nothing to start here
+  konsole(`— mirroring the upload's preparation of "${slug}" —`);
+
+  let resp;
+  try {
+    resp = await fetch(
+      `${API}/teacher/prepare/live/${encodeURIComponent(assignmentId)}/${encodeURIComponent(slug)}`,
+      {signal: aborter.signal});
+  } catch { finishRun("could not reach the server"); return; }
+  if (!resp.ok) return streamFailed(resp);
+
+  const sawError = await consumeRun(resp);
+  finishRun(sawError ? "finished with a failure" : "finished");
 }
 
 function finishRun(label){
@@ -1070,10 +1112,22 @@ $("rawBtn").onclick = () => {
 // ?slug=... opens straight onto one problem. This is what the upload page's
 // "Review now" links to, so an instructor lands on the problem they were just
 // told about instead of hunting for it in a list of twenty.
-loadProblems().then(() => {
-  const want = new URLSearchParams(location.search).get("slug");
-  if (want && problems.some(p => p.slug === want)) openProblem(want);
-});
+//
+// ?watch=<assignment_id>&slug=... additionally MIRRORS the preparation run that
+// upload is doing for that problem. The upload page links here while a problem
+// is still working, so "why is this one taking so long" is one click away.
+const qs = new URLSearchParams(location.search);
+const watchId = qs.get("watch"), watchSlug = qs.get("slug");
+if (watchId && watchSlug){
+  // No problem list in mirror mode: the run being watched is the whole page,
+  // and loading twenty problems only to ignore them is a slow way to show it.
+  document.title = `Preparing ${watchSlug}`;
+  watchPrepare(watchId, watchSlug);
+} else {
+  loadProblems().then(() => {
+    if (watchSlug && problems.some(p => p.slug === watchSlug)) openProblem(watchSlug);
+  });
+}
 loadParams();
 </script>
 </body>
