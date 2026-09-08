@@ -72,8 +72,8 @@
   .bdList .bdWhy{color:var(--text-muted); font-size:12.5px; line-height:1.5;
     overflow-wrap:anywhere}
   .acts{display:flex; gap:6px; justify-content:flex-end}
-  .acts button{min-height:0; padding:5px 11px; font-size:12px;
-    font-family:var(--font-sans)}
+  .acts button,.acts select{min-height:0; padding:5px 11px; font-size:12px;
+    font-family:var(--font-sans); width:auto}
   .bdList .bdFix{margin-left:auto; flex:none; min-height:0; padding:5px 11px;
     font-size:12px; font-family:var(--font-sans)}
 
@@ -755,7 +755,13 @@ function assignmentsTable(rows){
             <span class="hint" style="margin:0">${esc(relTime(a.created_at))}</span></td>
         <td><div class="acts">
           <button class="ghost" data-act="breakdown">View problems</button>
-          <button class="ghost" data-act="reprep">Re-prepare</button>
+          <select class="ghost" data-act="reprep"
+              aria-label="Re-prepare ${esc(a.name)}">
+            <option value="">Re-prepare&hellip;</option>
+            <option value="all">Every problem</option>
+            <option value="blocked"${blocked ? "" : " disabled"}
+              >${blocked ? `Only the ${blocked} not ready` : "Nothing is blocked"}</option>
+          </select>
           <button class="ghost" data-act="pub">${a.published === false
             ? "Publish" : "Unpublish"}</button>
         </div></td>
@@ -801,7 +807,10 @@ async function loadAssignments(){
     const tr = b.closest("tr");
     const a = rows.find(x => String(x.id) === tr.dataset.id);
     if (b.dataset.act === "breakdown") b.onclick = () => toggleBreakdown(tr, a);
-    if (b.dataset.act === "reprep")    b.onclick = () => reprepare(a);
+    if (b.dataset.act === "reprep")    b.onchange = () => {
+      const scope = b.value; b.value = "";
+      if (scope) reprepare(a, scope);
+    };
     if (b.dataset.act === "pub")       b.onclick = () => togglePublished(a, b);
   });
 }
@@ -1321,12 +1330,15 @@ async function retryFix(host, assignment, slug){
    carry the solution AND the class context, which is everything preparation
    needs. Asking for the file again made the instructor solve a problem the
    server no longer had. */
-async function reprepare(a){
+async function reprepare(a, scope){
+  const only = scope === "blocked";
   if (run){ toast("A preparation run is already in progress.", "warn"); return; }
   if (!confirm(
-      `Prepare "${a.name}" again?\n\n`
-      + `Every problem is split into steps again, and the splits it has now `
-      + `are discarded. Test cases already checked are reused, so this is `
+      (only ? `Prepare the problems in "${a.name}" that are not ready again?\n\n`
+            : `Prepare "${a.name}" again?\n\n`)
+      + (only ? `Problems already marked ready are left alone. ` : ``)
+      + `Every problem it runs is split into steps again, and the splits it has `
+      + `now are discarded. Test cases already checked are reused, so this is `
       + `faster than the first upload.\n\n`
       + `Students keep seeing the current version until it finishes.`)) return;
 
@@ -1335,7 +1347,8 @@ async function reprepare(a){
   $("cancel").hidden = false;
   $("items").innerHTML = ""; $("summary").innerHTML = "";
   setProgress(0);
-  $("runTitle").textContent = "Preparing again";
+  $("runTitle").textContent = only ? "Preparing what is not ready"
+                                  : "Preparing again";
   $("runCount").textContent = "";
   startRun(a.name);
   $("run").scrollIntoView({behavior: "smooth", block: "nearest"});
@@ -1343,7 +1356,8 @@ async function reprepare(a){
   let resp;
   try {
     resp = await fetch(
-      `${API}/teacher/assignments/${encodeURIComponent(a.id)}/reprepare`,
+      `${API}/teacher/assignments/${encodeURIComponent(a.id)}/reprepare`
+      + `?scope=${encodeURIComponent(scope)}`,
       {method: "POST", signal: run.abort.signal});
   } catch (e) {
     if (e.name === "AbortError") return;

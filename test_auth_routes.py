@@ -417,3 +417,20 @@ def test_no_signing_key_refuses_to_issue_sessions():
         assert r.status_code == 503, "issued a session with no signing key"
     finally:
         auth.SESSION_SECRET = "test-secret-not-a-real-key"
+
+
+def test_reprepare_blocked_skips_an_assignment_that_is_all_ready():
+    """`scope=blocked` re-prepares only what did not come out ready. The cheap
+    end of that branch is the one worth asserting: with nothing blocked there is
+    nothing to run, and the route has to say so instead of re-splitting every
+    problem in the assignment for no reason."""
+    c, sb = teacher_client()
+    sb.problems[0]["ready"] = True
+
+    r = c.post("/teacher/assignments/a-1/reprepare?scope=blocked")
+    assert r.status_code == 409, r.text
+    assert r.json()["detail"]["reason_code"] == "nothing_blocked"
+
+    # An assignment with no rows at all is still the other error, not this one.
+    assert c.post("/teacher/assignments/nope/reprepare?scope=blocked"
+                  ).status_code == 404

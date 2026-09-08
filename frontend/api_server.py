@@ -1117,9 +1117,11 @@ def upload_assignment(req: AssignmentUpload, request: Request):
 
 
 @app.post("/teacher/assignments/{assignment_id}/reprepare")
-def reprepare_assignment(assignment_id: str, request: Request):
-    """Prepare every problem in an existing assignment again, from what is
-    already stored - no file, no re-upload.
+def reprepare_assignment(assignment_id: str, request: Request,
+                         scope: str = "all"):
+    """Prepare an existing assignment again, from what is already stored - no
+    file, no re-upload. scope="all" does every problem; scope="blocked" does
+    only the ones that did not come out ready.
 
     The rows carry the solution AND the class context, which is everything
     preparation needs. Asking for the .py file again was a leftover from when
@@ -1149,6 +1151,17 @@ def reprepare_assignment(assignment_id: str, request: Request):
         raise HTTPException(status_code=404, detail={
             "reason_code": "assignment_empty",
             "message": "This assignment has no problems stored to prepare."})
+
+    # Re-splitting is the slow part of preparation, and a problem that is
+    # already ready gets the same answer for it. After a fix aimed at the ones
+    # that failed, doing only those is the whole point.
+    if scope == "blocked":
+        rows = [r for r in rows if not r.get("ready")]
+        if not rows:
+            raise HTTPException(status_code=409, detail={
+                "reason_code": "nothing_blocked",
+                "message": ("Every problem in this assignment is already "
+                            "ready, so there is nothing to re-prepare.")})
 
     problems = [{**r, **_context_of(r)} for r in rows]
     problems = [p for p in problems if (p.get("solution") or "").strip()]
