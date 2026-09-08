@@ -26,12 +26,30 @@ load_dotenv()
 MODEL  = DECOMPOSE_MODEL
 AGENTS = ["weak", "normal", "strong"]
 
-# Supabase client
+# Supabase client, built on FIRST USE and not at import.
+#
+# This used to be a module-level create_client(). frontend/api_server.py:24
+# imports this module, so that one line made importing the API construct a
+# client and read os.environ["SUPABASE_URL"] as a side effect - which broke the
+# lazy client boundary api_server.py:43 documents ("importing this module must
+# perform NO network or client construction"), and turned a missing or
+# misspelled variable into a bare KeyError traceback at boot instead of a
+# message naming the variable. It only ever worked because .env sits next to
+# the code; in a container there is no .env and the process died on import.
+_SB = None
 
-supabase = create_client(
-    os.environ["SUPABASE_URL"],
-    os.environ["SUPABASE_KEY"],
-)
+
+def _sb():
+    global _SB
+    if _SB is None:
+        missing = [k for k in ("SUPABASE_URL", "SUPABASE_KEY")
+                   if not os.environ.get(k)]
+        if missing:
+            raise RuntimeError(
+                f"{' and '.join(missing)} not set. Supabase is required to load "
+                f"problems; set it in .env locally or in the host's environment.")
+        _SB = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_KEY"])
+    return _SB
 
 
 _CHUNK_POOL_PATH = os.path.join(os.path.dirname(__file__), "chunk_pool.json")
@@ -202,7 +220,7 @@ def reconstruct_solution(steps: list[StepItem], answers: list[str], problem_titl
 
 def load_problems(limit: int = 500) -> list[dict]:
     res = (
-        supabase.table("problems")
+        _sb().table("problems")
         .select("id, slug, title, difficulty, description, solution")
         .limit(limit)
         .execute()
@@ -221,13 +239,13 @@ def save_steps(problem_id: str, steps: list[StepItem]) -> list[str]:
             "expected_type": step.expected_type,
             "rubric":        step.rubric or "",
         }
-        res = supabase.table("steps").insert(row).execute()
+        res = _sb().table("steps").insert(row).execute()
         step_ids.append(res.data[0]["id"])
     return step_ids
 
 
 def save_interaction(step_uuid: str, agent: str, attempt: int, answer: str, correct: bool, hint: str | None, final_answer: str | None = None, score: float | None = None) -> None:
-    supabase.table("interactions").insert({
+    _sb().table("interactions").insert({
         "step_id":      step_uuid,
         "agent_level":  agent,
         "attempt":      attempt,
@@ -823,7 +841,7 @@ def run_agent(problem: dict, steps: list[StepItem], step_uuids: list[str], agent
         if last_uuid:
             try:
                 (
-                    supabase.table("interactions")
+                    _sb().table("interactions")
                     .update({"final_answer": reconstructed, "score": score})
                     .eq("step_id", last_uuid)
                     .eq("agent_level", agent)

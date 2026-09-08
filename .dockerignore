@@ -1,0 +1,39 @@
+# Docker does NOT read .gitignore. Without this file `COPY . .` bakes .env -
+# OPENAI_API_KEY, SUPABASE_KEY, MICROTUTOR_SESSION_SECRET - into a layer of
+# the published image, where deleting it later does not remove it.
+.env
+.env.*
+!.env.example
+
+# 123M and 11M respectively, and both are wrong inside the image anyway:
+# .venv holds macOS-built wheels, .git holds history no runtime needs.
+.venv/
+.git/
+.gitignore
+
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.DS_Store
+.vscode/
+.claude/
+
+# Local dev sessions. The real ones live on the mounted volume (start.sh).
+data/grading_sessions.sqlite3*
+
+# data/oracles/tests_cache.json is deliberately NOT ignored - start.sh seeds
+# an empty volume from it on first boot, and without it every already-published
+# problem loses the tests it is graded against.
+
+# Not part of the service: the one-off Supabase loaders and the standalone
+# assignment scripts.
+_supabase_/
+assignment_*.py
+count.py
+test_*.py
+
+# research/ is NOT excluded, however much it looks like it should be:
+# main/run_phase1.py:12 imports research.student_agent at module level, and
+# frontend/api_server.py:23 imports run_phase1 - so dropping it breaks the
+# container at import time, and only in the built image, never locally.

@@ -388,7 +388,7 @@ def test_a_successful_retry_publishes_the_problem(monkeypatch):
     c, sb = teacher_client()
     monkeypatch.setattr(
         "main.publish.prepare_problem",
-        lambda p: {"slug": p["slug"], "ready": True, "chunks": 4,
+        lambda p, emit=None: {"slug": p["slug"], "ready": True, "chunks": 4,
                    "n_tests": 9, "stage": None, "error": None})
     r = c.post("/teacher/problems/retry", json={
         "assignment_id": "a-1",

@@ -11,10 +11,16 @@ import json
 import os
 import threading
 import time
+from collections import deque
 from contextlib import contextmanager
 
 _LOCK = threading.Lock()
-_SINK = []                      # in-memory unless MICROTUTOR_TRACE_FILE is set
+# Bounded: a server that stays up for a term makes millions of model calls,
+# and an unbounded list here grew until the process was killed. The tail is
+# what a human ever looks at; MICROTUTOR_TRACE_FILE keeps the full history.
+# ponytail: fixed ring, swap for a real sink if traces are ever queried.
+MAX_EVENTS = 10_000
+_SINK: deque = deque(maxlen=MAX_EVENTS)   # in-memory unless MICROTUTOR_TRACE_FILE is set
 
 # USD per 1M tokens. Empty by default: absent pricing => cost is None, never 0.
 PRICING: dict[str, tuple[float, float]] = {}
