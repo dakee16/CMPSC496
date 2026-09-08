@@ -490,7 +490,8 @@ def playground_problems(request: Request):
     sb = get_supabase()
     rows = sb.table("problems").select(
         "slug, title, difficulty, description, solution, ready, prepare_error,"
-        " assignment_id").execute().data or []
+        " assignment_id, context, group_slug, group_title, group_description"
+        ).execute().data or []
     asg = {a["id"]: a["name"] for a in (sb.table("assignments").select(
         "id, name").execute().data or [])}
     cache = _load_cache()
@@ -498,8 +499,12 @@ def playground_problems(request: Request):
 
     out = []
     for p in rows:
+        # Must include the class context: content_hash folds context_prefix and
+        # context_suffix in, so hashing description+solution alone never matches
+        # a method's cached verdict - every class problem read "no oracle yet".
         key = content_hash({"description": p.get("description") or "",
-                            "solution": p.get("solution") or ""})
+                            "solution": p.get("solution") or "",
+                            **_context_of(p)})
         oracle = cache.get(key)
         # Three states, not two. "review" is a suite that may well be fine but
         # carries checks nothing could decide; calling that "weak" sends the
@@ -565,7 +570,8 @@ def playground_problem(slug: str, request: Request):
         raise HTTPException(status_code=404, detail=f"Problem '{slug}' not found.")
     p = row[0]
     key = content_hash({"description": p.get("description") or "",
-                        "solution": p.get("solution") or ""})
+                        "solution": p.get("solution") or "",
+                        **_context_of(p)})
     oracle = _load_cache().get(key)
     if not (isinstance(oracle, dict) and "strong" in oracle):
         oracle = None
@@ -584,15 +590,21 @@ def playground_problem(slug: str, request: Request):
 
 
 @app.get("/playground/{slug}")
-def playground_detail(slug: str):
+def playground_detail(slug: str, request: Request):
     """One problem's full journey, assembled from cache. Never recomputes an
-    oracle or a decomposition; returns nulls the UI renders as 'not yet'."""
+    oracle or a decomposition; returns nulls the UI renders as 'not yet'.
+
+    Teacher-gated like every other playground route. It withholds `solution`,
+    which is what made it look safe - but it returns the decomposition, and a
+    decomposition carries every step's private reference answer. Ungated, the
+    complete answer key was one guessed slug away from any signed-out visitor."""
     import json as _json
     import os as _os
     from main.identity import content_hash, get_resolved_entry
     from main.mutation import _disagrees, generate_mutants
     from tests.sandbox import _load_cache, passes_tests, run_solution
 
+    require_teacher(request)
     row = get_supabase().table("problems").select(
         "slug, title, description, difficulty, solution, context, group_slug, "
         "group_title, group_description").eq("slug", slug).execute().data
@@ -858,6 +870,24 @@ _PUBLIC_PROBLEM_COLS = ("id, slug, title, difficulty, description, topic_tags,"
 # finished push(). Serving it to a student hands them four of the five answers.
 
 
+def _stored_problem(assignment_id, slug: str) -> dict | None:
+    """The stored row for one problem, with its class context flattened back on.
+
+    Returns None when there is no row or it is not a class problem - a plain
+    function needs no context and its source is already a whole module."""
+    try:
+        row = get_supabase().table("problems").select(
+            "slug, title, description, solution, context, group_slug, "
+            "group_title, group_description").eq(
+            "assignment_id", assignment_id).eq("slug", slug).execute().data
+    except Exception:
+        return None
+    if not row:
+        return None
+    merged = {**row[0], **_context_of(row[0])}
+    return merged if merged.get("context_prefix") else None
+
+
 def _context_of(row: dict) -> dict:
     """The class-context fields from a stored problem row, flattened back onto
     the problem dict main/context.py expects.
@@ -932,6 +962,12 @@ class ManualSplitRequest(BaseModel, extra="forbid"):
     slug: str
     header: str
     chunks: list[dict]
+
+
+class ProblemAcceptRequest(BaseModel, extra="forbid"):
+    """An instructor taking responsibility for the checks nothing could decide."""
+    assignment_id: str
+    slug: str
 
 
 class ProblemRetryRequest(BaseModel, extra="forbid"):
@@ -1080,12 +1116,152 @@ def upload_assignment(req: AssignmentUpload, request: Request):
                                       "X-Accel-Buffering": "no"})
 
 
+@app.post("/teacher/assignments/{assignment_id}/reprepare")
+def reprepare_assignment(assignment_id: str, request: Request):
+    """Prepare every problem in an existing assignment again, from what is
+    already stored - no file, no re-upload.
+
+    The rows carry the solution AND the class context, which is everything
+    preparation needs. Asking for the .py file again was a leftover from when
+    they did not: the server kept the parsed problems, not the file, so the
+    only way back was to make the instructor find it.
+
+    Streams the same events an upload does, so the page renders it with the same
+    code. Existing decompositions for these problems are dropped first: the
+    point of re-preparing is to get new ones, and serving a pooled split from
+    before the change would quietly defeat that."""
+    import json as _json
+    from fastapi.responses import StreamingResponse
+    from main.publish import prepare_assignment_stream
+    from main.prepare_bus import finish as bus_finish, key as bus_key
+    from main.prepare_bus import open_channel, publish as bus_publish
+    from main.identity import content_hash
+    from main.run_phase1 import _load_pool, _save_pool
+    from main import transcripts
+
+    require_teacher(request)
+    sb = get_supabase()
+    rows = sb.table("problems").select(
+        "slug, title, description, solution, ready, prepare_error, context, "
+        "group_slug, group_title, group_description").eq(
+        "assignment_id", assignment_id).execute().data or []
+    if not rows:
+        raise HTTPException(status_code=404, detail={
+            "reason_code": "assignment_empty",
+            "message": "This assignment has no problems stored to prepare."})
+
+    problems = [{**r, **_context_of(r)} for r in rows]
+    problems = [p for p in problems if (p.get("solution") or "").strip()]
+    if not problems:
+        raise HTTPException(status_code=409, detail={
+            "reason_code": "no_solutions",
+            "message": ("None of these problems has a stored solution, so there "
+                        "is nothing to prepare. Upload the .py file instead.")})
+
+    # Drop the old splits for exactly these problems. Verdicts are keyed by
+    # content and stay - re-running mutation testing on unchanged text would
+    # cost minutes and reach the same answer.
+    pool = _load_pool()
+    for pr in problems:
+        pool.pop(content_hash(pr), None)
+    _save_pool(pool)
+
+    opened: list[str] = []
+    taped: dict[str, list] = {}
+
+    def emit_for(slug: str):
+        k = bus_key(assignment_id, slug)
+        open_channel(k)
+        opened.append(k)
+        tape = taped.setdefault(slug, [])
+
+        def emit(ev):
+            tape.append(ev)
+            bus_publish(k, ev)
+        return emit
+
+    def events():
+        yield _json.dumps({"event": "parsed", "assignment_id": assignment_id,
+                           "name": "", "n_problems": len(problems),
+                           "parse_errors": []}) + "\n"
+        try:
+            for ev in prepare_assignment_stream(problems, emit_for=emit_for):
+                if ev.get("event") == "prepared":
+                    bus_finish(bus_key(assignment_id, ev.get("slug", "?")))
+                    src = next((x for x in problems
+                                if x["slug"] == ev["slug"]), None)
+                    if src:
+                        try:
+                            sb.table("problems").upsert({
+                                "slug": src["slug"],
+                                "title": src.get("title") or src["slug"],
+                                "description": src.get("description") or "",
+                                "solution": src.get("solution") or "",
+                                "assignment_id": assignment_id,
+                                "ready": bool(ev["ready"]),
+                                "prepare_error": ev.get("error")},
+                                on_conflict="assignment_id,slug").execute()
+                        except Exception as e:
+                            ev = {**ev, "ready": False,
+                                  "error": f"prepared, but could not be saved: {e}"[:300]}
+                    try:
+                        transcripts.record(assignment_id, ev.get("slug", "?"),
+                                           taped.pop(ev.get("slug", "?"), []), ev)
+                    except Exception:
+                        pass
+                yield _json.dumps(ev) + "\n"
+        finally:
+            for k in opened:
+                bus_finish(k)
+
+    return StreamingResponse(events(), media_type="application/x-ndjson",
+                             headers={"Cache-Control": "no-cache",
+                                      "X-Accel-Buffering": "no"})
+
+
+def _is_published(assignment_id) -> bool:
+    """Is this assignment visible to students? True when the column is absent,
+    so a database that has not run the migration behaves exactly as before."""
+    try:
+        row = get_supabase().table("assignments").select("published").eq(
+            "id", assignment_id).execute().data
+    except Exception:
+        return True                    # no column yet - nothing is hidden
+    return bool(row and row[0].get("published", True) is not False)
+
+
+class PublishToggleRequest(BaseModel, extra="forbid"):
+    published: bool
+
+
+@app.post("/teacher/assignments/{assignment_id}/published")
+def set_assignment_published(assignment_id: str, req: PublishToggleRequest,
+                             request: Request):
+    """Show or hide a whole assignment from students, instantly.
+
+    Deliberately NOT the same thing as un-preparing it. Every verdict, every
+    decomposition and every cached oracle survives, so this is reversible in one
+    click - which is what makes it usable as an emergency stop when something
+    looks wrong mid-term."""
+    require_teacher(request)
+    try:
+        get_supabase().table("assignments").update(
+            {"published": bool(req.published)}).eq("id", assignment_id).execute()
+    except Exception as e:
+        raise HTTPException(status_code=409, detail={
+            "reason_code": "no_published_column",
+            "message": (f"Could not change visibility: {e}. If the `published` "
+                        f"column has not been added to the assignments table "
+                        f"yet, run the migration first.")[:300]})
+    return {"assignment_id": assignment_id, "published": bool(req.published)}
+
+
 @app.get("/assignments")
 def list_assignments():
     """Assignments with a ready-count. Safe for students AND teachers."""
     sb = get_supabase()
     rows = sb.table("assignments").select(
-        "id, name, teacher_name, created_at").order(
+        "id, name, teacher_name, created_at, published").order(
         "created_at", desc=True).execute().data or []
     probs = sb.table("problems").select(
         "assignment_id, ready").not_.is_("assignment_id", "null").execute().data or []
@@ -1095,7 +1271,11 @@ def list_assignments():
         c["total"] += 1
         c["ready"] += 1 if p["ready"] else 0
     return {"assignments": [
-        {**a, **counts.get(a["id"], {"total": 0, "ready": 0})} for a in rows]}
+        # `published` defaults to True for rows written before the column
+        # existed - an assignment that was visible must not vanish because a
+        # migration ran.
+        {**a, "published": a.get("published", True) is not False,
+         **counts.get(a["id"], {"total": 0, "ready": 0})} for a in rows]}
 
 
 @app.get("/assignments/{assignment_id}/problems")
@@ -1104,10 +1284,18 @@ def assignment_problems(assignment_id: str):
 
     No solution, no prepare_error, and nothing that isn't ready - a student must
     never be handed a problem the grader cannot actually grade."""
-    res = get_supabase().table("problems").select(
+    sb = get_supabase()
+    # An UNPUBLISHED assignment shows a student nothing, whatever its problems
+    # say. The flag is the instructor's emergency stop: it hides the whole set
+    # instantly without destroying a single verdict or decomposition, so
+    # publishing again is a flag flip rather than another hour of preparation.
+    if not _is_published(assignment_id):
+        return {"problems": [], "count": 0, "published": False}
+    res = sb.table("problems").select(
         _PUBLIC_PROBLEM_COLS).eq("assignment_id", assignment_id).eq(
         "ready", True).execute()
-    return {"problems": res.data or [], "count": len(res.data or [])}
+    return {"problems": res.data or [], "count": len(res.data or []),
+            "published": True}
 
 
 @app.get("/teacher/assignments/{assignment_id}/problems")
@@ -1169,6 +1357,62 @@ def teacher_transcript(assignment_id: str, student_id: str, request: Request):
         "Cache-Control": "no-store"})
 
 
+def _findings_for(row: dict) -> dict | None:
+    """Which specific checks decided this problem's verdict, in the instructor's
+    terms - or None when it was never validated.
+
+    A "check" is one deliberate single-line edit to the solution. Caught means a
+    test noticed; inconclusive means nothing could separate the two programs and
+    a person has to look. The line number is relative to the problem's own text,
+    which is exactly what the fix panel puts in its editor."""
+    import re
+    import re as _re
+    from main.identity import content_hash
+    from tests.sandbox import _load_cache
+
+    entry = _load_cache().get(content_hash(
+        {"description": row.get("description") or "",
+         "solution": row.get("solution") or "",
+         **_context_of(row)}))
+    if not (isinstance(entry, dict) and "strong" in entry):
+        return None
+    checks = ((entry.get("breakdown") or {}).get("mutants")) or []
+
+    def one(m):
+        label = m.get("label") or ""
+        hit = _re.match(r"\s*line\s+(\d+)\s*:\s*(.*)", label)
+        what = (hit.group(2) if hit else label).strip()
+        # The stored labels are written for the engine ("remove `x = 1`",
+        # "is -> is not"), and an instructor reads "remove ..." as an
+        # instruction to go and remove it. Say what was DONE, in the past
+        # tense, so it reads as a report rather than a suggestion.
+        edit = re.sub(r"^remove\s+", "", what)
+        if what.startswith("remove "):
+            phrasing = f"deleting {edit}"
+        elif "->" in what:
+            a, b = [x.strip() for x in what.split("->", 1)]
+            phrasing = f"changing {a} to {b}"
+        else:
+            phrasing = f"changing {what}"
+        pr = m.get("probe") or {}
+        return {"line": int(hit.group(1)) if hit else None,
+                "what": what, "phrasing": phrasing, "label": label,
+                # Which of the possible meanings the evidence points at, when
+                # there is evidence. Absent for verdicts written before this was
+                # persisted - the UI then lists the possibilities unnarrowed.
+                "probe": pr.get("verdict"),
+                "reached": pr.get("reached"),
+                "differed": pr.get("differed"),
+                "settled": m.get("status") in ("killed", "killed_on_retry")}
+
+    return {"status": entry.get("status") or
+                      ("strong" if entry.get("strong") else "weak"),
+            "lower": entry.get("kill_rate_lower"),
+            "upper": entry.get("kill_rate_upper"),
+            "n_tests": len(entry.get("final_tests") or []),
+            "checks": [one(m) for m in checks]}
+
+
 @app.get("/teacher/problems/{slug}/source")
 def teacher_problem_source(slug: str, assignment_id: str, request: Request):
     """One problem's own text, plus WHICH preparation gate it stopped at.
@@ -1182,7 +1426,8 @@ def teacher_problem_source(slug: str, assignment_id: str, request: Request):
 
     require_teacher(request)
     rows = get_supabase().table("problems").select(
-        "slug, title, description, solution, ready, prepare_error").eq(
+        "slug, title, description, solution, ready, prepare_error, context, "
+        "group_slug, group_title, group_description").eq(
         "assignment_id", assignment_id).eq("slug", slug).execute().data
     if not rows:
         raise HTTPException(status_code=404, detail={
@@ -1193,7 +1438,14 @@ def teacher_problem_source(slug: str, assignment_id: str, request: Request):
     return {"slug": p["slug"], "title": p["title"], "ready": bool(p["ready"]),
             "error": p.get("prepare_error"),
             "source": p.get("solution") or "",
-            "checklist": checklist(stage, p.get("prepare_error"))}
+            "checklist": checklist(stage, p.get("prepare_error")),
+            # The per-check detail, read from the STORED VERDICT rather than
+            # from the run's narration. It has to come from here: a re-run whose
+            # verdict is already cached skips validation entirely and therefore
+            # emits no mutant events at all, which is exactly how an instructor
+            # ended up staring at "a few checks came back inconclusive" with no
+            # way to find out which ones.
+            "findings": _findings_for(p)}
 
 
 @app.post("/teacher/problems/retry")
@@ -1210,6 +1462,7 @@ def teacher_problem_retry(req: ProblemRetryRequest, request: Request):
     existing problem, so its identity is the row's; letting the marker line
     rename it would silently create a second problem and leave the broken one
     in place."""
+    from main import context
     from main.assignments import AssignmentParseError, parse_assignment_file
     from main.publish import checklist, prepare_problem
 
@@ -1225,19 +1478,35 @@ def teacher_problem_retry(req: ProblemRetryRequest, request: Request):
     # Parse first: a source that cannot be read costs nothing to reject, and
     # spending an oracle run to discover a missing docstring is pure waste.
     try:
-        parsed = parse_assignment_file(req.source, f"{req.slug}.py")
+        # A CLASS problem is stored as a bare method, and parsing a bare method
+        # yields a plain function: no class around it, entry point `pop` instead
+        # of the sequence driver, and a solution that cannot run at all - which
+        # surfaced as "no usable test cases" on every retry of a method. Splice
+        # the edited method back into its class first, so the retry re-parses
+        # the same shape the upload did.
+        stored = _stored_problem(req.assignment_id, req.slug)
+        module = context.module_with_method(stored, req.source) if stored else None
+        parsed = parse_assignment_file(module or req.source, f"{req.slug}.py")
     except AssignmentParseError as e:
         return blocked("parses", str(e))
-    if parsed["problems"]:
+
+    if module:
+        # The spliced module re-parses the WHOLE class, so pick this problem out
+        # by slug rather than taking the first of eleven.
+        problem = next((p for p in parsed["problems"] if p["slug"] == req.slug), None)
+        if problem is None:
+            return blocked("parses", parsed["errors"][0]["error"] if parsed["errors"]
+                           else "that text no longer defines this problem")
+    elif parsed["problems"]:
         problem = parsed["problems"][0]
+        if len(parsed["problems"]) > 1:
+            return blocked("parses", "this is one problem's text - it defines "
+                                     f"{len(parsed['problems'])} problems. Give "
+                                     "each its own entry.")
     elif parsed["errors"]:
         return blocked("parses", parsed["errors"][0]["error"])
     else:
         return blocked("parses", "no problem found in this text")
-    if len(parsed["problems"]) > 1:
-        return blocked("parses", "this is one problem's text - it defines "
-                                 f"{len(parsed['problems'])} problems. Give "
-                                 "each its own entry.")
 
     problem["slug"] = req.slug                     # identity is the row's
     # Taped for the same reason the upload tapes: if this retry ALSO does not
@@ -1271,6 +1540,92 @@ def teacher_problem_retry(req: ProblemRetryRequest, request: Request):
     return {"ready": bool(result["ready"]), "stage": result.get("stage"),
             "error": result.get("error"), "chunks": result.get("chunks", 0),
             "n_tests": result.get("n_tests", 0),
+            "checklist": checklist(result.get("stage"), result.get("error"))}
+
+
+@app.post("/teacher/problems/accept")
+def teacher_problem_accept(req: ProblemAcceptRequest, request: Request):
+    """Publish a NEEDS-REVIEW problem anyway, on the instructor's judgement.
+
+    The one place a person can overrule the strength gate, and it is deliberately
+    narrow:
+
+      * only from `needs_review`. A `weak` verdict fails even in its best case,
+        so there is no judgement to make and this refuses it.
+      * the acceptance is NAMED and dated in the oracle cache, and `strong` stays
+        false. A person agreeing with a measurement does not change the
+        measurement; what changed is who is answerable for it.
+      * everything after the strength gate still runs. A needs-review problem was
+        never decomposed - preparation stops before it - so this re-runs
+        preparation, and the decomposition and its necessity gate must still
+        pass on their own. Accepting the tests is not accepting anything else.
+    """
+    from main.identity import content_hash
+    from main.oracle_store import load_cache, save_cache
+    from main.publish import checklist, prepare_problem
+    from main import transcripts
+    from datetime import datetime, timezone
+
+    teacher = require_teacher(request)
+
+    stored = _stored_problem(req.assignment_id, req.slug)
+    if stored is None:
+        row = get_supabase().table("problems").select(
+            "slug, title, description, solution, context, group_slug, "
+            "group_title, group_description").eq(
+            "assignment_id", req.assignment_id).eq("slug", req.slug).execute().data
+        if not row:
+            raise HTTPException(status_code=404, detail={
+                "reason_code": "problem_not_found",
+                "message": f"No problem '{req.slug}' in this assignment."})
+        stored = {**row[0], **_context_of(row[0])}
+
+    cache = load_cache()
+    key = content_hash(stored)
+    entry = cache.get(key)
+    if not (isinstance(entry, dict) and "strong" in entry):
+        raise HTTPException(status_code=409, detail={
+            "reason_code": "not_validated",
+            "message": (f"'{req.slug}' has no verdict to accept yet. Prepare it "
+                        f"first.")})
+    if entry.get("status") != "needs_review":
+        raise HTTPException(status_code=409, detail={
+            "reason_code": "not_reviewable",
+            "message": (f"'{req.slug}' is '{entry.get('status')}', not waiting on "
+                        f"review. Only an inconclusive result can be accepted - "
+                        f"a weak one fails even in the best case, so there is "
+                        f"nothing to judge.")})
+
+    cache[key] = {**entry,
+                  "accepted_by": teacher.get("username") or "instructor",
+                  "accepted_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+    save_cache(cache)
+
+    tape: list = []
+    result = prepare_problem(stored, emit=tape.append)
+    try:
+        transcripts.record(req.assignment_id, req.slug, tape, result)
+    except Exception:
+        pass
+
+    try:
+        get_supabase().table("problems").upsert({
+            "slug": req.slug, "title": stored.get("title") or req.slug,
+            "description": stored.get("description") or "",
+            "solution": stored.get("solution") or "",
+            "assignment_id": req.assignment_id,
+            "ready": bool(result["ready"]),
+            "prepare_error": result.get("error")},
+            on_conflict="assignment_id,slug").execute()
+    except Exception as e:
+        return {"ready": False, "stage": "steps",
+                "error": f"accepted, but could not be saved: {e}"[:300],
+                "checklist": checklist("steps", "could not be saved")}
+
+    return {"ready": bool(result["ready"]), "stage": result.get("stage"),
+            "error": result.get("error"), "chunks": result.get("chunks", 0),
+            "n_tests": result.get("n_tests", 0),
+            "accepted_by": cache[key]["accepted_by"],
             "checklist": checklist(result.get("stage"), result.get("error"))}
 
 

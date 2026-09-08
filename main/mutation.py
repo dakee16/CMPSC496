@@ -447,6 +447,10 @@ def _probe_inputs(tests: list) -> list[list]:
     Free, deterministic, and it catches the off-by-one and sign mutants the
     model reliably fails to think of - so `likely_equivalent` is only reached
     after these have been tried too."""
+    # Block tests are PROGRAMS, not argument lists: there is nothing to vary,
+    # and mutating one would produce broken Python rather than a new case.
+    tests = [t for t in tests
+             if not (t.get("input") and isinstance(t["input"][0], str))]
     out = []
     for inp in [t["input"] for t in tests][:2]:
         for i, arg in enumerate(inp):
@@ -470,6 +474,10 @@ def _sweep_inputs(tests: list, n: int | None = None) -> list[list]:
     varied far more widely than _probe_inputs does: signs, zeros, boundaries,
     long and empty sequences, duplicates, sorted and reversed orders. Seeded,
     so two runs produce byte-identical sweeps."""
+    # Block tests are PROGRAMS, not argument lists: there is nothing to vary,
+    # and mutating one would produce broken Python rather than a new case.
+    tests = [t for t in tests
+             if not (t.get("input") and isinstance(t["input"][0], str))]
     if n is None:                       # late-bound: see _candidate_inputs
         n = _EQUIVALENCE_SWEEP_SIZE
     seeds = [t["input"] for t in tests]

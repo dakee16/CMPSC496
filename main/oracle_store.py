@@ -23,7 +23,7 @@ def cache_path() -> str:
     return os.environ.get("MICROTUTOR_ORACLE_CACHE") or DEFAULT_ORACLE_PATH
 
 
-def verdict_entry(report: dict, slug: str = "") -> dict:
+def verdict_entry(report: dict, slug: str = "", features=None) -> dict:
     """The cache shape for one validated problem, built in ONE place.
 
     Two callers write this entry - tests/sandbox.get_oracle_tests on the upload
@@ -64,10 +64,22 @@ def verdict_entry(report: dict, slug: str = "") -> dict:
             "killed_on_retry": report.get("killed_on_retry", 0),
             "proven_equivalent": report.get("proven_equivalent", 0),
             "unresolved": report.get("unresolved", 0),
-            "mutants": [{"label": m["label"], "status": m["status"]}
+            # The probe finding rides along for the UNDETERMINED ones. It is
+            # the only thing that narrows "we could not decide this" to a
+            # specific reason - never reached / ran but changed no decision /
+            # changed a decision that was swallowed - and it was being computed
+            # and then dropped here, leaving the fix panel with nothing to say
+            # beyond "inconclusive".
+            "mutants": [{"label": m["label"], "status": m["status"],
+                         **({"probe": {k: (m.get("probe") or {}).get(k)
+                                       for k in ("verdict", "reached", "differed")}}
+                            if m.get("probe") else {})}
                         for m in report.get("mutants", [])],
         },
         "slug": slug,                   # stored for humans, never a cache key
+        # Set by the caller, which is the only place that knows which
+        # generators actually ran. See oracle_features / is_stale above.
+        "features": sorted(features or ["calls"]),
     }
 
 
@@ -139,6 +151,42 @@ def verdict_event(entry: dict) -> dict:
     }
 
 
+# Which kinds of test a verdict was reached WITH. A cached verdict is keyed by
+# the problem's content, which is exactly right while only the problem can
+# change - and silently wrong the moment MicroTutor itself gains a new kind of
+# test. Block tests were added and every existing verdict kept its old answer,
+# because the text had not changed: `Stack.pop` stayed "needs review" with zero
+# block tests in its suite.
+#
+# So an entry records which generators contributed to it. A verdict is stale
+# when the current run could contribute something it did not have - and only
+# then, so a plain function is never re-validated for a feature that cannot
+# apply to it.
+def oracle_features(problem: dict) -> set:
+    """The test generators that apply to this problem, now."""
+    feats = {"calls"}
+    try:
+        from .context import fixed_internals, is_method
+        if is_method(problem) and fixed_internals(problem):
+            # VERSIONED. The first generation of blocks called @property names
+            # like methods, so every block for Calculator raised TypeError and
+            # observed nothing - a suite that looked healthy and tested air.
+            # Bumping the name makes those verdicts stale, which is the whole
+            # point of recording features rather than a single bit.
+            feats.add("blocks/3")
+    except Exception:
+        pass
+    return feats
+
+
+def is_stale(entry, problem: dict) -> bool:
+    """True when a re-run could add a kind of test this verdict never saw."""
+    if not is_validated(entry):
+        return False                       # not validated at all; a separate case
+    had = set(entry.get("features") or ["calls"])
+    return bool(oracle_features(problem) - had)
+
+
 def certified(entry) -> bool:
     """May this oracle be graded with? The single readiness predicate.
 
@@ -152,9 +200,28 @@ def certified(entry) -> bool:
                          in the suite. See main/mutation.py for why the two are
                          kept apart rather than both written as strong=True: a
                          reader that wants the MUTATION verdict must still be
-                         able to ask for it."""
-    return bool(is_validated(entry)
-                and (entry["strong"] or entry.get("status") == "doctest_verified"))
+                         able to ask for it.
+      accepted_by        a NAMED INSTRUCTOR looked at the undecided checks and
+                         judged them harmless. Only reachable from a
+                         needs_review verdict - never from `weak`, where the
+                         best case already fails the bar and there is no
+                         judgement call to make.
+
+    `strong` stays FALSE for an accepted oracle, deliberately. The mutation
+    verdict is a measurement and a person cannot change it by agreeing with it;
+    what changed is that someone took responsibility. Storing it as strong=True
+    would erase the difference between "nothing survived" and "one thing
+    survived and a human said it was fine", which is exactly the collapse the
+    three-verdict work existed to undo."""
+    if not is_validated(entry):
+        return False
+    if entry["strong"] or entry.get("status") == "doctest_verified":
+        return True
+    # An acceptance only counts on the verdict it was offered for. The write
+    # path refuses to accept anything else, and this refuses to HONOUR anything
+    # else - a hand-edited cache file, or a verdict that later degraded from
+    # needs_review to weak, must not keep an old acceptance alive.
+    return bool(entry.get("accepted_by") and entry.get("status") == "needs_review")
 
 
 def is_validated(entry) -> bool:

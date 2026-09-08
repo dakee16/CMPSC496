@@ -34,6 +34,458 @@
               2
             ],
             [
+              "push",
+              4
+            ],
+            [
+              "isEmpty"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          false
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              1
+            ],
+            [
+              "isEmpty"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "isEmpty"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          false,
+          1,
+          true
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              3
+            ],
+            [
+              "push",
+              5
+            ],
+            [
+              "isEmpty"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "isEmpty"
+            ],
+            [
+              "push",
+              7
+            ],
+            [
+              "isEmpty"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          false,
+          5,
+          false,
+          null,
+          false
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "isEmpty"
+            ],
+            [
+              "push",
+              8
+            ],
+            [
+              "isEmpty"
+            ],
+            [
+              "push",
+              9
+            ],
+            [
+              "pop"
+            ],
+            [
+              "isEmpty"
+            ]
+          ]
+        ],
+        "expected": [
+          true,
+          null,
+          false,
+          null,
+          9,
+          false
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              10
+            ],
+            [
+              "push",
+              20
+            ],
+            [
+              "push",
+              30
+            ],
+            [
+              "isEmpty"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "isEmpty"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "isEmpty"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          false,
+          30,
+          false,
+          20,
+          false
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              15
+            ],
+            [
+              "push",
+              25
+            ],
+            [
+              "isEmpty"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "isEmpty"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "isEmpty"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "isEmpty"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          false,
+          25,
+          false,
+          15,
+          true,
+          null,
+          true
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              4
+            ],
+            [
+              "push",
+              6
+            ],
+            [
+              "isEmpty"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "isEmpty"
+            ],
+            [
+              "push",
+              8
+            ],
+            [
+              "isEmpty"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          false,
+          6,
+          false,
+          null,
+          false
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              11
+            ],
+            [
+              "isEmpty"
+            ],
+            [
+              "push",
+              13
+            ],
+            [
+              "pop"
+            ],
+            [
+              "isEmpty"
+            ],
+            [
+              "push",
+              17
+            ],
+            [
+              "isEmpty"
+            ],
+            [
+              "pop"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          false,
+          null,
+          13,
+          false,
+          null,
+          false,
+          17
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              5
+            ],
+            [
+              "push",
+              10
+            ],
+            [
+              "push",
+              15
+            ],
+            [
+              "isEmpty"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "isEmpty"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "isEmpty"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "isEmpty"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          false,
+          15,
+          false,
+          10,
+          false,
+          5,
+          true
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              9
+            ],
+            [
+              "isEmpty"
+            ],
+            [
+              "push",
+              12
+            ],
+            [
+              "push",
+              14
+            ],
+            [
+              "pop"
+            ],
+            [
+              "isEmpty"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "isEmpty"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "isEmpty"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          false,
+          null,
+          null,
+          14,
+          false,
+          12,
+          false,
+          9,
+          true
+        ]
+      },
+      {
+        "input": [
+          "x = Stack()\nx.push(1)\nx.push(2)\nx.isEmpty()\ny = x.pop()\nx.isEmpty()\ny.value"
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          false,
+          null,
+          false,
+          "!AttributeError"
+        ]
+      },
+      {
+        "input": [
+          "x = Stack()\nx.push(1)\nx.push(2)\nx.push(3)\nx.isEmpty()\ny = x.pop()\nx.isEmpty()\ny.next"
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          null,
+          false,
+          null,
+          false,
+          "!AttributeError"
+        ]
+      },
+      {
+        "input": [
+          "x = Stack()\nx.push(1)\nx.push(2)\nx.push(3)\nx.pop()\ny = x.pop()\nx.isEmpty()\ny.next"
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          null,
+          3,
+          null,
+          false,
+          "!AttributeError"
+        ]
+      },
+      {
+        "input": [
+          "x = Stack()\nx.push(1)\nx.push(2)\nx.push(3)\nx.pop()\ny = x.peek()\nx.isEmpty()\ny.value"
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          null,
+          3,
+          null,
+          false,
+          "!AttributeError"
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              2
+            ],
+            [
               "isEmpty"
             ]
           ]
@@ -96,7 +548,7 @@
           [
             [
               "push",
-              4
+              7
             ],
             [
               "push",
@@ -104,7 +556,7 @@
             ],
             [
               "push",
-              12
+              9
             ],
             [
               "isEmpty"
@@ -122,7 +574,7 @@
           null,
           null,
           false,
-          12,
+          9,
           false
         ]
       },
@@ -130,18 +582,11 @@
         "input": [
           [
             [
-              "push",
-              7
-            ],
-            [
               "isEmpty"
             ],
             [
               "push",
-              9
-            ],
-            [
-              "pop"
+              4
             ],
             [
               "isEmpty"
@@ -149,10 +594,8 @@
           ]
         ],
         "expected": [
+          true,
           null,
-          false,
-          null,
-          9,
           false
         ]
       },
@@ -165,19 +608,19 @@
             ],
             [
               "push",
-              11
+              12
+            ],
+            [
+              "pop"
+            ],
+            [
+              "isEmpty"
             ],
             [
               "push",
               15
             ],
             [
-              "pop"
-            ],
-            [
-              "pop"
-            ],
-            [
               "isEmpty"
             ]
           ]
@@ -185,9 +628,9 @@
         "expected": [
           null,
           null,
+          12,
+          false,
           null,
-          15,
-          11,
           false
         ]
       },
@@ -196,11 +639,17 @@
           [
             [
               "push",
-              3
+              0
             ],
             [
               "push",
-              2
+              -1
+            ],
+            [
+              "isEmpty"
+            ],
+            [
+              "pop"
             ],
             [
               "isEmpty"
@@ -217,41 +666,9 @@
           null,
           null,
           false,
-          2,
-          false
-        ]
-      },
-      {
-        "input": [
-          [
-            [
-              "push",
-              8
-            ],
-            [
-              "push",
-              1
-            ],
-            [
-              "isEmpty"
-            ],
-            [
-              "pop"
-            ],
-            [
-              "pop"
-            ],
-            [
-              "isEmpty"
-            ]
-          ]
-        ],
-        "expected": [
-          null,
-          null,
+          -1,
           false,
-          1,
-          8,
+          0,
           true
         ]
       },
@@ -260,14 +677,14 @@
           [
             [
               "push",
+              2
+            ],
+            [
+              "push",
               4
             ],
             [
               "isEmpty"
-            ],
-            [
-              "push",
-              5
             ],
             [
               "pop"
@@ -276,26 +693,7 @@
               "isEmpty"
             ],
             [
-              "push",
-              6
-            ]
-          ]
-        ],
-        "expected": [
-          null,
-          false,
-          null,
-          5,
-          false,
-          null
-        ]
-      },
-      {
-        "input": [
-          [
-            [
-              "push",
-              1
+              "pop"
             ],
             [
               "isEmpty"
@@ -304,7 +702,12 @@
         ],
         "expected": [
           null,
-          false
+          null,
+          false,
+          4,
+          false,
+          2,
+          true
         ]
       },
       {
@@ -315,78 +718,11 @@
               3
             ],
             [
+              "isEmpty"
+            ],
+            [
               "push",
               5
-            ],
-            [
-              "isEmpty"
-            ]
-          ]
-        ],
-        "expected": [
-          null,
-          null,
-          false
-        ]
-      },
-      {
-        "input": [
-          [
-            [
-              "push",
-              10
-            ],
-            [
-              "push",
-              20
-            ],
-            [
-              "pop"
-            ],
-            [
-              "isEmpty"
-            ]
-          ]
-        ],
-        "expected": [
-          null,
-          null,
-          20,
-          false
-        ]
-      },
-      {
-        "input": [
-          [
-            [
-              "isEmpty"
-            ],
-            [
-              "push",
-              7
-            ],
-            [
-              "push",
-              8
-            ],
-            [
-              "isEmpty"
-            ]
-          ]
-        ],
-        "expected": [
-          true,
-          null,
-          null,
-          false
-        ]
-      },
-      {
-        "input": [
-          [
-            [
-              "push",
-              4
             ],
             [
               "push",
@@ -397,51 +733,15 @@
             ],
             [
               "isEmpty"
-            ],
-            [
-              "peek"
             ]
           ]
         ],
         "expected": [
+          null,
+          false,
           null,
           null,
           6,
-          false,
-          4
-        ]
-      },
-      {
-        "input": [
-          [
-            [
-              "push",
-              9
-            ],
-            [
-              "isEmpty"
-            ],
-            [
-              "pop"
-            ],
-            [
-              "isEmpty"
-            ],
-            [
-              "push",
-              11
-            ],
-            [
-              "isEmpty"
-            ]
-          ]
-        ],
-        "expected": [
-          null,
-          false,
-          9,
-          true,
-          null,
           false
         ]
       },
@@ -450,15 +750,17 @@
           [
             [
               "push",
-              15
+              -5
             ],
             [
               "push",
-              25
+              -10
             ],
             [
-              "push",
-              35
+              "isEmpty"
+            ],
+            [
+              "pop"
             ],
             [
               "isEmpty"
@@ -474,93 +776,20 @@
         "expected": [
           null,
           null,
-          null,
           false,
-          35,
-          false
+          -10,
+          false,
+          -5,
+          true
         ]
       },
       {
         "input": [
           [
-            [
-              "isEmpty"
-            ],
-            [
-              "push",
-              12
-            ],
-            [
-              "push",
-              14
-            ],
-            [
-              "push",
-              16
-            ],
-            [
-              "pop"
-            ],
-            [
-              "isEmpty"
-            ],
-            [
-              "peek"
-            ]
-          ]
-        ],
-        "expected": [
-          true,
-          null,
-          null,
-          null,
-          16,
-          false,
-          14
-        ]
-      },
-      {
-        "input": [
-          [
-            [
-              "push",
-              18
-            ],
-            [
-              "isEmpty"
-            ],
             [
               "push",
               20
             ],
-            [
-              "pop"
-            ],
-            [
-              "isEmpty"
-            ],
-            [
-              "push",
-              22
-            ],
-            [
-              "peek"
-            ]
-          ]
-        ],
-        "expected": [
-          null,
-          false,
-          null,
-          20,
-          false,
-          null,
-          22
-        ]
-      },
-      {
-        "input": [
-          [
             [
               "push",
               30
@@ -579,8 +808,7 @@
               "isEmpty"
             ],
             [
-              "push",
-              50
+              "pop"
             ],
             [
               "isEmpty"
@@ -590,10 +818,126 @@
         "expected": [
           null,
           null,
+          null,
           false,
           40,
           false,
+          30,
+          false
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              100
+            ],
+            [
+              "isEmpty"
+            ],
+            [
+              "push",
+              200
+            ],
+            [
+              "push",
+              300
+            ],
+            [
+              "pop"
+            ],
+            [
+              "isEmpty"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "isEmpty"
+            ]
+          ]
+        ],
+        "expected": [
           null,
+          false,
+          null,
+          null,
+          300,
+          false,
+          200,
+          false
+        ]
+      },
+      {
+        "input": [
+          "x = Stack()\nx.push(1)\nx.push(2)\nx.push(3)\nnode = x.pop()\nx.isEmpty()\nnodes = [x.top, node]"
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          false,
+          null
+        ]
+      },
+      {
+        "input": [
+          "x = Stack()\nx.push(1)\nx.push(2)\nnode = x.peek()\nx.pop()\nx.isEmpty()\nnodes = [node, x.top]"
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          null,
+          2,
+          false,
+          null
+        ]
+      },
+      {
+        "input": [
+          "x = Stack()\nx.push(1)\nx.push(2)\nnode = x.top\nx.pop()\nx.isEmpty()\nnodes = [node, x.top]"
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          null,
+          2,
+          false,
+          null
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              1
+            ],
+            [
+              "isEmpty"
+            ],
+            [
+              "push",
+              3
+            ],
+            [
+              "pop"
+            ],
+            [
+              "isEmpty"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          false,
+          null,
+          3,
           false
         ]
       },
@@ -620,6 +964,34 @@
             ],
             [
               "isEmpty"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          false,
+          15,
+          false
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "isEmpty"
+            ],
+            [
+              "push",
+              7
+            ],
+            [
+              "push",
+              8
+            ],
+            [
+              "isEmpty"
             ],
             [
               "pop"
@@ -630,13 +1002,11 @@
           ]
         ],
         "expected": [
-          null,
+          true,
           null,
           null,
           false,
-          15,
-          false,
-          10,
+          8,
           false
         ]
       },
@@ -665,9 +1035,6 @@
               9
             ],
             [
-              "peek"
-            ],
-            [
               "isEmpty"
             ]
           ]
@@ -679,84 +1046,6 @@
           6,
           false,
           null,
-          9,
-          false
-        ]
-      },
-      {
-        "input": [
-          [
-            [
-              "isEmpty"
-            ],
-            [
-              "push",
-              5
-            ],
-            [
-              "isEmpty"
-            ]
-          ]
-        ],
-        "expected": [
-          true,
-          null,
-          false
-        ]
-      },
-      {
-        "input": [
-          [
-            [
-              "push",
-              7
-            ],
-            [
-              "push",
-              8
-            ],
-            [
-              "pop"
-            ],
-            [
-              "isEmpty"
-            ]
-          ]
-        ],
-        "expected": [
-          null,
-          null,
-          8,
-          false
-        ]
-      },
-      {
-        "input": [
-          [
-            [
-              "push",
-              10
-            ],
-            [
-              "push",
-              20
-            ],
-            [
-              "isEmpty"
-            ],
-            [
-              "pop"
-            ],
-            [
-              "isEmpty"
-            ]
-          ]
-        ],
-        "expected": [
-          null,
-          null,
-          false,
-          20,
           false
         ]
       },
@@ -769,14 +1058,19 @@
             ],
             [
               "push",
-              6
+              2
+            ],
+            [
+              "isEmpty"
             ],
             [
               "pop"
             ],
             [
-              "push",
-              8
+              "isEmpty"
+            ],
+            [
+              "pop"
             ],
             [
               "isEmpty"
@@ -786,8 +1080,45 @@
         "expected": [
           null,
           null,
-          6,
+          false,
+          2,
+          false,
+          4,
+          true
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              0
+            ],
+            [
+              "isEmpty"
+            ],
+            [
+              "push",
+              -1
+            ],
+            [
+              "push",
+              -2
+            ],
+            [
+              "pop"
+            ],
+            [
+              "isEmpty"
+            ]
+          ]
+        ],
+        "expected": [
           null,
+          false,
+          null,
+          null,
+          -2,
           false
         ]
       },
@@ -796,15 +1127,14 @@
           [
             [
               "push",
-              12
+              100
             ],
             [
               "push",
-              14
+              200
             ],
             [
-              "push",
-              16
+              "isEmpty"
             ],
             [
               "pop"
@@ -813,7 +1143,8 @@
               "isEmpty"
             ],
             [
-              "pop"
+              "push",
+              300
             ],
             [
               "isEmpty"
@@ -823,53 +1154,10 @@
         "expected": [
           null,
           null,
-          null,
-          16,
           false,
-          14,
-          false
-        ]
-      },
-      {
-        "input": [
-          [
-            [
-              "push",
-              3
-            ],
-            [
-              "push",
-              5
-            ],
-            [
-              "push",
-              7
-            ],
-            [
-              "isEmpty"
-            ],
-            [
-              "pop"
-            ],
-            [
-              "isEmpty"
-            ],
-            [
-              "pop"
-            ],
-            [
-              "isEmpty"
-            ]
-          ]
-        ],
-        "expected": [
-          null,
-          null,
-          null,
+          200,
           false,
-          7,
-          false,
-          5,
+          null,
           false
         ]
       },
@@ -881,15 +1169,15 @@
               1
             ],
             [
-              "isEmpty"
-            ],
-            [
               "push",
               2
             ],
             [
               "push",
               3
+            ],
+            [
+              "isEmpty"
             ],
             [
               "pop"
@@ -907,9 +1195,9 @@
         ],
         "expected": [
           null,
+          null,
+          null,
           false,
-          null,
-          null,
           3,
           false,
           2,
@@ -921,17 +1209,10 @@
           [
             [
               "push",
-              4
-            ],
-            [
-              "push",
-              6
+              10
             ],
             [
               "isEmpty"
-            ],
-            [
-              "pop"
             ],
             [
               "pop"
@@ -941,10 +1222,55 @@
             ],
             [
               "push",
-              8
+              20
             ],
             [
               "isEmpty"
+            ],
+            [
+              "pop"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          false,
+          10,
+          true,
+          null,
+          false,
+          20
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              5
+            ],
+            [
+              "push",
+              15
+            ],
+            [
+              "isEmpty"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "isEmpty"
+            ],
+            [
+              "push",
+              25
+            ],
+            [
+              "isEmpty"
+            ],
+            [
+              "pop"
             ]
           ]
         ],
@@ -952,11 +1278,116 @@
           null,
           null,
           false,
-          6,
-          4,
+          15,
+          false,
+          null,
+          false,
+          25
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "isEmpty"
+            ],
+            [
+              "push",
+              4
+            ],
+            [
+              "push",
+              3
+            ],
+            [
+              "push",
+              2
+            ],
+            [
+              "isEmpty"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "isEmpty"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "isEmpty"
+            ]
+          ]
+        ],
+        "expected": [
           true,
           null,
+          null,
+          null,
+          false,
+          2,
+          false,
+          3,
           false
+        ]
+      },
+      {
+        "input": [
+          "x = Stack()\nx.push(1)\nx.push(2)\nx.push(3)\ny = x.pop()\nx.isEmpty()\ny.next"
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          false,
+          "!AttributeError"
+        ]
+      },
+      {
+        "input": [
+          "x = Stack()\nx.push(1)\nx.push(2)\ny = x.pop()\nx.push(3)\nx.isEmpty()\ny.next"
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          false,
+          "!AttributeError"
+        ]
+      },
+      {
+        "input": [
+          "x = Stack()\nx.push(1)\nx.push(2)\ny = x.peek()\nx.pop()\nx.isEmpty()\ny.next"
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          null,
+          2,
+          false,
+          "!AttributeError"
+        ]
+      },
+      {
+        "input": [
+          "x = Stack()\nx.push(1)\nx.push(2)\nx.push(3)\ny = x.peek()\nx.pop()\nx.pop()\nx.isEmpty()\ny.next"
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          3,
+          2,
+          false,
+          "!AttributeError"
         ]
       }
     ],
@@ -968,7 +1399,7 @@
     "undetermined": 0,
     "kill_rate_lower": 1.0,
     "kill_rate_upper": 1.0,
-    "validated_at": "2026-09-08T06:04:49+00:00",
+    "validated_at": "2026-09-08T18:10:43+00:00",
     "breakdown": {
       "total_mutants": 2,
       "killed": 2,
@@ -986,7 +1417,11 @@
         }
       ]
     },
-    "slug": "stack-is-empty"
+    "slug": "stack-is-empty",
+    "features": [
+      "blocks",
+      "calls"
+    ]
   },
   "144aa68071d1b3caa0aced17343ac9615f8c027836e0081b2f9432de1d2aa71b": {
     "final_tests": [
@@ -1081,6 +1516,9 @@
         "input": [
           [
             [
+              "len"
+            ],
+            [
               "push",
               5
             ],
@@ -1089,14 +1527,31 @@
               6
             ],
             [
+              "len"
+            ]
+          ]
+        ],
+        "expected": [
+          0,
+          null,
+          null,
+          2
+        ]
+      },
+      {
+        "input": [
+          [
+            [
               "push",
               7
             ],
             [
-              "len"
+              "push",
+              8
             ],
             [
-              "pop"
+              "push",
+              9
             ],
             [
               "len"
@@ -1114,35 +1569,7 @@
           null,
           null,
           3,
-          7,
-          2,
-          6,
-          1
-        ]
-      },
-      {
-        "input": [
-          [
-            [
-              "len"
-            ],
-            [
-              "push",
-              8
-            ],
-            [
-              "push",
-              9
-            ],
-            [
-              "len"
-            ]
-          ]
-        ],
-        "expected": [
-          0,
-          null,
-          null,
+          9,
           2
         ]
       },
@@ -1158,14 +1585,13 @@
               11
             ],
             [
-              "pop"
-            ],
-            [
               "len"
             ],
             [
-              "push",
-              12
+              "pop"
+            ],
+            [
+              "pop"
             ],
             [
               "len"
@@ -1175,10 +1601,10 @@
         "expected": [
           null,
           null,
+          2,
           11,
-          1,
-          null,
-          2
+          10,
+          0
         ]
       },
       {
@@ -1186,7 +1612,7 @@
           [
             [
               "push",
-              13
+              12
             ],
             [
               "len"
@@ -1199,11 +1625,7 @@
             ],
             [
               "push",
-              14
-            ],
-            [
-              "push",
-              15
+              13
             ],
             [
               "len"
@@ -1213,11 +1635,44 @@
         "expected": [
           null,
           1,
-          13,
+          12,
           0,
           null,
+          1
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              14
+            ],
+            [
+              "len"
+            ],
+            [
+              "push",
+              15
+            ],
+            [
+              "len"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "len"
+            ]
+          ]
+        ],
+        "expected": [
           null,
-          2
+          1,
+          null,
+          2,
+          15,
+          1
         ]
       },
       {
@@ -1238,17 +1693,11 @@
               "pop"
             ],
             [
-              "len"
-            ],
-            [
               "push",
               18
             ],
             [
               "len"
-            ],
-            [
-              "pop"
             ]
           ]
         ],
@@ -1257,10 +1706,8 @@
           null,
           2,
           17,
-          1,
           null,
-          2,
-          18
+          2
         ]
       },
       {
@@ -1271,27 +1718,21 @@
               19
             ],
             [
+              "len"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "len"
+            ],
+            [
               "push",
               20
             ],
             [
-              "len"
-            ],
-            [
-              "pop"
-            ],
-            [
-              "len"
-            ],
-            [
               "push",
               21
-            ],
-            [
-              "len"
-            ],
-            [
-              "pop"
             ],
             [
               "len"
@@ -1300,14 +1741,12 @@
         ],
         "expected": [
           null,
-          null,
-          2,
-          20,
           1,
+          19,
+          0,
           null,
-          2,
-          21,
-          1
+          null,
+          2
         ]
       },
       {
@@ -1321,14 +1760,16 @@
               22
             ],
             [
+              "pop"
+            ],
+            [
+              "len"
+            ],
+            [
               "push",
               23
             ],
             [
-              "push",
-              24
-            ],
-            [
               "len"
             ]
           ]
@@ -1336,56 +1777,66 @@
         "expected": [
           0,
           null,
+          22,
+          0,
           null,
-          null,
-          3
+          1
         ]
       },
       {
         "input": [
-          [
-            [
-              "push",
-              25
-            ],
-            [
-              "len"
-            ],
-            [
-              "pop"
-            ],
-            [
-              "len"
-            ],
-            [
-              "push",
-              26
-            ],
-            [
-              "push",
-              27
-            ],
-            [
-              "len"
-            ],
-            [
-              "pop"
-            ],
-            [
-              "len"
-            ]
-          ]
+          "x = Stack()\nx.push(1)\nx.push(2)\nx.push(3)\nnode = x.pop()\nx.__len__()\nnode.value"
         ],
         "expected": [
           null,
-          1,
-          25,
-          0,
+          null,
+          null,
           null,
           null,
           2,
-          27,
-          1
+          "!AttributeError"
+        ]
+      },
+      {
+        "input": [
+          "x = Stack()\nx.push(1)\nx.push(2)\nnode = x.peek()\nx.pop()\nx.__len__()\nnode.value"
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          null,
+          2,
+          1,
+          "!AttributeError"
+        ]
+      },
+      {
+        "input": [
+          "x = Stack()\nx.push(1)\nx.push(2)\nnode = x.top\nx.pop()\nx.__len__()\nnode.value"
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          null,
+          2,
+          1,
+          2
+        ]
+      },
+      {
+        "input": [
+          "x = Stack()\nx.push(1)\nx.push(2)\nnode = x.pop()\nx.push(3)\nx.__len__()\nnode.value"
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          2,
+          "!AttributeError"
         ]
       }
     ],
@@ -1397,7 +1848,7 @@
     "undetermined": 0,
     "kill_rate_lower": 1.0,
     "kill_rate_upper": 1.0,
-    "validated_at": "2026-09-08T06:04:59+00:00",
+    "validated_at": "2026-09-08T18:14:59+00:00",
     "breakdown": {
       "total_mutants": 9,
       "killed": 9,
@@ -1443,7 +1894,11 @@
         }
       ]
     },
-    "slug": "stack-len"
+    "slug": "stack-len",
+    "features": [
+      "blocks",
+      "calls"
+    ]
   },
   "8bef56650627e9c866691b074e48f49dc90066993fb0e4b1b281d187aba549f7": {
     "final_tests": [
@@ -1550,10 +2005,13 @@
             ],
             [
               "push",
-              6
+              2
             ],
             [
               "peek"
+            ],
+            [
+              "len"
             ]
           ]
         ],
@@ -1562,7 +2020,8 @@
           null,
           8,
           null,
-          6
+          2,
+          2
         ]
       },
       {
@@ -1574,14 +2033,131 @@
             ],
             [
               "push",
-              2
+              6
+            ],
+            [
+              "pop"
             ],
             [
               "pop"
             ],
             [
               "push",
+              1
+            ],
+            [
+              "len"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          6,
+          9,
+          null,
+          1
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
               3
+            ],
+            [
+              "push",
+              5
+            ],
+            [
+              "push",
+              7
+            ],
+            [
+              "pop"
+            ],
+            [
+              "peek"
+            ],
+            [
+              "len"
+            ],
+            [
+              "pop"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          7,
+          5,
+          2,
+          5
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              2
+            ],
+            [
+              "push",
+              4
+            ],
+            [
+              "push",
+              6
+            ],
+            [
+              "pop"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "len"
+            ],
+            [
+              "push",
+              8
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          6,
+          4,
+          1,
+          null
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              10
+            ],
+            [
+              "push",
+              20
+            ],
+            [
+              "pop"
+            ],
+            [
+              "push",
+              30
+            ],
+            [
+              "peek"
             ],
             [
               "len"
@@ -1597,11 +2173,96 @@
         "expected": [
           null,
           null,
-          2,
+          20,
           null,
+          30,
           2,
+          30,
+          10
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              15
+            ],
+            [
+              "push",
+              25
+            ],
+            [
+              "push",
+              35
+            ],
+            [
+              "peek"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "len"
+            ],
+            [
+              "push",
+              45
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          35,
+          35,
+          2,
+          null
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              12
+            ],
+            [
+              "push",
+              24
+            ],
+            [
+              "pop"
+            ],
+            [
+              "push",
+              36
+            ],
+            [
+              "push",
+              48
+            ],
+            [
+              "len"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "pop"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          24,
+          null,
+          null,
           3,
-          9
+          48,
+          36
         ]
       },
       {
@@ -1616,60 +2277,17 @@
               -1
             ],
             [
+              "push",
+              -2
+            ],
+            [
+              "pop"
+            ],
+            [
               "peek"
             ],
             [
-              "pop"
-            ],
-            [
               "len"
-            ],
-            [
-              "push",
-              5
-            ],
-            [
-              "pop"
-            ]
-          ]
-        ],
-        "expected": [
-          null,
-          null,
-          -1,
-          -1,
-          1,
-          null,
-          5
-        ]
-      },
-      {
-        "input": [
-          [
-            [
-              "push",
-              12
-            ],
-            [
-              "push",
-              15
-            ],
-            [
-              "push",
-              18
-            ],
-            [
-              "pop"
-            ],
-            [
-              "len"
-            ],
-            [
-              "push",
-              20
-            ],
-            [
-              "peek"
             ],
             [
               "pop"
@@ -1680,187 +2298,65 @@
           null,
           null,
           null,
-          18,
+          -2,
+          -1,
           2,
-          null,
-          20,
-          20
+          -1
         ]
       },
       {
         "input": [
-          [
-            [
-              "push",
-              7
-            ],
-            [
-              "push",
-              14
-            ],
-            [
-              "pop"
-            ],
-            [
-              "push",
-              21
-            ],
-            [
-              "push",
-              28
-            ],
-            [
-              "len"
-            ],
-            [
-              "pop"
-            ],
-            [
-              "pop"
-            ]
-          ]
+          "x = Stack()\nx.push(1)\nx.push(2)\nx.push(3)\ntop_node = x.top\nx.pop()\ntop_node.value"
         ],
         "expected": [
           null,
           null,
-          14,
+          null,
           null,
           null,
           3,
-          28,
-          21
-        ]
-      },
-      {
-        "input": [
-          [
-            [
-              "push",
-              3
-            ],
-            [
-              "push",
-              6
-            ],
-            [
-              "push",
-              9
-            ],
-            [
-              "peek"
-            ],
-            [
-              "pop"
-            ],
-            [
-              "push",
-              12
-            ],
-            [
-              "len"
-            ]
-          ]
-        ],
-        "expected": [
-          null,
-          null,
-          null,
-          9,
-          9,
-          null,
           3
         ]
       },
       {
         "input": [
-          [
-            [
-              "push",
-              11
-            ],
-            [
-              "push",
-              13
-            ],
-            [
-              "pop"
-            ],
-            [
-              "push",
-              17
-            ],
-            [
-              "push",
-              19
-            ],
-            [
-              "peek"
-            ],
-            [
-              "pop"
-            ],
-            [
-              "len"
-            ]
-          ]
+          "x = Stack()\nx.push(1)\nx.push(2)\nx.push(3)\nremoved_node = x.pop()\nremoved_node.next"
         ],
         "expected": [
           null,
           null,
-          13,
           null,
           null,
-          19,
-          19,
+          null,
+          "!AttributeError"
+        ]
+      },
+      {
+        "input": [
+          "x = Stack()\nx.push(1)\nx.push(2)\nx.push(3)\nsecond_node = x.top.next\nx.pop()\nsecond_node.value"
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          3,
           2
         ]
       },
       {
         "input": [
-          [
-            [
-              "push",
-              4
-            ],
-            [
-              "push",
-              8
-            ],
-            [
-              "push",
-              12
-            ],
-            [
-              "pop"
-            ],
-            [
-              "push",
-              16
-            ],
-            [
-              "len"
-            ],
-            [
-              "peek"
-            ],
-            [
-              "pop"
-            ],
-            [
-              "pop"
-            ]
-          ]
+          "x = Stack()\nx.push(1)\nx.push(2)\nx.push(3)\nfirst_node = x.top\nx.pop()\nfirst_node.value"
         ],
         "expected": [
           null,
           null,
           null,
-          12,
+          null,
           null,
           3,
-          16,
-          16,
-          8
+          3
         ]
       }
     ],
@@ -1872,7 +2368,7 @@
     "undetermined": 0,
     "kill_rate_lower": 1.0,
     "kill_rate_upper": 1.0,
-    "validated_at": "2026-09-08T06:05:05+00:00",
+    "validated_at": "2026-09-08T18:15:06+00:00",
     "breakdown": {
       "total_mutants": 3,
       "killed": 3,
@@ -1894,7 +2390,11 @@
         }
       ]
     },
-    "slug": "stack-push"
+    "slug": "stack-push",
+    "features": [
+      "blocks",
+      "calls"
+    ]
   },
   "f7d7f39391ed071a4a03b522d8eea927672f1ff2aed64e72346dde25c492cf43": {
     "final_tests": [
@@ -1941,11 +2441,11 @@
           [
             [
               "push",
-              1
+              2
             ],
             [
               "push",
-              3
+              4
             ],
             [
               "pop"
@@ -1955,6 +2455,37 @@
         "expected": [
           null,
           null,
+          4
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              1
+            ],
+            [
+              "push",
+              3
+            ],
+            [
+              "push",
+              5
+            ],
+            [
+              "pop"
+            ],
+            [
+              "pop"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          5,
           3
         ]
       },
@@ -1963,21 +2494,21 @@
           [
             [
               "push",
-              5
-            ],
-            [
-              "push",
               10
             ],
             [
               "push",
-              15
+              20
+            ],
+            [
+              "push",
+              30
             ],
             [
               "pop"
             ],
             [
-              "pop"
+              "peek"
             ]
           ]
         ],
@@ -1985,8 +2516,8 @@
           null,
           null,
           null,
-          15,
-          10
+          30,
+          20
         ]
       },
       {
@@ -2029,94 +2560,11 @@
           [
             [
               "push",
-              4
-            ],
-            [
-              "push",
-              6
-            ],
-            [
-              "push",
-              2
-            ],
-            [
-              "pop"
-            ],
-            [
-              "push",
-              3
-            ],
-            [
-              "pop"
-            ],
-            [
-              "pop"
-            ]
-          ]
-        ],
-        "expected": [
-          null,
-          null,
-          null,
-          2,
-          null,
-          3,
-          6
-        ]
-      },
-      {
-        "input": [
-          [
-            [
-              "push",
-              12
-            ],
-            [
-              "push",
-              14
-            ],
-            [
-              "pop"
-            ],
-            [
-              "push",
-              16
-            ],
-            [
-              "pop"
-            ],
-            [
-              "pop"
-            ],
-            [
-              "pop"
-            ]
-          ]
-        ],
-        "expected": [
-          null,
-          null,
-          14,
-          null,
-          16,
-          12,
-          null
-        ]
-      },
-      {
-        "input": [
-          [
-            [
-              "push",
-              20
+              15
             ],
             [
               "push",
               25
-            ],
-            [
-              "push",
-              30
             ],
             [
               "pop"
@@ -2126,11 +2574,14 @@
               35
             ],
             [
+              "push",
+              45
+            ],
+            [
               "pop"
             ],
             [
-              "push",
-              40
+              "pop"
             ],
             [
               "pop"
@@ -2140,47 +2591,12 @@
         "expected": [
           null,
           null,
+          25,
           null,
-          30,
           null,
+          45,
           35,
-          null,
-          40
-        ]
-      },
-      {
-        "input": [
-          [
-            [
-              "push",
-              0
-            ],
-            [
-              "push",
-              -1
-            ],
-            [
-              "pop"
-            ],
-            [
-              "push",
-              -2
-            ],
-            [
-              "pop"
-            ],
-            [
-              "pop"
-            ]
-          ]
-        ],
-        "expected": [
-          null,
-          null,
-          -1,
-          null,
-          -2,
-          0
+          15
         ]
       },
       {
@@ -2209,10 +2625,7 @@
               "pop"
             ],
             [
-              "pop"
-            ],
-            [
-              "pop"
+              "peek"
             ]
           ]
         ],
@@ -2223,260 +2636,7 @@
           300,
           null,
           400,
-          200,
-          100
-        ]
-      },
-      {
-        "input": [
-          [
-            [
-              "push",
-              50
-            ],
-            [
-              "push",
-              75
-            ],
-            [
-              "push",
-              100
-            ],
-            [
-              "pop"
-            ],
-            [
-              "push",
-              125
-            ],
-            [
-              "pop"
-            ],
-            [
-              "push",
-              150
-            ],
-            [
-              "pop"
-            ],
-            [
-              "pop"
-            ]
-          ]
-        ],
-        "expected": [
-          null,
-          null,
-          null,
-          100,
-          null,
-          125,
-          null,
-          150,
-          75
-        ]
-      },
-      {
-        "input": [
-          [
-            [
-              "push",
-              9
-            ],
-            [
-              "push",
-              8
-            ],
-            [
-              "push",
-              7
-            ],
-            [
-              "pop"
-            ],
-            [
-              "push",
-              6
-            ],
-            [
-              "pop"
-            ],
-            [
-              "push",
-              5
-            ],
-            [
-              "pop"
-            ],
-            [
-              "pop"
-            ],
-            [
-              "pop"
-            ]
-          ]
-        ],
-        "expected": [
-          null,
-          null,
-          null,
-          7,
-          null,
-          6,
-          null,
-          5,
-          8,
-          9
-        ]
-      },
-      {
-        "input": [
-          [
-            [
-              "push",
-              2
-            ],
-            [
-              "push",
-              4
-            ],
-            [
-              "pop"
-            ]
-          ]
-        ],
-        "expected": [
-          null,
-          null,
-          4
-        ]
-      },
-      {
-        "input": [
-          [
-            [
-              "push",
-              1
-            ],
-            [
-              "push",
-              3
-            ],
-            [
-              "push",
-              5
-            ],
-            [
-              "pop"
-            ],
-            [
-              "pop"
-            ]
-          ]
-        ],
-        "expected": [
-          null,
-          null,
-          null,
-          5,
-          3
-        ]
-      },
-      {
-        "input": [
-          [
-            [
-              "push",
-              10
-            ],
-            [
-              "push",
-              20
-            ],
-            [
-              "push",
-              30
-            ],
-            [
-              "pop"
-            ],
-            [
-              "len"
-            ]
-          ]
-        ],
-        "expected": [
-          null,
-          null,
-          null,
-          30,
-          2
-        ]
-      },
-      {
-        "input": [
-          [
-            [
-              "push",
-              15
-            ],
-            [
-              "push",
-              25
-            ],
-            [
-              "pop"
-            ],
-            [
-              "push",
-              35
-            ],
-            [
-              "peek"
-            ]
-          ]
-        ],
-        "expected": [
-          null,
-          null,
-          25,
-          null,
-          35
-        ]
-      },
-      {
-        "input": [
-          [
-            [
-              "push",
-              100
-            ],
-            [
-              "push",
-              200
-            ],
-            [
-              "pop"
-            ],
-            [
-              "push",
-              300
-            ],
-            [
-              "len"
-            ],
-            [
-              "pop"
-            ]
-          ]
-        ],
-        "expected": [
-          null,
-          null,
-          200,
-          null,
-          2,
-          300
+          200
         ]
       },
       {
@@ -2495,11 +2655,14 @@
               15
             ],
             [
+              "push",
+              20
+            ],
+            [
               "pop"
             ],
             [
-              "push",
-              20
+              "pop"
             ],
             [
               "pop"
@@ -2513,10 +2676,11 @@
           null,
           null,
           null,
-          15,
           null,
           20,
-          10
+          15,
+          10,
+          5
         ]
       },
       {
@@ -2525,12 +2689,6 @@
             [
               "push",
               50
-            ],
-            [
-              "pop"
-            ],
-            [
-              "pop"
             ],
             [
               "push",
@@ -2541,17 +2699,37 @@
               70
             ],
             [
-              "peek"
+              "pop"
+            ],
+            [
+              "push",
+              80
+            ],
+            [
+              "pop"
+            ],
+            [
+              "push",
+              90
+            ],
+            [
+              "pop"
+            ],
+            [
+              "pop"
             ]
           ]
         ],
         "expected": [
           null,
-          50,
           null,
           null,
+          70,
           null,
-          70
+          80,
+          null,
+          90,
+          60
         ]
       },
       {
@@ -2577,7 +2755,14 @@
               12
             ],
             [
-              "len"
+              "pop"
+            ],
+            [
+              "push",
+              15
+            ],
+            [
+              "pop"
             ],
             [
               "pop"
@@ -2590,8 +2775,10 @@
           null,
           9,
           null,
-          3,
-          12
+          12,
+          null,
+          15,
+          6
         ]
       },
       {
@@ -2621,6 +2808,9 @@
             ],
             [
               "pop"
+            ],
+            [
+              "pop"
             ]
           ]
         ],
@@ -2631,517 +2821,81 @@
           null,
           null,
           16,
-          12
-        ]
-      },
-      {
-        "input": [
-          [
-            [
-              "push",
-              1
-            ],
-            [
-              "push",
-              2
-            ],
-            [
-              "push",
-              3
-            ],
-            [
-              "pop"
-            ],
-            [
-              "push",
-              4
-            ],
-            [
-              "push",
-              5
-            ],
-            [
-              "pop"
-            ],
-            [
-              "pop"
-            ]
-          ]
-        ],
-        "expected": [
-          null,
-          null,
-          null,
-          3,
-          null,
-          null,
-          5,
-          4
-        ]
-      },
-      {
-        "input": [
-          [
-            [
-              "push",
-              0
-            ],
-            [
-              "pop"
-            ],
-            [
-              "push",
-              -1
-            ],
-            [
-              "push",
-              -2
-            ],
-            [
-              "pop"
-            ],
-            [
-              "len"
-            ]
-          ]
-        ],
-        "expected": [
-          null,
-          0,
-          null,
-          null,
-          -2,
-          1
-        ]
-      },
-      {
-        "input": [
-          [
-            [
-              "push",
-              5
-            ],
-            [
-              "push",
-              10
-            ],
-            [
-              "pop"
-            ],
-            [
-              "push",
-              15
-            ],
-            [
-              "pop"
-            ],
-            [
-              "pop"
-            ]
-          ]
-        ],
-        "expected": [
-          null,
-          null,
-          10,
-          null,
-          15,
-          5
-        ]
-      },
-      {
-        "input": [
-          [
-            [
-              "push",
-              7
-            ],
-            [
-              "push",
-              8
-            ],
-            [
-              "push",
-              9
-            ],
-            [
-              "pop"
-            ],
-            [
-              "pop"
-            ],
-            [
-              "len"
-            ]
-          ]
-        ],
-        "expected": [
-          null,
-          null,
-          null,
-          9,
-          8,
-          1
-        ]
-      },
-      {
-        "input": [
-          [
-            [
-              "push",
-              4
-            ],
-            [
-              "push",
-              6
-            ],
-            [
-              "pop"
-            ],
-            [
-              "push",
-              12
-            ],
-            [
-              "pop"
-            ],
-            [
-              "peek"
-            ]
-          ]
-        ],
-        "expected": [
-          null,
-          null,
-          6,
-          null,
           12,
           4
         ]
       },
       {
         "input": [
-          [
-            [
-              "push",
-              0
-            ],
-            [
-              "pop"
-            ],
-            [
-              "pop"
-            ]
-          ]
+          "x = Stack()\nx.push(1)\nx.push(2)\nx.push(3)\nto_remove = x.top\nremoved = x.pop()\nto_remove.next"
         ],
         "expected": [
           null,
-          0,
+          null,
+          null,
+          null,
+          null,
+          null,
           null
         ]
       },
       {
         "input": [
-          [
-            [
-              "push",
-              11
-            ],
-            [
-              "push",
-              13
-            ],
-            [
-              "push",
-              17
-            ],
-            [
-              "pop"
-            ],
-            [
-              "len"
-            ],
-            [
-              "pop"
-            ],
-            [
-              "pop"
-            ]
-          ]
+          "x = Stack()\nx.push(5)\nx.push(10)\nto_remove = x.top\nremoved = x.pop()\nx.top.next"
         ],
         "expected": [
           null,
           null,
           null,
-          17,
-          2,
-          13,
-          11
-        ]
-      },
-      {
-        "input": [
-          [
-            [
-              "push",
-              20
-            ],
-            [
-              "push",
-              25
-            ],
-            [
-              "pop"
-            ],
-            [
-              "push",
-              30
-            ],
-            [
-              "peek"
-            ],
-            [
-              "pop"
-            ],
-            [
-              "pop"
-            ]
-          ]
-        ],
-        "expected": [
           null,
           null,
-          25,
-          null,
-          30,
-          30,
-          20
-        ]
-      },
-      {
-        "input": [
-          [
-            [
-              "push",
-              2
-            ],
-            [
-              "push",
-              4
-            ],
-            [
-              "push",
-              6
-            ],
-            [
-              "pop"
-            ],
-            [
-              "len"
-            ],
-            [
-              "pop"
-            ],
-            [
-              "pop"
-            ],
-            [
-              "pop"
-            ]
-          ]
-        ],
-        "expected": [
-          null,
-          null,
-          null,
-          6,
-          2,
-          4,
-          2,
           null
         ]
       },
       {
         "input": [
-          [
-            [
-              "push",
-              3
-            ],
-            [
-              "push",
-              5
-            ],
-            [
-              "pop"
-            ],
-            [
-              "push",
-              7
-            ],
-            [
-              "push",
-              9
-            ],
-            [
-              "pop"
-            ],
-            [
-              "len"
-            ]
-          ]
+          "x = Stack()\nx.push(7)\nx.push(14)\nx.push(21)\nto_remove = x.top\nremoved = x.pop()\nto_remove.value"
         ],
         "expected": [
           null,
           null,
-          5,
           null,
           null,
-          9,
-          2
+          null,
+          null,
+          21
         ]
       },
       {
         "input": [
-          [
-            [
-              "push",
-              8
-            ],
-            [
-              "push",
-              10
-            ],
-            [
-              "pop"
-            ],
-            [
-              "push",
-              12
-            ],
-            [
-              "pop"
-            ],
-            [
-              "pop"
-            ],
-            [
-              "len"
-            ]
-          ]
-        ],
-        "expected": [
-          null,
-          null,
-          10,
-          null,
-          12,
-          8,
-          0
-        ]
-      },
-      {
-        "input": [
-          [
-            [
-              "push",
-              1
-            ],
-            [
-              "push",
-              2
-            ],
-            [
-              "push",
-              3
-            ],
-            [
-              "pop"
-            ],
-            [
-              "peek"
-            ],
-            [
-              "pop"
-            ],
-            [
-              "pop"
-            ],
-            [
-              "pop"
-            ]
-          ]
+          "x = Stack()\nx.push(8)\nx.push(16)\nx.push(24)\nto_remove = x.top\nremoved = x.pop()\nx.peek()"
         ],
         "expected": [
           null,
           null,
           null,
-          3,
-          2,
-          2,
-          1,
-          null
-        ]
-      },
-      {
-        "input": [
-          [
-            [
-              "push",
-              15
-            ],
-            [
-              "push",
-              20
-            ],
-            [
-              "pop"
-            ],
-            [
-              "push",
-              25
-            ],
-            [
-              "peek"
-            ],
-            [
-              "pop"
-            ],
-            [
-              "pop"
-            ],
-            [
-              "pop"
-            ]
-          ]
-        ],
-        "expected": [
           null,
           null,
-          20,
           null,
-          25,
-          25,
-          15,
-          null
+          16
         ]
       }
     ],
-    "strong": false,
-    "kill_rate": 0.8333333333333334,
-    "kill_rate_direct": 0.8333333333333334,
-    "status": "needs_review",
-    "needs_review": true,
-    "undetermined": 1,
-    "kill_rate_lower": 0.8333333333333334,
+    "strong": true,
+    "kill_rate": 1.0,
+    "kill_rate_direct": 1.0,
+    "status": "strong",
+    "needs_review": false,
+    "undetermined": 0,
+    "kill_rate_lower": 1.0,
     "kill_rate_upper": 1.0,
-    "validated_at": "2026-09-08T06:05:24+00:00",
+    "validated_at": "2026-09-08T18:28:51+00:00",
     "breakdown": {
       "total_mutants": 6,
-      "killed": 5,
+      "killed": 6,
       "killed_on_retry": 0,
       "proven_equivalent": 0,
-      "unresolved": 1,
+      "unresolved": 0,
       "mutants": [
         {
           "label": "line 17: remove `if self.top is None:`",
@@ -3157,7 +2911,7 @@
         },
         {
           "label": "line 21: remove `node.next = None`",
-          "status": "undetermined"
+          "status": "killed"
         },
         {
           "label": "line 22: remove `return node.value`",
@@ -3169,7 +2923,11 @@
         }
       ]
     },
-    "slug": "stack-pop"
+    "slug": "stack-pop",
+    "features": [
+      "blocks",
+      "calls"
+    ]
   },
   "e191291aaeb9593dea50c4347ed6e921e28b349b8a234e3d37f286e1cdf5601b": {
     "final_tests": [
@@ -3212,11 +2970,11 @@
           [
             [
               "push",
-              1
+              5
             ],
             [
               "push",
-              3
+              10
             ],
             [
               "peek"
@@ -3226,7 +2984,7 @@
         "expected": [
           null,
           null,
-          3
+          10
         ]
       },
       {
@@ -3234,11 +2992,11 @@
           [
             [
               "push",
-              5
+              1
             ],
             [
               "push",
-              10
+              3
             ],
             [
               "peek"
@@ -3254,9 +3012,9 @@
         "expected": [
           null,
           null,
-          10,
-          10,
-          5
+          3,
+          3,
+          1
         ]
       },
       {
@@ -3267,8 +3025,7 @@
               7
             ],
             [
-              "push",
-              8
+              "peek"
             ],
             [
               "push",
@@ -3282,46 +3039,16 @@
             ],
             [
               "peek"
-            ],
-            [
-              "len"
             ]
           ]
         ],
         "expected": [
           null,
-          null,
+          7,
           null,
           9,
           9,
-          8,
-          2
-        ]
-      },
-      {
-        "input": [
-          [
-            [
-              "peek"
-            ],
-            [
-              "push",
-              4
-            ],
-            [
-              "push",
-              6
-            ],
-            [
-              "peek"
-            ]
-          ]
-        ],
-        "expected": [
-          null,
-          null,
-          null,
-          6
+          7
         ]
       },
       {
@@ -3329,11 +3056,18 @@
           [
             [
               "push",
-              2
+              4
             ],
             [
               "push",
-              4
+              8
+            ],
+            [
+              "push",
+              12
+            ],
+            [
+              "peek"
             ],
             [
               "pop"
@@ -3349,9 +3083,11 @@
         "expected": [
           null,
           null,
-          4,
-          2,
-          1
+          null,
+          12,
+          12,
+          8,
+          2
         ]
       },
       {
@@ -3366,22 +3102,47 @@
             ],
             [
               "peek"
-            ],
-            [
-              "push",
-              3
-            ],
-            [
-              "peek"
             ]
           ]
         ],
         "expected": [
           null,
           0,
+          null
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              6
+            ],
+            [
+              "push",
+              2
+            ],
+            [
+              "peek"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "peek"
+            ],
+            [
+              "len"
+            ]
+          ]
+        ],
+        "expected": [
           null,
           null,
-          3
+          2,
+          2,
+          6,
+          1
         ]
       },
       {
@@ -3393,13 +3154,17 @@
             ],
             [
               "push",
-              12
+              13
             ],
             [
               "peek"
             ],
             [
-              "pop"
+              "push",
+              15
+            ],
+            [
+              "peek"
             ],
             [
               "pop"
@@ -3412,19 +3177,16 @@
         "expected": [
           null,
           null,
-          12,
-          12,
-          11,
-          null
+          13,
+          null,
+          15,
+          15,
+          13
         ]
       },
       {
         "input": [
           [
-            [
-              "push",
-              15
-            ],
             [
               "push",
               20
@@ -3437,7 +3199,7 @@
               "peek"
             ],
             [
-              "len"
+              "pop"
             ],
             [
               "pop"
@@ -3450,11 +3212,10 @@
         "expected": [
           null,
           null,
-          null,
           25,
-          3,
           25,
-          20
+          20,
+          null
         ]
       },
       {
@@ -3465,8 +3226,15 @@
               30
             ],
             [
+              "peek"
+            ],
+            [
               "push",
               35
+            ],
+            [
+              "push",
+              40
             ],
             [
               "peek"
@@ -3475,21 +3243,18 @@
               "pop"
             ],
             [
-              "push",
-              40
-            ],
-            [
               "peek"
             ]
           ]
         ],
         "expected": [
           null,
+          30,
           null,
-          35,
-          35,
           null,
-          40
+          40,
+          40,
+          35
         ]
       },
       {
@@ -3503,10 +3268,6 @@
               "peek"
             ],
             [
-              "push",
-              55
-            ],
-            [
               "pop"
             ],
             [
@@ -3520,10 +3281,67 @@
         "expected": [
           null,
           50,
-          null,
-          55,
           50,
-          1
+          null,
+          0
+        ]
+      },
+      {
+        "input": [
+          "x = Stack()\nx.push(1)\nx.push(2)\nx.push(3)\ntop_node = x.peek()\nx.pop()\ntop_node.value"
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          3,
+          "!AttributeError"
+        ]
+      },
+      {
+        "input": [
+          "x = Stack()\nx.push(1)\nx.push(2)\ntop_node = x.peek()\nx.pop()\nx.push(3)\ntop_node.next"
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          null,
+          2,
+          null,
+          "!AttributeError"
+        ]
+      },
+      {
+        "input": [
+          "x = Stack()\nx.push(1)\nx.push(2)\nx.push(3)\ntop_node = x.peek()\nx.pop()\nx.pop()\ntop_node.next"
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          3,
+          2,
+          "!AttributeError"
+        ]
+      },
+      {
+        "input": [
+          "x = Stack()\nx.push(1)\nx.push(2)\nx.push(3)\ntop_node = x.peek()\nx.pop()\nx.push(4)\ntop_node.value"
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          3,
+          null,
+          "!AttributeError"
         ]
       }
     ],
@@ -3535,7 +3353,7 @@
     "undetermined": 0,
     "kill_rate_lower": 1.0,
     "kill_rate_upper": 1.0,
-    "validated_at": "2026-09-08T06:14:13+00:00",
+    "validated_at": "2026-09-08T18:15:12+00:00",
     "breakdown": {
       "total_mutants": 3,
       "killed": 3,
@@ -3557,7 +3375,11 @@
         }
       ]
     },
-    "slug": "stack-peek"
+    "slug": "stack-peek",
+    "features": [
+      "blocks",
+      "calls"
+    ]
   },
   "3124afe3b3a5abc703fcf96d41ae4d9bfb4c1b5947ed17a287fd6aec78cf736a": {
     "final_tests": [
@@ -3615,7 +3437,7 @@
           [
             [
               "setExpr",
-              "10 - 2"
+              "10 / 2"
             ],
             [
               "_getPostfix"
@@ -3645,12 +3467,39 @@
               "7 * 8"
             ],
             [
-              "_isNumber",
-              "7"
+              "_getPostfix"
             ],
             [
               "_isNumber",
-              "8"
+              "56"
+            ],
+            [
+              "_isNumber",
+              "7"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          "!TypeError",
+          true,
+          true
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpr",
+              "4 - 1"
+            ],
+            [
+              "_isNumber",
+              "4"
+            ],
+            [
+              "_isNumber",
+              "1"
             ],
             [
               "_getPostfix"
@@ -3669,37 +3518,7 @@
           [
             [
               "setExpr",
-              "4 / 2"
-            ],
-            [
-              "_isNumber",
-              "4"
-            ],
-            [
-              "_isNumber",
-              "2"
-            ],
-            [
-              "calculate"
-            ]
-          ]
-        ],
-        "expected": [
-          null,
-          true,
-          true,
-          2.0
-        ]
-      },
-      {
-        "input": [
-          [
-            [
-              "setExpr",
-              "12 + 15 - 3"
-            ],
-            [
-              "_getPostfix"
+              "12 + 15"
             ],
             [
               "_isNumber",
@@ -3710,17 +3529,19 @@
               "15"
             ],
             [
-              "_isNumber",
-              "3"
+              "_getPostfix"
+            ],
+            [
+              "calculate"
             ]
           ]
         ],
         "expected": [
           null,
+          true,
+          true,
           "!TypeError",
-          true,
-          true,
-          true
+          27.0
         ]
       },
       {
@@ -3728,22 +3549,22 @@
           [
             [
               "setExpr",
-              "5 * (2 + 3)"
+              "5 + 3 * 2"
             ],
             [
               "_getPostfix"
+            ],
+            [
+              "_isNumber",
+              "3"
+            ],
+            [
+              "_isNumber",
+              "2"
             ],
             [
               "_isNumber",
               "5"
-            ],
-            [
-              "_isNumber",
-              "2"
-            ],
-            [
-              "_isNumber",
-              "3"
             ]
           ]
         ],
@@ -3760,39 +3581,7 @@
           [
             [
               "setExpr",
-              "(1 + 2) * 3"
-            ],
-            [
-              "_getPostfix"
-            ],
-            [
-              "_isNumber",
-              "1"
-            ],
-            [
-              "_isNumber",
-              "2"
-            ],
-            [
-              "_isNumber",
-              "3"
-            ]
-          ]
-        ],
-        "expected": [
-          null,
-          "!TypeError",
-          true,
-          true,
-          true
-        ]
-      },
-      {
-        "input": [
-          [
-            [
-              "setExpr",
-              "9 - (4 / 2)"
+              "9 / 3 - 1"
             ],
             [
               "_getPostfix"
@@ -3803,72 +3592,7 @@
             ],
             [
               "_isNumber",
-              "4"
-            ],
-            [
-              "_isNumber",
-              "2"
-            ]
-          ]
-        ],
-        "expected": [
-          null,
-          "!TypeError",
-          true,
-          true,
-          true
-        ]
-      },
-      {
-        "input": [
-          [
-            [
-              "setExpr",
-              "6 + 7 - 8 * 2"
-            ],
-            [
-              "_getPostfix"
-            ],
-            [
-              "_isNumber",
-              "6"
-            ],
-            [
-              "_isNumber",
-              "7"
-            ],
-            [
-              "_isNumber",
-              "8"
-            ],
-            [
-              "_isNumber",
-              "2"
-            ]
-          ]
-        ],
-        "expected": [
-          null,
-          "!TypeError",
-          true,
-          true,
-          true,
-          true
-        ]
-      },
-      {
-        "input": [
-          [
-            [
-              "setExpr",
-              "0 / 1"
-            ],
-            [
-              "_getPostfix"
-            ],
-            [
-              "_isNumber",
-              "0"
+              "3"
             ],
             [
               "_isNumber",
@@ -3880,7 +3604,148 @@
           null,
           "!TypeError",
           true,
+          true,
           true
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpr",
+              "0 + 1"
+            ],
+            [
+              "_isNumber",
+              "0"
+            ],
+            [
+              "_isNumber",
+              "1"
+            ],
+            [
+              "_getPostfix"
+            ],
+            [
+              "calculate"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          true,
+          true,
+          "!TypeError",
+          1.0
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpr",
+              "100 - 50"
+            ],
+            [
+              "_isNumber",
+              "100"
+            ],
+            [
+              "_isNumber",
+              "50"
+            ],
+            [
+              "_getPostfix"
+            ],
+            [
+              "calculate"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          true,
+          true,
+          "!TypeError",
+          50.0
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpr",
+              "2 * (3 + 4)"
+            ],
+            [
+              "_getPostfix"
+            ],
+            [
+              "_isNumber",
+              "2"
+            ],
+            [
+              "_isNumber",
+              "3"
+            ],
+            [
+              "_isNumber",
+              "4"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          "!TypeError",
+          true,
+          true,
+          true
+        ]
+      },
+      {
+        "input": [
+          "calc = Calculator()\ncalc.setExpr('3 + 5')\nnum = calc._isNumber('3')\ncurr_expr = calc.getExpr()"
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          "!TypeError"
+        ]
+      },
+      {
+        "input": [
+          "calc = Calculator()\ncurr_expr = calc.getExpr()\ncurr_num = calc._isNumber('7')\ncurr_expr_after = calc.getExpr()"
+        ],
+        "expected": [
+          null,
+          "!TypeError",
+          null,
+          "!TypeError"
+        ]
+      },
+      {
+        "input": [
+          "calc = Calculator()\nnum_ref = calc._isNumber('10')\ncurr_expr = calc.getExpr()\ncurr_num = calc._isNumber('10')\ncalc.setExpr('2 * 3')"
+        ],
+        "expected": [
+          null,
+          null,
+          "!TypeError",
+          null,
+          null
+        ]
+      },
+      {
+        "input": [
+          "calc = Calculator()\nnum_ref = calc._isNumber('4')\ncurr_expr = calc.getExpr()\ncurr_num = calc._isNumber('4')\ncalc.setExpr('1 + 1')"
+        ],
+        "expected": [
+          null,
+          null,
+          "!TypeError",
+          null,
+          null
         ]
       }
     ],
@@ -3892,7 +3757,7 @@
     "undetermined": 0,
     "kill_rate_lower": 1.0,
     "kill_rate_upper": 1.0,
-    "validated_at": "2026-09-08T06:14:20+00:00",
+    "validated_at": "2026-09-08T18:15:22+00:00",
     "breakdown": {
       "total_mutants": 5,
       "killed": 5,
@@ -3922,6 +3787,4697 @@
         }
       ]
     },
-    "slug": "calculator-is-number"
+    "slug": "calculator-is-number",
+    "features": [
+      "blocks",
+      "calls"
+    ]
+  },
+  "53bdfdb8de6df5e353022d8ef15d2489f6e50373876956ccad4d46a6f3b24897": {
+    "final_tests": [
+      {
+        "input": [
+          [
+            [
+              "new"
+            ],
+            [
+              "_getPostfix",
+              "     2 ^       4"
+            ],
+            [
+              "_getPostfix",
+              "          2 "
+            ],
+            [
+              "_getPostfix",
+              "2.1        * 5        + 3       ^ 2 +         1 +             4.45"
+            ],
+            [
+              "_getPostfix",
+              "2*5.34+3^2+1+4"
+            ],
+            [
+              "_getPostfix",
+              "( .5 )"
+            ],
+            [
+              "_getPostfix",
+              "( ( 2 ) )"
+            ],
+            [
+              "_getPostfix",
+              "2 * (           ( 5 +-3 ) ^ 2 + (1 + 4 ))"
+            ],
+            [
+              "_getPostfix",
+              "2* (       -5 + 3 ) ^2+ ( 1 +4 )"
+            ],
+            [
+              "_getPostfix",
+              "2 * 5 + 3 ^ + -2 + 1 + 4"
+            ],
+            [
+              "_getPostfix",
+              "2    5"
+            ],
+            [
+              "_getPostfix",
+              "25 +"
+            ],
+            [
+              "_getPostfix",
+              " 2 * ( 5      + 3 ) ^ 2 + ( 1 +4 "
+            ],
+            [
+              "_getPostfix",
+              "2 *      5% + 3       ^ + -2 +1 +4"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          "2.0 4.0 ^",
+          "2.0",
+          "2.1 5.0 * 3.0 2.0 ^ + 1.0 + 4.45 +",
+          "2.0 5.34 * 3.0 2.0 ^ + 1.0 + 4.0 +",
+          "0.5",
+          "2.0",
+          "2.0 5.0 -3.0 + 2.0 ^ 1.0 4.0 + + *",
+          "2.0 -5.0 3.0 + 2.0 ^ * 1.0 4.0 + +",
+          null,
+          null,
+          null,
+          null,
+          null
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpr",
+              "3 + 4"
+            ],
+            [
+              "_getPostfix"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          "!TypeError"
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpr",
+              "5 * (6 - 2)"
+            ],
+            [
+              "_getPostfix"
+            ],
+            [
+              "calculate"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          "!TypeError",
+          20.0
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpr",
+              "10 / 2"
+            ],
+            [
+              "_getPostfix"
+            ],
+            [
+              "setExpr",
+              "1 + 1"
+            ],
+            [
+              "_getPostfix"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          "!TypeError",
+          null,
+          "!TypeError"
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpr",
+              "7 - 3"
+            ],
+            [
+              "_getPostfix"
+            ],
+            [
+              "setExpr",
+              "2 * 5"
+            ],
+            [
+              "_getPostfix"
+            ],
+            [
+              "calculate"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          "!TypeError",
+          null,
+          "!TypeError",
+          10.0
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpr",
+              "(8 + 2) * 3"
+            ],
+            [
+              "_getPostfix"
+            ],
+            [
+              "setExpr",
+              "9 / 3"
+            ],
+            [
+              "_getPostfix"
+            ],
+            [
+              "calculate"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          "!TypeError",
+          null,
+          "!TypeError",
+          3.0
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpr",
+              "1 + 2 + 3"
+            ],
+            [
+              "_getPostfix"
+            ],
+            [
+              "setExpr",
+              "4 + 5"
+            ],
+            [
+              "_getPostfix"
+            ],
+            [
+              "_getPostfix"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          "!TypeError",
+          null,
+          "!TypeError",
+          "!TypeError"
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpr",
+              "2 * (3 + 4)"
+            ],
+            [
+              "_getPostfix"
+            ],
+            [
+              "setExpr",
+              "10 - 5"
+            ],
+            [
+              "_getPostfix"
+            ],
+            [
+              "calculate"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          "!TypeError",
+          null,
+          "!TypeError",
+          5.0
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpr",
+              "5 + (6 * 2)"
+            ],
+            [
+              "_getPostfix"
+            ],
+            [
+              "setExpr",
+              "3 - 1"
+            ],
+            [
+              "_getPostfix"
+            ],
+            [
+              "calculate"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          "!TypeError",
+          null,
+          "!TypeError",
+          2.0
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpr",
+              "(1 + 2) * (3 + 4)"
+            ],
+            [
+              "_getPostfix"
+            ],
+            [
+              "setExpr",
+              "8 / 4"
+            ],
+            [
+              "_getPostfix"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          "!TypeError",
+          null,
+          "!TypeError"
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpr",
+              "2 + 3"
+            ],
+            [
+              "_getPostfix"
+            ],
+            [
+              "setExpr",
+              "4 * 5"
+            ],
+            [
+              "_getPostfix"
+            ],
+            [
+              "setExpr",
+              "6 - 1"
+            ],
+            [
+              "_getPostfix"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          "!TypeError",
+          null,
+          "!TypeError",
+          null,
+          "!TypeError"
+        ]
+      },
+      {
+        "input": [
+          "x = Calculator()\nx.setExpr('3 + 4')\ny = x._getPostfix()\nx.setExpr('5 + 6')\nlen(x.__expr)"
+        ],
+        "expected": [
+          null,
+          null,
+          "!TypeError",
+          null,
+          "!AttributeError"
+        ]
+      },
+      {
+        "input": [
+          "x = Calculator()\nx.setExpr('2 * (3 + 4)')\ny = x._getPostfix()\nx.setExpr('8 / 2')\nlen(x.__expr)"
+        ],
+        "expected": [
+          null,
+          null,
+          "!TypeError",
+          null,
+          "!AttributeError"
+        ]
+      },
+      {
+        "input": [
+          "x = Calculator()\nx.setExpr('1 + 2')\ny = x._getPostfix()\nref = y\nx.setExpr('3 + 4')\nref is None"
+        ],
+        "expected": [
+          null,
+          null,
+          "!TypeError",
+          "!NameError",
+          null,
+          "!NameError"
+        ]
+      },
+      {
+        "input": [
+          "x = Calculator()\nx.setExpr('5 - 3')\ny = x._getPostfix()\nref = y\nx.setExpr('7 * 2')\nref is not None"
+        ],
+        "expected": [
+          null,
+          null,
+          "!TypeError",
+          "!NameError",
+          null,
+          "!NameError"
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpr",
+              "10 - 2 * 3"
+            ],
+            [
+              "_getPostfix"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          "!TypeError"
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpr",
+              "5 + (6 - 2) * 3"
+            ],
+            [
+              "_getPostfix"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          "!TypeError"
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpr",
+              "8 / 4 + 2"
+            ],
+            [
+              "_getPostfix"
+            ],
+            [
+              "calculate"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          "!TypeError",
+          4.0
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpr",
+              "7 * (2 + 3)"
+            ],
+            [
+              "_getPostfix"
+            ],
+            [
+              "calculate"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          "!TypeError",
+          35.0
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpr",
+              "1 + 2 + 3 + 4"
+            ],
+            [
+              "_getPostfix"
+            ],
+            [
+              "calculate"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          "!TypeError",
+          10.0
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpr",
+              "5"
+            ],
+            [
+              "_getPostfix"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          "!TypeError"
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpr",
+              "(1 + 2) * (3 - 4)"
+            ],
+            [
+              "_getPostfix"
+            ],
+            [
+              "calculate"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          "!TypeError",
+          -3.0
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpr",
+              "9 / (3 + 6)"
+            ],
+            [
+              "_getPostfix"
+            ],
+            [
+              "calculate"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          "!TypeError",
+          1.0
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpr",
+              "2 * (3 + 4) - 5"
+            ],
+            [
+              "_getPostfix"
+            ],
+            [
+              "calculate"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          "!TypeError",
+          9.0
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpr",
+              "3 + 5 * 2"
+            ],
+            [
+              "_getPostfix"
+            ],
+            [
+              "calculate"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          "!TypeError",
+          13.0
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpr",
+              "4 - (2 + 1) * 3"
+            ],
+            [
+              "_getPostfix"
+            ],
+            [
+              "calculate"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          "!TypeError",
+          -5.0
+        ]
+      },
+      {
+        "input": [
+          "calc = Calculator()\ncalc.setExpr('3 + 4')\npostfix = calc._getPostfix()\ncalc.setExpr('5 + 6')\nexpr = calc.getExpr()"
+        ],
+        "expected": [
+          null,
+          null,
+          "!TypeError",
+          null,
+          "!TypeError"
+        ]
+      },
+      {
+        "input": [
+          "calc = Calculator()\ncalc.setExpr('2 * 3')\npostfix = calc._getPostfix()\ncalc.setExpr('7 - 1')\nremoved_expr = calc.__expr\ncalc.setExpr('8 / 2')\ncurrent_expr = calc.getExpr()"
+        ],
+        "expected": [
+          null,
+          null,
+          "!TypeError",
+          null,
+          "!AttributeError",
+          null,
+          "!TypeError"
+        ]
+      },
+      {
+        "input": [
+          "calc = Calculator()\ncalc.setExpr('1 + 2')\npostfix = calc._getPostfix()\nold_expr = calc.__expr\ncalc.setExpr('3 + 5')\nnew_expr = calc.getExpr()"
+        ],
+        "expected": [
+          null,
+          null,
+          "!TypeError",
+          "!AttributeError",
+          null,
+          "!TypeError"
+        ]
+      },
+      {
+        "input": [
+          "calc = Calculator()\ncalc.setExpr('4 / 2')\npostfix = calc._getPostfix()\nprev_expr = calc.__expr\ncalc.setExpr('9 - 3')\nfinal_expr = calc.getExpr()"
+        ],
+        "expected": [
+          null,
+          null,
+          "!TypeError",
+          "!AttributeError",
+          null,
+          "!TypeError"
+        ]
+      }
+    ],
+    "strong": true,
+    "kill_rate": 0.8682170542635659,
+    "kill_rate_direct": 0.8682170542635659,
+    "status": "strong",
+    "needs_review": false,
+    "undetermined": 17,
+    "kill_rate_lower": 0.8682170542635659,
+    "kill_rate_upper": 1.0,
+    "validated_at": "2026-09-08T18:20:30+00:00",
+    "breakdown": {
+      "total_mutants": 129,
+      "killed": 112,
+      "killed_on_retry": 0,
+      "proven_equivalent": 0,
+      "unresolved": 17,
+      "mutants": [
+        {
+          "label": "line 44: remove `postfixStack = Stack()`",
+          "status": "killed"
+        },
+        {
+          "label": "line 45: remove `precedence = {'+': 1, '-': 1, '*': 2,...`",
+          "status": "killed"
+        },
+        {
+          "label": "line 48: remove `tokens = []`",
+          "status": "killed"
+        },
+        {
+          "label": "line 49: remove `i = 0`",
+          "status": "killed"
+        },
+        {
+          "label": "line 50: remove `prev = None`",
+          "status": "undetermined",
+          "probe": {
+            "verdict": "unknown",
+            "reached": 0,
+            "differed": 0
+          }
+        },
+        {
+          "label": "line 51: remove `while i < len(txt):`",
+          "status": "killed"
+        },
+        {
+          "label": "line 86: remove `if not tokens:`",
+          "status": "undetermined",
+          "probe": {
+            "verdict": "unknown",
+            "reached": 0,
+            "differed": 0
+          }
+        },
+        {
+          "label": "line 90: remove `expect_operand = True`",
+          "status": "killed"
+        },
+        {
+          "label": "line 91: remove `depth = 0`",
+          "status": "killed"
+        },
+        {
+          "label": "line 92: remove `for tok in tokens:`",
+          "status": "killed"
+        },
+        {
+          "label": "line 115: remove `if expect_operand or depth != 0:`",
+          "status": "killed"
+        },
+        {
+          "label": "line 119: remove `output = []`",
+          "status": "killed"
+        },
+        {
+          "label": "line 120: remove `for tok in tokens:`",
+          "status": "killed"
+        },
+        {
+          "label": "line 137: remove `while not postfixStack.isEmpty():`",
+          "status": "killed"
+        },
+        {
+          "label": "line 139: remove `return ' '.join(output)`",
+          "status": "killed"
+        },
+        {
+          "label": "line 52: remove `ch = txt[i]`",
+          "status": "killed"
+        },
+        {
+          "label": "line 53: remove `if ch.isspace():`",
+          "status": "killed"
+        },
+        {
+          "label": "line 56: remove `if ch in '()':`",
+          "status": "killed"
+        },
+        {
+          "label": "line 61: remove `if ch in '+-*/^':`",
+          "status": "killed"
+        },
+        {
+          "label": "line 77: remove `if ch.isdigit() or ch == '.':`",
+          "status": "killed"
+        },
+        {
+          "label": "line 85: remove `return None`",
+          "status": "killed"
+        },
+        {
+          "label": "line 49: 0 -> 1",
+          "status": "killed"
+        },
+        {
+          "label": "line 51: < -> <=",
+          "status": "killed"
+        },
+        {
+          "label": "line 54: remove `i += 1`",
+          "status": "killed"
+        },
+        {
+          "label": "line 55: remove `continue`",
+          "status": "killed"
+        },
+        {
+          "label": "line 57: remove `tokens.append(ch)`",
+          "status": "killed"
+        },
+        {
+          "label": "line 58: remove `prev = ch`",
+          "status": "undetermined",
+          "probe": {
+            "verdict": "unknown",
+            "reached": 0,
+            "differed": 0
+          }
+        },
+        {
+          "label": "line 59: remove `i += 1`",
+          "status": "killed"
+        },
+        {
+          "label": "line 60: remove `continue`",
+          "status": "killed"
+        },
+        {
+          "label": "line 63: remove `if ch in '+-' and (prev is None or pr...`",
+          "status": "killed"
+        },
+        {
+          "label": "line 73: remove `tokens.append(ch)`",
+          "status": "killed"
+        },
+        {
+          "label": "line 74: remove `prev = ch`",
+          "status": "killed"
+        },
+        {
+          "label": "line 75: remove `i += 1`",
+          "status": "killed"
+        },
+        {
+          "label": "line 76: remove `continue`",
+          "status": "killed"
+        },
+        {
+          "label": "line 78: remove `j = i`",
+          "status": "killed"
+        },
+        {
+          "label": "line 79: remove `while j < len(txt) and (txt[j].isdigi...`",
+          "status": "killed"
+        },
+        {
+          "label": "line 81: remove `tokens.append(txt[i:j])`",
+          "status": "killed"
+        },
+        {
+          "label": "line 82: remove `prev = 'num'`",
+          "status": "killed"
+        },
+        {
+          "label": "line 83: remove `i = j`",
+          "status": "killed"
+        },
+        {
+          "label": "line 84: remove `continue`",
+          "status": "killed"
+        },
+        {
+          "label": "line 90: True -> False",
+          "status": "killed"
+        },
+        {
+          "label": "line 91: 0 -> 1",
+          "status": "killed"
+        },
+        {
+          "label": "line 94: remove `if not expect_operand:`",
+          "status": "undetermined",
+          "probe": {
+            "verdict": "unknown",
+            "reached": 0,
+            "differed": 0
+          }
+        },
+        {
+          "label": "line 96: remove `depth += 1`",
+          "status": "killed"
+        },
+        {
+          "label": "line 115: or -> and",
+          "status": "killed"
+        },
+        {
+          "label": "line 45: 1 -> 2",
+          "status": "killed"
+        },
+        {
+          "label": "line 45: 1 -> 2",
+          "status": "killed"
+        },
+        {
+          "label": "line 45: 2 -> 3",
+          "status": "undetermined",
+          "probe": {
+            "verdict": "unknown",
+            "reached": 0,
+            "differed": 0
+          }
+        },
+        {
+          "label": "line 45: 2 -> 3",
+          "status": "undetermined",
+          "probe": {
+            "verdict": "unknown",
+            "reached": 0,
+            "differed": 0
+          }
+        },
+        {
+          "label": "line 45: 3 -> 4",
+          "status": "undetermined",
+          "probe": {
+            "verdict": "unknown",
+            "reached": 0,
+            "differed": 0
+          }
+        },
+        {
+          "label": "line 54: += -> -=",
+          "status": "killed"
+        },
+        {
+          "label": "line 56: in -> not in",
+          "status": "killed"
+        },
+        {
+          "label": "line 59: += -> -=",
+          "status": "killed"
+        },
+        {
+          "label": "line 61: in -> not in",
+          "status": "killed"
+        },
+        {
+          "label": "line 64: remove `j = i + 1`",
+          "status": "killed"
+        },
+        {
+          "label": "line 65: remove `while j < len(txt) and (txt[j].isdigi...`",
+          "status": "killed"
+        },
+        {
+          "label": "line 67: remove `if j == i + 1:`",
+          "status": "undetermined",
+          "probe": {
+            "verdict": "unknown",
+            "reached": 0,
+            "differed": 0
+          }
+        },
+        {
+          "label": "line 69: remove `tokens.append(ch + txt[i + 1:j])`",
+          "status": "killed"
+        },
+        {
+          "label": "line 70: remove `prev = 'num'`",
+          "status": "killed"
+        },
+        {
+          "label": "line 71: remove `i = j`",
+          "status": "killed"
+        },
+        {
+          "label": "line 72: remove `continue`",
+          "status": "killed"
+        },
+        {
+          "label": "line 75: += -> -=",
+          "status": "killed"
+        },
+        {
+          "label": "line 77: or -> and",
+          "status": "killed"
+        },
+        {
+          "label": "line 93: == -> !=",
+          "status": "killed"
+        },
+        {
+          "label": "line 96: += -> -=",
+          "status": "killed"
+        },
+        {
+          "label": "line 98: remove `if expect_operand:`",
+          "status": "undetermined",
+          "probe": {
+            "verdict": "unknown",
+            "reached": 0,
+            "differed": 0
+          }
+        },
+        {
+          "label": "line 100: remove `depth -= 1`",
+          "status": "killed"
+        },
+        {
+          "label": "line 101: remove `if depth < 0:`",
+          "status": "undetermined",
+          "probe": {
+            "verdict": "unknown",
+            "reached": 0,
+            "differed": 0
+          }
+        },
+        {
+          "label": "line 115: != -> ==",
+          "status": "killed"
+        },
+        {
+          "label": "line 121: == -> !=",
+          "status": "killed"
+        },
+        {
+          "label": "line 124: remove `while not postfixStack.isEmpty() and ...`",
+          "status": "killed"
+        },
+        {
+          "label": "line 126: remove `postfixStack.pop()`",
+          "status": "killed"
+        },
+        {
+          "label": "line 54: 1 -> 2",
+          "status": "killed"
+        },
+        {
+          "label": "line 59: 1 -> 2",
+          "status": "killed"
+        },
+        {
+          "label": "line 63: and -> or",
+          "status": "killed"
+        },
+        {
+          "label": "line 75: 1 -> 2",
+          "status": "killed"
+        },
+        {
+          "label": "line 77: == -> !=",
+          "status": "killed"
+        },
+        {
+          "label": "line 79: and -> or",
+          "status": "killed"
+        },
+        {
+          "label": "line 80: += -> -=",
+          "status": "killed"
+        },
+        {
+          "label": "line 96: 1 -> 2",
+          "status": "killed"
+        },
+        {
+          "label": "line 97: == -> !=",
+          "status": "killed"
+        },
+        {
+          "label": "line 100: -= -> +=",
+          "status": "killed"
+        },
+        {
+          "label": "line 104: remove `if expect_operand:`",
+          "status": "undetermined",
+          "probe": {
+            "verdict": "unknown",
+            "reached": 0,
+            "differed": 0
+          }
+        },
+        {
+          "label": "line 106: remove `expect_operand = True`",
+          "status": "killed"
+        },
+        {
+          "label": "line 108: remove `if not expect_operand:`",
+          "status": "killed"
+        },
+        {
+          "label": "line 110: remove `try:`",
+          "status": "undetermined",
+          "probe": {
+            "verdict": "unknown",
+            "reached": 0,
+            "differed": 0
+          }
+        },
+        {
+          "label": "line 114: remove `expect_operand = False`",
+          "status": "killed"
+        },
+        {
+          "label": "line 115: 0 -> 1",
+          "status": "killed"
+        },
+        {
+          "label": "line 123: == -> !=",
+          "status": "killed"
+        },
+        {
+          "label": "line 128: remove `while not postfixStack.isEmpty() and ...`",
+          "status": "killed"
+        },
+        {
+          "label": "line 134: remove `postfixStack.push(tok)`",
+          "status": "killed"
+        },
+        {
+          "label": "line 63: in -> not in",
+          "status": "killed"
+        },
+        {
+          "label": "line 63: or -> and",
+          "status": "killed"
+        },
+        {
+          "label": "line 64: + -> -",
+          "status": "killed"
+        },
+        {
+          "label": "line 65: and -> or",
+          "status": "killed"
+        },
+        {
+          "label": "line 66: += -> -=",
+          "status": "killed"
+        },
+        {
+          "label": "line 67: == -> !=",
+          "status": "killed"
+        },
+        {
+          "label": "line 79: < -> <=",
+          "status": "killed"
+        },
+        {
+          "label": "line 79: or -> and",
+          "status": "killed"
+        },
+        {
+          "label": "line 80: 1 -> 2",
+          "status": "killed"
+        },
+        {
+          "label": "line 100: 1 -> 2",
+          "status": "killed"
+        },
+        {
+          "label": "line 101: < -> <=",
+          "status": "killed"
+        },
+        {
+          "label": "line 103: in -> not in",
+          "status": "killed"
+        },
+        {
+          "label": "line 124: and -> or",
+          "status": "killed"
+        },
+        {
+          "label": "line 127: in -> not in",
+          "status": "killed"
+        },
+        {
+          "label": "line 63: is -> is not",
+          "status": "killed"
+        },
+        {
+          "label": "line 63: in -> not in",
+          "status": "killed"
+        },
+        {
+          "label": "line 64: 1 -> 2",
+          "status": "undetermined",
+          "probe": {
+            "verdict": "unknown",
+            "reached": 0,
+            "differed": 0
+          }
+        },
+        {
+          "label": "line 65: < -> <=",
+          "status": "undetermined",
+          "probe": {
+            "verdict": "unknown",
+            "reached": 0,
+            "differed": 0
+          }
+        },
+        {
+          "label": "line 65: or -> and",
+          "status": "killed"
+        },
+        {
+          "label": "line 66: 1 -> 2",
+          "status": "undetermined",
+          "probe": {
+            "verdict": "unknown",
+            "reached": 0,
+            "differed": 0
+          }
+        },
+        {
+          "label": "line 67: + -> -",
+          "status": "undetermined",
+          "probe": {
+            "verdict": "unknown",
+            "reached": 0,
+            "differed": 0
+          }
+        },
+        {
+          "label": "line 69: + -> -",
+          "status": "killed"
+        },
+        {
+          "label": "line 79: == -> !=",
+          "status": "killed"
+        },
+        {
+          "label": "line 101: 0 -> 1",
+          "status": "killed"
+        },
+        {
+          "label": "line 106: True -> False",
+          "status": "killed"
+        },
+        {
+          "label": "line 114: False -> True",
+          "status": "killed"
+        },
+        {
+          "label": "line 124: != -> ==",
+          "status": "killed"
+        },
+        {
+          "label": "line 128: and -> or",
+          "status": "killed"
+        },
+        {
+          "label": "line 65: == -> !=",
+          "status": "killed"
+        },
+        {
+          "label": "line 67: 1 -> 2",
+          "status": "killed"
+        },
+        {
+          "label": "line 129: != -> ==",
+          "status": "killed"
+        },
+        {
+          "label": "line 130: or -> and",
+          "status": "killed"
+        },
+        {
+          "label": "line 130: > -> >=",
+          "status": "undetermined",
+          "probe": {
+            "verdict": "unknown",
+            "reached": 0,
+            "differed": 0
+          }
+        },
+        {
+          "label": "line 131: and -> or",
+          "status": "killed"
+        },
+        {
+          "label": "line 69: + -> -",
+          "status": "killed"
+        },
+        {
+          "label": "line 131: == -> !=",
+          "status": "killed"
+        },
+        {
+          "label": "line 132: != -> ==",
+          "status": "killed"
+        },
+        {
+          "label": "line 69: 1 -> 2",
+          "status": "killed"
+        }
+      ]
+    },
+    "slug": "calculator-get-postfix",
+    "features": [
+      "blocks",
+      "calls"
+    ]
+  },
+  "113a1e42f7d650f8d6396932a38e0f184c5c3e394bebe83e2581d7288baba78e": {
+    "final_tests": [
+      {
+        "input": [
+          [
+            [
+              "new"
+            ],
+            [
+              "setExpr",
+              "4        + 3 -       2"
+            ],
+            [
+              "setExpr",
+              "-2 +          3.5"
+            ],
+            [
+              "setExpr",
+              "2-3*4"
+            ],
+            [
+              "setExpr",
+              "7^2^3"
+            ],
+            [
+              "setExpr",
+              " 3 * ((( 10 - 2*3 )) )"
+            ],
+            [
+              "setExpr",
+              "      8 / 4 * (3 - 2.45 * ( 4   - 2 ^ 3 )       ) + 3"
+            ],
+            [
+              "setExpr",
+              "2 * ( 4 +        2 * (         5 - 3 ^ 2 ) + 1 ) + 4"
+            ],
+            [
+              "setExpr",
+              " 4 ++ 3+ 2"
+            ],
+            [
+              "setExpr",
+              "4  3 +2"
+            ],
+            [
+              "setExpr",
+              "( 2 ) * 10 - 3 *( 2 - 3 * 2 ) )"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpr",
+              "3 + 5"
+            ],
+            [
+              "calculate"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          8.0
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpr",
+              "10 - 2"
+            ],
+            [
+              "_getPostfix"
+            ],
+            [
+              "calculate"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          "!TypeError",
+          8.0
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpr",
+              "4 * 7"
+            ],
+            [
+              "_isNumber",
+              "4"
+            ],
+            [
+              "calculate"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          true,
+          28.0
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpr",
+              "8 / 2"
+            ],
+            [
+              "_getPostfix"
+            ],
+            [
+              "calculate"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          "!TypeError",
+          4.0
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpr",
+              "1 + 2 * 3"
+            ],
+            [
+              "_getPostfix"
+            ],
+            [
+              "calculate"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          "!TypeError",
+          7.0
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpr",
+              "6 / 3 + 2"
+            ],
+            [
+              "calculate"
+            ],
+            [
+              "_isNumber",
+              "6"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          4.0,
+          true
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpr",
+              "5 - 3 + 2"
+            ],
+            [
+              "_getPostfix"
+            ],
+            [
+              "calculate"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          "!TypeError",
+          4.0
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpr",
+              "9 + 1"
+            ],
+            [
+              "calculate"
+            ],
+            [
+              "setExpr",
+              "2 * 3"
+            ],
+            [
+              "calculate"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          10.0,
+          null,
+          6.0
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpr",
+              "12 / 4"
+            ],
+            [
+              "_isNumber",
+              "12"
+            ],
+            [
+              "calculate"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          true,
+          3.0
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpr",
+              "7 * 8 - 4"
+            ],
+            [
+              "_getPostfix"
+            ],
+            [
+              "calculate"
+            ],
+            [
+              "setExpr",
+              "3 + 3"
+            ],
+            [
+              "calculate"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          "!TypeError",
+          52.0,
+          null,
+          6.0
+        ]
+      },
+      {
+        "input": [
+          "x = Calculator()\nx.setExpr('3 + 4')\ny = x.calculate()\nx.setExpr('5 + 6')\nold_expr = x.getExpr()\nx.setExpr('7 + 8')\nnew_expr = x.getExpr()\nold_expr, new_expr"
+        ],
+        "expected": [
+          null,
+          null,
+          "!TypeError",
+          null,
+          "!TypeError",
+          null,
+          "!TypeError",
+          "!NameError"
+        ]
+      },
+      {
+        "input": [
+          "x = Calculator()\nx.setExpr('2 * 3')\ny = x.calculate()\nref = x.getExpr()\nx.setExpr('4 * 5')\nx.setExpr('6 * 7')\nref_after = ref\nref, ref_after"
+        ],
+        "expected": [
+          null,
+          null,
+          "!TypeError",
+          "!TypeError",
+          null,
+          null,
+          "!NameError",
+          "!NameError"
+        ]
+      },
+      {
+        "input": [
+          "x = Calculator()\nx.setExpr('10 / 2')\ny = x.calculate()\nref = x.getExpr()\nx.setExpr('8 / 4')\nx.setExpr('6 / 3')\nref_after = x.getExpr()\nref, ref_after"
+        ],
+        "expected": [
+          null,
+          null,
+          "!TypeError",
+          "!TypeError",
+          null,
+          null,
+          "!TypeError",
+          "!NameError"
+        ]
+      },
+      {
+        "input": [
+          "x = Calculator()\nx.setExpr('1 - 1')\ny = x.calculate()\nref = x.getExpr()\nx.setExpr('2 - 2')\nx.setExpr('3 - 3')\nref_after = x.getExpr()\nref, ref_after"
+        ],
+        "expected": [
+          null,
+          null,
+          "!TypeError",
+          "!TypeError",
+          null,
+          null,
+          "!TypeError",
+          "!NameError"
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpr",
+              "8 / 2"
+            ],
+            [
+              "getExpr"
+            ],
+            [
+              "calculate"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          "8 / 2",
+          4.0
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpr",
+              "5 + (6 - 2) * 3"
+            ],
+            [
+              "_isNumber",
+              "5"
+            ],
+            [
+              "calculate"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          true,
+          17.0
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpr",
+              "9 / (3 + 6)"
+            ],
+            [
+              "calculate"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          1.0
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpr",
+              "2 * (3 + 4)"
+            ],
+            [
+              "_getPostfix"
+            ],
+            [
+              "calculate"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          "!TypeError",
+          14.0
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpr",
+              "15 - 5 + 2"
+            ],
+            [
+              "calculate"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          12.0
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpr",
+              "12 / 4 + 1"
+            ],
+            [
+              "_isNumber",
+              "12"
+            ],
+            [
+              "calculate"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          true,
+          4.0
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpr",
+              "7 + 3 * (2 - 1)"
+            ],
+            [
+              "getExpr"
+            ],
+            [
+              "calculate"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          "7 + 3 * (2 - 1)",
+          10.0
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpr",
+              "5 * 5 - 10 / 2"
+            ],
+            [
+              "_getPostfix"
+            ],
+            [
+              "calculate"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          "!TypeError",
+          20.0
+        ]
+      },
+      {
+        "input": [
+          "x = Calculator()\nx.setExpr('3 + 4')\ny = x.calculate()\nx.setExpr('5 + 6')\nz = x.calculate()\ny"
+        ],
+        "expected": [
+          null,
+          null,
+          "!TypeError",
+          null,
+          "!TypeError",
+          "!NameError"
+        ]
+      },
+      {
+        "input": [
+          "x = Calculator()\nx.setExpr('2 * 3')\ny = x.calculate()\nx.setExpr('4 / 2')\nz = x.calculate()\nx.__expr"
+        ],
+        "expected": [
+          null,
+          null,
+          "!TypeError",
+          null,
+          "!TypeError",
+          "!AttributeError"
+        ]
+      },
+      {
+        "input": [
+          "x = Calculator()\nx.setExpr('1 + 2')\ny = x.calculate()\nx.setExpr('3 + 4')\nx.calculate()\ny"
+        ],
+        "expected": [
+          null,
+          null,
+          "!TypeError",
+          null,
+          "!TypeError",
+          "!NameError"
+        ]
+      },
+      {
+        "input": [
+          "x = Calculator()\nx.setExpr('5 - 2')\ny = x.calculate()\nx.setExpr('8 - 3')\nx.calculate()\ny"
+        ],
+        "expected": [
+          null,
+          null,
+          "!TypeError",
+          null,
+          "!TypeError",
+          "!NameError"
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpr",
+              "8 / 4"
+            ],
+            [
+              "getExpr"
+            ],
+            [
+              "calculate"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          "8 / 4",
+          2.0
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpr",
+              "2 + 2 * 2"
+            ],
+            [
+              "_getPostfix"
+            ],
+            [
+              "calculate"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          "!TypeError",
+          6.0
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpr",
+              "1 + 1"
+            ],
+            [
+              "_isNumber",
+              "1"
+            ],
+            [
+              "calculate"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          true,
+          2.0
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpr",
+              "5 - 3 + 2"
+            ],
+            [
+              "calculate"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          4.0
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpr",
+              "6 / 2 + 1"
+            ],
+            [
+              "_getPostfix"
+            ],
+            [
+              "calculate"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          "!TypeError",
+          4.0
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpr",
+              "9 * 3 - 1"
+            ],
+            [
+              "_isNumber",
+              "9"
+            ],
+            [
+              "calculate"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          true,
+          26.0
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpr",
+              "12 / 4 + 5"
+            ],
+            [
+              "getExpr"
+            ],
+            [
+              "calculate"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          "12 / 4 + 5",
+          8.0
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpr",
+              "15 - 5 * 2"
+            ],
+            [
+              "_getPostfix"
+            ],
+            [
+              "calculate"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          "!TypeError",
+          5.0
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpr",
+              "20 / 5 + 3 * 2"
+            ],
+            [
+              "_isNumber",
+              "20"
+            ],
+            [
+              "calculate"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          true,
+          10.0
+        ]
+      },
+      {
+        "input": [
+          "x = Calculator()\nx.setExpr('3 + 4')\ny = x.calculate()\nx.setExpr('5 + 6')\nz = x.getExpr()"
+        ],
+        "expected": [
+          null,
+          null,
+          "!TypeError",
+          null,
+          "!TypeError"
+        ]
+      },
+      {
+        "input": [
+          "x = Calculator()\nx.setExpr('2 * 3')\ny = x.calculate()\nx.setExpr('4 / 2')\nz = x.__expr"
+        ],
+        "expected": [
+          null,
+          null,
+          "!TypeError",
+          null,
+          "!AttributeError"
+        ]
+      },
+      {
+        "input": [
+          "x = Calculator()\nx.setExpr('7 - 2')\ny = x.calculate()\nref = x.getExpr()\nx.setExpr('1 + 1')\nstate = ref"
+        ],
+        "expected": [
+          null,
+          null,
+          "!TypeError",
+          "!TypeError",
+          null,
+          "!NameError"
+        ]
+      },
+      {
+        "input": [
+          "x = Calculator()\nx.setExpr('8 + 1')\ny = x.calculate()\nref = x.getExpr()\nx.setExpr('0')\nstate = ref"
+        ],
+        "expected": [
+          null,
+          null,
+          "!TypeError",
+          "!TypeError",
+          null,
+          "!NameError"
+        ]
+      }
+    ],
+    "strong": false,
+    "kill_rate": 0.6571428571428571,
+    "kill_rate_direct": 0.6571428571428571,
+    "status": "needs_review",
+    "needs_review": true,
+    "undetermined": 12,
+    "kill_rate_lower": 0.6571428571428571,
+    "kill_rate_upper": 1.0,
+    "validated_at": "2026-09-08T18:23:52+00:00",
+    "breakdown": {
+      "total_mutants": 35,
+      "killed": 23,
+      "killed_on_retry": 0,
+      "proven_equivalent": 0,
+      "unresolved": 12,
+      "mutants": [
+        {
+          "label": "line 44: remove `if not isinstance(self.__expr, str) o...`",
+          "status": "undetermined",
+          "probe": {
+            "verdict": "unknown",
+            "reached": 0,
+            "differed": 0
+          }
+        },
+        {
+          "label": "line 48: remove `calcStack = Stack()`",
+          "status": "killed"
+        },
+        {
+          "label": "line 50: remove `postfix = self._getPostfix(self.__expr)`",
+          "status": "killed"
+        },
+        {
+          "label": "line 51: remove `if postfix is None:`",
+          "status": "undetermined",
+          "probe": {
+            "verdict": "unknown",
+            "reached": 0,
+            "differed": 0
+          }
+        },
+        {
+          "label": "line 54: remove `for tok in postfix.split():`",
+          "status": "killed"
+        },
+        {
+          "label": "line 75: remove `if len(calcStack) != 1:`",
+          "status": "undetermined",
+          "probe": {
+            "verdict": "unknown",
+            "reached": 0,
+            "differed": 0
+          }
+        },
+        {
+          "label": "line 77: remove `return calcStack.pop()`",
+          "status": "killed"
+        },
+        {
+          "label": "line 45: remove `print('Argument error in calculate')`",
+          "status": "undetermined",
+          "probe": {
+            "verdict": "unknown",
+            "reached": 0,
+            "differed": 0
+          }
+        },
+        {
+          "label": "line 46: remove `return None`",
+          "status": "undetermined",
+          "probe": {
+            "verdict": "unknown",
+            "reached": 0,
+            "differed": 0
+          }
+        },
+        {
+          "label": "line 44: or -> and",
+          "status": "undetermined",
+          "probe": {
+            "verdict": "unknown",
+            "reached": 0,
+            "differed": 0
+          }
+        },
+        {
+          "label": "line 51: is -> is not",
+          "status": "killed"
+        },
+        {
+          "label": "line 56: remove `if len(calcStack) < 2:`",
+          "status": "undetermined",
+          "probe": {
+            "verdict": "unknown",
+            "reached": 0,
+            "differed": 0
+          }
+        },
+        {
+          "label": "line 58: remove `right = calcStack.pop()`",
+          "status": "killed"
+        },
+        {
+          "label": "line 59: remove `left = calcStack.pop()`",
+          "status": "killed"
+        },
+        {
+          "label": "line 60: remove `if tok == '+':`",
+          "status": "killed"
+        },
+        {
+          "label": "line 75: != -> ==",
+          "status": "killed"
+        },
+        {
+          "label": "line 44: <= -> <",
+          "status": "undetermined",
+          "probe": {
+            "verdict": "unknown",
+            "reached": 0,
+            "differed": 0
+          }
+        },
+        {
+          "label": "line 55: in -> not in",
+          "status": "killed"
+        },
+        {
+          "label": "line 75: 1 -> 2",
+          "status": "killed"
+        },
+        {
+          "label": "line 44: 0 -> 1",
+          "status": "undetermined",
+          "probe": {
+            "verdict": "unknown",
+            "reached": 0,
+            "differed": 0
+          }
+        },
+        {
+          "label": "line 56: < -> <=",
+          "status": "killed"
+        },
+        {
+          "label": "line 60: == -> !=",
+          "status": "killed"
+        },
+        {
+          "label": "line 56: 2 -> 3",
+          "status": "killed"
+        },
+        {
+          "label": "line 62: == -> !=",
+          "status": "killed"
+        },
+        {
+          "label": "line 61: + -> -",
+          "status": "killed"
+        },
+        {
+          "label": "line 64: == -> !=",
+          "status": "killed"
+        },
+        {
+          "label": "line 67: remove `if right == 0:`",
+          "status": "undetermined",
+          "probe": {
+            "verdict": "unknown",
+            "reached": 0,
+            "differed": 0
+          }
+        },
+        {
+          "label": "line 69: remove `calcStack.push(left / right)`",
+          "status": "killed"
+        },
+        {
+          "label": "line 63: - -> +",
+          "status": "killed"
+        },
+        {
+          "label": "line 66: == -> !=",
+          "status": "killed"
+        },
+        {
+          "label": "line 65: * -> /",
+          "status": "killed"
+        },
+        {
+          "label": "line 67: == -> !=",
+          "status": "killed"
+        },
+        {
+          "label": "line 67: 0 -> 1",
+          "status": "undetermined",
+          "probe": {
+            "verdict": "unknown",
+            "reached": 0,
+            "differed": 0
+          }
+        },
+        {
+          "label": "line 69: / -> *",
+          "status": "killed"
+        },
+        {
+          "label": "line 71: ** -> *",
+          "status": "undetermined",
+          "probe": {
+            "verdict": "unknown",
+            "reached": 0,
+            "differed": 0
+          }
+        }
+      ]
+    },
+    "slug": "calculator-calculate",
+    "features": [
+      "blocks",
+      "calls"
+    ]
+  },
+  "5b4e9ad085608e0d4ccaaec257cd0b2eb9de522a64922e28f37f778e87ff0e3e": {
+    "final_tests": [
+      {
+        "input": [
+          [
+            [
+              "new"
+            ],
+            [
+              "_isVariable",
+              "volume"
+            ],
+            [
+              "_isVariable",
+              "4volume"
+            ],
+            [
+              "_isVariable",
+              "volume2"
+            ],
+            [
+              "_isVariable",
+              "vol%2"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          true,
+          false,
+          true,
+          false
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "x = 10;return x"
+            ],
+            [
+              "calculateExpressions"
+            ],
+            [
+              "_isVariable",
+              "x"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          {
+            "x = 10": {
+              "x": 10.0
+            },
+            "_return_": 10.0
+          },
+          true
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "y = 3;z = y + 2;return z"
+            ],
+            [
+              "calculateExpressions"
+            ],
+            [
+              "_isVariable",
+              "y"
+            ],
+            [
+              "_isVariable",
+              "z"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          {
+            "y = 3": {
+              "y": 3.0
+            },
+            "z = y + 2": {
+              "y": 3.0,
+              "z": 5.0
+            },
+            "_return_": 5.0
+          },
+          true,
+          true
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "a = 5;b = a * 2;return b"
+            ],
+            [
+              "calculateExpressions"
+            ],
+            [
+              "_isVariable",
+              "a"
+            ],
+            [
+              "_isVariable",
+              "b"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          {
+            "a = 5": {
+              "a": 5.0
+            },
+            "b = a * 2": {
+              "a": 5.0,
+              "b": 10.0
+            },
+            "_return_": 10.0
+          },
+          true,
+          true
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "m = 1;n = m + 1;return n"
+            ],
+            [
+              "_isVariable",
+              "m"
+            ],
+            [
+              "_isVariable",
+              "n"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          true,
+          true,
+          {
+            "m = 1": {
+              "m": 1.0
+            },
+            "n = m + 1": {
+              "m": 1.0,
+              "n": 2.0
+            },
+            "_return_": 2.0
+          }
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "p = 4;q = p + 5;r = q * 2;return r"
+            ],
+            [
+              "_isVariable",
+              "p"
+            ],
+            [
+              "_isVariable",
+              "q"
+            ],
+            [
+              "_isVariable",
+              "r"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          true,
+          true,
+          true,
+          {
+            "p = 4": {
+              "p": 4.0
+            },
+            "q = p + 5": {
+              "p": 4.0,
+              "q": 9.0
+            },
+            "r = q * 2": {
+              "p": 4.0,
+              "q": 9.0,
+              "r": 18.0
+            },
+            "_return_": 18.0
+          }
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "a = 0;return a"
+            ],
+            [
+              "_isVariable",
+              "a"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          true,
+          {
+            "a = 0": {
+              "a": 0.0
+            },
+            "_return_": 0.0
+          }
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "x = -1;y = x * 3;return y"
+            ],
+            [
+              "calculateExpressions"
+            ],
+            [
+              "_isVariable",
+              "x"
+            ],
+            [
+              "_isVariable",
+              "y"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          {
+            "x = -1": {
+              "x": -1.0
+            },
+            "y = x * 3": {
+              "x": -1.0,
+              "y": -3.0
+            },
+            "_return_": -3.0
+          },
+          true,
+          true
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "alpha = 100;beta = alpha / 2;return beta"
+            ],
+            [
+              "_isVariable",
+              "alpha"
+            ],
+            [
+              "_isVariable",
+              "beta"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          true,
+          true,
+          {
+            "alpha = 100": {
+              "alpha": 100.0
+            },
+            "beta = alpha / 2": {
+              "alpha": 100.0,
+              "beta": 50.0
+            },
+            "_return_": 50.0
+          }
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "i = 8;j = i + 2;k = j - 4;return k"
+            ],
+            [
+              "calculateExpressions"
+            ],
+            [
+              "_isVariable",
+              "i"
+            ],
+            [
+              "_isVariable",
+              "j"
+            ],
+            [
+              "_isVariable",
+              "k"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          {
+            "i = 8": {
+              "i": 8.0
+            },
+            "j = i + 2": {
+              "i": 8.0,
+              "j": 10.0
+            },
+            "k = j - 4": {
+              "i": 8.0,
+              "j": 10.0,
+              "k": 6.0
+            },
+            "_return_": 6.0
+          },
+          true,
+          true,
+          true
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "a = 5;b = a + 3;c = b - 1;return c"
+            ],
+            [
+              "_isVariable",
+              "a"
+            ],
+            [
+              "_isVariable",
+              "b"
+            ],
+            [
+              "_isVariable",
+              "c"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          true,
+          true,
+          true,
+          {
+            "a = 5": {
+              "a": 5.0
+            },
+            "b = a + 3": {
+              "a": 5.0,
+              "b": 8.0
+            },
+            "c = b - 1": {
+              "a": 5.0,
+              "b": 8.0,
+              "c": 7.0
+            },
+            "_return_": 7.0
+          }
+        ]
+      }
+    ],
+    "strong": true,
+    "kill_rate": 1.0,
+    "kill_rate_direct": 1.0,
+    "status": "strong",
+    "needs_review": false,
+    "undetermined": 0,
+    "kill_rate_lower": 1.0,
+    "kill_rate_upper": 1.0,
+    "validated_at": "2026-09-08T18:28:43+00:00",
+    "breakdown": {
+      "total_mutants": 3,
+      "killed": 3,
+      "killed_on_retry": 0,
+      "proven_equivalent": 0,
+      "unresolved": 0,
+      "mutants": [
+        {
+          "label": "line 16: remove `return bool(word) and word[0].isalpha...`",
+          "status": "killed"
+        },
+        {
+          "label": "line 16: and -> or",
+          "status": "killed"
+        },
+        {
+          "label": "line 16: 0 -> 1",
+          "status": "killed"
+        }
+      ]
+    },
+    "slug": "advanced-calculator-is-variable",
+    "features": [
+      "blocks",
+      "calls"
+    ]
+  },
+  "d6f581d5f2305020f0a8d1ad027c543b0e4288f40820114072aef86a56e9d888": {
+    "final_tests": [
+      {
+        "input": [
+          [
+            [
+              "new"
+            ],
+            [
+              "_replaceVariables",
+              "1"
+            ],
+            [
+              "_replaceVariables",
+              "2 + 3 * ( 4 )"
+            ],
+            [
+              "_replaceVariables",
+              "105 + x"
+            ],
+            [
+              "_replaceVariables",
+              "4bad + 1"
+            ],
+            [
+              "_replaceVariables",
+              "7 * ( x1 - 1 )"
+            ],
+            [
+              "_replaceVariables",
+              "x2 - x1"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          "1",
+          "2 + 3 * ( 4 )",
+          null,
+          null,
+          null,
+          null
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "x = 10; y = 20; z = x + y; return z"
+            ],
+            [
+              "calculateExpressions"
+            ],
+            [
+              "_replaceVariables"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          {
+            "x = 10": {
+              "x": 10.0
+            },
+            "y = 20": {
+              "x": 10.0,
+              "y": 20.0
+            },
+            "z = x + y": {
+              "x": 10.0,
+              "y": 20.0,
+              "z": 30.0
+            },
+            "_return_": 30.0
+          },
+          "!TypeError"
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "a = 3; b = a * 2; return b"
+            ],
+            [
+              "calculateExpressions"
+            ],
+            [
+              "_replaceVariables"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          {
+            "a = 3": {
+              "a": 3.0
+            },
+            "b = a * 2": {
+              "a": 3.0,
+              "b": 6.0
+            },
+            "_return_": 6.0
+          },
+          "!TypeError"
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "m = 5; n = m + 10; o = n * 2; return o"
+            ],
+            [
+              "calculateExpressions"
+            ],
+            [
+              "_replaceVariables"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          {
+            "m = 5": {
+              "m": 5.0
+            },
+            "n = m + 10": {
+              "m": 5.0,
+              "n": 15.0
+            },
+            "o = n * 2": {
+              "m": 5.0,
+              "n": 15.0,
+              "o": 30.0
+            },
+            "_return_": 30.0
+          },
+          "!TypeError"
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "p = 1; q = p + 1; r = q + p; s = r * 2; return s"
+            ],
+            [
+              "calculateExpressions"
+            ],
+            [
+              "_replaceVariables"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          {
+            "p = 1": {
+              "p": 1.0
+            },
+            "q = p + 1": {
+              "p": 1.0,
+              "q": 2.0
+            },
+            "r = q + p": {
+              "p": 1.0,
+              "q": 2.0,
+              "r": 3.0
+            },
+            "s = r * 2": {
+              "p": 1.0,
+              "q": 2.0,
+              "r": 3.0,
+              "s": 6.0
+            },
+            "_return_": 6.0
+          },
+          "!TypeError"
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "a = 4; b = a + 6; c = b - 2; return c"
+            ],
+            [
+              "calculateExpressions"
+            ],
+            [
+              "_replaceVariables"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          {
+            "a = 4": {
+              "a": 4.0
+            },
+            "b = a + 6": {
+              "a": 4.0,
+              "b": 10.0
+            },
+            "c = b - 2": {
+              "a": 4.0,
+              "b": 10.0,
+              "c": 8.0
+            },
+            "_return_": 8.0
+          },
+          "!TypeError"
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "x = 8; y = 3; z = x / y; return z"
+            ],
+            [
+              "calculateExpressions"
+            ],
+            [
+              "_replaceVariables"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          {
+            "x = 8": {
+              "x": 8.0
+            },
+            "y = 3": {
+              "x": 8.0,
+              "y": 3.0
+            },
+            "z = x / y": {
+              "x": 8.0,
+              "y": 3.0,
+              "z": 2.6666666666666665
+            },
+            "_return_": 2.6666666666666665
+          },
+          "!TypeError"
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "a = 0; b = 1; c = a + b; d = c * 5; return d"
+            ],
+            [
+              "calculateExpressions"
+            ],
+            [
+              "_replaceVariables"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          {
+            "a = 0": {
+              "a": 0.0
+            },
+            "b = 1": {
+              "a": 0.0,
+              "b": 1.0
+            },
+            "c = a + b": {
+              "a": 0.0,
+              "b": 1.0,
+              "c": 1.0
+            },
+            "d = c * 5": {
+              "a": 0.0,
+              "b": 1.0,
+              "c": 1.0,
+              "d": 5.0
+            },
+            "_return_": 5.0
+          },
+          "!TypeError"
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "alpha = 100; beta = alpha / 4; gamma = beta + 10; return gamma"
+            ],
+            [
+              "calculateExpressions"
+            ],
+            [
+              "_replaceVariables"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          {
+            "alpha = 100": {
+              "alpha": 100.0
+            },
+            "beta = alpha / 4": {
+              "alpha": 100.0,
+              "beta": 25.0
+            },
+            "gamma = beta + 10": {
+              "alpha": 100.0,
+              "beta": 25.0,
+              "gamma": 35.0
+            },
+            "_return_": 35.0
+          },
+          "!TypeError"
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "i = -5; j = i * -1; return j"
+            ],
+            [
+              "calculateExpressions"
+            ],
+            [
+              "_replaceVariables"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          {
+            "i = -5": {
+              "i": -5.0
+            },
+            "j = i * -1": {
+              "i": -5.0,
+              "j": 5.0
+            },
+            "_return_": 5.0
+          },
+          "!TypeError"
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "x = 2; y = x * 3; z = y + 1; return z"
+            ],
+            [
+              "calculateExpressions"
+            ],
+            [
+              "_replaceVariables"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          {
+            "x = 2": {
+              "x": 2.0
+            },
+            "y = x * 3": {
+              "x": 2.0,
+              "y": 6.0
+            },
+            "z = y + 1": {
+              "x": 2.0,
+              "y": 6.0,
+              "z": 7.0
+            },
+            "_return_": 7.0
+          },
+          "!TypeError"
+        ]
+      }
+    ],
+    "strong": true,
+    "kill_rate": 1.0,
+    "kill_rate_direct": 1.0,
+    "status": "strong",
+    "needs_review": false,
+    "undetermined": 0,
+    "kill_rate_lower": 1.0,
+    "kill_rate_upper": 1.0,
+    "validated_at": "2026-09-08T18:24:01+00:00",
+    "breakdown": {
+      "total_mutants": 9,
+      "killed": 9,
+      "killed_on_retry": 0,
+      "proven_equivalent": 0,
+      "unresolved": 0,
+      "mutants": [
+        {
+          "label": "line 25: remove `out = []`",
+          "status": "killed"
+        },
+        {
+          "label": "line 26: remove `for word in expr.split():`",
+          "status": "killed"
+        },
+        {
+          "label": "line 39: remove `return ' '.join(out)`",
+          "status": "killed"
+        },
+        {
+          "label": "line 27: in -> not in",
+          "status": "killed"
+        },
+        {
+          "label": "line 30: remove `if word not in self.states:`",
+          "status": "killed"
+        },
+        {
+          "label": "line 32: remove `out.append(str(self.states[word]))`",
+          "status": "killed"
+        },
+        {
+          "label": "line 34: remove `try:`",
+          "status": "killed"
+        },
+        {
+          "label": "line 38: remove `out.append(word)`",
+          "status": "killed"
+        },
+        {
+          "label": "line 30: not in -> in",
+          "status": "killed"
+        }
+      ]
+    },
+    "slug": "advanced-calculator-replace-variables",
+    "features": [
+      "blocks",
+      "calls"
+    ]
+  },
+  "ab76384be624e7c5f9582dcdcb278aea68454535aa7f770d1415e44bdd88484e": {
+    "final_tests": [
+      {
+        "input": [
+          [
+            [
+              "new"
+            ],
+            [
+              "setExpression",
+              "x1 = 5;x2 = 7 * ( x1 - 1 );x1 = x2 - x1;return x2 + x1 ^ 3"
+            ],
+            [
+              "setExpression",
+              "A = 1;B = A + 9;2C = A + B;A = 20;D = A + B + C;return D + A"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          null
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "x = 10;return x"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          {
+            "x = 10": {
+              "x": 10.0
+            },
+            "_return_": 10.0
+          }
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "y = 3;z = y * 2;return z"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          {
+            "y = 3": {
+              "y": 3.0
+            },
+            "z = y * 2": {
+              "y": 3.0,
+              "z": 6.0
+            },
+            "_return_": 6.0
+          }
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "a = 1;b = 2;c = a + b;return c"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          {
+            "a = 1": {
+              "a": 1.0
+            },
+            "b = 2": {
+              "a": 1.0,
+              "b": 2.0
+            },
+            "c = a + b": {
+              "a": 1.0,
+              "b": 2.0,
+              "c": 3.0
+            },
+            "_return_": 3.0
+          }
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "m = 4;n = m + 5;return n"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          {
+            "m = 4": {
+              "m": 4.0
+            },
+            "n = m + 5": {
+              "m": 4.0,
+              "n": 9.0
+            },
+            "_return_": 9.0
+          }
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "p = 0;q = 1;p = p + q;return p"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          {
+            "p = 0": {
+              "p": 0.0
+            },
+            "q = 1": {
+              "p": 0.0,
+              "q": 1.0
+            },
+            "p = p + q": {
+              "p": 1.0,
+              "q": 1.0
+            },
+            "_return_": 1.0
+          }
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "x = 5;y = x * 2;z = y + 3;return z"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          {
+            "x = 5": {
+              "x": 5.0
+            },
+            "y = x * 2": {
+              "x": 5.0,
+              "y": 10.0
+            },
+            "z = y + 3": {
+              "x": 5.0,
+              "y": 10.0,
+              "z": 13.0
+            },
+            "_return_": 13.0
+          }
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "a = 10;b = a - 5;c = b * 2;return c"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          {
+            "a = 10": {
+              "a": 10.0
+            },
+            "b = a - 5": {
+              "a": 10.0,
+              "b": 5.0
+            },
+            "c = b * 2": {
+              "a": 10.0,
+              "b": 5.0,
+              "c": 10.0
+            },
+            "_return_": 10.0
+          }
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "x = 1;y = 2;z = x + y;x = z * 2;return x"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          {
+            "x = 1": {
+              "x": 1.0
+            },
+            "y = 2": {
+              "x": 1.0,
+              "y": 2.0
+            },
+            "z = x + y": {
+              "x": 1.0,
+              "y": 2.0,
+              "z": 3.0
+            },
+            "x = z * 2": {
+              "x": 6.0,
+              "y": 2.0,
+              "z": 3.0
+            },
+            "_return_": 6.0
+          }
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "a = 100;b = 200;a = a + b;return a"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          {
+            "a = 100": {
+              "a": 100.0
+            },
+            "b = 200": {
+              "a": 100.0,
+              "b": 200.0
+            },
+            "a = a + b": {
+              "a": 300.0,
+              "b": 200.0
+            },
+            "_return_": 300.0
+          }
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "x = 7;y = x * 3;z = y - 5;return z"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          {
+            "x = 7": {
+              "x": 7.0
+            },
+            "y = x * 3": {
+              "x": 7.0,
+              "y": 21.0
+            },
+            "z = y - 5": {
+              "x": 7.0,
+              "y": 21.0,
+              "z": 16.0
+            },
+            "_return_": 16.0
+          }
+        ]
+      },
+      {
+        "input": [
+          "C = AdvancedCalculator()\nC.setExpression('a = 5;b = 7 + a;return a')\nC.calculateExpressions()\na = C.states['a']\nC.setExpression('a = 10;return a')\nC.calculateExpressions()\na"
+        ],
+        "expected": [
+          null,
+          null,
+          {
+            "a = 5": {
+              "a": 5.0
+            },
+            "b = 7 + a": {
+              "a": 5.0,
+              "b": 12.0
+            },
+            "_return_": 5.0
+          },
+          null,
+          null,
+          {
+            "a = 10": {
+              "a": 10.0
+            },
+            "_return_": 10.0
+          },
+          5.0
+        ]
+      },
+      {
+        "input": [
+          "C = AdvancedCalculator()\nC.setExpression('x = 3;y = x + 2;return y')\nC.calculateExpressions()\nx = C.states['x']\nC.setExpression('x = 4;return x')\nC.calculateExpressions()\ny"
+        ],
+        "expected": [
+          null,
+          null,
+          {
+            "x = 3": {
+              "x": 3.0
+            },
+            "y = x + 2": {
+              "x": 3.0,
+              "y": 5.0
+            },
+            "_return_": 5.0
+          },
+          null,
+          null,
+          {
+            "x = 4": {
+              "x": 4.0
+            },
+            "_return_": 4.0
+          },
+          "!NameError"
+        ]
+      },
+      {
+        "input": [
+          "C = AdvancedCalculator()\nC.setExpression('m = 1;n = m + 1;return n')\nC.calculateExpressions()\nm = C.states['m']\nC.setExpression('m = 2;return m')\nC.calculateExpressions()\nn"
+        ],
+        "expected": [
+          null,
+          null,
+          {
+            "m = 1": {
+              "m": 1.0
+            },
+            "n = m + 1": {
+              "m": 1.0,
+              "n": 2.0
+            },
+            "_return_": 2.0
+          },
+          null,
+          null,
+          {
+            "m = 2": {
+              "m": 2.0
+            },
+            "_return_": 2.0
+          },
+          "!NameError"
+        ]
+      },
+      {
+        "input": [
+          "C = AdvancedCalculator()\nC.setExpression('p = 8;q = p * 2;return q')\nC.calculateExpressions()\np = C.states['p']\nC.setExpression('p = 3;return p')\nC.calculateExpressions()\nq"
+        ],
+        "expected": [
+          null,
+          null,
+          {
+            "p = 8": {
+              "p": 8.0
+            },
+            "q = p * 2": {
+              "p": 8.0,
+              "q": 16.0
+            },
+            "_return_": 16.0
+          },
+          null,
+          null,
+          {
+            "p = 3": {
+              "p": 3.0
+            },
+            "_return_": 3.0
+          },
+          "!NameError"
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "y = 20;z = y * 2;return z"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          {
+            "y = 20": {
+              "y": 20.0
+            },
+            "z = y * 2": {
+              "y": 20.0,
+              "z": 40.0
+            },
+            "_return_": 40.0
+          }
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "a = 5;b = 3;a = a + b;return a"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          {
+            "a = 5": {
+              "a": 5.0
+            },
+            "b = 3": {
+              "a": 5.0,
+              "b": 3.0
+            },
+            "a = a + b": {
+              "a": 8.0,
+              "b": 3.0
+            },
+            "_return_": 8.0
+          }
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "m = 1;n = 2;m = m + n;calculateExpressions"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "p = 4;q = p + 6;p = p * 2;return p"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          {
+            "p = 4": {
+              "p": 4.0
+            },
+            "q = p + 6": {
+              "p": 4.0,
+              "q": 10.0
+            },
+            "p = p * 2": {
+              "p": 8.0,
+              "q": 10.0
+            },
+            "_return_": 8.0
+          }
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "a = 0;b = 0;return a"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          {
+            "a = 0": {
+              "a": 0.0
+            },
+            "b = 0": {
+              "a": 0.0,
+              "b": 0.0
+            },
+            "_return_": 0.0
+          }
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "x = 10;y = 5;x = x - y;calculateExpressions"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "x = 3;y = x * 2;z = y + 1;return z"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          {
+            "x = 3": {
+              "x": 3.0
+            },
+            "y = x * 2": {
+              "x": 3.0,
+              "y": 6.0
+            },
+            "z = y + 1": {
+              "x": 3.0,
+              "y": 6.0,
+              "z": 7.0
+            },
+            "_return_": 7.0
+          }
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "a = 100;b = a / 4;return b"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          {
+            "a = 100": {
+              "a": 100.0
+            },
+            "b = a / 4": {
+              "a": 100.0,
+              "b": 25.0
+            },
+            "_return_": 25.0
+          }
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "x = 7;y = x + 3;x = x * 2;return x"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          {
+            "x = 7": {
+              "x": 7.0
+            },
+            "y = x + 3": {
+              "x": 7.0,
+              "y": 10.0
+            },
+            "x = x * 2": {
+              "x": 14.0,
+              "y": 10.0
+            },
+            "_return_": 14.0
+          }
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "a = 5;b = 10;a = a + b;calculateExpressions"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null
+        ]
+      },
+      {
+        "input": [
+          "C = AdvancedCalculator()\nC.setExpression('a = 5;b = 7 + a;return b')\nC.calculateExpressions()\nC.setExpression('a = 10;return a')\nC.calculateExpressions()\nC.expressions"
+        ],
+        "expected": [
+          null,
+          null,
+          {
+            "a = 5": {
+              "a": 5.0
+            },
+            "b = 7 + a": {
+              "a": 5.0,
+              "b": 12.0
+            },
+            "_return_": 12.0
+          },
+          null,
+          {
+            "a = 10": {
+              "a": 10.0
+            },
+            "_return_": 10.0
+          },
+          "a = 10;return a"
+        ]
+      },
+      {
+        "input": [
+          "C = AdvancedCalculator()\nC.setExpression('x = 3;y = x + 2;return y')\nC.calculateExpressions()\nC.setExpression('x = 5;return x')\nC.calculateExpressions()\nC.states"
+        ],
+        "expected": [
+          null,
+          null,
+          {
+            "x = 3": {
+              "x": 3.0
+            },
+            "y = x + 2": {
+              "x": 3.0,
+              "y": 5.0
+            },
+            "_return_": 5.0
+          },
+          null,
+          {
+            "x = 5": {
+              "x": 5.0
+            },
+            "_return_": 5.0
+          },
+          {
+            "x": 5.0
+          }
+        ]
+      },
+      {
+        "input": [
+          "C = AdvancedCalculator()\nC.setExpression('m = 4;n = m * 2;return n')\nC.calculateExpressions()\nm_ref = C.states['m']\nC.setExpression('m = 6;return m')\nC.calculateExpressions()\nm_ref"
+        ],
+        "expected": [
+          null,
+          null,
+          {
+            "m = 4": {
+              "m": 4.0
+            },
+            "n = m * 2": {
+              "m": 4.0,
+              "n": 8.0
+            },
+            "_return_": 8.0
+          },
+          null,
+          null,
+          {
+            "m = 6": {
+              "m": 6.0
+            },
+            "_return_": 6.0
+          },
+          4.0
+        ]
+      },
+      {
+        "input": [
+          "C = AdvancedCalculator()\nC.setExpression('p = 1;q = p + 1;return q')\nC.calculateExpressions()\nC.setExpression('p = 2;return p')\nC.calculateExpressions()\nC.states"
+        ],
+        "expected": [
+          null,
+          null,
+          {
+            "p = 1": {
+              "p": 1.0
+            },
+            "q = p + 1": {
+              "p": 1.0,
+              "q": 2.0
+            },
+            "_return_": 2.0
+          },
+          null,
+          {
+            "p = 2": {
+              "p": 2.0
+            },
+            "_return_": 2.0
+          },
+          {
+            "p": 2.0
+          }
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "y = 20;z = y + 5;return z"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          {
+            "y = 20": {
+              "y": 20.0
+            },
+            "z = y + 5": {
+              "y": 20.0,
+              "z": 25.0
+            },
+            "_return_": 25.0
+          }
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "m = 3;n = m * 2;return n"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          {
+            "m = 3": {
+              "m": 3.0
+            },
+            "n = m * 2": {
+              "m": 3.0,
+              "n": 6.0
+            },
+            "_return_": 6.0
+          }
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "p = 4;q = p - 1;r = p + q;return r"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          {
+            "p = 4": {
+              "p": 4.0
+            },
+            "q = p - 1": {
+              "p": 4.0,
+              "q": 3.0
+            },
+            "r = p + q": {
+              "p": 4.0,
+              "q": 3.0,
+              "r": 7.0
+            },
+            "_return_": 7.0
+          }
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "x = 0;y = x + 1;return y"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          {
+            "x = 0": {
+              "x": 0.0
+            },
+            "y = x + 1": {
+              "x": 0.0,
+              "y": 1.0
+            },
+            "_return_": 1.0
+          }
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "a = 10;b = 5;a = a - b;return a"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          {
+            "a = 10": {
+              "a": 10.0
+            },
+            "b = 5": {
+              "a": 10.0,
+              "b": 5.0
+            },
+            "a = a - b": {
+              "a": 5.0,
+              "b": 5.0
+            },
+            "_return_": 5.0
+          }
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "x = 15;y = x / 3;z = y + 2;return z"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          {
+            "x = 15": {
+              "x": 15.0
+            },
+            "y = x / 3": {
+              "x": 15.0,
+              "y": 5.0
+            },
+            "z = y + 2": {
+              "x": 15.0,
+              "y": 5.0,
+              "z": 7.0
+            },
+            "_return_": 7.0
+          }
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "a = 8;b = 12;a = b / 4;return a"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          {
+            "a = 8": {
+              "a": 8.0
+            },
+            "b = 12": {
+              "a": 8.0,
+              "b": 12.0
+            },
+            "a = b / 4": {
+              "a": 3.0,
+              "b": 12.0
+            },
+            "_return_": 3.0
+          }
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "x = 6;y = x * 2;z = y + 3;return z"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          {
+            "x = 6": {
+              "x": 6.0
+            },
+            "y = x * 2": {
+              "x": 6.0,
+              "y": 12.0
+            },
+            "z = y + 3": {
+              "x": 6.0,
+              "y": 12.0,
+              "z": 15.0
+            },
+            "_return_": 15.0
+          }
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "a = 100;b = a / 4;c = b + 10;return c"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          {
+            "a = 100": {
+              "a": 100.0
+            },
+            "b = a / 4": {
+              "a": 100.0,
+              "b": 25.0
+            },
+            "c = b + 10": {
+              "a": 100.0,
+              "b": 25.0,
+              "c": 35.0
+            },
+            "_return_": 35.0
+          }
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "x = 5;y = 10;z = x + y;return z"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          {
+            "x = 5": {
+              "x": 5.0
+            },
+            "y = 10": {
+              "x": 5.0,
+              "y": 10.0
+            },
+            "z = x + y": {
+              "x": 5.0,
+              "y": 10.0,
+              "z": 15.0
+            },
+            "_return_": 15.0
+          }
+        ]
+      },
+      {
+        "input": [
+          "C = AdvancedCalculator()\nC.setExpression('m = 4;n = m * 2;return n')\nC.calculateExpressions()\nC.setExpression('m = 6;return m')\nC.calculateExpressions()\nC.expressions"
+        ],
+        "expected": [
+          null,
+          null,
+          {
+            "m = 4": {
+              "m": 4.0
+            },
+            "n = m * 2": {
+              "m": 4.0,
+              "n": 8.0
+            },
+            "_return_": 8.0
+          },
+          null,
+          {
+            "m = 6": {
+              "m": 6.0
+            },
+            "_return_": 6.0
+          },
+          "m = 6;return m"
+        ]
+      },
+      {
+        "input": [
+          "C = AdvancedCalculator()\nC.setExpression('p = 1;q = p + 1;return q')\nC.calculateExpressions()\nC.setExpression('p = 2;q = p + 2;return q')\nC.calculateExpressions()\nC.states"
+        ],
+        "expected": [
+          null,
+          null,
+          {
+            "p = 1": {
+              "p": 1.0
+            },
+            "q = p + 1": {
+              "p": 1.0,
+              "q": 2.0
+            },
+            "_return_": 2.0
+          },
+          null,
+          {
+            "p = 2": {
+              "p": 2.0
+            },
+            "q = p + 2": {
+              "p": 2.0,
+              "q": 4.0
+            },
+            "_return_": 4.0
+          },
+          {
+            "p": 2.0,
+            "q": 4.0
+          }
+        ]
+      }
+    ],
+    "strong": false,
+    "kill_rate": 0.5111111111111111,
+    "kill_rate_direct": 0.5111111111111111,
+    "status": "needs_review",
+    "needs_review": true,
+    "undetermined": 22,
+    "kill_rate_lower": 0.5111111111111111,
+    "kill_rate_upper": 1.0,
+    "validated_at": "2026-09-08T18:28:35+00:00",
+    "breakdown": {
+      "total_mutants": 45,
+      "killed": 23,
+      "killed_on_retry": 0,
+      "proven_equivalent": 0,
+      "unresolved": 22,
+      "mutants": [
+        {
+          "label": "line 30: remove `self.states = {}`",
+          "status": "undetermined",
+          "probe": {
+            "verdict": "unknown",
+            "reached": 0,
+            "differed": 0
+          }
+        },
+        {
+          "label": "line 31: remove `calcObj = Calculator()`",
+          "status": "killed"
+        },
+        {
+          "label": "line 32: remove `report = {}`",
+          "status": "killed"
+        },
+        {
+          "label": "line 34: remove `for statement in self.expressions.spl...`",
+          "status": "killed"
+        },
+        {
+          "label": "line 74: remove `self.states = {}`",
+          "status": "undetermined",
+          "probe": {
+            "verdict": "unknown",
+            "reached": 0,
+            "differed": 0
+          }
+        },
+        {
+          "label": "line 75: remove `return None`",
+          "status": "undetermined",
+          "probe": {
+            "verdict": "unknown",
+            "reached": 0,
+            "differed": 0
+          }
+        },
+        {
+          "label": "line 35: remove `statement = statement.strip()`",
+          "status": "undetermined",
+          "probe": {
+            "verdict": "unknown",
+            "reached": 0,
+            "differed": 0
+          }
+        },
+        {
+          "label": "line 36: remove `if not statement:`",
+          "status": "undetermined",
+          "probe": {
+            "verdict": "unknown",
+            "reached": 0,
+            "differed": 0
+          }
+        },
+        {
+          "label": "line 39: remove `if statement.startswith('return'):`",
+          "status": "killed"
+        },
+        {
+          "label": "line 52: remove `if '=' not in statement:`",
+          "status": "killed"
+        },
+        {
+          "label": "line 55: remove `name, expr = statement.split('=', 1)`",
+          "status": "killed"
+        },
+        {
+          "label": "line 56: remove `name = name.strip()`",
+          "status": "killed"
+        },
+        {
+          "label": "line 57: remove `if not self._isVariable(name):`",
+          "status": "undetermined",
+          "probe": {
+            "verdict": "unknown",
+            "reached": 0,
+            "differed": 0
+          }
+        },
+        {
+          "label": "line 60: remove `replaced = self._replaceVariables(exp...`",
+          "status": "killed"
+        },
+        {
+          "label": "line 61: remove `if replaced is None:`",
+          "status": "undetermined",
+          "probe": {
+            "verdict": "unknown",
+            "reached": 0,
+            "differed": 0
+          }
+        },
+        {
+          "label": "line 64: remove `calcObj.setExpr(replaced)`",
+          "status": "killed"
+        },
+        {
+          "label": "line 65: remove `value = calcObj.calculate`",
+          "status": "killed"
+        },
+        {
+          "label": "line 66: remove `if value is None:`",
+          "status": "undetermined",
+          "probe": {
+            "verdict": "unknown",
+            "reached": 0,
+            "differed": 0
+          }
+        },
+        {
+          "label": "line 69: remove `self.states[name] = value`",
+          "status": "killed"
+        },
+        {
+          "label": "line 72: remove `report[statement] = dict(self.states)`",
+          "status": "killed"
+        },
+        {
+          "label": "line 40: remove `replaced = self._replaceVariables(sta...`",
+          "status": "killed"
+        },
+        {
+          "label": "line 41: remove `if replaced is None:`",
+          "status": "undetermined",
+          "probe": {
+            "verdict": "unknown",
+            "reached": 0,
+            "differed": 0
+          }
+        },
+        {
+          "label": "line 44: remove `calcObj.setExpr(replaced)`",
+          "status": "killed"
+        },
+        {
+          "label": "line 45: remove `value = calcObj.calculate`",
+          "status": "killed"
+        },
+        {
+          "label": "line 46: remove `if value is None:`",
+          "status": "undetermined",
+          "probe": {
+            "verdict": "unknown",
+            "reached": 0,
+            "differed": 0
+          }
+        },
+        {
+          "label": "line 49: remove `report['_return_'] = value`",
+          "status": "killed"
+        },
+        {
+          "label": "line 50: remove `return report`",
+          "status": "killed"
+        },
+        {
+          "label": "line 53: remove `self.states = {}`",
+          "status": "undetermined",
+          "probe": {
+            "verdict": "unknown",
+            "reached": 0,
+            "differed": 0
+          }
+        },
+        {
+          "label": "line 54: remove `return None`",
+          "status": "killed"
+        },
+        {
+          "label": "line 58: remove `self.states = {}`",
+          "status": "undetermined",
+          "probe": {
+            "verdict": "unknown",
+            "reached": 0,
+            "differed": 0
+          }
+        },
+        {
+          "label": "line 59: remove `return None`",
+          "status": "undetermined",
+          "probe": {
+            "verdict": "unknown",
+            "reached": 0,
+            "differed": 0
+          }
+        },
+        {
+          "label": "line 62: remove `self.states = {}`",
+          "status": "undetermined",
+          "probe": {
+            "verdict": "unknown",
+            "reached": 0,
+            "differed": 0
+          }
+        },
+        {
+          "label": "line 63: remove `return None`",
+          "status": "undetermined",
+          "probe": {
+            "verdict": "unknown",
+            "reached": 0,
+            "differed": 0
+          }
+        },
+        {
+          "label": "line 67: remove `self.states = {}`",
+          "status": "undetermined",
+          "probe": {
+            "verdict": "unknown",
+            "reached": 0,
+            "differed": 0
+          }
+        },
+        {
+          "label": "line 68: remove `return None`",
+          "status": "undetermined",
+          "probe": {
+            "verdict": "unknown",
+            "reached": 0,
+            "differed": 0
+          }
+        },
+        {
+          "label": "line 42: remove `self.states = {}`",
+          "status": "undetermined",
+          "probe": {
+            "verdict": "unknown",
+            "reached": 0,
+            "differed": 0
+          }
+        },
+        {
+          "label": "line 43: remove `return None`",
+          "status": "undetermined",
+          "probe": {
+            "verdict": "unknown",
+            "reached": 0,
+            "differed": 0
+          }
+        },
+        {
+          "label": "line 47: remove `self.states = {}`",
+          "status": "undetermined",
+          "probe": {
+            "verdict": "unknown",
+            "reached": 0,
+            "differed": 0
+          }
+        },
+        {
+          "label": "line 48: remove `return None`",
+          "status": "undetermined",
+          "probe": {
+            "verdict": "unknown",
+            "reached": 0,
+            "differed": 0
+          }
+        },
+        {
+          "label": "line 52: not in -> in",
+          "status": "killed"
+        },
+        {
+          "label": "line 61: is -> is not",
+          "status": "killed"
+        },
+        {
+          "label": "line 66: is -> is not",
+          "status": "killed"
+        },
+        {
+          "label": "line 41: is -> is not",
+          "status": "killed"
+        },
+        {
+          "label": "line 46: is -> is not",
+          "status": "killed"
+        },
+        {
+          "label": "line 55: 1 -> 2",
+          "status": "undetermined",
+          "probe": {
+            "verdict": "unknown",
+            "reached": 0,
+            "differed": 0
+          }
+        }
+      ]
+    },
+    "slug": "advanced-calculator-calculate-expressions",
+    "features": [
+      "blocks",
+      "calls"
+    ]
   }
 }

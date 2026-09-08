@@ -114,6 +114,60 @@
   .fixActs{display:flex; gap:var(--s2); align-items:center; flex-wrap:wrap;
     margin-top:var(--s4)}
 
+  /* The specific checks that decided the verdict - the answer to "which line
+     was the problem?", which is the one thing this panel exists to say. */
+  .findings{margin:0 0 var(--s4); padding:14px 16px; border-radius:var(--r-md);
+    background:var(--warning-bg); border:1px solid var(--warning-line)}
+  .findings h4{margin:0 0 7px; font-size:12px; text-transform:uppercase;
+    letter-spacing:.09em; color:var(--warning)}
+  .fLead{margin:0 0 11px; font-size:12.5px; line-height:1.6; color:var(--text)}
+  .fList{list-style:none; margin:0; padding:0; display:grid; gap:8px}
+  .fList li{background:var(--surface); border:1px solid var(--glass-line);
+    border-radius:9px; padding:9px 11px}
+  .fRow{display:flex; align-items:center; gap:10px; flex-wrap:wrap}
+  .fWhat{font-family:var(--font-mono); font-size:12px; color:var(--text);
+    font-weight:600; overflow-wrap:anywhere; flex:1; min-width:0}
+  .fJump{flex:none; min-height:0; padding:3px 10px; font-size:11.5px;
+    font-family:var(--font-sans); font-weight:600}
+  .fCode{margin:7px 0 0; padding:7px 9px; border-radius:6px;
+    background:var(--surface-raised); border:1px solid var(--glass-line);
+    font-family:var(--font-mono); font-size:12px; overflow-x:auto;
+    color:var(--text-muted)}
+  .fFoot{margin:11px 0 0; font-size:12px; line-height:1.55;
+    color:var(--text-muted)}
+
+  /* "What this could mean" - the possibilities, with the one the evidence
+     supports marked. Collapsed by default: an instructor who already knows the
+     line is harmless should not have to scroll past four paragraphs to say so. */
+  .cm{margin-top:11px; padding-top:10px; border-top:1px solid var(--glass-line)}
+  .cm h5{margin:0 0 8px; font-size:11px; font-weight:600; letter-spacing:.09em;
+    text-transform:uppercase; color:var(--text-subtle)}
+  /* Real bullets: these are alternatives to weigh, and a list that looks like a
+     list reads as one. */
+  .cmList{margin:0; padding:0 0 0 18px; display:grid; gap:8px;
+    list-style:disc outside}
+  .cmList li{font-size:12.5px; line-height:1.6; color:var(--text-muted);
+    padding-left:2px}
+  .cmList li::marker{color:var(--text-subtle)}
+  .cmList li b{display:block; color:var(--text); font-weight:600;
+    margin-bottom:3px}
+  .cmList li.cmOn::marker{color:var(--success)}
+  .cmList li.cmOn b{color:var(--success)}
+  .cmList li.cmOff{opacity:.5}
+  .cmTag{float:right; font-size:10px; font-weight:600; letter-spacing:.04em;
+    text-transform:uppercase; color:var(--success)}
+  .cmSeen{margin:9px 0 0; font-size:11.5px; line-height:1.55;
+    color:var(--text-subtle)}
+  .cmSeen b{color:var(--text); font-variant-numeric:tabular-nums}
+
+  .fAct{display:flex; gap:11px; align-items:flex-start; flex-wrap:wrap;
+    margin-top:12px; padding-top:11px; border-top:1px solid var(--glass-line)}
+  .fAct button{flex:none; min-height:0; padding:6px 13px; font-size:12.5px;
+    font-family:var(--font-sans)}
+  .fAct button.danger{background:var(--danger); border-color:var(--danger)}
+  .fActWhy{flex:1; min-width:210px; font-size:11.5px; line-height:1.55;
+    color:var(--text-muted)}
+
   /* The saved run, replayed inside the fix panel. */
   .story{margin:0 0 var(--s4); border:1px solid var(--glass-line);
     border-radius:var(--r-md); background:var(--surface-raised)}
@@ -514,8 +568,16 @@ $("go").onclick = async () => {
     return fail(msg);
   }
 
-  // NDJSON: one event per line, rendered the moment it lands, so a
-  // multi-minute preparation shows progress instead of looking stuck.
+  if (await consumeRun(resp)) return;
+  endRun();
+  loadAssignments();
+};
+
+/* NDJSON: one event per line, rendered the moment it lands, so a multi-minute
+   preparation shows progress instead of looking stuck. Shared by the upload and
+   by re-prepare - they produce the same events, so they get the same reader
+   rather than two that can drift apart. Returns true if it bailed out. */
+async function consumeRun(resp){
   const reader = resp.body.getReader(), dec = new TextDecoder();
   let buf = "";
   try {
@@ -533,11 +595,10 @@ $("go").onclick = async () => {
   } catch (e) {
     if (e.name !== "AbortError") fail("The connection dropped mid-run. "
       + "Problems that had finished are saved.");
-    return;
+    return true;
   }
-  endRun();
-  loadAssignments();
-};
+  return false;
+}
 
 function fail(msg){
   $("run").hidden = false;
@@ -695,6 +756,8 @@ function assignmentsTable(rows){
         <td><div class="acts">
           <button class="ghost" data-act="breakdown">View problems</button>
           <button class="ghost" data-act="reprep">Re-prepare</button>
+          <button class="ghost" data-act="pub">${a.published === false
+            ? "Publish" : "Unpublish"}</button>
         </div></td>
       </tr>`;
     }).join("")}</tbody></table>`;
@@ -739,6 +802,7 @@ async function loadAssignments(){
     const a = rows.find(x => String(x.id) === tr.dataset.id);
     if (b.dataset.act === "breakdown") b.onclick = () => toggleBreakdown(tr, a);
     if (b.dataset.act === "reprep")    b.onclick = () => reprepare(a);
+    if (b.dataset.act === "pub")       b.onclick = () => togglePublished(a, b);
   });
 }
 
@@ -862,6 +926,169 @@ const STORY_PROBE = {
     "The check itself could not run, so nothing was learned either way."],
 };
 
+// The checks that decided this problem's verdict, straight from the stored
+// result. This is the answer to "which line was the problem?" - and it has to
+// come from the verdict rather than the run's narration, because a re-run whose
+// verdict is cached skips validation and narrates nothing at all.
+// What an undecided check COULD mean. All four are genuinely possible; the
+// probe - when the verdict was recorded with one - says which the evidence
+// points at. Without it they are listed unnarrowed rather than guessed between.
+function couldMean(c){
+  const P = c.probe;
+  const opts = [
+    ["no_infection",
+     "The change makes no real difference.",
+     "The line runs, but changing it never alters what the function ends up "
+     + "returning - like tidying something up that nobody outside can see. "
+     + "If so, your tests are fine as they are and there is nothing to fix."],
+    ["never_reached",
+     "No test ever runs that line.",
+     "If nothing reaches it, changing it cannot possibly matter. That is a gap "
+     + "in the test cases rather than a problem with your solution - an example "
+     + "that reaches this line would settle it."],
+    ["propagation",
+     "The change does alter a decision, but the difference gets swallowed.",
+     "It changes what the line decides, and then something later throws that "
+     + "difference away before it reaches the answer. Separating the two needs "
+     + "a differently shaped test, not more of the same."],
+    [null,
+     "It is a real bug and no test happens to expose it.",
+     "The change breaks something genuine, but none of the 36 test cases - your "
+     + "own examples or the generated ones - uses the kind of input that would "
+     + "show it. If so, a test case is missing."],
+  ];
+  const known = P && opts.some(o => o[0] === P);
+  const items = opts.map(([key, head, body]) => {
+    const on = known && key === P;
+    // The last option is never ruled OUT by a probe: "the line never behaved
+    // differently across this suite" is evidence, not proof, and a 37th test
+    // could still separate them. Everything else the probe contradicts is
+    // dimmed rather than deleted, so the reasoning stays visible.
+    const off = known && !on && key !== null;
+    return `<li class="${on ? "cmOn" : off ? "cmOff" : ""}">
+      <b>${esc(head)}</b>${on ? ` <span class="cmTag">what the evidence shows</span>` : ""}
+      <span>${esc(body)}</span></li>`;
+  }).join("");
+
+  const seen = (P && c.reached != null)
+    ? `<p class="cmSeen">Watched from the inside: that line ran
+       <b>${c.reached}</b> time${c.reached === 1 ? "" : "s"} across the tests and
+       the change altered what it decided <b>${c.differed}</b> time${
+       c.differed === 1 ? "" : "s"}.</p>` : "";
+
+  return `<div class="cm">
+    <h5>What this could mean</h5>
+    <ul class="cmList">${items}</ul>${seen}</div>`;
+}
+
+function findingsPanel(f, source){
+  if (!f || !f.checks || !f.checks.length) return "";
+  const pct = x => Math.round((x || 0) * 100) + "%";
+  const src = (source || "").split("\n");
+  const open = f.checks.filter(c => !c.settled);
+  if (!open.length && f.status !== "needs_review") return "";
+
+  const rows = open.map(c => {
+    const text = (c.line && src[c.line - 1] !== undefined)
+      ? src[c.line - 1].trim() : "";
+    return `<li>
+      <div class="fRow">
+        <span class="fWhat">We tried ${esc(c.phrasing || c.what || "changing this")}
+          &mdash; every test still passed.</span>
+        ${c.line ? `<button type="button" class="fJump" data-line="${c.line}"
+            >line ${c.line} &rarr;</button>` : ""}
+      </div>
+      ${text ? `<pre class="fCode">${esc(text)}</pre>` : ""}
+      ${couldMean(c)}
+    </li>`;
+  }).join("");
+
+  return `<div class="findings">
+    <h4>The ${open.length === 1 ? "check" : open.length + " checks"} nothing could decide</h4>
+    <p class="fLead">To check the tests are any good, MicroTutor breaks your
+      solution on purpose, one line at a time, and sees whether a test notices.
+      ${open.length === 1 ? "The change below" : "The changes below"} slipped
+      past, and it cannot tell why. Nothing here is a suggestion to edit your
+      code &mdash; it is a report of what was tried.</p>
+    <ul class="fList">${rows}</ul>
+    <p class="fFoot">Caught ${f.checks.length - open.length} of ${f.checks.length}
+      &middot; between ${pct(f.lower)} and ${pct(f.upper)} &middot; ${f.n_tests} test cases.
+      If you look at ${open.length === 1 ? "that line" : "those lines"} and it
+      cannot change what the function returns, the tests are fine as they are.</p>
+    ${f.status === "needs_review" ? `<div class="fAct">
+      <button type="button" id="fAccept">Publish anyway</button>
+      <span class="fActWhy">Use this when you have read
+        ${open.length === 1 ? "the line" : "those lines"} above and it cannot
+        change the answer. Your name is recorded against the decision, and the
+        problem still has to split into steps before students see it.</span>
+    </div>` : ""}
+  </div>`;
+}
+
+function wireJumps(host){
+  const ta = host.querySelector("#fixSrc");
+  host.querySelectorAll(".fJump").forEach(b => b.onclick = () => {
+    const n = parseInt(b.dataset.line, 10);
+    const lines = ta.value.split("\n");
+    const start = lines.slice(0, n - 1).join("\n").length + (n > 1 ? 1 : 0);
+    ta.focus();
+    ta.setSelectionRange(start, start + (lines[n - 1] || "").length);
+    // Rough scroll: put the target line near the top of the visible box.
+    const lh = parseFloat(getComputedStyle(ta).lineHeight) || 18;
+    ta.scrollTop = Math.max(0, (n - 3) * lh);
+  });
+}
+
+async function acceptFindings(host, assignment, slug){
+  const btn = host.querySelector("#fAccept");
+  const msg = host.querySelector("#fixMsg");
+  if (!btn) return;
+  if (btn.dataset.armed !== "1"){
+    // Two presses, because this overrules a safety gate. The second press is
+    // the decision; the first only says what the decision is.
+    btn.dataset.armed = "1";
+    btn.textContent = "Yes - publish it";
+    btn.classList.add("danger");
+    msg.innerHTML = `<div class="banner warn">This marks the inconclusive
+      check${(host.querySelectorAll(".fList li").length === 1) ? "" : "s"} above as
+      harmless, on your judgement, and records your name against that. Press
+      again to confirm.</div>`;
+    return;
+  }
+  setBusy(btn, true);
+  let d;
+  try {
+    const r = await fetch(`${API}/teacher/problems/accept`, {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({assignment_id: assignment.id, slug})
+    });
+    d = await r.json().catch(() => ({}));
+    if (!r.ok){
+      setBusy(btn, false);
+      msg.innerHTML = `<div class="banner bad">${esc(
+        (d.detail && d.detail.message) || "The server refused this.")}</div>`;
+      return;
+    }
+  } catch {
+    setBusy(btn, false);
+    msg.innerHTML = `<div class="banner bad">Could not reach the server.</div>`;
+    return;
+  }
+  setBusy(btn, false);
+  host.dataset.changed = "1";
+  const note = d.ready
+    ? `<div class="banner ok">Published. ${d.chunks} step${d.chunks === 1 ? "" : "s"},
+       ${d.n_tests} test${d.n_tests === 1 ? "" : "s"} - students can see this now.
+       Recorded as accepted by ${esc(d.accepted_by || "you")}.</div>`
+    : `<div class="banner bad pre">Accepted, but it still could not be prepared:
+       ${esc(d.error || "unknown")}</div>`;
+  if (d.ready) toast(`“${slug}” published on your review.`, "ok");
+  host.dataset.slug = "";
+  await openFix(host, assignment, slug);
+  const m2 = host.querySelector("#fixMsg");
+  if (m2) m2.innerHTML = note;
+}
+
 function runStory(tape){
   if (!tape || !tape.events) return "";
   const ev = tape.events, out = tape.outcome || {};
@@ -970,6 +1197,7 @@ async function openFix(host, assignment, slug, prob){
       <button class="ghost fixX" type="button" id="fixClose">Close</button>
     </div>
     ${runStory(tape)}
+    ${findingsPanel(d.findings, d.source)}
     <div class="fixGrid">
       <div>
         <label for="fixSrc" class="hint" style="display:block; margin:0 0 7px">
@@ -1004,6 +1232,9 @@ async function openFix(host, assignment, slug, prob){
 
   host.querySelector("#fixClose").onclick = () => closeFix(host);
   host.querySelector("#fixGo").onclick = () => retryFix(host, assignment, slug);
+  wireJumps(host);
+  const acc = host.querySelector("#fAccept");
+  if (acc) acc.onclick = () => acceptFindings(host, assignment, slug);
   src.focus();
   host.scrollIntoView({behavior: "smooth", block: "nearest"});
 }
@@ -1072,20 +1303,93 @@ async function retryFix(host, assignment, slug){
     msg.innerHTML = `<div class="banner bad pre">${esc(
       d.error || "It still could not be prepared.")}</div>`;
   }
+
+  // Redraw from the server. The run story and the per-check findings were both
+  // rendered from the PREVIOUS attempt, and a stale "stopped at: tests" banner
+  // sitting above a checklist that has moved past it is how this panel spent a
+  // whole session telling an instructor the wrong thing.
+  const note = msg.innerHTML;
+  host.dataset.slug = "";
+  await openFix(host, assignment, slug);
+  const m2 = host.querySelector("#fixMsg");
+  if (m2) m2.innerHTML = note;
 }
 
-/* Re-preparing means uploading the file again: preparation reads the source,
-   and the server keeps the parsed problems, not the file. Sending the
-   instructor to the drop zone with the reason stated beats a button that
-   silently does nothing. */
-function reprepare(a){
-  toast(`Re-prepare “${a.name}” by uploading its .py file again - `
-      + `problems that still pass are simply rewritten.`, "info", 7000);
-  clearPick();
-  $("fileErr").innerHTML = `<div class="banner info">Choose the <code>.py</code>
-    file behind <strong>${esc(a.name)}</strong> to prepare it again.</div>`;
-  drop.scrollIntoView({behavior: "smooth", block: "center"});
-  drop.focus();
+/* Re-preparing runs the whole assignment again from what is already stored.
+   It used to send the instructor to the drop zone to find the .py file, because
+   the server keeps the parsed problems rather than the file - but those rows
+   carry the solution AND the class context, which is everything preparation
+   needs. Asking for the file again made the instructor solve a problem the
+   server no longer had. */
+async function reprepare(a){
+  if (run){ toast("A preparation run is already in progress.", "warn"); return; }
+  if (!confirm(
+      `Prepare "${a.name}" again?\n\n`
+      + `Every problem is split into steps again, and the splits it has now `
+      + `are discarded. Test cases already checked are reused, so this is `
+      + `faster than the first upload.\n\n`
+      + `Students keep seeing the current version until it finishes.`)) return;
+
+  disable($("go"), "A preparation run is already in progress.");
+  $("run").hidden = false;
+  $("cancel").hidden = false;
+  $("items").innerHTML = ""; $("summary").innerHTML = "";
+  setProgress(0);
+  $("runTitle").textContent = "Preparing again";
+  $("runCount").textContent = "";
+  startRun(a.name);
+  $("run").scrollIntoView({behavior: "smooth", block: "nearest"});
+
+  let resp;
+  try {
+    resp = await fetch(
+      `${API}/teacher/assignments/${encodeURIComponent(a.id)}/reprepare`,
+      {method: "POST", signal: run.abort.signal});
+  } catch (e) {
+    if (e.name === "AbortError") return;
+    return fail("Could not reach the server. Is the backend running?");
+  }
+  if (!resp.ok){
+    let msg = "Could not start.";
+    try { const j = await resp.json(); msg = (j.detail && j.detail.message) || msg; } catch {}
+    return fail(msg);
+  }
+  if (await consumeRun(resp)) return;
+  endRun();
+  loadAssignments();
+}
+
+/* Hide or show a whole assignment. NOT the same as un-preparing it: every
+   verdict, split and cached test survives, so it is one click back. That is
+   what makes it usable as an emergency stop rather than a last resort. */
+async function togglePublished(a, btn){
+  const hiding = a.published !== false;
+  if (hiding && !confirm(
+      `Hide "${a.name}" from students?\n\n`
+      + `They stop seeing its problems immediately. Nothing is deleted - `
+      + `publishing again is one click and needs no preparation.`)) return;
+  disable(btn);
+  let d = {};
+  try {
+    const r = await fetch(
+      `${API}/teacher/assignments/${encodeURIComponent(a.id)}/published`,
+      {method: "POST", headers: {"Content-Type": "application/json"},
+       body: JSON.stringify({published: !hiding})});
+    d = await r.json().catch(() => ({}));
+    if (!r.ok){
+      enable(btn);
+      toast((d.detail && d.detail.message) || "Could not change visibility.", "bad");
+      return;
+    }
+  } catch {
+    enable(btn);
+    toast("Could not reach the server.", "bad");
+    return;
+  }
+  toast(hiding ? `"${a.name}" is hidden from students.`
+               : `"${a.name}" is visible to students again.`,
+        hiding ? "warn" : "ok");
+  loadAssignments();
 }
 
 clearPick();

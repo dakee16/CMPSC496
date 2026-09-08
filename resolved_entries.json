@@ -86,5 +86,27 @@
     ],
     "confirmed": true,
     "slug": "advanced-calculator-calculate-expressions"
+  },
+  "fc6807b53026092826fb231fae527b60509f86afa10604d5159fae188e73521a": {
+    "entry_name": "pop",
+    "params": [],
+    "confirmed": true,
+    "slug": "stack-pop"
+  },
+  "c90de1850be992c3e939f03b5ec43ae30348bed216b2848ccd3d89c6e9ce41fe": {
+    "entry_name": "_mt_run_calls",
+    "params": [
+      "calls"
+    ],
+    "confirmed": true,
+    "slug": "stack-pop"
+  },
+  "4139fcdebd0abd7285a140ce3bb09e38726e1732eb9fcfb20050127a208559e3": {
+    "entry_name": "_mt_run_calls",
+    "params": [
+      "calls"
+    ],
+    "confirmed": true,
+    "slug": "stack-pop"
   }
 }

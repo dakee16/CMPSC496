@@ -6,6 +6,7 @@ subprocess with a timeout. Resolves the entry point whether the code is a
 bare function  (def is_palindrome(x): ...)  or LeetCode-style
 (class Solution: def isPalindrome(self, x): ...).
 """
+import ast
 import json
 import os
 import subprocess
@@ -210,6 +211,78 @@ def _clean_sequences(raw: list) -> list[list]:
     return out
 
 
+def _generate_blocks(problem: dict, cls: str, target: str,
+                     methods: list, n: int = 4) -> list[str]:
+    """Ask for short programs that observe what a return value cannot.
+
+    The model writes the PROGRAM; the teacher's solution supplies every expected
+    value, exactly as everywhere else. It is never asked what the answer is."""
+    from main.context import class_properties, fixed_internals, uncall_properties
+    allowed = sorted(fixed_internals(problem))
+    if not allowed:
+        return []
+    props = class_properties(problem)
+    public = ", ".join(m for m in methods
+                       if not m.startswith("_") and m not in props) or "none"
+    prompt = (
+        f"Class: {cls}\n\n"
+        f"Specification:\n{(problem.get('group_description') or problem.get('description') or '')[:800]}\n\n"
+        f"The method under test is {cls}.{target}.\n"
+        f"Public methods: {public}\n"
+        + (f"PROPERTIES - read these WITHOUT parentheses, `x.{props[0]}` not "
+           f"`x.{props[0]}()`: {', '.join(props)}\n" if props else "")
+        + 
+        f"Internal attributes you MAY read: {', '.join(allowed)}\n\n"
+        f"Write {n} short Python programs that reach what an ordinary "
+        f"call-and-compare test does not. Each is self-contained: build a "
+        f"{cls}() itself, exercise it, and END with expressions whose values "
+        f"reveal what happened.\n\n"
+        f"Cover these, one per program where they apply:\n"
+        f"1. STATE LEFT BEHIND - links updated or cleared, an object detached "
+        f"after removal. Keep a reference BEFORE removing it.\n"
+        f"2. GUARD PATHS - call {target} on a FRESH object before anything has "
+        f"been set up, so the method's early checks actually run.\n"
+        f"3. REPEATED USE - call {target} twice in a row, and after the object "
+        f"has already been used for something else, so anything it is supposed "
+        f"to reset gets a chance to be wrong.\n"
+        f"4. BAD INPUT - feed it malformed or empty values that should send it "
+        f"down its error path rather than its normal one, INCLUDING values that "
+        f"make the work itself fail: dividing by zero, an empty collection, an "
+        f"index past the end.\n\n"
+        f"CRITICAL:\n"
+        f"- Every program must exercise {cls}.{target}.\n"
+        f"- To check something about an object that is REMOVED, keep a "
+        f"reference to it BEFORE removing it.\n"
+        f"- Read only the attributes listed above. Nothing else.\n"
+        f"- Do NOT write expected values, asserts, prints or comments. Just the "
+        f"statements; the last ones should be bare expressions.\n"
+        f"- One statement per line, no blank lines, no imports.\n\n"
+        f'Return JSON only: {{"programs": ["x = {cls}()\\nx.push(1)\\n...", ...]}}'
+    )
+    try:
+        raw = chat(GEN_MODEL, "You write short Python programs as strict JSON. "
+                              "No prose, no expected values.",
+                   [{"role": "user", "content": prompt}], temperature=0.3, fmt="json")
+        out = (_first_json_obj(raw) or {}).get("programs", [])
+    except Exception:
+        return []
+    good = []
+    for b in out:
+        if not isinstance(b, str) or not b.strip():
+            continue
+        try:
+            ast.parse(b)                      # must be real Python
+        except SyntaxError:
+            continue
+        if target.strip("_") not in b and target not in b:
+            continue                          # must actually exercise the method
+        # Repair the one mistake the prompt cannot reliably prevent: a
+        # @property called like a method raises instead of returning, and the
+        # whole block observes nothing. An AST rewrite cannot be ignored.
+        good.append(uncall_properties(problem, b.strip()))
+    return good[:n]
+
+
 def _generate_call_sequences(problem: dict, n: int) -> list[list]:
     """Test inputs for a METHOD: sequences of calls, not argument lists.
 
@@ -217,6 +290,7 @@ def _generate_call_sequences(problem: dict, n: int) -> list[list]:
     the oracle compares has to be a whole run against one object. The teacher's
     own `>>>` examples are the first sequence - they are a recorded oracle
     someone already thought about - and the model grows the rest around them."""
+    from main import context
     from main.context import calls_from_docstring, class_methods
 
     cls = problem.get("group_title") or "Solution"
@@ -264,9 +338,25 @@ def _generate_call_sequences(problem: dict, n: int) -> list[list]:
         if generated:
             break
 
+    # BLOCKS. A flat call list can only compare return values, and some of what
+    # a method promises is not in its return value: `Stack.pop` says the node
+    # that leaves must be unlinked, and nothing you can call afterwards reveals
+    # whether it was - the popped node is unreachable, so even a full state
+    # snapshot is blind. A block can hold a reference across a call
+    # (`n = x.top` ... `n.next is None`), which is exactly the missing power.
+    #
+    # Only attributes the class's GIVEN code already fixes may be touched, and
+    # that set is derived from the file rather than chosen - see
+    # main/context.fixed_internals. A block reaching anywhere else would grade
+    # something the teacher never specified, so it is discarded rather than run.
+    blocks = []
+    if context.fixed_internals(problem):
+        blocks = [b for b in _generate_blocks(problem, cls, target, methods)
+                  if context.block_is_permitted(problem, b)]
+
     # The seed goes FIRST and is never dropped: it is the one sequence in the
     # suite whose expected values a human has already checked by hand.
-    sequences = ([seed] if seed else []) + generated
+    sequences = ([seed] if seed else []) + generated + blocks
     if not sequences:
         print(f"  ⚠️  sequence-gen empty for {problem.get('slug','?')}")
     # One positional argument - the whole sequence - because the driver's
@@ -440,6 +530,16 @@ def get_oracle_tests(problem: dict, n: int = 10, emit=None) -> list[dict]:
     cache = _load_cache()
     entry = cache.get(key)
 
+    from main.oracle_store import is_stale, oracle_features
+    if _is_validated(entry) and is_stale(entry, problem):
+        # The problem is unchanged but MicroTutor is not: this verdict was
+        # reached without a kind of test that now applies. Reusing it would
+        # quietly answer a question we no longer asked.
+        missing = ", ".join(sorted(oracle_features(problem)
+                                   - set(entry.get("features") or ["calls"])))
+        print(f"  [oracle] {slug}: cached verdict is STALE "
+              f"(never saw: {missing}) - re-validating")
+        entry = None
     if _is_validated(entry):
         # status, not strong=False - see the verdict print below.
         print(f"  [oracle] {slug}: validation SKIPPED (cached status="
@@ -473,7 +573,8 @@ def get_oracle_tests(problem: dict, n: int = 10, emit=None) -> list[dict]:
     # Shape owned by main.oracle_store, not built here: main.live_playground
     # writes the same entry from the same report, and two hand-built copies
     # drift the moment a field is added (A4 added four).
-    validated = verdict_entry(report, slug)
+    from main.oracle_store import oracle_features as _feats
+    validated = verdict_entry(report, slug, features=_feats(problem))
     # Print the STATUS, not the `strong` bit. The bit has only two values and
     # there are three outcomes, so a needs_review problem printed as WEAK while
     # the very next line - and the stored verdict - said needs_review. A log
@@ -511,10 +612,12 @@ def is_oracle_certified(problem: dict) -> bool:
     now, and a slug can no longer identify an entry - that ambiguity is exactly
     the collision this change removes."""
     from main.identity import content_hash
-    from main.oracle_store import certified
+    from main.oracle_store import certified, is_stale
     slug = problem.get("slug", "")
     entry = _load_cache().get(content_hash(problem))
-    if _is_validated(entry):
+    # A stale verdict is treated as no verdict here too, or this gate would
+    # accept an answer that get_oracle_tests has already decided to redo.
+    if _is_validated(entry) and not is_stale(entry, problem):
         print(f"  [oracle] {slug}: validation SKIPPED "
               f"(cached status={entry.get('status') or ('strong' if entry['strong'] else 'weak')})")
     else:

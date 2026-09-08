@@ -103,6 +103,33 @@ def {SEQ_ENTRY}(calls):
     is callable, read when it is a plain field. A call that raises records
     "{ERROR_PREFIX}<ExceptionName>" and the sequence CONTINUES: one failing call
     must not void the observations after it."""
+    # A STRING argument is a block of statements rather than a call list. It
+    # exists for the observations a flat call list cannot express: catching
+    # `node.next = None` needs a reference to the popped node taken BEFORE the
+    # pop, and there is nowhere in [["push",2],["pop"]] to put that. The block
+    # runs in this module's namespace, statement by statement, recording the
+    # value of every expression - so `n = x.top` is a step and `n.next is None`
+    # is an observation. Self-contained: it builds its own object.
+    if isinstance(calls, str):
+        import ast as _ast
+        ns = dict(globals())
+        out = []
+        try:
+            body = _ast.parse(calls).body
+        except SyntaxError as exc:
+            return ["{ERROR_PREFIX}" + type(exc).__name__]
+        for stmt in body:
+            try:
+                if isinstance(stmt, _ast.Expr):
+                    out.append(eval(compile(_ast.Expression(stmt.value),
+                                            "<block>", "eval"), ns))
+                else:
+                    exec(compile(_ast.Module([stmt], []), "<block>", "exec"), ns)
+                    out.append(None)
+            except Exception as exc:
+                out.append("{ERROR_PREFIX}" + type(exc).__name__)
+        return out
+
     obj = {cls}()
     out = []
     for call in calls:
@@ -168,6 +195,164 @@ def header_of(problem: dict) -> str:
         if line.strip().startswith(("def ", "async def ")):
             return line.strip()
     return ""
+
+
+def module_with_method(problem: dict, method_src: str) -> str | None:
+    """The whole module again, with THIS method replaced by `method_src`.
+
+    `method_src` is a complete method - `def pop(self):`, its docstring and its
+    body - dedented to column 0, which is exactly what is stored as `solution`
+    and exactly what the teacher edits in the fix panel.
+
+    This exists because retrying a class problem re-PARSES the teacher's edited
+    text, and parsing a bare method yields a plain function: no class, no
+    context, an entry point of `pop` instead of the sequence driver, and a
+    solution that cannot run at all. Splicing it back into its class first means
+    the retry re-parses the same shape the upload did.
+
+    Rebuilding rather than patching the stored context is deliberate: the
+    docstring lives in context_prefix, so a teacher who edits the STATEMENT -
+    the most likely edit of all - would otherwise keep the old one.
+
+    Returns None for a plain function, whose source is already a whole module."""
+    if not is_method(problem):
+        return None
+    prefix = (problem.get("context_prefix") or "").splitlines()
+    # Walk back to this method's `def` line; everything above it is the module
+    # up to the method, and everything the method itself owns is being replaced.
+    cut = None
+    for i in range(len(prefix) - 1, -1, -1):
+        if prefix[i].strip().startswith(("def ", "async def ")):
+            cut = i
+            break
+    if cut is None:
+        return None
+    # A method sits one level inside its class: the body indent, less one step.
+    indent = max(int(problem.get("context_indent") or 8) - 4, 0)
+    body = _indent(_dedent(method_src).rstrip(), indent)
+    suffix = (problem.get("context_suffix") or "").rstrip("\n")
+    return "\n".join(prefix[:cut]) + "\n" + body + "\n" + suffix + "\n"
+
+
+def class_properties(problem: dict) -> list[str]:
+    """Names on this class that are @property - read, never called.
+
+    `calculate` and `getExpr` look exactly like methods in the source, and a
+    generated test that writes `x.calculate()` gets a TypeError rather than the
+    value. Every block written for Calculator failed that way: twelve tests that
+    observed nothing at all while looking perfectly healthy."""
+    if not is_method(problem):
+        return []
+    cls_name = problem.get("group_title")
+    try:
+        tree = ast.parse(build_program(problem, solution_body(problem)))
+    except SyntaxError:
+        return []
+    cls = next((n for n in ast.walk(tree)
+                if isinstance(n, ast.ClassDef) and n.name == cls_name), None)
+    if cls is None:
+        return []
+    out = []
+    for f in cls.body:
+        if not isinstance(f, ast.FunctionDef):
+            continue
+        for d in f.decorator_list:
+            name = d.id if isinstance(d, ast.Name) else getattr(d, "attr", "")
+            if name == "property":
+                out.append(f.name)
+    return out
+
+
+def uncall_properties(problem: dict, block: str) -> str:
+    """Rewrite `x.calculate()` to `x.calculate` for every @property.
+
+    Belt and braces alongside telling the generator about them: a prompt can be
+    ignored, an AST rewrite cannot. Only zero-argument calls are touched, so a
+    genuine method is never altered."""
+    props = set(class_properties(problem))
+    if not props or not isinstance(block, str):
+        return block
+    try:
+        tree = ast.parse(block)
+    except SyntaxError:
+        return block
+
+    class Fix(ast.NodeTransformer):
+        def visit_Call(self, node):
+            self.generic_visit(node)
+            if (isinstance(node.func, ast.Attribute)
+                    and node.func.attr in props
+                    and not node.args and not node.keywords):
+                return node.func
+            return node
+
+    return ast.unparse(ast.fix_missing_locations(Fix().visit(tree)))
+
+
+def fixed_internals(problem: dict) -> set[str]:
+    """Attribute names a test BLOCK is allowed to look at, derived from the file.
+
+    The worry about observing internals is that it grades implementation
+    detail: a student who structures their object differently would fail while
+    being correct. That worry does not apply to attributes the GIVEN code
+    already depends on. `Stack.__init__` sets `self.top` and `Stack.__str__`
+    walks `.next` and `.value` - and students write neither method, so they
+    cannot change those names without breaking code they were handed. They are
+    part of the class's fixed contract, not private detail.
+
+    So the permitted set is computed, never chosen: take the methods that are
+    NOT exercises, and collect the attributes they read. Method CALLS are
+    excluded - `out.append(...)` is behaviour on a local list, not state of the
+    object under test.
+
+    Returns an empty set for a plain function, and for a class whose given
+    methods touch nothing - in both cases no block may reach inside at all."""
+    if not is_method(problem):
+        return set()
+    cls_name = problem.get("group_title")
+    try:
+        tree = ast.parse(build_program(problem, solution_body(problem)))
+    except SyntaxError:
+        return set()
+    cls = next((n for n in ast.walk(tree)
+                if isinstance(n, ast.ClassDef) and n.name == cls_name), None)
+    if cls is None:
+        return set()
+
+    exercise = problem.get("entry_hint")
+    # Everything the student is asked to write in this GROUP, not just this
+    # problem: a sibling exercise's body is no more fixed than this one's.
+    from .assignments import _STEPS_MARK          # the same marker the parser uses
+    seg = ast.get_source_segment(
+        build_program(problem, solution_body(problem)), cls) or ""
+    named = _STEPS_MARK.search(seg)
+    exercises = ({w.strip() for w in named.group(1).split(",") if w.strip()}
+                 if named else {exercise})
+
+    given = [f for f in cls.body
+             if isinstance(f, ast.FunctionDef) and f.name not in exercises]
+    called = {n.func.attr for f in given for n in ast.walk(f)
+              if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)}
+    return {n.attr for f in given for n in ast.walk(f)
+            if isinstance(n, ast.Attribute) and n.attr not in called}
+
+
+def block_is_permitted(problem: dict, block: str) -> bool:
+    """May this block run? True when it touches only public methods and the
+    fixed internals above.
+
+    Checked by PARSING rather than by trusting whoever wrote it, because blocks
+    can be model-generated: a block that reaches for an attribute the given code
+    never fixed would be grading something the teacher did not specify."""
+    if not isinstance(block, str):
+        return True                       # an ordinary call list
+    try:
+        tree = ast.parse(block)
+    except SyntaxError:
+        return False
+    allowed = fixed_internals(problem) | set(class_methods(problem)) | BUILTIN_CALLS.keys()
+    return all(n.attr in allowed
+               for n in ast.walk(tree) if isinstance(n, ast.Attribute))
 
 
 def reference_program(problem: dict) -> str:
