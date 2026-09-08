@@ -256,6 +256,34 @@
   @keyframes pingIn{from{opacity:0; transform:scale(.9)} to{opacity:1; transform:none}}
   .sheetTog{display:none}
 
+  /* One-time pointer at the tutor, shown when a problem opens. The design gate
+     is the first thing on screen and it asks for a diagram, which reads as
+     "go away and draw something" - so students were leaving to draw before
+     they had talked the plan through, which is the half that actually teaches.
+     It says where the thinking happens, once, and never again. */
+  .coach{position:fixed; z-index:calc(var(--z-header) + 2); max-width:250px;
+         padding:11px 13px; padding-right:28px;   /* room for the close button */
+         border-radius:12px; font-size:12.5px; line-height:1.55;
+         color:var(--text); background:var(--accent-tint);
+         border:1px solid var(--accent); box-shadow:0 10px 30px rgba(0,0,0,.35);
+         animation:coachIn .32s var(--ease) both}
+  @keyframes coachIn{from{opacity:0; transform:translateY(4px)} to{opacity:1}}
+  @media (prefers-reduced-motion:reduce){ .coach{animation:none} }
+  .coach b{font-weight:600}
+  .coach .x{position:absolute; top:4px; right:5px; width:20px; height:20px;
+            display:grid; place-items:center; border:0; border-radius:6px;
+            background:none; color:var(--muted); font-size:14px; cursor:pointer;
+            line-height:1}
+  .coach .x:hover{background:var(--glass-line); color:var(--text)}
+  /* The arrow is one rotated square on the border, so it inherits both the
+     tint and the accent edge and cannot drift out of sync with them. */
+  .coach .caret{position:absolute; width:11px; height:11px; transform:rotate(45deg);
+                background:var(--accent-tint); border:1px solid var(--accent)}
+  .coach[data-dir="right"] .caret{right:-6.5px; top:calc(50% - 6px);
+                                  border-left:0; border-bottom:0}
+  .coach[data-dir="down"]  .caret{bottom:-6.5px; left:calc(50% - 6px);
+                                  border-left:0; border-top:0}
+
   .clog{flex:1; overflow:auto; padding:var(--s4) var(--s4); display:flex;
         flex-direction:column; gap:11px}
   .clog::-webkit-scrollbar{width:7px}
@@ -908,6 +936,11 @@ async function uploadDesign(){
   const fd = new FormData();
   fd.append("slug", openProblem.slug);
   fd.append("history", JSON.stringify(designLog));
+  // The tutor conversation too. /plan_graph already builds the plan from
+  // chatLog.concat(designLog); the reviewer was the one place still judging
+  // the drawing on its own, which is how a plan the tutor had just called
+  // workable came back rejected for a step the student had already explained.
+  fd.append("chat", JSON.stringify(chatLog));
   fd.append("design", designFileRef);
 
   setBusy(btn, true, "Reviewing…");
@@ -1099,6 +1132,7 @@ function view(which){
 }
 
 function goAssignments(){
+  dismissCoach(false);                    // see backToProblems
   document.title = "Choose an assignment · MicroTutor";
   setCrumbs([]);
   openAssign = null;
@@ -1397,6 +1431,9 @@ async function restoreHistory(p){
   if (h.messages && h.messages.length){
     $("clog").innerHTML = "";
     hideChips();
+    // They have talked to the tutor about this problem before, so pointing at
+    // it now is noise. Remembered, for the same reason.
+    dismissCoach(true);
     chatLog = h.messages.map(m => ({role: m.role, content: m.content}));
     h.messages.forEach(m => bubble(m.role === "user" ? "me" : "bot",
                                    m.content, m.at));
@@ -1734,6 +1771,9 @@ async function finish(res){
 /* Back to the problem list, with the list redrawn: a problem just solved has
    to show as solved, and the header summary has to move. */
 function backToProblems(){
+  // Leaving is not reading it - the tip is anchored to a chat that is about to
+  // go off screen, so it goes with it, but it has not been used up.
+  dismissCoach(false);
   $("editorWrap").hidden = false;
   $("ctx").style.maxHeight = "";          // undo the finish() expansion
   if (openAssign){
@@ -1799,6 +1839,71 @@ function hideChips(){
   if (c) c.remove();
 }
 
+/* ==========================================================
+   The one-time pointer at the tutor.
+   ========================================================== */
+const COACH_SEEN = "mt.coach.tutor.v1";
+
+function dismissCoach(remember){
+  const el = $("coach");
+  if (!el) return;
+  el.remove();
+  window.removeEventListener("resize", placeCoach);
+  window.removeEventListener("scroll", placeCoach, true);
+  // Only a real acknowledgement is remembered. A resize or a route change
+  // takes the tip off screen without the student having read it, and burning
+  // the one showing on that would mean they never see it at all.
+  if (remember){ try { localStorage.setItem(COACH_SEEN, "1"); } catch (e) {} }
+}
+
+/* Anchored by measurement rather than by a hard-coded offset: the chat is a
+   sticky right column on a wide screen and a bottom sheet under 1024px, and a
+   fixed position that is right for one is off-screen for the other. */
+function placeCoach(){
+  const el = $("coach"), chat = $("chatcol");
+  if (!el || !chat) return;
+  const r = chat.getBoundingClientRect();
+  if (!r.width || !r.height){ dismissCoach(false); return; }
+  const gap = 12;
+  // Point RIGHT at the column when there is room beside it, DOWN at the sheet
+  // handle when the chat is docked to the bottom of the screen.
+  const beside = r.left > el.offsetWidth + gap * 2;
+  el.dataset.dir = beside ? "right" : "down";
+  if (beside){
+    el.style.left = `${Math.round(r.left - el.offsetWidth - gap)}px`;
+    el.style.top = `${Math.round(
+      Math.min(Math.max(r.top + 34, gap), window.innerHeight - el.offsetHeight - gap))}px`;
+  } else {
+    el.style.left = `${Math.round(
+      Math.max(gap, Math.min(r.right - el.offsetWidth - gap,
+                             window.innerWidth - el.offsetWidth - gap)))}px`;
+    el.style.top = `${Math.round(r.top - el.offsetHeight - gap)}px`;
+  }
+}
+
+function showChatCoach(){
+  dismissCoach(false);                       // never two at once
+  try { if (localStorage.getItem(COACH_SEEN)) return; } catch (e) {}
+  const el = document.createElement("div");
+  el.className = "coach";
+  el.id = "coach";
+  el.setAttribute("role", "note");
+  el.innerHTML =
+    `<button type="button" class="x" aria-label="Got it">&times;</button>`
+    + `<b>Design it here first.</b><br>Talk your approach through with the `
+    + `tutor before you draw anything or write any code - that is what the `
+    + `plan below is built from.<span class="caret" aria-hidden="true"></span>`;
+  el.querySelector(".x").addEventListener("click", () => dismissCoach(true));
+  document.body.appendChild(el);
+  placeCoach();
+  // ...and again once layout has settled: applyTutorGate() runs straight after
+  // resetChat() and can show or hide the whole editor, which moves the column
+  // this is anchored to.
+  requestAnimationFrame(placeCoach);
+  window.addEventListener("resize", placeCoach);
+  window.addEventListener("scroll", placeCoach, true);
+}
+
 function resetChat(title){
   $("clog").innerHTML = "";
   chatLog = [];
@@ -1807,9 +1912,12 @@ function resetChat(title){
                + `answer. When your plan is ready, submit a design (PNG, JPEG, `
                + `or PDF) to unlock the editor.`);
   showChips();
+  showChatCoach();
 }
 
 async function sendToTutor(text){
+  // They found the chat on their own, so the tip has done its job.
+  dismissCoach(true);
   if (chatBusy) return;
   if (!openProblem){
     bubble("bot", "Open a problem on the left first - I can only help with the one you are working on.");

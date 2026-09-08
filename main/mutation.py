@@ -24,17 +24,18 @@ import copy
 import json
 import random
 
-from .equivalence import proves_harmless
+from .equivalence import proves_harmless, trailing_return_none
 from .probe import (NEVER_REACHED, NO_INFECTION, PROPAGATION, UNKNOWN,
                     probe_site)
-from .context import (build_program, doctest_covers, is_method,
-                      solution_body)
+from .context import (BUILTIN_CALLS, DUNDER_CALL, block_is_permitted,
+                      build_program, doctest_covers, is_method, solution_body)
 from .identity import get_resolved_entry
 from .ollama_client import chat
 from tests.sandbox import (
     GEN_MODEL,
     _first_json_obj,
     _norm,
+    _useless_block,
     make_oracle_tests,
     run_solution,
 )
@@ -46,7 +47,13 @@ from tests.sandbox import (
 # threshold that separates genuinely weak oracles from strong ones). Do not
 # cite these as results and do not treat them as final.
 CUTOFF_1_KILL_RATE = 0.85                   # kill_rate at/above this ⇒ oracle is STRONG
-CUTOFF_2_MAX_EXPAND_ROUNDS = 3              # max validate_oracle rounds before giving up
+CUTOFF_2_MAX_EXPAND_ROUNDS = 5              # max validate_oracle rounds before giving up
+# ...3 cut the loop off mid-climb. A class problem's counterexamples are found
+# one or two per round and each one raises the NEXT round's direct kill rate,
+# so calculateExpressions ran 0.61 -> 0.80 -> 0.84 and stopped while still
+# rising, one mutant under the gate. The loop already exits the moment it is
+# strong, and B3 below exits when the survivors are provably unkillable, so
+# extra rounds are only ever spent on a problem that is still improving.
 CUTOFF_4_MAX_COUNTEREXAMPLE_CANDIDATES = 5  # LLM input guesses per surviving mutant
 
 # Mutants can loop forever where the original did not (e.g. `num //= 10`
@@ -196,6 +203,11 @@ def _sites(tree: ast.AST) -> list[tuple[int, str, str, int]]:
                 continue
             for pos, stmt in enumerate(block):
                 if isinstance(stmt, ast.Pass):
+                    continue
+                # A3 again, for deletion: a mutant we can PROVE changes nothing
+                # is never created, rather than created and then puzzled over
+                # by every generator and every human who reads the verdict.
+                if trailing_return_none(node, field, pos, block):
                     continue
                 if (isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Constant)
                         and isinstance(stmt.value.value, str)):
@@ -394,9 +406,57 @@ def _candidates_from_target(shape: list, target) -> list[list]:
     return list({_key(c): c for c in out}.values())
 
 
+def _method_input_spec(problem: dict) -> str:
+    """How to write an input for a METHOD problem, spelled out for the model.
+
+    The paid search is where the budget goes, and it was being spent blind: a
+    class problem's entry point is the injected driver, so the prompt said
+    "Function: _mt_run_calls(calls)" and left the model to infer from the
+    source what one `calls` even looks like. It cannot be told to aim at a
+    reset-on-failure branch without being told that reading the object
+    afterwards is a thing it may do - which is exactly where the surviving
+    mutants on these classes live."""
+    from .context import class_methods, class_properties, fixed_internals
+    cls = problem.get("group_title") or "Solution"
+    props = set(class_properties(problem))
+    methods = [m for m in class_methods(problem)
+               if m != "__init__" and not m.startswith("__") and m not in props]
+    internals = sorted(fixed_internals(problem))
+    spec = [
+        f"The single argument is a RUN against one fresh {cls}(), in one of "
+        f"two forms.\n",
+        f'1. A CALL LIST: [["method", arg, ...], ...], replayed in order '
+        f'against one object. Methods you may call: '
+        f'{", ".join(methods) or "none"}.',
+    ]
+    if props:
+        spec.append(f'   Read a @property with no arguments and no parentheses '
+                    f'- ["{sorted(props)[0]}"]. Properties: {", ".join(sorted(props))}.')
+    if internals:
+        spec.append(
+            f'2. A BLOCK: a single string of Python statements, one per line, '
+            f'building its own {cls}() and ending in expressions whose values '
+            f'reveal what happened - e.g. '
+            f'"o = {cls}()\\no.{methods[0] if methods else "run"}()\\no.{internals[0]}".\n'
+            f'   A block is the ONLY way to see state a return value hides: an '
+            f'attribute the method is supposed to clear on failure looks '
+            f'identical from the outside, because both versions return None. '
+            f'READ IT BETWEEN THE CALLS, not only at the end - a method that '
+            f'resets on entry wipes the difference before the next call '
+            f'returns. You may read: {", ".join(internals)}. Nothing else.')
+    else:
+        spec.append("2. There is no readable internal state on this class, so "
+                    "use call lists only - a block could observe nothing a "
+                    "call list cannot.")
+    spec.append("Each input is a JSON array holding exactly ONE element: the "
+                + ("call list, or the block string.\n" if internals
+                   else "call list.\n"))
+    return "\n".join(spec)
+
+
 def _candidate_inputs(problem: dict, original: str, mutant_code: str,
                       n: int | None = None,
-                      emit=None) -> list[list]:
+                      emit=None, focus: tuple | None = None) -> list[list]:
     """Ask the LLM for up to n input argument-lists that might make the two
     programs disagree. INPUTS ONLY - the model never reports outputs, and its
     opinion about them is never read.
@@ -411,19 +471,40 @@ def _candidate_inputs(problem: dict, original: str, mutant_code: str,
     resolved = get_resolved_entry(problem)
     name, params = resolved["entry_name"], resolved["params"]
     sig = f"{name}({', '.join(params)})" if name else problem.get("title", "")
+    method = is_method(problem)
+    # For a method, `original` and `mutant_code` are the WHOLE assembled module
+    # - Node, Stack, both calculators and the injected driver, twice over, with
+    # the one edited line somewhere inside five hundred of them. `focus` is the
+    # method alone plus the label of the edit, which is the entire question.
+    prog_a, prog_b, edit = focus or (original, mutant_code, "")
+    # A method's difference is not always in what it RETURNS. Every check still
+    # surviving on calculateExpressions returns None either way and differs
+    # only in the state left behind, so "find inputs where they return
+    # different values" points away from the only answer there is.
+    differ = ("produce DIFFERENT OBSERVATIONS - a different return value, OR "
+              "different state when you read the object afterwards"
+              if method else "return DIFFERENT values")
     prompt = (
         f"Problem: {problem.get('title','')}\n\n"
         f"Description:\n{(problem.get('description') or '')[:600]}\n\n"
         f"Function: {sig}\n\n"
-        f"PROGRAM A (correct):\n{original}\n\n"
-        f"PROGRAM B (a single-point edit of A):\n{mutant_code}\n\n"
-        f"Find inputs where A and B return DIFFERENT values. Look at exactly "
+        + (f"THE EDIT: {edit}\n\n" if edit else "")
+        + f"PROGRAM A (correct):\n{prog_a}\n\n"
+        f"PROGRAM B (a single-point edit of A):\n{prog_b}\n\n"
+        f"Find inputs where A and B {differ}. Look at exactly "
         f"what the edit changed and target the code path it sits on - a "
         f"boundary value, a sign change, an empty or single-element case.\n"
+        f"The edited line may sit on an ERROR path that ordinary input never "
+        f"reaches. If so, the input you need is one the problem calls invalid: "
+        f"a name that breaks the naming rule, a reference to something never "
+        f"defined, an expression that cannot be evaluated. Build up some real "
+        f"state FIRST, then break it - an input that fails immediately leaves "
+        f"nothing for the edit to change.\n"
         f"Every input must still satisfy the problem's stated constraints.\n"
-        f"Each input is a JSON array of the {len(params)} positional "
-        f"argument(s) in order: {', '.join(params) or 'unknown'}.\n"
-        f"Give {n} candidates, most likely first. Do NOT report outputs.\n"
+        + (_method_input_spec(problem) if is_method(problem) else
+           f"Each input is a JSON array of the {len(params)} positional "
+           f"argument(s) in order: {', '.join(params) or 'unknown'}.\n")
+        + f"Give {n} candidates, most likely first. Do NOT report outputs.\n"
         f'Return JSON only: {{"inputs": [[arg1, ...], ...]}}'
     )
     if emit:
@@ -438,6 +519,179 @@ def _candidate_inputs(problem: dict, original: str, mutant_code: str,
     if emit:
         emit({"type": "llm_candidates", "inputs": inputs})
     return inputs
+
+
+def _sequences_of(tests: list) -> list[list]:
+    """The recorded call sequences in `tests`, longest first.
+
+    A method problem's input is `[sequence]` - one positional argument holding
+    the whole run. Blocks (a bare string) and anything malformed are skipped."""
+    seqs = [t["input"][0] for t in tests
+            if t.get("input") and isinstance(t["input"][0], list)]
+    return sorted(seqs, key=len, reverse=True)
+
+
+def _target_call(problem: dict, seqs: list[list]) -> list:
+    """A real, replayable call to the method under test.
+
+    Reused from the recorded sequences rather than built as `[name]`, because a
+    method that takes arguments would get none and raise TypeError before it
+    ran a single line of its own."""
+    target = problem.get("entry_hint") or ""
+    wanted = DUNDER_CALL.get(target, target)
+    return next((list(c) for seq in seqs for c in seq
+                 if isinstance(c, list) and c and c[0] == wanted), [wanted])
+
+
+def _sequence_probes(problem: dict, tests: list) -> list[list]:
+    """Boundary variants of a recorded CALL SEQUENCE.
+
+    _probe_inputs varies ARGUMENTS, which for a method problem means varying
+    the one argument that holds the entire run - so it emitted things like
+    `[[49, 33, 42]]`, a sequence whose first call is the integer 49. The driver
+    cannot read that as a call at all, both programs die identically, and no
+    variant could ever be a counterexample. Every survivor on every class
+    problem therefore reached the paid search having had no free search at all.
+
+    Built from the real calls instead, so every variant is replayable by
+    construction: the target on a FRESH object (its guard path), the target
+    after each prefix of a known-good run (its state at every point), each call
+    removed in turn (what the method depended on), and the target twice in a
+    row (whatever it is supposed to reset)."""
+    seqs = _sequences_of(tests)
+    call = _target_call(problem, seqs)
+    out = [[["new"], call]]                    # nothing set up yet
+    for seq in seqs[:2]:
+        for k in range(1, len(seq)):
+            out.append(seq[:k] + [call])       # the target at each point
+            out.append(seq[:k] + seq[k + 1:])  # one call removed
+        j = next((i for i, c in enumerate(seq)
+                  if isinstance(c, list) and c and c[0] == call[0]), None)
+        if j is not None:
+            out.append(seq[:j + 1] + [seq[j]] + seq[j + 1:])   # twice in a row
+    return list({_key([s]): [s] for s in out}.values())[:_MAX_PROBE_INPUTS]
+
+
+def _hostile(arg):
+    """Values that should send a call down its failure path rather than its
+    normal one. Structural corruption only - malformed, empty, out of range -
+    because a generic sweep cannot know what "invalid" means for one problem.
+    Naming a domain's own bad inputs is the generators' job; see the prompts in
+    tests/sandbox.py.
+
+    A fixed table, not a sample: the same recorded run must always yield the
+    same candidates in the same order, or two identical problems can reach two
+    different verdicts."""
+    if isinstance(arg, bool):
+        return [not arg]
+    if isinstance(arg, (int, float)):
+        return [0, -arg, arg + 1, arg - 1]
+    if isinstance(arg, str):
+        # A truncated string is the cheapest malformed one there is, and for
+        # anything with syntax - an expression, a statement list - it is
+        # exactly the shape that reaches the parse-failure branch.
+        out = ["", arg[:max(1, len(arg) // 2)], arg + arg, "@"]
+        # ...but every one of those fails at the END, and a failure at the end
+        # cannot tell "stop here" apart from "skip this one": with no work
+        # left to do, returning early and carrying on reach the same result.
+        # `remove return None` therefore survived every one of them. So also
+        # break exactly ONE element in the middle of a delimited argument and
+        # leave the rest intact, which is the only shape where the two differ.
+        for sep in (";", ",", "\n", "|"):
+            parts = arg.split(sep)
+            if len(parts) < 2:
+                continue
+            i = len(parts) // 2                 # inner, and deterministic
+            out += [sep.join(parts[:i] + [""] + parts[i:]),      # an empty one
+                    sep.join(parts[:i] + ["@"] + parts[i + 1:]),  # a junk one
+                    sep.join(parts[:i] + parts[i + 1:]),          # one missing
+                    # ...and one element doubled, which duplicates whatever
+                    # structure it holds - the second `=` in `a = b = 5`.
+                    sep.join(parts[:i] + [parts[i] + parts[i]] + parts[i + 1:])]
+            break
+        return out
+    if isinstance(arg, list):
+        return [[], arg[:1], arg + arg]
+    return [None]
+
+
+def _sequence_sweep(problem: dict, tests: list, n: int) -> list[list]:
+    """Recorded sequences with ONE argument replaced by a hostile value.
+
+    The guard branches are where the survivors live - every undetermined check
+    on Calculator.calculate and AdvancedCalculator.calculateExpressions sat on
+    one - and they are reached by feeding a call something it cannot handle,
+    not by varying the shape of the run. Deterministic and seeded, like the
+    sweep it replaces."""
+    out = []
+    for seq in _sequences_of(tests)[:3]:
+        for i, call in enumerate(seq):
+            if not (isinstance(call, list) and len(call) > 1):
+                continue
+            for a in range(1, len(call)):
+                for v in _hostile(call[a]):
+                    out.append(seq[:i] + [call[:a] + [v] + call[a + 1:]]
+                               + seq[i + 1:])
+    seqs = list({_key([s]): s for s in out}.values())[:n]
+    # Each run is offered TWICE: as calls, and as a block that additionally
+    # reads the state it left behind. Interleaved and capped at the same `n` as
+    # before, so the two forms share one budget rather than doubling the number
+    # of subprocesses every surviving mutant costs - a run and its observation
+    # sit next to each other, and _first_disagreement stops at the first hit.
+    pairs = []
+    for sq in seqs:
+        pairs.append([sq])
+        b = _as_block(problem, sq)
+        if b and block_is_permitted(problem, b):
+            pairs.append([b])
+    return pairs[:n]
+
+
+def _as_block(problem: dict, seq: list) -> str | None:
+    """One call sequence rewritten as a BLOCK that reads the object's fixed
+    internals once the calls are done.
+
+    The one thing a call sequence cannot do. Every check still surviving on
+    calculateExpressions is `remove self.states = {}` or `remove return None`
+    on an invalid-input branch: the method returns None either way, so no
+    sequence of calls can tell the two apart, and the entire difference is the
+    state left behind. Reading it is what separates them.
+
+    Written mechanically from a sequence rather than asked of a model, so it is
+    free, deterministic, and cannot drift from the run it is meant to observe.
+    Returns None for a class with no fixed internals, and for anything that
+    cannot be rendered as replayable source."""
+    from .context import class_properties, fixed_internals
+    internals = sorted(fixed_internals(problem))
+    if not internals:
+        return None
+    cls = problem.get("group_title") or "Solution"
+    props = set(class_properties(problem))
+    read = [f"o.{a}" for a in internals]
+    lines = [f"o = {cls}()"]
+    for call in seq:
+        if not (isinstance(call, list) and call and isinstance(call[0], str)):
+            return None
+        name, args = call[0], call[1:]
+        try:
+            rendered = ", ".join(repr(a) for a in args)
+        except Exception:
+            return None                   # not renderable as source
+        if name == "new":
+            lines[0] = f"o = {cls}({rendered})"
+        elif name in BUILTIN_CALLS:
+            lines.append(f"{name}(o)")
+        elif name in props:
+            lines.append(f"o.{name}")     # a @property is READ, never called
+        else:
+            lines.append(f"o.{name}({rendered})")
+        # AFTER EVERY CALL, not once at the end. calculateExpressions resets
+        # `states` on its first line, so a reset it also does on an error
+        # branch is invisible to anything that looks only when the run is
+        # over - the next call has already wiped the difference. Reading
+        # between the calls is the whole point of holding the object.
+        lines += read
+    return "\n".join(lines)
 
 
 def _drop_blocks(tests: list, method: bool) -> list:
@@ -459,14 +713,19 @@ def _drop_blocks(tests: list, method: bool) -> list:
             if not (t.get("input") and isinstance(t["input"][0], str))]
 
 
-def _probe_inputs(tests: list, method: bool = False) -> list[list]:
+def _probe_inputs(tests: list, problem: dict | None = None) -> list[list]:
     """Boundary variants of the inputs we already have: one argument at a time
     pushed to 0/±1/its neighbours, a list or string emptied, a bool flipped.
 
     Free, deterministic, and it catches the off-by-one and sign mutants the
     model reliably fails to think of - so `likely_equivalent` is only reached
     after these have been tried too."""
+    method = is_method(problem)
     tests = _drop_blocks(tests, method)
+    if method:
+        # A method's single argument IS the run. Varying it as an argument
+        # produces sequences the driver cannot replay; see _sequence_probes.
+        return _sequence_probes(problem, tests)
     out = []
     for inp in [t["input"] for t in tests][:2]:
         for i, arg in enumerate(inp):
@@ -484,16 +743,19 @@ def _probe_inputs(tests: list, method: bool = False) -> list[list]:
 
 
 def _sweep_inputs(tests: list, n: int | None = None,
-                  method: bool = False) -> list[list]:
+                  problem: dict | None = None) -> list[list]:
     """A broad, deterministic, type-directed input sweep - no LLM involved.
 
     Shapes are taken from the inputs we already have, then each argument is
     varied far more widely than _probe_inputs does: signs, zeros, boundaries,
     long and empty sequences, duplicates, sorted and reversed orders. Seeded,
     so two runs produce byte-identical sweeps."""
+    method = is_method(problem)
     tests = _drop_blocks(tests, method)
     if n is None:                       # late-bound: see _candidate_inputs
         n = _EQUIVALENCE_SWEEP_SIZE
+    if method:
+        return _sequence_sweep(problem, tests, n)
     seeds = [t["input"] for t in tests]
     if not seeds:
         return []
@@ -577,7 +839,8 @@ def _runnable(problem: dict, source: str) -> str:
 
 
 def _first_disagreement(original: str, mutant_code: str, entry: str | None,
-                        candidates: list, seen: set) -> dict | None:
+                        candidates: list, seen: set,
+                        method: bool = False) -> dict | None:
     """Run BOTH programs on `candidates` and compare the real results. Returns
     the first genuine disagreement as {"input", "expected"}, else None.
 
@@ -601,6 +864,13 @@ def _first_disagreement(original: str, mutant_code: str, entry: str | None,
             if isinstance(expected, dict) and "__error__" in expected:
                 continue                    # original fails here → not a valid
                                             # oracle test, so not a witness
+            # A witness becomes a permanent oracle test, so it has to survive
+            # being one. A block observing an object records its memory address,
+            # which differs in every subprocess - it would "disagree" with every
+            # mutant AND with the reference itself, scoring the suite STRONG and
+            # then failing every student. Same rule as the generation path.
+            if _useless_block(inp, expected, method):
+                continue
             # A mutant that hangs where the original completed IS a real
             # difference, and the whole chunk failing is the only signal we get.
             got = mut["results"][i] if mut["ok"] else {"__error__": mut["error"]}
@@ -622,7 +892,7 @@ def _disagrees(code: str, entry: str | None, inputs: list, expected: list) -> bo
 
 def _counterexample_test(problem: dict, original: str, mutant_code: str,
                          entry: str | None, seen: set, tests: list,
-                         emit=None) -> dict | None:
+                         emit=None, focus: tuple | None = None) -> dict | None:
     """One last attempt to kill a survivor: free boundary probes first, then the
     model's suggested inputs. Either way the verdict comes from executing both
     programs - the model only ever supplies inputs.
@@ -630,11 +900,11 @@ def _counterexample_test(problem: dict, original: str, mutant_code: str,
     `emit`, when given, narrates each phase for live UIs; None (the default,
     and the production path) changes nothing."""
     method = is_method(problem)
-    probes = _probe_inputs(tests, method)
+    probes = _probe_inputs(tests, problem)
     if emit:
         emit({"type": "probes", "inputs": probes,
               "detail": "free deterministic boundary probes (no LLM cost)"})
-    found = _first_disagreement(original, mutant_code, entry, probes, seen)
+    found = _first_disagreement(original, mutant_code, entry, probes, seen, method)
     if found:
         if emit:
             emit({"type": "disagreement", "source": "probe",
@@ -649,12 +919,12 @@ def _counterexample_test(problem: dict, original: str, mutant_code: str,
     # once: a disagreement is a counterexample, and total agreement is
     # evidence of harmlessness. So the free version goes first, and the model
     # is only paid once ~180 deterministic inputs have come up empty.
-    sweep = _sweep_inputs(tests, method=method)
+    sweep = _sweep_inputs(tests, problem=problem)
     if emit:
         emit({"type": "sweep", "n": len(sweep),
               "detail": f"{len(sweep)} generated inputs, still free "
                         f"(deterministic, no LLM cost)"})
-    found = _first_disagreement(original, mutant_code, entry, sweep, seen)
+    found = _first_disagreement(original, mutant_code, entry, sweep, seen, method)
     if found:
         if emit:
             emit({"type": "disagreement", "source": "sweep",
@@ -666,7 +936,8 @@ def _counterexample_test(problem: dict, original: str, mutant_code: str,
               "detail": "no free input made the programs disagree; asking the model"})
     found = _first_disagreement(
         original, mutant_code, entry,
-        _candidate_inputs(problem, original, mutant_code, emit=emit), seen)
+        _candidate_inputs(problem, original, mutant_code, emit=emit, focus=focus),
+        seen, method)
     if found:
         if emit:
             emit({"type": "disagreement", "source": "llm",
@@ -707,7 +978,8 @@ def _counterexample_test(problem: dict, original: str, mutant_code: str,
                   "target": target, "inputs": derived[:8],
                   "detail": f"model says {var} must reach {target}; these are "
                             f"the inputs that computation could come from"})
-        found = _first_disagreement(original, mutant_code, entry, derived, seen)
+        found = _first_disagreement(original, mutant_code, entry, derived, seen,
+                                    is_method(problem))
         if found:
             if emit:
                 emit({"type": "disagreement", "source": "inversion",
@@ -796,7 +1068,10 @@ def evaluate_oracle(problem: dict, oracle_tests: list, emit=None) -> dict:
               "mutants": [{"index": i, "label": m["label"], "code": m["code"]}
                           for i, m in enumerate(mutants)]})
     solution = _runnable(problem, bare)
-    mutants = [{**m, "code": _runnable(problem, m["code"])} for m in mutants]
+    # `bare_code` kept beside the seated one: the paid search should be shown
+    # the method and the edit, not the whole module with the edit buried in it.
+    mutants = [{**m, "bare_code": m["code"], "code": _runnable(problem, m["code"])}
+               for m in mutants]
 
     tests = list(oracle_tests)              # working set grows; caller's list untouched
     base = run_solution(solution, [t["input"] for t in tests], entry_name=entry)
@@ -869,7 +1144,8 @@ def evaluate_oracle(problem: dict, oracle_tests: list, emit=None) -> dict:
             continue
         try:
             found = _counterexample_test(problem, solution, m["code"], entry,
-                                         seen, tests, emit=em)
+                                         seen, tests, emit=em,
+                                         focus=(bare, m["bare_code"], m["label"]))
         except Exception as e:
             # Model unreachable - we could not even ask. Never silently excluded:
             # an unanswered question counts against the oracle.

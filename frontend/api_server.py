@@ -1948,13 +1948,21 @@ def graphs_route(req: GraphsRequest, request: Request):
 async def design_review(request: Request,
                         slug: str = Form(...),
                         history: str = Form("[]"),
+                        chat: str = Form("[]"),
                         design: UploadFile = File(...)):
     """Review a student's uploaded design before they may write any code.
 
     Same guarantee as /tutor_chat: the reviewer is handed only the public
     title/description, never the reference solution. Multipart rather than JSON
     because the payload is a file; `history` is the prior review conversation,
-    JSON-encoded, so a resubmit is judged against what was asked last round."""
+    JSON-encoded, so a resubmit is judged against what was asked last round.
+
+    `chat` is the TUTOR conversation, so the reviewer judges the design together
+    with what the student has already explained. Without it the two graders
+    apply two different bars to one plan: the tutor tells a student their plan
+    is workable and sends them to draw it, and the reviewer - which had never
+    seen that conversation - sends them back for a step they explained in the
+    message above."""
     from main.design_review import DesignRejected, review_design
 
     row = get_supabase().table("problems").select(
@@ -1964,16 +1972,21 @@ async def design_review(request: Request,
             "reason_code": "problem_not_found",
             "message": f"Unknown problem '{slug}'."})
 
-    try:
-        prior = json.loads(history)
-        if not isinstance(prior, list):
-            raise ValueError
-    except Exception:
-        prior = []
+    def _turns(raw):
+        """Client-supplied transcript, or nothing. Never a 4xx: a malformed
+        history must degrade to a cold review, not refuse the upload."""
+        try:
+            got = json.loads(raw)
+            return got if isinstance(got, list) else []
+        except Exception:
+            return []
+
+    prior, tutor_chat = _turns(history), _turns(chat)
 
     try:
         blob = await design.read()
-        out = review_design(row[0], blob, design.content_type or "", prior)
+        out = review_design(row[0], blob, design.content_type or "", prior,
+                            chat_log=tutor_chat)
     except DesignRejected as e:
         # The upload itself was wrong - a validation message for the student,
         # not a judgement on their design, and no model call was made.

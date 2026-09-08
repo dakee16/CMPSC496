@@ -6,6 +6,7 @@ written against the real assignment file rather than a fixture because the bugs
 were all in reading a real class - name mangling, a decorator, a @property -
 and a hand-made fixture is exactly where they hid.
 """
+import ast
 import json
 import pathlib
 
@@ -105,16 +106,109 @@ def test_boundary_probes_survive_a_plain_string_argument():
     """`is_palindrome('racecar')` looks exactly like a block. Judging on shape
     alone threw away the probes AND the whole sweep for every such problem."""
     tests = [{"input": ["racecar"], "expected": True}]
-    assert mutation._probe_inputs(tests, method=False)
-    assert mutation._sweep_inputs(tests, method=False)
+    assert mutation._probe_inputs(tests)          # no problem = plain function
+    assert mutation._sweep_inputs(tests)
 
 
-def test_blocks_are_still_skipped_for_a_method():
+def test_blocks_are_never_varied_as_arguments(problems):
     """A block is a program: there is nothing to vary, and mutating one would
     produce broken Python rather than a new case."""
+    p = problems["stack-pop"]
     tests = [{"input": ["x = Stack()\nx.push(1)"], "expected": [None, None]}]
-    assert mutation._probe_inputs(tests, method=True) == []
-    assert mutation._sweep_inputs(tests, method=True) == []
+    assert mutation._drop_blocks(tests, True) == []
+    for cand in mutation._probe_inputs(tests, p) + mutation._sweep_inputs(tests, problem=p):
+        assert not isinstance(cand[0], str), cand
+
+
+# ── the free search must speak the problem's own input language ──────────
+
+def test_a_methods_free_search_produces_replayable_call_sequences(problems):
+    """Varying a method's ONE argument produced `[[49, 33, 42]]` - a sequence
+    whose first call is the integer 49. The driver cannot read that as a call,
+    both programs die the same way, and no variant could ever be a
+    counterexample: every class problem reached the paid search having had no
+    free search at all."""
+    p = problems["advanced-calculator-calculate-expressions"]
+    tests = [{"input": [[["setExpression", "a = 5;return a"],
+                         ["calculateExpressions"]]], "expected": [None, {}]}]
+    cands = mutation._probe_inputs(tests, p) + mutation._sweep_inputs(tests, problem=p)
+    assert cands
+    for c in cands:
+        assert len(c) == 1, c
+        if isinstance(c[0], str):
+            # A block: real Python, and only touching what it is allowed to.
+            ast.parse(c[0])
+            assert context.block_is_permitted(p, c[0]), c[0]
+            continue
+        for call in c[0]:
+            assert isinstance(call, list) and call and isinstance(call[0], str), call
+
+
+def test_the_free_search_also_observes_the_state_a_run_left_behind(problems):
+    """A call sequence compares return values, and every check still surviving
+    on calculateExpressions returns None either way - the whole difference is
+    in `states`. The sweep therefore emits each run twice: once as calls, once
+    as a block that reads the fixed internals afterwards."""
+    p = problems["advanced-calculator-calculate-expressions"]
+    tests = [{"input": [[["setExpression", "a = 5;return a"],
+                         ["calculateExpressions"]]], "expected": [None, {}]}]
+    blocks = [c[0] for c in mutation._sweep_inputs(tests, problem=p)
+              if isinstance(c[0], str)]
+    assert blocks
+    assert all(b.rstrip().endswith("o.states") for b in blocks), blocks[0]
+
+
+def test_no_blocks_are_derived_for_a_class_with_no_fixed_state(problems):
+    """Calculator keeps everything in a name Python hides, so there is nothing
+    a block may read and the sweep must not invent one."""
+    p = problems["calculator-calculate"]
+    assert mutation._as_block(p, [["setExpr", "1 + 2"], ["calculate"]]) is None
+    tests = [{"input": [[["setExpr", "1 + 2"], ["calculate"]]],
+              "expected": [None, 3.0]}]
+    assert not [c for c in mutation._sweep_inputs(tests, problem=p)
+                if isinstance(c[0], str)]
+
+
+def test_a_property_is_read_not_called_in_a_derived_block(problems):
+    """`x.calculate()` on a property raises before the method runs a line."""
+    p = problems["advanced-calculator-calculate-expressions"]
+    b = mutation._as_block(p, [["setExpression", "a = 5"], ["calculateExpressions"]])
+    assert "o.setExpression('a = 5')" in b
+    assert "o.calculateExpressions()" in b
+
+
+def test_the_free_search_reaches_the_method_with_nothing_set_up(problems):
+    """The guard branch on a fresh object is where the survivors live, and no
+    recorded sequence ever starts there."""
+    p = problems["advanced-calculator-calculate-expressions"]
+    tests = [{"input": [[["setExpression", "a = 5;return a"],
+                         ["calculateExpressions"]]], "expected": [None, {}]}]
+    assert [["new"], ["calculateExpressions"]] in [
+        c[0] for c in mutation._probe_inputs(tests, p)]
+
+
+def test_the_free_search_feeds_malformed_arguments(problems):
+    """Truncated, emptied and doubled - structural corruption, which is the
+    only kind a generic sweep can know about."""
+    p = problems["advanced-calculator-calculate-expressions"]
+    tests = [{"input": [[["setExpression", "a = 5;return a"],
+                         ["calculateExpressions"]]], "expected": [None, {}]}]
+    args = {call[1] for c in mutation._sweep_inputs(tests, problem=p)
+            for call in c[0] if len(call) > 1 and isinstance(call[1], str)}
+    assert "" in args, args
+    assert any(a and a != "a = 5;return a" and "a = 5;return a".startswith(a)
+               for a in args), args
+
+
+def test_the_free_search_is_seeded_and_repeatable(problems):
+    """Two runs must produce byte-identical candidates, or a verdict stops
+    being repeatable."""
+    p = problems["advanced-calculator-calculate-expressions"]
+    tests = [{"input": [[["setExpression", "a = 5;return a"],
+                         ["calculateExpressions"]]], "expected": [None, {}]}]
+    assert (mutation._sweep_inputs(tests, problem=p)
+            == mutation._sweep_inputs(tests, problem=p))
+    assert mutation._probe_inputs(tests, p) == mutation._probe_inputs(tests, p)
 
 
 # ── a decorated method survives a retry ──────────────────────────────────
@@ -162,6 +256,30 @@ def test_the_probe_reads_the_tree_the_mutant_index_came_from(problems):
     assert pr["ok"], pr.get("error")
     assert pr["reached"] > 0, "the edited line never ran - wrong tree again"
     assert pr["verdict"] != "unknown"
+
+
+# ── a mutant nobody can ever kill must never be generated ────────────────
+
+def test_a_trailing_return_none_is_never_mutated(problems):
+    """`calculateExpressions` ends in `return None`. Deleting it cannot change
+    anything - a function that falls off the end returns None - so it was one
+    survivor that provably could not be killed by any test, sitting in the
+    denominator and holding the verdict down for good."""
+    p = problems["advanced-calculator-calculate-expressions"]
+    last = p["solution"].rstrip().splitlines()[-1].strip()
+    assert last.startswith("return None"), "fixture moved; pick another problem"
+    labels = [m["label"] for m in mutation.generate_mutants(p["solution"])]
+    assert not [l for l in labels
+                if l.startswith(f"line {len(p['solution'].splitlines())}")
+                and "return None" in l], labels
+
+
+def test_a_return_none_that_leaves_early_is_still_mutated(problems):
+    """The rule is about the LAST statement of a function body. A `return None`
+    that exits a branch is real behaviour and must keep its mutant."""
+    p = problems["advanced-calculator-calculate-expressions"]
+    labels = [m["label"] for m in mutation.generate_mutants(p["solution"])]
+    assert len([l for l in labels if "remove `return None`" in l]) >= 5, labels
 
 
 # ── a verdict is stale when the generators CHANGED, either way ───────────

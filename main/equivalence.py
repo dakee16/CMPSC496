@@ -161,6 +161,34 @@ def excluded_at(tree, test_node) -> set[int]:
     return excluded
 
 
+def trailing_return_none(node, field: str, pos: int, block: list) -> bool:
+    """True when `block[pos]` is a trailing `return None` on a FUNCTION BODY.
+
+    Removing it cannot change behaviour, and that is a fact about Python rather
+    than a fact about this program: a function that falls off the end returns
+    None, so a bare `return`/`return None` as the last statement of the body is
+    already a no-op. (A generator agrees - both raise StopIteration(None).)
+
+    A phantom mutant nobody can ever kill costs more than a wasted run: it sits
+    in the denominator for good, and on calculateExpressions - whose last line
+    is exactly this - it was the one survivor that provably could not be killed
+    by any test, holding the verdict down forever.
+
+    NARROW ON PURPOSE, like everything in this module. The parent must be the
+    function itself and the field its own `body`: a `return None` at the end of
+    an `if` or a `for` is NOT this shape, because control there falls through
+    to whatever follows the block instead of leaving the function."""
+    if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        return False
+    if field != "body" or pos != len(block) - 1:
+        return False
+    stmt = block[pos]
+    return (isinstance(stmt, ast.Return)
+            and (stmt.value is None
+                 or (isinstance(stmt.value, ast.Constant)
+                     and stmt.value.value is None)))
+
+
 def proves_harmless(tree, orig_test, mut_test) -> bool:
     """Is replacing `orig_test` with `mut_test` provably behaviour-preserving?
 
@@ -285,5 +313,25 @@ if __name__ == "__main__":
     t, o, _ = _tests(GUARD.format(c=0, op="< 0"), GUARD.format(c=0, op="< 0"))
     same = ast.parse(GUARD.format(c=0, op="< 0")).body[0].orelse[0].test
     assert proves_harmless(t, o, same) is False
+
+    # ── the trailing `return None`, which no test can ever kill ──────────
+    def _last(src):
+        fn = ast.parse(src).body[0]
+        return trailing_return_none(fn, "body", len(fn.body) - 1, fn.body)
+
+    assert _last("def f(x):\n    y = x\n    return None\n"), "explicit None"
+    assert _last("def f(x):\n    y = x\n    return\n"), "a bare return"
+    assert not _last("def f(x):\n    y = x\n    return x\n"), "returns a VALUE"
+    assert not _last("def f(x):\n    return None\n    y = x\n"), "not last"
+    # The shape that must NOT be excused: leaving a loop early is behaviour.
+    loop = ast.parse("def f(x):\n    for i in x:\n        g(i)\n"
+                     "        return None\n    return 1\n").body[0]
+    inner = loop.body[0]
+    assert not trailing_return_none(inner, "body", len(inner.body) - 1, inner.body), \
+        "a return at the end of a FOR body still leaves the function early"
+    branch = ast.parse("def f(x):\n    if x:\n        g(x)\n        return None\n"
+                       "    return 1\n").body[0].body[0]
+    assert not trailing_return_none(branch, "body", len(branch.body) - 1, branch.body), \
+        "a return at the end of an IF body skips everything after the if"
 
     print("equivalence.py self-check OK")
