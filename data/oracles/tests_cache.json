@@ -6767,6 +6767,23 @@
           [
             [
               "setExpression",
+              ""
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
               "x = 10; y = x / 0; return y"
             ],
             [
@@ -6784,7 +6801,524 @@
           [
             [
               "setExpression",
-              "m = 3; n = m + 2; return n"
+              "a = 5; b = a + 2; return b"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          {
+            "a = 5": {
+              "a": 5.0
+            },
+            "b = a + 2": {
+              "a": 5.0,
+              "b": 7.0
+            },
+            "_return_": 7.0
+          }
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "a = 5; b = a + 2"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "a = 5; b = 7 + a; a = 7; c = a + b; c = a * 0; return c"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          {
+            "a = 5": {
+              "a": 5.0
+            },
+            "b = 7 + a": {
+              "a": 5.0,
+              "b": 12.0
+            },
+            "a = 7": {
+              "a": 7.0,
+              "b": 12.0
+            },
+            "c = a + b": {
+              "a": 7.0,
+              "b": 12.0,
+              "c": 19.0
+            },
+            "c = a * 0": {
+              "a": 7.0,
+              "b": 12.0,
+              "c": 0.0
+            },
+            "_return_": 0.0
+          }
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "x = 5; y = x * 2; z = y - x; return z"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          {
+            "x = 5": {
+              "x": 5.0
+            },
+            "y = x * 2": {
+              "x": 5.0,
+              "y": 10.0
+            },
+            "z = y - x": {
+              "x": 5.0,
+              "y": 10.0,
+              "z": 5.0
+            },
+            "_return_": 5.0
+          }
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "a = 5; b = a + 2; c = b * 3; return c"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          {
+            "a = 5": {
+              "a": 5.0
+            },
+            "b = a + 2": {
+              "a": 5.0,
+              "b": 7.0
+            },
+            "c = b * 3": {
+              "a": 5.0,
+              "b": 7.0,
+              "c": 21.0
+            },
+            "_return_": 21.0
+          }
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "a = 5; b = a + 2; c = b * 3"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "x = 5; y = x + 2; z = y / 0; return z"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "a = 5; b = 7 + a; a = 7; c = a + b; c = a * 0"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "a = 5; b = 7 + a; a = 7; c = a + b; c = a * 0; return c"
+            ],
+            [
+              "setExpression",
+              "x = 10; y = x / 0; return y"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          null
+        ]
+      },
+      {
+        "input": [
+          "x = AdvancedCalculator()\nx.setExpression('a = 5;b = 7 + a;a = 7;c = a + b;c = a * 0;return c')\nx.calculateExpressions()\nx.setExpression('a = 10;return a')\nx.calculateExpressions()\nx.expressions"
+        ],
+        "expected": [
+          null,
+          null,
+          {
+            "a = 5": {
+              "a": 5.0
+            },
+            "b = 7 + a": {
+              "a": 5.0,
+              "b": 12.0
+            },
+            "a = 7": {
+              "a": 7.0,
+              "b": 12.0
+            },
+            "c = a + b": {
+              "a": 7.0,
+              "b": 12.0,
+              "c": 19.0
+            },
+            "c = a * 0": {
+              "a": 7.0,
+              "b": 12.0,
+              "c": 0.0
+            },
+            "_return_": 0.0
+          },
+          null,
+          {
+            "a = 10": {
+              "a": 10.0
+            },
+            "_return_": 10.0
+          },
+          "a = 10;return a"
+        ]
+      },
+      {
+        "input": [
+          "x = AdvancedCalculator()\nx.calculateExpressions()\nx.expressions"
+        ],
+        "expected": [
+          null,
+          null,
+          ""
+        ]
+      },
+      {
+        "input": [
+          "x = AdvancedCalculator()\nx.setExpression('a = 5;b = 7 + a;a = 7;c = a + b;c = a * 0;return c')\nx.calculateExpressions()\nx.setExpression('d = 10;return d')\nx.calculateExpressions()\nx.setExpression('a = 1;return a')\nx.calculateExpressions()\nx.expressions"
+        ],
+        "expected": [
+          null,
+          null,
+          {
+            "a = 5": {
+              "a": 5.0
+            },
+            "b = 7 + a": {
+              "a": 5.0,
+              "b": 12.0
+            },
+            "a = 7": {
+              "a": 7.0,
+              "b": 12.0
+            },
+            "c = a + b": {
+              "a": 7.0,
+              "b": 12.0,
+              "c": 19.0
+            },
+            "c = a * 0": {
+              "a": 7.0,
+              "b": 12.0,
+              "c": 0.0
+            },
+            "_return_": 0.0
+          },
+          null,
+          {
+            "d = 10": {
+              "d": 10.0
+            },
+            "_return_": 10.0
+          },
+          null,
+          {
+            "a = 1": {
+              "a": 1.0
+            },
+            "_return_": 1.0
+          },
+          "a = 1;return a"
+        ]
+      },
+      {
+        "input": [
+          "x = AdvancedCalculator()\nx.setExpression('a = 5;b = 7 + a;a = 7;c = a / 0;return c')\nx.calculateExpressions()\nx.expressions"
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          "a = 5;b = 7 + a;a = 7;c = a / 0;return c"
+        ]
+      },
+      {
+        "input": [
+          "o = AdvancedCalculator()\no.setExpression('')\no.expressions\no.states\no.setExpression('x = 10; y = x / 0; return y')\no.expressions\no.states\no.calculateExpressions()\no.expressions\no.states"
+        ],
+        "expected": [
+          null,
+          null,
+          "",
+          {},
+          null,
+          "x = 10; y = x / 0; return y",
+          {},
+          null,
+          "x = 10; y = x / 0; return y",
+          {}
+        ]
+      },
+      {
+        "input": [
+          "o = AdvancedCalculator()\no.setExpression('a = 5; b = 7 + a; a = 7; c = a + b; c = a * 0; return c')\no.expressions\no.states\no.setExpression('x = 10; y = x')\no.expressions\no.states\no.calculateExpressions()\no.expressions\no.states"
+        ],
+        "expected": [
+          null,
+          null,
+          "a = 5; b = 7 + a; a = 7; c = a + b; c = a * 0; return c",
+          {},
+          null,
+          "x = 10; y = x",
+          {},
+          null,
+          "x = 10; y = x",
+          {}
+        ]
+      },
+      {
+        "input": [
+          "o = AdvancedCalculator()\no.setExpression('x1 = 5;x2 = 7 * ( x1 - 1 );;x1 = x2 - x1;return x2 + x1 ^ 3')\no.calculateExpressions()\no.states"
+        ],
+        "expected": [
+          null,
+          null,
+          {
+            "x1 = 5": {
+              "x1": 5.0
+            },
+            "x2 = 7 * ( x1 - 1 )": {
+              "x1": 5.0,
+              "x2": 28.0
+            },
+            "x1 = x2 - x1": {
+              "x1": 23.0,
+              "x2": 28.0
+            },
+            "_return_": 12195.0
+          },
+          {
+            "x1": 23.0,
+            "x2": 28.0
+          }
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "a = 5; b = 7 + a; a = 7; c = a + b; c = a * 0; return c"
+            ],
+            [
+              "setExpression",
+              "@"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          null
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "a = 5; b = 7 + a; a = 7; c = a + b; c = a * 0; return c"
+            ],
+            [
+              "setExpression",
+              "x = 10; y = x / 0 y = x / 0; return y"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          null
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "a = 5; b = 7 + a; a = 7; c = a + b; c = a * 0; return c"
+            ],
+            [
+              "setExpression",
+              "x = 10; return y"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          null
+        ]
+      },
+      {
+        "input": [
+          "o = AdvancedCalculator()\no.setExpression('a = 5; b = 7 + a; a = 7; c = a + b; c = a * 0; return c')\no.expressions\no.states\no.setExpression('x = 10;@; return y')\no.expressions\no.states\no.calculateExpressions()\no.expressions\no.states"
+        ],
+        "expected": [
+          null,
+          null,
+          "a = 5; b = 7 + a; a = 7; c = a + b; c = a * 0; return c",
+          {},
+          null,
+          "x = 10;@; return y",
+          {},
+          null,
+          "x = 10;@; return y",
+          {}
+        ]
+      },
+      {
+        "input": [
+          "o = AdvancedCalculator()\no.setExpression('A = 1;B = A + 9;2C = A + B;A = 20;D = A + B + C;return D + A')\no.calculateExpressions()\no.states"
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          {}
+        ]
+      },
+      {
+        "input": [
+          "o = AdvancedCalculator()\no.setExpression('a = 5; b = 7 + a; a = 7; c = a + b; c = a * 0; return c')\no.expressions\no.states\no.setExpression('x = 10; y = x / 0 y = x / 0; return y')\no.expressions\no.states\no.calculateExpressions()\no.expressions\no.states"
+        ],
+        "expected": [
+          null,
+          null,
+          "a = 5; b = 7 + a; a = 7; c = a + b; c = a * 0; return c",
+          {},
+          null,
+          "x = 10; y = x / 0 y = x / 0; return y",
+          {},
+          null,
+          "x = 10; y = x / 0 y = x / 0; return y",
+          {}
+        ]
+      },
+      {
+        "input": [
+          "o = AdvancedCalculator()\no.setExpression('a = 5; b = 7 + a; a = 7; c = a + b; c = a * 0; return c')\no.expressions\no.states\no.setExpression('x = 10; return y')\no.expressions\no.states\no.calculateExpressions()\no.expressions\no.states"
+        ],
+        "expected": [
+          null,
+          null,
+          "a = 5; b = 7 + a; a = 7; c = a + b; c = a * 0; return c",
+          {},
+          null,
+          "x = 10; return y",
+          {},
+          null,
+          "x = 10; return y",
+          {}
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "m = 3; n = m * 2; o = n - m; return o"
             ],
             [
               "calculateExpressions"
@@ -6797,73 +7331,47 @@
             "m = 3": {
               "m": 3.0
             },
-            "n = m + 2": {
+            "n = m * 2": {
               "m": 3.0,
-              "n": 5.0
+              "n": 6.0
             },
-            "_return_": 5.0
-          }
-        ]
-      },
-      {
-        "input": [
-          [
-            [
-              "setExpression",
-              "p = 5; q = p * 2; r = q - p; return r"
-            ],
-            [
-              "calculateExpressions"
-            ]
-          ]
-        ],
-        "expected": [
-          null,
-          {
-            "p = 5": {
-              "p": 5.0
-            },
-            "q = p * 2": {
-              "p": 5.0,
-              "q": 10.0
-            },
-            "r = q - p": {
-              "p": 5.0,
-              "q": 10.0,
-              "r": 5.0
-            },
-            "_return_": 5.0
-          }
-        ]
-      },
-      {
-        "input": [
-          [
-            [
-              "setExpression",
-              "a = 1; b = 2; c = a + b; return c"
-            ],
-            [
-              "calculateExpressions"
-            ]
-          ]
-        ],
-        "expected": [
-          null,
-          {
-            "a = 1": {
-              "a": 1.0
-            },
-            "b = 2": {
-              "a": 1.0,
-              "b": 2.0
-            },
-            "c = a + b": {
-              "a": 1.0,
-              "b": 2.0,
-              "c": 3.0
+            "o = n - m": {
+              "m": 3.0,
+              "n": 6.0,
+              "o": 3.0
             },
             "_return_": 3.0
+          }
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "p = 100; q = p / 5; r = q + 10; return r"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          {
+            "p = 100": {
+              "p": 100.0
+            },
+            "q = p / 5": {
+              "p": 100.0,
+              "q": 20.0
+            },
+            "r = q + 10": {
+              "p": 100.0,
+              "q": 20.0,
+              "r": 30.0
+            },
+            "_return_": 30.0
           }
         ]
       },
@@ -6903,7 +7411,61 @@
           [
             [
               "setExpression",
-              "a = 5; b = 7 + a; a = 7; c = a + b; c = a * 0; return c"
+              "a = 1; b = 2; c = a + b; d = c * 2; return d"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          {
+            "a = 1": {
+              "a": 1.0
+            },
+            "b = 2": {
+              "a": 1.0,
+              "b": 2.0
+            },
+            "c = a + b": {
+              "a": 1.0,
+              "b": 2.0,
+              "c": 3.0
+            },
+            "d = c * 2": {
+              "a": 1.0,
+              "b": 2.0,
+              "c": 3.0,
+              "d": 6.0
+            },
+            "_return_": 6.0
+          }
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "x = 10; y = x - 5; z = y / 0; return z"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "a = 5; b = a + 2; c = b - 1; d = c * 2; e = d / 2; return e"
             ],
             [
               "calculateExpressions"
@@ -6916,25 +7478,29 @@
             "a = 5": {
               "a": 5.0
             },
-            "b = 7 + a": {
+            "b = a + 2": {
               "a": 5.0,
-              "b": 12.0
+              "b": 7.0
             },
-            "a = 7": {
-              "a": 7.0,
-              "b": 12.0
+            "c = b - 1": {
+              "a": 5.0,
+              "b": 7.0,
+              "c": 6.0
             },
-            "c = a + b": {
-              "a": 7.0,
-              "b": 12.0,
-              "c": 19.0
+            "d = c * 2": {
+              "a": 5.0,
+              "b": 7.0,
+              "c": 6.0,
+              "d": 12.0
             },
-            "c = a * 0": {
-              "a": 7.0,
-              "b": 12.0,
-              "c": 0.0
+            "e = d / 2": {
+              "a": 5.0,
+              "b": 7.0,
+              "c": 6.0,
+              "d": 12.0,
+              "e": 6.0
             },
-            "_return_": 0.0
+            "_return_": 6.0
           }
         ]
       },
@@ -6943,7 +7509,7 @@
           [
             [
               "setExpression",
-              "a = 5; b = 7 + a; return b"
+              "x = 5; y = x + 2; z = y * 3; a = z - 1; b = a / 2; return b"
             ],
             [
               "calculateExpressions"
@@ -6951,6 +7517,109 @@
           ]
         ],
         "expected": [
+          null,
+          {
+            "x = 5": {
+              "x": 5.0
+            },
+            "y = x + 2": {
+              "x": 5.0,
+              "y": 7.0
+            },
+            "z = y * 3": {
+              "x": 5.0,
+              "y": 7.0,
+              "z": 21.0
+            },
+            "a = z - 1": {
+              "x": 5.0,
+              "y": 7.0,
+              "z": 21.0,
+              "a": 20.0
+            },
+            "b = a / 2": {
+              "x": 5.0,
+              "y": 7.0,
+              "z": 21.0,
+              "a": 20.0,
+              "b": 10.0
+            },
+            "_return_": 10.0
+          }
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "a = 10; b = a / 2; c = b + 5; d = c * 3; e = d - 10; return e"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          {
+            "a = 10": {
+              "a": 10.0
+            },
+            "b = a / 2": {
+              "a": 10.0,
+              "b": 5.0
+            },
+            "c = b + 5": {
+              "a": 10.0,
+              "b": 5.0,
+              "c": 10.0
+            },
+            "d = c * 3": {
+              "a": 10.0,
+              "b": 5.0,
+              "c": 10.0,
+              "d": 30.0
+            },
+            "e = d - 10": {
+              "a": 10.0,
+              "b": 5.0,
+              "c": 10.0,
+              "d": 30.0,
+              "e": 20.0
+            },
+            "_return_": 20.0
+          }
+        ]
+      },
+      {
+        "input": [
+          "x = AdvancedCalculator()\nx.setExpression('a = 5;b = a / 0;return a')\nstates_before = x.states\nx.calculateExpressions()\nstates_before"
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          null,
+          {}
+        ]
+      },
+      {
+        "input": [
+          "y = AdvancedCalculator()\ny.calculateExpressions()\ny.expressions"
+        ],
+        "expected": [
+          null,
+          null,
+          ""
+        ]
+      },
+      {
+        "input": [
+          "z = AdvancedCalculator()\nz.setExpression('a = 5;b = 7 + a;return b')\nz.calculateExpressions()\nz.setExpression('a = 3;return a')\nz.calculateExpressions()\nz.expressions"
+        ],
+        "expected": [
+          null,
           null,
           {
             "a = 5": {
@@ -6961,53 +7630,284 @@
               "b": 12.0
             },
             "_return_": 12.0
-          }
+          },
+          null,
+          {
+            "a = 3": {
+              "a": 3.0
+            },
+            "_return_": 3.0
+          },
+          "a = 3;return a"
         ]
       },
       {
         "input": [
-          [
-            [
-              "setExpression",
-              "x = 10; y = x - 5; z = y / 2; return z"
-            ],
-            [
-              "calculateExpressions"
-            ]
-          ]
+          "w = AdvancedCalculator()\nw.setExpression('a = 5;b = 7 + a;return')\nw.calculateExpressions()\nw.setExpression('a = 5;b = 7 + a;return b')\nw.calculateExpressions()\nw.expressions"
         ],
         "expected": [
           null,
+          null,
+          null,
+          null,
           {
-            "x = 10": {
-              "x": 10.0
+            "a = 5": {
+              "a": 5.0
             },
-            "y = x - 5": {
-              "x": 10.0,
-              "y": 5.0
+            "b = 7 + a": {
+              "a": 5.0,
+              "b": 12.0
             },
-            "z = y / 2": {
-              "x": 10.0,
-              "y": 5.0,
-              "z": 2.5
-            },
-            "_return_": 2.5
-          }
+            "_return_": 12.0
+          },
+          "a = 5;b = 7 + a;return b"
         ]
       },
       {
         "input": [
+          "o = AdvancedCalculator()\no.setExpression('x1 = 5;x2 = 7 * ( x1 - 1 );x1 = x2 - x1;2invalid = x1 + 1;return x2 + x1 ^ 3')\no.calculateExpressions()\no.states"
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          {}
+        ]
+      }
+    ],
+    "strong": true,
+    "kill_rate": 0.9318181818181818,
+    "kill_rate_direct": 0.9090909090909091,
+    "status": "strong",
+    "needs_review": false,
+    "undetermined": 3,
+    "kill_rate_lower": 0.9090909090909091,
+    "kill_rate_upper": 0.975609756097561,
+    "validated_at": "2026-09-08T23:18:46+00:00",
+    "breakdown": {
+      "total_mutants": 44,
+      "killed": 41,
+      "killed_on_retry": 1,
+      "proven_equivalent": 0,
+      "unresolved": 3,
+      "mutants": [
+        {
+          "label": "line 30: remove `self.states = {}`",
+          "status": "killed"
+        },
+        {
+          "label": "line 31: remove `calcObj = Calculator()`",
+          "status": "killed"
+        },
+        {
+          "label": "line 32: remove `report = {}`",
+          "status": "killed"
+        },
+        {
+          "label": "line 34: remove `for statement in self.expressions.spl...`",
+          "status": "killed"
+        },
+        {
+          "label": "line 74: remove `self.states = {}`",
+          "status": "killed"
+        },
+        {
+          "label": "line 35: remove `statement = statement.strip()`",
+          "status": "killed"
+        },
+        {
+          "label": "line 36: remove `if not statement:`",
+          "status": "killed"
+        },
+        {
+          "label": "line 39: remove `if statement.startswith('return'):`",
+          "status": "killed"
+        },
+        {
+          "label": "line 52: remove `if '=' not in statement:`",
+          "status": "killed"
+        },
+        {
+          "label": "line 55: remove `name, expr = statement.split('=', 1)`",
+          "status": "killed"
+        },
+        {
+          "label": "line 56: remove `name = name.strip()`",
+          "status": "killed"
+        },
+        {
+          "label": "line 57: remove `if not self._isVariable(name):`",
+          "status": "killed_on_retry"
+        },
+        {
+          "label": "line 60: remove `replaced = self._replaceVariables(exp...`",
+          "status": "killed"
+        },
+        {
+          "label": "line 61: remove `if replaced is None:`",
+          "status": "killed"
+        },
+        {
+          "label": "line 64: remove `calcObj.setExpr(replaced)`",
+          "status": "killed"
+        },
+        {
+          "label": "line 65: remove `value = calcObj.calculate`",
+          "status": "killed"
+        },
+        {
+          "label": "line 66: remove `if value is None:`",
+          "status": "killed"
+        },
+        {
+          "label": "line 69: remove `self.states[name] = value`",
+          "status": "killed"
+        },
+        {
+          "label": "line 72: remove `report[statement] = dict(self.states)`",
+          "status": "killed"
+        },
+        {
+          "label": "line 40: remove `replaced = self._replaceVariables(sta...`",
+          "status": "killed"
+        },
+        {
+          "label": "line 41: remove `if replaced is None:`",
+          "status": "killed"
+        },
+        {
+          "label": "line 44: remove `calcObj.setExpr(replaced)`",
+          "status": "killed"
+        },
+        {
+          "label": "line 45: remove `value = calcObj.calculate`",
+          "status": "killed"
+        },
+        {
+          "label": "line 46: remove `if value is None:`",
+          "status": "killed"
+        },
+        {
+          "label": "line 49: remove `report['_return_'] = value`",
+          "status": "killed"
+        },
+        {
+          "label": "line 50: remove `return report`",
+          "status": "killed"
+        },
+        {
+          "label": "line 53: remove `self.states = {}`",
+          "status": "killed"
+        },
+        {
+          "label": "line 54: remove `return None`",
+          "status": "killed"
+        },
+        {
+          "label": "line 58: remove `self.states = {}`",
+          "status": "killed"
+        },
+        {
+          "label": "line 59: remove `return None`",
+          "status": "undetermined",
+          "probe": {
+            "verdict": "unknown",
+            "reached": 1,
+            "differed": 0,
+            "error": "statement ran 1x; a deletion has no decision to compare, so only reachability is knowable"
+          }
+        },
+        {
+          "label": "line 62: remove `self.states = {}`",
+          "status": "killed"
+        },
+        {
+          "label": "line 63: remove `return None`",
+          "status": "killed"
+        },
+        {
+          "label": "line 67: remove `self.states = {}`",
+          "status": "killed"
+        },
+        {
+          "label": "line 68: remove `return None`",
+          "status": "undetermined",
+          "probe": {
+            "verdict": "unknown",
+            "reached": 7,
+            "differed": 0,
+            "error": "statement ran 7x; a deletion has no decision to compare, so only reachability is knowable"
+          }
+        },
+        {
+          "label": "line 42: remove `self.states = {}`",
+          "status": "killed"
+        },
+        {
+          "label": "line 43: remove `return None`",
+          "status": "killed"
+        },
+        {
+          "label": "line 47: remove `self.states = {}`",
+          "status": "undetermined",
+          "probe": {
+            "verdict": "unknown",
+            "reached": 1,
+            "differed": 0,
+            "error": "statement ran 1x; a deletion has no decision to compare, so only reachability is knowable"
+          }
+        },
+        {
+          "label": "line 48: remove `return None`",
+          "status": "killed"
+        },
+        {
+          "label": "line 52: not in -> in",
+          "status": "killed"
+        },
+        {
+          "label": "line 61: is -> is not",
+          "status": "killed"
+        },
+        {
+          "label": "line 66: is -> is not",
+          "status": "killed"
+        },
+        {
+          "label": "line 41: is -> is not",
+          "status": "killed"
+        },
+        {
+          "label": "line 46: is -> is not",
+          "status": "killed"
+        },
+        {
+          "label": "line 55: 1 -> 2",
+          "status": "killed"
+        }
+      ]
+    },
+    "slug": "advanced-calculator-calculate-expressions",
+    "features": [
+      "blocks/4",
+      "calls"
+    ]
+  },
+  "06b8ee3481527985664e98ec9ac46ac1a8bdf276ca5c2230b713fb7138f1b640": {
+    "final_tests": [
+      {
+        "input": [
           [
             [
-              "setExpression",
-              "a = 5; b = 7 + a; a = 7; c = a + b; c = a * 0; return c"
+              "new"
             ],
             [
               "setExpression",
-              "x = 10; y = x / 0; return y"
+              "x1 = 5;x2 = 7 * ( x1 - 1 );x1 = x2 - x1;return x2 + x1 ^ 3"
             ],
             [
-              "calculateExpressions"
+              "setExpression",
+              "A = 1;B = A + 9;2C = A + B;A = 20;D = A + B + C;return D + A"
             ]
           ]
         ],
@@ -7021,12 +7921,20 @@
         "input": [
           [
             [
-              "setExpression",
-              "a = 5; b = 7 + a; a = 7; c = a + b; c = a * 0; return c"
-            ],
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null
+        ]
+      },
+      {
+        "input": [
+          [
             [
               "setExpression",
-              "x = 10; y = x - 5; z = y / 2; return z"
+              "x = 10; y = x / 0; return y"
             ],
             [
               "calculateExpressions"
@@ -7035,21 +7943,32 @@
         ],
         "expected": [
           null,
+          null
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "a = 5; b = a + 2; return b"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
           null,
           {
-            "x = 10": {
-              "x": 10.0
+            "a = 5": {
+              "a": 5.0
             },
-            "y = x - 5": {
-              "x": 10.0,
-              "y": 5.0
+            "b = a + 2": {
+              "a": 5.0,
+              "b": 7.0
             },
-            "z = y / 2": {
-              "x": 10.0,
-              "y": 5.0,
-              "z": 2.5
-            },
-            "_return_": 2.5
+            "_return_": 7.0
           }
         ]
       },
@@ -7058,11 +7977,7 @@
           [
             [
               "setExpression",
-              "a = 5; b = 7 + a; a = 7; c = a + b; c = a * 0; return c"
-            ],
-            [
-              "setExpression",
-              "m = 3; n = m + 2; return n"
+              "x = 5; y = x + 10; z = y - 3; return z"
             ],
             [
               "calculateExpressions"
@@ -7071,24 +7986,211 @@
         ],
         "expected": [
           null,
-          null,
           {
-            "m = 3": {
-              "m": 3.0
+            "x = 5": {
+              "x": 5.0
             },
-            "n = m + 2": {
-              "m": 3.0,
-              "n": 5.0
+            "y = x + 10": {
+              "x": 5.0,
+              "y": 15.0
             },
-            "_return_": 5.0
+            "z = y - 3": {
+              "x": 5.0,
+              "y": 15.0,
+              "z": 12.0
+            },
+            "_return_": 12.0
           }
         ]
       },
       {
         "input": [
-          "C = AdvancedCalculator()\nC.setExpression('a = 5;b = 7 + a;a = 7;c = a + b;c = a * 0;return c')\nC.calculateExpressions()\nC.setExpression('d = a + b; return d')\nC.calculateExpressions()\nC.setExpression('a = 10; return a')\nC.calculateExpressions()\nC.expressions"
+          [
+            [
+              "setExpression",
+              "m = 3; n = m * 2; o = n / 0; return o"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
         ],
         "expected": [
+          null,
+          null
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "p = 4; q = p + 5; r = q * 2; s = r - 3; return s"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          {
+            "p = 4": {
+              "p": 4.0
+            },
+            "q = p + 5": {
+              "p": 4.0,
+              "q": 9.0
+            },
+            "r = q * 2": {
+              "p": 4.0,
+              "q": 9.0,
+              "r": 18.0
+            },
+            "s = r - 3": {
+              "p": 4.0,
+              "q": 9.0,
+              "r": 18.0,
+              "s": 15.0
+            },
+            "_return_": 15.0
+          }
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "a = 1; b = 2; c = a + b; d = c * 2; e = d / 0; return e"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "x = 7; y = x - 2; z = y * 3; return z"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          {
+            "x = 7": {
+              "x": 7.0
+            },
+            "y = x - 2": {
+              "x": 7.0,
+              "y": 5.0
+            },
+            "z = y * 3": {
+              "x": 7.0,
+              "y": 5.0,
+              "z": 15.0
+            },
+            "_return_": 15.0
+          }
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "a = 10; b = a / 2; c = b + 5; return c"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          {
+            "a = 10": {
+              "a": 10.0
+            },
+            "b = a / 2": {
+              "a": 10.0,
+              "b": 5.0
+            },
+            "c = b + 5": {
+              "a": 10.0,
+              "b": 5.0,
+              "c": 10.0
+            },
+            "_return_": 10.0
+          }
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "x = 5; y = x + 10; z = y - 3; return z"
+            ],
+            [
+              "calculateExpressions"
+            ],
+            [
+              "setExpression",
+              "a = 8; b = a * 2; return b"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          {
+            "x = 5": {
+              "x": 5.0
+            },
+            "y = x + 10": {
+              "x": 5.0,
+              "y": 15.0
+            },
+            "z = y - 3": {
+              "x": 5.0,
+              "y": 15.0,
+              "z": 12.0
+            },
+            "_return_": 12.0
+          },
+          null,
+          {
+            "a = 8": {
+              "a": 8.0
+            },
+            "b = a * 2": {
+              "a": 8.0,
+              "b": 16.0
+            },
+            "_return_": 16.0
+          }
+        ]
+      },
+      {
+        "input": [
+          "x = AdvancedCalculator()\nx.setExpression('a = 5;b = 7 + a;a = 7;c = a + b;c = a * 0;return c')\nstate_before = x.states\nx.calculateExpressions()\nstate_before"
+        ],
+        "expected": [
+          null,
           null,
           null,
           {
@@ -7115,21 +8217,12 @@
             },
             "_return_": 0.0
           },
-          null,
-          null,
-          null,
-          {
-            "a = 10": {
-              "a": 10.0
-            },
-            "_return_": 10.0
-          },
-          "a = 10; return a"
+          {}
         ]
       },
       {
         "input": [
-          "C = AdvancedCalculator()\nC.calculateExpressions()\nC.expressions"
+          "x = AdvancedCalculator()\nx.calculateExpressions()\nx.expressions"
         ],
         "expected": [
           null,
@@ -7139,7 +8232,7 @@
       },
       {
         "input": [
-          "C = AdvancedCalculator()\nC.setExpression('a = 5;b = 7 + a;a = 7;c = a + b;c = a * 0;return c')\nC.calculateExpressions()\nC.setExpression('x = 10; return x')\nC.calculateExpressions()\nC.calculateExpressions()\nC.expressions"
+          "x = AdvancedCalculator()\nx.setExpression('a = 5;b = 7 + a;a = 7;c = a + b;c = a * 0;return c')\nx.calculateExpressions()\nx.setExpression('d = 10;return d')\nx.calculateExpressions()\nx.expressions"
         ],
         "expected": [
           null,
@@ -7170,38 +8263,190 @@
           },
           null,
           {
-            "x = 10": {
-              "x": 10.0
+            "d = 10": {
+              "d": 10.0
             },
             "_return_": 10.0
           },
-          {
-            "x = 10": {
-              "x": 10.0
-            },
-            "_return_": 10.0
-          },
-          "x = 10; return x"
+          "d = 10;return d"
         ]
       },
       {
         "input": [
-          "C = AdvancedCalculator()\nC.setExpression('a = 5;b = 7 + a;a = 7;c = a + b;c = a / 0;return c')\nC.calculateExpressions()\nC.setExpression('')\nC.calculateExpressions()\nC.setExpression('a = 5; b = 7 + a; c = a + b; return d')\nC.calculateExpressions()\nC.expressions"
+          "x = AdvancedCalculator()\nx.setExpression('a = 5;b = 7 + a;a = 7;c = a / 0;return c')\nx.calculateExpressions()\nx.expressions"
         ],
         "expected": [
           null,
           null,
           null,
-          null,
-          null,
-          null,
-          null,
-          "a = 5; b = 7 + a; c = a + b; return d"
+          "a = 5;b = 7 + a;a = 7;c = a / 0;return c"
         ]
       },
       {
         "input": [
-          "C = AdvancedCalculator(); C.setExpression('x1 = 5;x2 = 7 * ( x1 - 1 );x1 = x2 - x1;return x2 + x1 ^ 3'); C.calculateExpressions()"
+          "o = AdvancedCalculator()\no.setExpression('x = 5; y = x + 10; ')\no.expressions\no.states\no.calculateExpressions()\no.expressions\no.states\no.setExpression('a = 8; b = a * 2; return b')\no.expressions\no.states\no.calculateExpressions()\no.expressions\no.states"
+        ],
+        "expected": [
+          null,
+          null,
+          "x = 5; y = x + 10; ",
+          {},
+          null,
+          "x = 5; y = x + 10; ",
+          {},
+          null,
+          "a = 8; b = a * 2; return b",
+          {},
+          {
+            "a = 8": {
+              "a": 8.0
+            },
+            "b = a * 2": {
+              "a": 8.0,
+              "b": 16.0
+            },
+            "_return_": 16.0
+          },
+          "a = 8; b = a * 2; return b",
+          {
+            "a": 8.0,
+            "b": 16.0
+          }
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "x = 5; y = x + 10;; z = y - 3; return z"
+            ],
+            [
+              "calculateExpressions"
+            ],
+            [
+              "setExpression",
+              "a = 8; b = a * 2; return b"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          {
+            "x = 5": {
+              "x": 5.0
+            },
+            "y = x + 10": {
+              "x": 5.0,
+              "y": 15.0
+            },
+            "z = y - 3": {
+              "x": 5.0,
+              "y": 15.0,
+              "z": 12.0
+            },
+            "_return_": 12.0
+          },
+          null,
+          {
+            "a = 8": {
+              "a": 8.0
+            },
+            "b = a * 2": {
+              "a": 8.0,
+              "b": 16.0
+            },
+            "_return_": 16.0
+          }
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "@"
+            ],
+            [
+              "calculateExpressions"
+            ],
+            [
+              "setExpression",
+              "a = 8; b = a * 2; return b"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          {
+            "a = 8": {
+              "a": 8.0
+            },
+            "b = a * 2": {
+              "a": 8.0,
+              "b": 16.0
+            },
+            "_return_": 16.0
+          }
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "x = 5; y = x + 10; z = y - 3 z = y - 3; return z"
+            ],
+            [
+              "calculateExpressions"
+            ],
+            [
+              "setExpression",
+              "a = 8; b = a * 2; return b"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          {
+            "a = 8": {
+              "a": 8.0
+            },
+            "b = a * 2": {
+              "a": 8.0,
+              "b": 16.0
+            },
+            "_return_": 16.0
+          }
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "new"
+            ],
+            [
+              "setExpression",
+              "x1 = 5;x2 = 7 * ( x1 - 1 );x1 = x2 - x1;return x2 + x1 ^ 3"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
         ],
         "expected": [
           null,
@@ -7227,6 +8472,151 @@
           [
             [
               "setExpression",
+              "x = 5; y = x + 10; z = y - 3; return zx = 5; y = x + 10; z = y - 3; return z"
+            ],
+            [
+              "calculateExpressions"
+            ],
+            [
+              "setExpression",
+              "a = 8; b = a * 2; return b"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          {
+            "a = 8": {
+              "a": 8.0
+            },
+            "b = a * 2": {
+              "a": 8.0,
+              "b": 16.0
+            },
+            "_return_": 16.0
+          }
+        ]
+      },
+      {
+        "input": [
+          "o = AdvancedCalculator()\no.setExpression('x = 5; y = x + 10;@; return z')\no.expressions\no.states\no.calculateExpressions()\no.expressions\no.states\no.setExpression('a = 8; b = a * 2; return b')\no.expressions\no.states\no.calculateExpressions()\no.expressions\no.states"
+        ],
+        "expected": [
+          null,
+          null,
+          "x = 5; y = x + 10;@; return z",
+          {},
+          null,
+          "x = 5; y = x + 10;@; return z",
+          {},
+          null,
+          "a = 8; b = a * 2; return b",
+          {},
+          {
+            "a = 8": {
+              "a": 8.0
+            },
+            "b = a * 2": {
+              "a": 8.0,
+              "b": 16.0
+            },
+            "_return_": 16.0
+          },
+          "a = 8; b = a * 2; return b",
+          {
+            "a": 8.0,
+            "b": 16.0
+          }
+        ]
+      },
+      {
+        "input": [
+          "o = AdvancedCalculator()\no.setExpression('x = 5; y = x + 10; z = y - 3 z = y - 3; return z')\no.expressions\no.states\no.calculateExpressions()\no.expressions\no.states\no.setExpression('a = 8; b = a * 2; return b')\no.expressions\no.states\no.calculateExpressions()\no.expressions\no.states"
+        ],
+        "expected": [
+          null,
+          null,
+          "x = 5; y = x + 10; z = y - 3 z = y - 3; return z",
+          {},
+          null,
+          "x = 5; y = x + 10; z = y - 3 z = y - 3; return z",
+          {},
+          null,
+          "a = 8; b = a * 2; return b",
+          {},
+          {
+            "a = 8": {
+              "a": 8.0
+            },
+            "b = a * 2": {
+              "a": 8.0,
+              "b": 16.0
+            },
+            "_return_": 16.0
+          },
+          "a = 8; b = a * 2; return b",
+          {
+            "a": 8.0,
+            "b": 16.0
+          }
+        ]
+      },
+      {
+        "input": [
+          "o = AdvancedCalculator()\no.setExpression('x = 10; y = x / 0; return yx = 10; y = x / 0; return y')\no.expressions\no.states\no.calculateExpressions()\no.expressions\no.states"
+        ],
+        "expected": [
+          null,
+          null,
+          "x = 10; y = x / 0; return yx = 10; y = x / 0; return y",
+          {},
+          null,
+          "x = 10; y = x / 0; return yx = 10; y = x / 0; return y",
+          {}
+        ]
+      },
+      {
+        "input": [
+          "o = AdvancedCalculator()\no.setExpression('x = 5; y = x + 10; z = y - 3; return zx = 5; y = x + 10; z = y - 3; return z')\no.expressions\no.states\no.calculateExpressions()\no.expressions\no.states\no.setExpression('a = 8; b = a * 2; return b')\no.expressions\no.states\no.calculateExpressions()\no.expressions\no.states"
+        ],
+        "expected": [
+          null,
+          null,
+          "x = 5; y = x + 10; z = y - 3; return zx = 5; y = x + 10; z = y - 3; return z",
+          {},
+          null,
+          "x = 5; y = x + 10; z = y - 3; return zx = 5; y = x + 10; z = y - 3; return z",
+          {},
+          null,
+          "a = 8; b = a * 2; return b",
+          {},
+          {
+            "a = 8": {
+              "a": 8.0
+            },
+            "b = a * 2": {
+              "a": 8.0,
+              "b": 16.0
+            },
+            "_return_": 16.0
+          },
+          "a = 8; b = a * 2; return b",
+          {
+            "a": 8.0,
+            "b": 16.0
+          }
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
               ""
             ],
             [
@@ -7244,7 +8634,11 @@
           [
             [
               "setExpression",
-              "x = 10 / 0; return x"
+              "a = 5; b = a + 2; return b"
+            ],
+            [
+              "setExpression",
+              "c = b * 2; return c"
             ],
             [
               "calculateExpressions"
@@ -7252,6 +8646,7 @@
           ]
         ],
         "expected": [
+          null,
           null,
           null
         ]
@@ -7261,7 +8656,14 @@
           [
             [
               "setExpression",
-              "x = 5; y = x + 2; return y"
+              "a = 5; b = a + 2; return b"
+            ],
+            [
+              "calculateExpressions"
+            ],
+            [
+              "setExpression",
+              "c = b * 2; return c"
             ],
             [
               "calculateExpressions"
@@ -7271,14 +8673,170 @@
         "expected": [
           null,
           {
-            "x = 5": {
-              "x": 5.0
+            "a = 5": {
+              "a": 5.0
             },
-            "y = x + 2": {
-              "x": 5.0,
-              "y": 7.0
+            "b = a + 2": {
+              "a": 5.0,
+              "b": 7.0
             },
             "_return_": 7.0
+          },
+          null,
+          null
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "a = 5; b = a + 2; return b"
+            ],
+            [
+              "setExpression",
+              "c = b * 2; return c"
+            ],
+            [
+              "setExpression",
+              "d = c / 0; return d"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          null
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "a = 5; b = a + 2; return b"
+            ],
+            [
+              "setExpression",
+              "c = b * 2; return c"
+            ],
+            [
+              "setExpression",
+              "d = c / 2; return d"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          null
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "a = 5; b = a + 2; return b"
+            ],
+            [
+              "setExpression",
+              "c = b * 2; return c"
+            ],
+            [
+              "setExpression",
+              "d = c / 2; return d"
+            ],
+            [
+              "setExpression",
+              "e = d - a; return e"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          null,
+          null
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "a = 5; b = a + 2; return b"
+            ],
+            [
+              "setExpression",
+              "c = b * 2; return c"
+            ],
+            [
+              "setExpression",
+              "d = c / 2; return d"
+            ],
+            [
+              "setExpression",
+              "e = d - a; return e"
+            ],
+            [
+              "setExpression",
+              "f = e * 0; return f"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "x = 10; y = x + 5; z = y * 2; return z"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          {
+            "x = 10": {
+              "x": 10.0
+            },
+            "y = x + 5": {
+              "x": 10.0,
+              "y": 15.0
+            },
+            "z = y * 2": {
+              "x": 10.0,
+              "y": 15.0,
+              "z": 30.0
+            },
+            "_return_": 30.0
           }
         ]
       },
@@ -7287,7 +8845,11 @@
           [
             [
               "setExpression",
-              "a = 5; b = a + 3; c = b * 2; return c"
+              "x = 10; y = x + 5; z = y * 2; return z"
+            ],
+            [
+              "setExpression",
+              "a = z / 0; return a"
             ],
             [
               "calculateExpressions"
@@ -7295,166 +8857,6 @@
           ]
         ],
         "expected": [
-          null,
-          {
-            "a = 5": {
-              "a": 5.0
-            },
-            "b = a + 3": {
-              "a": 5.0,
-              "b": 8.0
-            },
-            "c = b * 2": {
-              "a": 5.0,
-              "b": 8.0,
-              "c": 16.0
-            },
-            "_return_": 16.0
-          }
-        ]
-      },
-      {
-        "input": [
-          [
-            [
-              "setExpression",
-              "a = 5; b = a + 3; c = b * 2; return c"
-            ],
-            [
-              "setExpression",
-              "x = 10; y = x - 5; return y"
-            ],
-            [
-              "calculateExpressions"
-            ]
-          ]
-        ],
-        "expected": [
-          null,
-          null,
-          {
-            "x = 10": {
-              "x": 10.0
-            },
-            "y = x - 5": {
-              "x": 10.0,
-              "y": 5.0
-            },
-            "_return_": 5.0
-          }
-        ]
-      },
-      {
-        "input": [
-          [
-            [
-              "setExpression",
-              "a = 5; b = a + 3; c = b * 2; return c"
-            ],
-            [
-              "calculateExpressions"
-            ],
-            [
-              "setExpression",
-              "x = 10; y = x - 5; return y"
-            ],
-            [
-              "calculateExpressions"
-            ]
-          ]
-        ],
-        "expected": [
-          null,
-          {
-            "a = 5": {
-              "a": 5.0
-            },
-            "b = a + 3": {
-              "a": 5.0,
-              "b": 8.0
-            },
-            "c = b * 2": {
-              "a": 5.0,
-              "b": 8.0,
-              "c": 16.0
-            },
-            "_return_": 16.0
-          },
-          null,
-          {
-            "x = 10": {
-              "x": 10.0
-            },
-            "y = x - 5": {
-              "x": 10.0,
-              "y": 5.0
-            },
-            "_return_": 5.0
-          }
-        ]
-      },
-      {
-        "input": [
-          [
-            [
-              "setExpression",
-              "a = 5; b = a + 3; c = b * 2; return c"
-            ],
-            [
-              "setExpression",
-              "x = 10; y = x - 5; return y"
-            ],
-            [
-              "calculateExpressions"
-            ],
-            [
-              "setExpression",
-              "z = y * 2; return z"
-            ],
-            [
-              "calculateExpressions"
-            ]
-          ]
-        ],
-        "expected": [
-          null,
-          null,
-          {
-            "x = 10": {
-              "x": 10.0
-            },
-            "y = x - 5": {
-              "x": 10.0,
-              "y": 5.0
-            },
-            "_return_": 5.0
-          },
-          null,
-          null
-        ]
-      },
-      {
-        "input": [
-          [
-            [
-              "setExpression",
-              "a = 5; b = a + 3; c = b * 2; return c"
-            ],
-            [
-              "setExpression",
-              "x = 10; y = x - 5; return y"
-            ],
-            [
-              "setExpression",
-              "z = y * 2; return z"
-            ],
-            [
-              "calculateExpressions"
-            ]
-          ]
-        ],
-        "expected": [
-          null,
           null,
           null,
           null
@@ -7462,179 +8864,7 @@
       },
       {
         "input": [
-          [
-            [
-              "setExpression",
-              "a = 5; b = a + 3; c = b * 2; return c"
-            ],
-            [
-              "setExpression",
-              "x = 10; y = x - 5; return y"
-            ],
-            [
-              "calculateExpressions"
-            ],
-            [
-              "setExpression",
-              "z = y * 2; return z"
-            ],
-            [
-              "setExpression",
-              "w = z / 0; return w"
-            ],
-            [
-              "calculateExpressions"
-            ]
-          ]
-        ],
-        "expected": [
-          null,
-          null,
-          {
-            "x = 10": {
-              "x": 10.0
-            },
-            "y = x - 5": {
-              "x": 10.0,
-              "y": 5.0
-            },
-            "_return_": 5.0
-          },
-          null,
-          null,
-          null
-        ]
-      },
-      {
-        "input": [
-          [
-            [
-              "setExpression",
-              "a = 5; b = a + 3; c = b * 2; return c"
-            ],
-            [
-              "setExpression",
-              "x = 10; y = x - 5; return y"
-            ],
-            [
-              "calculateExpressions"
-            ],
-            [
-              "setExpression",
-              "z = y * 2; return z"
-            ],
-            [
-              "setExpression",
-              "w = z / 0; return w"
-            ],
-            [
-              "calculateExpressions"
-            ],
-            [
-              "setExpression",
-              "v = w + 1; return v"
-            ],
-            [
-              "calculateExpressions"
-            ]
-          ]
-        ],
-        "expected": [
-          null,
-          null,
-          {
-            "x = 10": {
-              "x": 10.0
-            },
-            "y = x - 5": {
-              "x": 10.0,
-              "y": 5.0
-            },
-            "_return_": 5.0
-          },
-          null,
-          null,
-          null,
-          null,
-          null
-        ]
-      },
-      {
-        "input": [
-          [
-            [
-              "setExpression",
-              "a = 5; b = a + 3; c = b * 2; return c"
-            ],
-            [
-              "setExpression",
-              "x = 10; y = x - 5; return y"
-            ],
-            [
-              "calculateExpressions"
-            ],
-            [
-              "setExpression",
-              "z = y * 2; return z"
-            ],
-            [
-              "setExpression",
-              "w = z / 0; return w"
-            ],
-            [
-              "calculateExpressions"
-            ],
-            [
-              "setExpression",
-              "v = w + 1; return v"
-            ],
-            [
-              "calculateExpressions"
-            ],
-            [
-              "setExpression",
-              "u = v - 1; return u"
-            ],
-            [
-              "calculateExpressions"
-            ]
-          ]
-        ],
-        "expected": [
-          null,
-          null,
-          {
-            "x = 10": {
-              "x": 10.0
-            },
-            "y = x - 5": {
-              "x": 10.0,
-              "y": 5.0
-            },
-            "_return_": 5.0
-          },
-          null,
-          null,
-          null,
-          null,
-          null,
-          null,
-          null
-        ]
-      },
-      {
-        "input": [
-          "x = AdvancedCalculator()\nx.calculateExpressions()\nx.expressions"
-        ],
-        "expected": [
-          null,
-          null,
-          ""
-        ]
-      },
-      {
-        "input": [
-          "x = AdvancedCalculator()\nx.setExpression('a = 5;b = 7 + a;return b')\nx.calculateExpressions()\nx.setExpression('a = 10;return a')\nx.calculateExpressions()\nx.expressions"
+          "x = AdvancedCalculator()\nx.setExpression('a = 5;b = 7 + a;a = 7;c = a + b;c = a * 0;return c')\nx.calculateExpressions()\nx.setExpression('a = 2;return a')\nx.calculateExpressions()\nx.expressions"
         ],
         "expected": [
           null,
@@ -7647,27 +8877,52 @@
               "a": 5.0,
               "b": 12.0
             },
-            "_return_": 12.0
+            "a = 7": {
+              "a": 7.0,
+              "b": 12.0
+            },
+            "c = a + b": {
+              "a": 7.0,
+              "b": 12.0,
+              "c": 19.0
+            },
+            "c = a * 0": {
+              "a": 7.0,
+              "b": 12.0,
+              "c": 0.0
+            },
+            "_return_": 0.0
           },
           null,
           {
-            "a = 10": {
-              "a": 10.0
+            "a = 2": {
+              "a": 2.0
             },
-            "_return_": 10.0
+            "_return_": 2.0
           },
-          "a = 10;return a"
+          "a = 2;return a"
         ]
       },
       {
         "input": [
-          "x = AdvancedCalculator()\nx.setExpression('a = 5;b = 7 / 0;return b')\nx.calculateExpressions()\nx.expressions"
+          "x = AdvancedCalculator()\nx.setExpression('a = 5;b = 7 + a;a = 7;c = a / 0;return c')\nx.calculateExpressions()\nx.states"
         ],
         "expected": [
           null,
           null,
           null,
-          "a = 5;b = 7 / 0;return b"
+          {}
+        ]
+      },
+      {
+        "input": [
+          "o = AdvancedCalculator()\no.setExpression('x1 = 10;x2 = x1 * 2;3invalid = x2 + 5;return x1 + x2')\no.calculateExpressions()\no.states"
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          {}
         ]
       },
       {
@@ -7714,7 +8969,7 @@
           [
             [
               "setExpression",
-              "a = 3; b = a + 2; return b"
+              "x = 100; y = x - 50; z = y * 2; return z"
             ],
             [
               "calculateExpressions"
@@ -7724,76 +8979,19 @@
         "expected": [
           null,
           {
-            "a = 3": {
-              "a": 3.0
+            "x = 100": {
+              "x": 100.0
             },
-            "b = a + 2": {
-              "a": 3.0,
-              "b": 5.0
+            "y = x - 50": {
+              "x": 100.0,
+              "y": 50.0
             },
-            "_return_": 5.0
-          }
-        ]
-      },
-      {
-        "input": [
-          [
-            [
-              "setExpression",
-              "x = 5; y = x * 2; z = y - x; return z"
-            ],
-            [
-              "calculateExpressions"
-            ]
-          ]
-        ],
-        "expected": [
-          null,
-          {
-            "x = 5": {
-              "x": 5.0
+            "z = y * 2": {
+              "x": 100.0,
+              "y": 50.0,
+              "z": 100.0
             },
-            "y = x * 2": {
-              "x": 5.0,
-              "y": 10.0
-            },
-            "z = y - x": {
-              "x": 5.0,
-              "y": 10.0,
-              "z": 5.0
-            },
-            "_return_": 5.0
-          }
-        ]
-      },
-      {
-        "input": [
-          [
-            [
-              "setExpression",
-              "a = 10; b = a / 2; c = b + 5; return c"
-            ],
-            [
-              "calculateExpressions"
-            ]
-          ]
-        ],
-        "expected": [
-          null,
-          {
-            "a = 10": {
-              "a": 10.0
-            },
-            "b = a / 2": {
-              "a": 10.0,
-              "b": 5.0
-            },
-            "c = b + 5": {
-              "a": 10.0,
-              "b": 5.0,
-              "c": 10.0
-            },
-            "_return_": 10.0
+            "_return_": 100.0
           }
         ]
       },
@@ -7805,134 +9003,11 @@
               "a = 5; b = 7 + a; a = 7; c = a + b; c = a * 0; return c"
             ],
             [
-              "setExpression",
-              "x = 10; y = x + 5; return y"
-            ],
-            [
               "calculateExpressions"
             ]
           ]
         ],
         "expected": [
-          null,
-          null,
-          {
-            "x = 10": {
-              "x": 10.0
-            },
-            "y = x + 5": {
-              "x": 10.0,
-              "y": 15.0
-            },
-            "_return_": 15.0
-          }
-        ]
-      },
-      {
-        "input": [
-          [
-            [
-              "setExpression",
-              "a = 5; b = 7 + a; return b"
-            ],
-            [
-              "setExpression",
-              "x = 10; y = x + 5; return y"
-            ],
-            [
-              "calculateExpressions"
-            ]
-          ]
-        ],
-        "expected": [
-          null,
-          null,
-          {
-            "x = 10": {
-              "x": 10.0
-            },
-            "y = x + 5": {
-              "x": 10.0,
-              "y": 15.0
-            },
-            "_return_": 15.0
-          }
-        ]
-      },
-      {
-        "input": [
-          [
-            [
-              "setExpression",
-              "a = 5; b = 7 + a; a = 7; c = a + b; c = a * 0; return c"
-            ],
-            [
-              "setExpression",
-              "a = 5; b = 7 + a; return b"
-            ],
-            [
-              "calculateExpressions"
-            ]
-          ]
-        ],
-        "expected": [
-          null,
-          null,
-          {
-            "a = 5": {
-              "a": 5.0
-            },
-            "b = 7 + a": {
-              "a": 5.0,
-              "b": 12.0
-            },
-            "_return_": 12.0
-          }
-        ]
-      },
-      {
-        "input": [
-          [
-            [
-              "setExpression",
-              "a = 5; b = 7 + a; a = 7; c = a + b; c = a * 0; return c"
-            ],
-            [
-              "setExpression",
-              "x = 10; y = x + 5; return y"
-            ],
-            [
-              "setExpression",
-              "a = 5; b = 7 + a; return b"
-            ],
-            [
-              "calculateExpressions"
-            ]
-          ]
-        ],
-        "expected": [
-          null,
-          null,
-          null,
-          {
-            "a = 5": {
-              "a": 5.0
-            },
-            "b = 7 + a": {
-              "a": 5.0,
-              "b": 12.0
-            },
-            "_return_": 12.0
-          }
-        ]
-      },
-      {
-        "input": [
-          "x = AdvancedCalculator()\nx.setExpression('a = 5;b = 7 + a;a = 7;c = a + b;c = a * 0;return c')\nstate_before = x.states\nx.calculateExpressions()\nstate_before"
-        ],
-        "expected": [
-          null,
-          null,
           null,
           {
             "a = 5": {
@@ -7957,13 +9032,117 @@
               "c": 0.0
             },
             "_return_": 0.0
-          },
-          {}
+          }
         ]
       },
       {
         "input": [
-          "x = AdvancedCalculator()\nx.setExpression('a = 5;b = 7 + a;a = 7;c = a + b;c = a * 0;return c')\nx.calculateExpressions()\nx.setExpression('x = 10;y = x * 2;return y')\nx.calculateExpressions()\nx.setExpression('a = 1;b = 2;return a + b')\nx.calculateExpressions()\nx.expressions"
+          [
+            [
+              "setExpression",
+              "a = 5; b = a + 2"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "a = 5; b = 7 + a; a = 7; c = a + b; c = a * 0; return c"
+            ],
+            [
+              "setExpression",
+              "d = c / 0; return d"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          null
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "a = 5; b = 7 + a; a = 7; c = a + b; c = a * 0; return c"
+            ],
+            [
+              "setExpression",
+              "e = c + 10; return e"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          null
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "a = 5; b = 7 + a; a = 7; c = a + b; c = a * 0; return c"
+            ],
+            [
+              "setExpression",
+              "f = 10 / 0; return f"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          null
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "a = 5; b = 7 + a; a = 7; c = a + b; c = a * 0; return c"
+            ],
+            [
+              "setExpression",
+              "g = c + 5; h = g * 2; return h"
+            ],
+            [
+              "calculateExpressions"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          null
+        ]
+      },
+      {
+        "input": [
+          "x = AdvancedCalculator()\nx.setExpression('a = 5;b = 7 + a;a = 7;c = a + b;c = a * 0;return c')\nx.calculateExpressions()\nstate_before = x.states.copy()\nx.setExpression('d = 10')\nx.calculateExpressions()\nstate_before"
         ],
         "expected": [
           null,
@@ -7993,61 +9172,97 @@
             "_return_": 0.0
           },
           null,
+          null,
+          null,
           {
-            "x = 10": {
-              "x": 10.0
+            "a": 7.0,
+            "b": 12.0,
+            "c": 0.0
+          }
+        ]
+      },
+      {
+        "input": [
+          "x = AdvancedCalculator()\nx.setExpression('a = 5;b = 7 + a;a = 7;c = a + b;c = a * 0;return c')\nx.calculateExpressions()\nx.setExpression('a = 1;return a')\nx.calculateExpressions()\nx.setExpression('a = 5;b = 7 + a;a = 7;c = a + b;c = a * 0;return c')\nx.calculateExpressions()\nx.expressions"
+        ],
+        "expected": [
+          null,
+          null,
+          {
+            "a = 5": {
+              "a": 5.0
             },
-            "y = x * 2": {
-              "x": 10.0,
-              "y": 20.0
+            "b = 7 + a": {
+              "a": 5.0,
+              "b": 12.0
             },
-            "_return_": 20.0
+            "a = 7": {
+              "a": 7.0,
+              "b": 12.0
+            },
+            "c = a + b": {
+              "a": 7.0,
+              "b": 12.0,
+              "c": 19.0
+            },
+            "c = a * 0": {
+              "a": 7.0,
+              "b": 12.0,
+              "c": 0.0
+            },
+            "_return_": 0.0
           },
           null,
           {
             "a = 1": {
               "a": 1.0
             },
-            "b = 2": {
-              "a": 1.0,
-              "b": 2.0
-            },
-            "_return_": 3.0
+            "_return_": 1.0
           },
-          "a = 1;b = 2;return a + b"
-        ]
-      },
-      {
-        "input": [
-          "x = AdvancedCalculator()\nx.setExpression('a = 5;b = 7 + a;a = 7;c = a / 0;return c')\nx.calculateExpressions()\nx.setExpression('')\nx.calculateExpressions()\nx.setExpression('a = 5; b = a + undefined_var; return b')\nx.calculateExpressions()\nx.expressions"
-        ],
-        "expected": [
           null,
-          null,
-          null,
-          null,
-          null,
-          null,
-          null,
-          "a = 5; b = a + undefined_var; return b"
+          {
+            "a = 5": {
+              "a": 5.0
+            },
+            "b = 7 + a": {
+              "a": 5.0,
+              "b": 12.0
+            },
+            "a = 7": {
+              "a": 7.0,
+              "b": 12.0
+            },
+            "c = a + b": {
+              "a": 7.0,
+              "b": 12.0,
+              "c": 19.0
+            },
+            "c = a * 0": {
+              "a": 7.0,
+              "b": 12.0,
+              "c": 0.0
+            },
+            "_return_": 0.0
+          },
+          "a = 5;b = 7 + a;a = 7;c = a + b;c = a * 0;return c"
         ]
       }
     ],
-    "strong": false,
-    "kill_rate": 0.6,
-    "kill_rate_direct": 0.6,
-    "status": "needs_review",
-    "needs_review": true,
-    "undetermined": 18,
-    "kill_rate_lower": 0.6,
+    "strong": true,
+    "kill_rate": 0.8636363636363636,
+    "kill_rate_direct": 0.8636363636363636,
+    "status": "strong",
+    "needs_review": false,
+    "undetermined": 6,
+    "kill_rate_lower": 0.8636363636363636,
     "kill_rate_upper": 1.0,
-    "validated_at": "2026-09-08T22:13:45+00:00",
+    "validated_at": "2026-09-08T23:25:14+00:00",
     "breakdown": {
-      "total_mutants": 45,
-      "killed": 27,
+      "total_mutants": 44,
+      "killed": 38,
       "killed_on_retry": 0,
       "proven_equivalent": 0,
-      "unresolved": 18,
+      "unresolved": 6,
       "mutants": [
         {
           "label": "line 30: remove `self.states = {}`",
@@ -8067,23 +9282,7 @@
         },
         {
           "label": "line 74: remove `self.states = {}`",
-          "status": "undetermined",
-          "probe": {
-            "verdict": "unknown",
-            "reached": 6,
-            "differed": 0,
-            "error": "statement ran 6x; a deletion has no decision to compare, so only reachability is knowable"
-          }
-        },
-        {
-          "label": "line 75: remove `return None`",
-          "status": "undetermined",
-          "probe": {
-            "verdict": "unknown",
-            "reached": 6,
-            "differed": 0,
-            "error": "statement ran 6x; a deletion has no decision to compare, so only reachability is knowable"
-          }
+          "status": "killed"
         },
         {
           "label": "line 35: remove `statement = statement.strip()`",
@@ -8091,13 +9290,7 @@
         },
         {
           "label": "line 36: remove `if not statement:`",
-          "status": "undetermined",
-          "probe": {
-            "verdict": "unknown",
-            "reached": 173,
-            "differed": 0,
-            "error": "statement ran 173x; a deletion has no decision to compare, so only reachability is knowable"
-          }
+          "status": "killed"
         },
         {
           "label": "line 39: remove `if statement.startswith('return'):`",
@@ -8105,13 +9298,7 @@
         },
         {
           "label": "line 52: remove `if '=' not in statement:`",
-          "status": "undetermined",
-          "probe": {
-            "verdict": "unknown",
-            "reached": 128,
-            "differed": 0,
-            "error": "statement ran 128x; a deletion has no decision to compare, so only reachability is knowable"
-          }
+          "status": "killed"
         },
         {
           "label": "line 55: remove `name, expr = statement.split('=', 1)`",
@@ -8123,13 +9310,7 @@
         },
         {
           "label": "line 57: remove `if not self._isVariable(name):`",
-          "status": "undetermined",
-          "probe": {
-            "verdict": "unknown",
-            "reached": 128,
-            "differed": 0,
-            "error": "statement ran 128x; a deletion has no decision to compare, so only reachability is knowable"
-          }
+          "status": "killed"
         },
         {
           "label": "line 60: remove `replaced = self._replaceVariables(exp...`",
@@ -8152,9 +9333,9 @@
           "status": "undetermined",
           "probe": {
             "verdict": "unknown",
-            "reached": 118,
+            "reached": 131,
             "differed": 0,
-            "error": "statement ran 118x; a deletion has no decision to compare, so only reachability is knowable"
+            "error": "statement ran 131x; a deletion has no decision to compare, so only reachability is knowable"
           }
         },
         {
@@ -8186,9 +9367,9 @@
           "status": "undetermined",
           "probe": {
             "verdict": "unknown",
-            "reached": 38,
+            "reached": 31,
             "differed": 0,
-            "error": "statement ran 38x; a deletion has no decision to compare, so only reachability is knowable"
+            "error": "statement ran 31x; a deletion has no decision to compare, so only reachability is knowable"
           }
         },
         {
@@ -8201,80 +9382,18 @@
         },
         {
           "label": "line 53: remove `self.states = {}`",
-          "status": "undetermined",
-          "probe": {
-            "verdict": "never_reached",
-            "reached": 0,
-            "differed": 0,
-            "error": null
-          }
-        },
-        {
-          "label": "line 54: remove `return None`",
-          "status": "undetermined",
-          "probe": {
-            "verdict": "never_reached",
-            "reached": 0,
-            "differed": 0,
-            "error": null
-          }
-        },
-        {
-          "label": "line 58: remove `self.states = {}`",
-          "status": "undetermined",
-          "probe": {
-            "verdict": "never_reached",
-            "reached": 0,
-            "differed": 0,
-            "error": null
-          }
-        },
-        {
-          "label": "line 59: remove `return None`",
-          "status": "undetermined",
-          "probe": {
-            "verdict": "never_reached",
-            "reached": 0,
-            "differed": 0,
-            "error": null
-          }
-        },
-        {
-          "label": "line 62: remove `self.states = {}`",
-          "status": "undetermined",
-          "probe": {
-            "verdict": "unknown",
-            "reached": 10,
-            "differed": 0,
-            "error": "statement ran 10x; a deletion has no decision to compare, so only reachability is knowable"
-          }
-        },
-        {
-          "label": "line 63: remove `return None`",
           "status": "killed"
         },
         {
-          "label": "line 67: remove `self.states = {}`",
-          "status": "undetermined",
-          "probe": {
-            "verdict": "unknown",
-            "reached": 7,
-            "differed": 0,
-            "error": "statement ran 7x; a deletion has no decision to compare, so only reachability is knowable"
-          }
+          "label": "line 54: remove `return None`",
+          "status": "killed"
         },
         {
-          "label": "line 68: remove `return None`",
-          "status": "undetermined",
-          "probe": {
-            "verdict": "unknown",
-            "reached": 7,
-            "differed": 0,
-            "error": "statement ran 7x; a deletion has no decision to compare, so only reachability is knowable"
-          }
+          "label": "line 58: remove `self.states = {}`",
+          "status": "killed"
         },
         {
-          "label": "line 42: remove `self.states = {}`",
+          "label": "line 59: remove `return None`",
           "status": "undetermined",
           "probe": {
             "verdict": "unknown",
@@ -8282,6 +9401,32 @@
             "differed": 0,
             "error": "statement ran 1x; a deletion has no decision to compare, so only reachability is knowable"
           }
+        },
+        {
+          "label": "line 62: remove `self.states = {}`",
+          "status": "killed"
+        },
+        {
+          "label": "line 63: remove `return None`",
+          "status": "killed"
+        },
+        {
+          "label": "line 67: remove `self.states = {}`",
+          "status": "killed"
+        },
+        {
+          "label": "line 68: remove `return None`",
+          "status": "undetermined",
+          "probe": {
+            "verdict": "unknown",
+            "reached": 8,
+            "differed": 0,
+            "error": "statement ran 8x; a deletion has no decision to compare, so only reachability is knowable"
+          }
+        },
+        {
+          "label": "line 42: remove `self.states = {}`",
+          "status": "killed"
         },
         {
           "label": "line 43: remove `return None`",
@@ -8329,13 +9474,7 @@
         },
         {
           "label": "line 55: 1 -> 2",
-          "status": "undetermined",
-          "probe": {
-            "verdict": "unknown",
-            "reached": 0,
-            "differed": 0,
-            "error": "shape not instrumentable"
-          }
+          "status": "killed"
         }
       ]
     },

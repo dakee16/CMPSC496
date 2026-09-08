@@ -242,6 +242,35 @@ def module_with_method(problem: dict, method_src: str) -> str | None:
     return "\n".join(prefix[:cut]) + "\n" + body + "\n" + suffix + "\n"
 
 
+def surrounding_class(problem: dict) -> str:
+    """The module this method lives in, with THIS method's body left blank.
+
+    What the decomposer was missing. It is asked to write a method BODY, and it
+    was handed the docstring and the `def` line and nothing else - so for
+    `calculateExpressions` it had to guess that the input arrives on
+    `self.expressions`, that the state it must reset is `self.states`, that
+    `_isVariable` and `_replaceVariables` exist and what they return on bad
+    input, and that a `Calculator` is what evaluates an expression. It guessed,
+    and the assembled body was then gated against an oracle built from the real
+    class - which is a test the guess cannot pass except by luck.
+
+    The siblings' own bodies are included because the chunks RUN against them:
+    the assembled program is context_prefix + these chunks + context_suffix, so
+    a chunk that misreads what `_replaceVariables` returns is simply wrong. This
+    is the same text build_program() assembles and grades with; the one thing
+    removed is the body being written.
+
+    Returns "" for a plain function, which is already self-contained."""
+    if not is_method(problem):
+        return ""
+    indent = " " * int(problem.get("context_indent") or 8)
+    return "\n".join([
+        problem["context_prefix"].rstrip("\n"),
+        f"{indent}...        # <- YOUR CHUNKS GO HERE, stacked in order",
+        (problem.get("context_suffix") or "").rstrip("\n"),
+    ])
+
+
 def class_properties(problem: dict) -> list[str]:
     """Names on this class that are @property - read, never called.
 
@@ -651,6 +680,15 @@ if __name__ == "__main__":
     assert ns[SEQ_ENTRY]("x = Stack()\nx.nope()\nlen(x)") == \
         [None, ERROR_PREFIX + "AttributeError", 0]
     assert ns[SEQ_ENTRY]("x = (").pop().startswith(ERROR_PREFIX), "a bad block"
+
+    # The decomposer is shown the class, with the body it must write removed.
+    around = surrounding_class(meth)
+    assert "def push(self, value):" in around, around
+    assert "YOUR CHUNKS GO HERE" in around
+    assert "def pop(self):" in around, "the siblings the chunks will run against"
+    assert "self.top = node" not in around, "...but never this method's own body"
+    compile(around, "<t>", "exec")            # and it is still real Python
+    assert surrounding_class(flat) == "", "a plain function is self-contained"
 
     # A method too trivial to mutate is trusted only when the teacher's own
     # recorded run actually reaches it.

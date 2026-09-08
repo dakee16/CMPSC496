@@ -12,9 +12,10 @@ from .schemas import DecomposeOutput, EvalResult, StepItem
 from research.student_agent import get_student_answer
 from tests.semantic import ast_equivalent
 from tests.sandbox import get_oracle_tests, passes_tests
-from .context import build_program, header_of
+from .context import (build_program, header_of, solution_body,
+                      surrounding_class)
 from .identity import content_hash, get_resolved_entry
-from .gates import assert_serveable, check_necessity
+from .gates import assert_serveable, check_necessity, check_prompts
 from .prompts import DECOMPOSE_SYSTEM, EVAL_SYSTEM, CHUNK_DECOMPOSE_SYSTEM
 
 
@@ -313,12 +314,62 @@ def decompose_into_chunks(problem: dict, max_tries: int = 5) -> dict:
     header = header_of(problem) or f"def {name or 'solve'}({', '.join(params)}):"
     text = problem.get("description") or problem.get("title", "")
     qid = problem.get("slug") or problem.get("title", "problem")
+    # A METHOD is not self-contained, and the chunks are gated by running them
+    # inside their real class - so the decomposer has to see that class. Empty
+    # for a plain function, which changes that path not at all.
+    _around = surrounding_class(problem)
+    around = (f"THE CLASS THIS METHOD LIVES IN. Your chunks are dropped into "
+              f"the marked hole and run against everything else here exactly "
+              f"as written, so use these attributes and helpers as they are - "
+              f"do not invent names, and do not rewrite any other method:\n"
+              f"```python\n{_around}\n```\n\n") if _around else ""
+    # THE TEACHER'S OWN BODY. Withholding it while demanding an exact
+    # behavioural match was a contradiction: the gate runs the assembled chunks
+    # against an oracle whose every expected value came from THIS code, so any
+    # choice the statement leaves open - returning None rather than the report
+    # when no `return` statement is ever reached, rebinding `self.states`
+    # rather than emptying it - has one right answer that only this text
+    # contains. Asked to guess them, the model failed the gate five times and
+    # the problem was blocked. Splitting a correct solution is also simply a
+    # better decomposition than re-deriving one: it is the steps of the code
+    # the students are actually graded against.
+    #
+    # The PROMPTS are unaffected - they still state goals only, and the rules
+    # for them in CHUNK_DECOMPOSE_SYSTEM are unchanged. It is the `reference`
+    # code that this makes correct, which is the half nobody sees.
+    _body = solution_body(problem) if problem.get("solution") else ""
+    truth = (f"THE REFERENCE IMPLEMENTATION - split THIS, do not rewrite it. "
+             f"Your chunks stacked in order must reproduce its behaviour "
+             f"exactly, including what it does on input the statement does not "
+             f"discuss:\n```python\n{_body}\n```\n\n"
+             # Seeing the code pulls the PROMPTS towards describing it, and a
+             # prompt that describes the code is a prompt that writes the
+             # student's answer for them: the first run after this went in
+             # produced "Initialize the states and report dictionary", which is
+             # word-for-word the shape the rules above call a defect. The
+             # reminder sits here, right under the code, because that is where
+             # the pull is - restating it at the top of the system prompt did
+             # not survive nineteen kilobytes of context.
+             f"That code is for the \"reference\" fields ONLY. It must not "
+             f"change how you write the \"prompt\" fields, and having read it "
+             f"is exactly when that is hardest: do not name a variable, an "
+             f"attribute, a type or an operation that appears in it. \"Set up "
+             f"the state and report dictionary\" and \"reset states and return "
+             f"None\" are FAILURES - they leave the student nothing to work "
+             f"out. Say what the chunk must ACHIEVE, in the problem's own "
+             f"vocabulary, as if you had never seen this code.\n\n"
+             ) if _body.strip() else ""
 
-    feedback, best, last_reason = "", None, ""
+    # `serveable` is the last decomposition that cleared assembly AND necessity.
+    # It differs from `best` (the last one seen at all) because only this one is
+    # safe to fall back on - see the prompt gate below.
+    feedback, best, last_reason, serveable = "", None, "", None
     for attempt in range(1, max_tries + 1):
         user_msg = (
             f"PROBLEM:\n{text}\n\n"
-            f"The function header is: {header}\n"
+            + around
+            + truth
+            + f"The function header is: {header}\n"
             "Write body chunks only.\n\n"
             + (f"PREVIOUS ATTEMPT FAILED:\n{feedback}\n"
                "That exact decomposition is WRONG. Do not repeat it. Change the "
@@ -380,7 +431,25 @@ def decompose_into_chunks(problem: dict, max_tries: int = 5) -> dict:
                 # oracle_not_strong case above.
                 raise NoOracleTestsError(nec["summary"])
             if nec["status"] == "pass":
-                return {"header": header, "chunks": chunks}
+                # Gate 2 - the sub-questions themselves. Deliberately the LAST
+                # thing checked and deliberately NOT fatal: a decomposition
+                # that assembles and is load-bearing is a working problem, and
+                # blocking it over the wording of a question would be a worse
+                # outcome than shipping the wording. So a leak buys a retry
+                # while retries remain, and the working version is kept.
+                pg = check_prompts(chunks, problem)
+                print(f"  📝 Prompt gate: {pg['status']} - "
+                      f"{pg['summary'].splitlines()[0]}")
+                if pg["status"] == "pass":
+                    return {"header": header, "chunks": chunks}
+                serveable = {"header": header, "chunks": chunks}
+                best = serveable
+                last_reason = pg["summary"].splitlines()[0]
+                feedback = ("Assembled body:\n" + code + "\n\n" + pg["summary"] +
+                            "\n\nThe reference code above PASSED every check - "
+                            "keep it exactly as it is and change only the "
+                            "wording of the prompts.")
+                continue
             best = {"header": header, "chunks": chunks}
             last_reason = nec["summary"].splitlines()[0]
             feedback = "Assembled body:\n" + code + "\n\n" + nec["summary"]
@@ -391,6 +460,14 @@ def decompose_into_chunks(problem: dict, max_tries: int = 5) -> dict:
         feedback = ("Assembled body:\n" + code + "\n\nFailing tests:\n" +
                     "\n".join(f"  {f['input']} → expected {f['expected']}, got {f['got']}" for f in fails))
 
+    if serveable is not None:
+        # Every try produced working chunks and none produced clean questions.
+        # Serving a real decomposition with a leaky prompt beats blocking the
+        # problem outright, so it goes out and says so.
+        print(f"  ⚠️  Prompts still describe the solution after {max_tries} "
+              f"tries; serving the working decomposition anyway. Last: "
+              f"{last_reason}")
+        return serveable
     print(f"  ⚠️  Chunk decomposition failed all {max_tries} tries.")
     # Carry the last gate reason. "Could not generate" alone gave no way to tell
     # an assembly failure (the model wrote wrong code) from a necessity failure
@@ -454,13 +531,60 @@ def decompose_into_chunks_best(problem: dict, max_tries: int = 5) -> dict:
     header = header_of(problem) or f"def {name or 'solve'}({', '.join(params)}):"
     text = problem.get("description") or problem.get("title", "")
     qid = problem.get("slug") or problem.get("title", "problem")
+    # A METHOD is not self-contained, and the chunks are gated by running them
+    # inside their real class - so the decomposer has to see that class. Empty
+    # for a plain function, which changes that path not at all.
+    _around = surrounding_class(problem)
+    around = (f"THE CLASS THIS METHOD LIVES IN. Your chunks are dropped into "
+              f"the marked hole and run against everything else here exactly "
+              f"as written, so use these attributes and helpers as they are - "
+              f"do not invent names, and do not rewrite any other method:\n"
+              f"```python\n{_around}\n```\n\n") if _around else ""
+    # THE TEACHER'S OWN BODY. Withholding it while demanding an exact
+    # behavioural match was a contradiction: the gate runs the assembled chunks
+    # against an oracle whose every expected value came from THIS code, so any
+    # choice the statement leaves open - returning None rather than the report
+    # when no `return` statement is ever reached, rebinding `self.states`
+    # rather than emptying it - has one right answer that only this text
+    # contains. Asked to guess them, the model failed the gate five times and
+    # the problem was blocked. Splitting a correct solution is also simply a
+    # better decomposition than re-deriving one: it is the steps of the code
+    # the students are actually graded against.
+    #
+    # The PROMPTS are unaffected - they still state goals only, and the rules
+    # for them in CHUNK_DECOMPOSE_SYSTEM are unchanged. It is the `reference`
+    # code that this makes correct, which is the half nobody sees.
+    _body = solution_body(problem) if problem.get("solution") else ""
+    truth = (f"THE REFERENCE IMPLEMENTATION - split THIS, do not rewrite it. "
+             f"Your chunks stacked in order must reproduce its behaviour "
+             f"exactly, including what it does on input the statement does not "
+             f"discuss:\n```python\n{_body}\n```\n\n"
+             # Seeing the code pulls the PROMPTS towards describing it, and a
+             # prompt that describes the code is a prompt that writes the
+             # student's answer for them: the first run after this went in
+             # produced "Initialize the states and report dictionary", which is
+             # word-for-word the shape the rules above call a defect. The
+             # reminder sits here, right under the code, because that is where
+             # the pull is - restating it at the top of the system prompt did
+             # not survive nineteen kilobytes of context.
+             f"That code is for the \"reference\" fields ONLY. It must not "
+             f"change how you write the \"prompt\" fields, and having read it "
+             f"is exactly when that is hardest: do not name a variable, an "
+             f"attribute, a type or an operation that appears in it. \"Set up "
+             f"the state and report dictionary\" and \"reset states and return "
+             f"None\" are FAILURES - they leave the student nothing to work "
+             f"out. Say what the chunk must ACHIEVE, in the problem's own "
+             f"vocabulary, as if you had never seen this code.\n\n"
+             ) if _body.strip() else ""
     best = None
     best_score = -1
 
     for attempt in range(1, max_tries + 1):
         user_msg = (
             f"PROBLEM:\n{text}\n\n"
-            f"The function header is: {header}\n"
+            + around
+            + truth
+            + f"The function header is: {header}\n"
             "Write body chunks only.\n\n"
             'Return JSON only: {"subproblems": [{"prompt": "...", "reference": "..."}, ...]}'
         )

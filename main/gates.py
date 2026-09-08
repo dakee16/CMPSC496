@@ -22,8 +22,25 @@ Note the gate is only as sharp as the oracle behind it: a knockout can only be
 detected by a test that exercises the removed chunk's code path. Oracle strength
 (main/mutation.py) and this gate reinforce each other.
 
-Gate 2 will live here as well.
+Gate 2 - prompt leakage. A sub-question must state a GOAL and never the
+METHOD, because a prompt that describes the code has written the student's
+answer for them. That rule has always been in CHUNK_DECOMPOSE_SYSTEM, and
+nothing ever checked it: the assembly gate reads the references and the
+necessity gate knocks them out, so the PROMPT - the only part a student
+actually reads - was the one artefact no gate looked at. Asking twice does not
+hold it either. Once the decomposer is shown the reference implementation (it
+must be, or it cannot match an oracle built from that code) the pull towards
+describing it is strong enough that "Initialize the states and report
+dictionary" comes back with the rules quoted directly above it.
+
+So it is measured instead. Two signals, both cheap and both deterministic:
+a word that names the mechanism, and an identifier that only the CODE knows -
+one the statement never uses, which is therefore a name the student was
+supposed to arrive at.
 """
+import ast
+import re
+
 from .identity import get_resolved_entry
 from tests.sandbox import (get_oracle_tests, is_oracle_certified,
                            passes_tests)
@@ -38,6 +55,66 @@ _MIN_CHUNKS = 2
 # it would fail necessity anyway - catching it here gives a precise error
 # instead of a confusing knockout result.
 _NOOP_REFERENCES = {"", "pass", "...", "None", "return"}
+
+
+# Words that name the MECHANISM. Deliberately short: a false positive here
+# costs a retry on a decomposition that was fine, so only the phrasings the
+# system prompt already calls out by name are listed.
+_METHOD_WORDS = re.compile(
+    r"\b(initiali[sz]\w*|iterat\w*|loop\s+(?:over|through)|traverse"
+    r"|append\s+to|set\s+\w+\s+to"
+    r"|(?:create|build|make|use)\s+(?:a|an|the)\s+"
+    r"(?:dict\w*|list|set|array|stack|queue|counter|variable|loop|pointer))\b",
+    re.I)
+
+
+def _identifiers(src: str) -> set:
+    """Every name the reference code uses - variables and attributes alike."""
+    try:
+        tree = ast.parse(src)
+    except SyntaxError:
+        return set()
+    out = set()
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Name):
+            out.add(n.id)
+        elif isinstance(n, ast.Attribute):
+            out.add(n.attr)
+    return out
+
+
+def check_prompts(chunks: list, problem: dict) -> dict:
+    """Gate 2. {"status": "pass"|"fail", "summary": str}.
+
+    A name the STATEMENT already uses is the problem's own vocabulary and is
+    fine - HW3's docstring says "store the result in states", so a prompt may
+    say states. A name only the code knows is the student's decision, and
+    putting it in the question makes the decision for them."""
+    said = set(re.findall(r"[a-z_]\w*",
+                          ((problem.get("description") or "") + " " +
+                           (problem.get("group_description") or "")).lower()))
+    bad = []
+    for c in chunks:
+        prompt = getattr(c, "prompt", "") or ""
+        step = getattr(c, "step_id", "?")
+        hit = _METHOD_WORDS.search(prompt)
+        if hit:
+            bad.append(f'{step}: "{hit.group(0)}" states HOW, not what to achieve')
+            continue
+        leaked = sorted(n for n in _identifiers(getattr(c, "reference", "") or "")
+                        if len(n) > 2 and n.lower() not in said
+                        and re.search(rf"\b{re.escape(n)}\b", prompt))
+        if leaked:
+            bad.append(f'{step}: names {", ".join(leaked)} - that is a name only '
+                       f'the solution uses, so the student is told what to call it')
+    if not bad:
+        return {"status": "pass", "summary": "prompts state goals, not methods"}
+    return {"status": "fail",
+            "summary": ("These sub-questions describe the SOLUTION instead of "
+                        "asking for it:\n  " + "\n  ".join(bad) +
+                        "\nRewrite the prompts only - say what each chunk must "
+                        "ACHIEVE, in the problem's own words. Leave the "
+                        "reference code exactly as it is.")}
 
 
 def _is_noop_reference(ref: str) -> bool:
@@ -222,3 +299,43 @@ def check_necessity(header: str, chunks: list, problem: dict) -> dict:
     )
     return {"status": "fail", "passed": False, "per_chunk": per_chunk,
             "summary": summary}
+
+
+if __name__ == "__main__":
+    # Gate 2 is pure - no oracle, no model, no subprocess - so it self-checks.
+    from types import SimpleNamespace as _N
+
+    _step = lambda i, prompt, ref: _N(step_id=f"Part {i}", prompt=prompt,
+                                      reference=ref)
+    _prob = {"description": "Run every statement in order and return a report "
+                            "dictionary, or None if any statement is invalid. "
+                            "Store the result in states."}
+
+    # The two shapes that came back from the model with the rules quoted
+    # directly above them, which is why this gate exists at all.
+    out = check_prompts([_step(1, "Initialize the states and report dictionary.",
+                               "self.states = {}")], _prob)
+    assert out["status"] == "fail" and "Initialize" in out["summary"], out
+    out = check_prompts([_step(1, "Iterate over each statement.",
+                               "for s in x:\n    pass")], _prob)
+    assert out["status"] == "fail", out
+
+    # A name the STATEMENT uses is the problem's own vocabulary, not a leak.
+    ok = check_prompts([_step(1, "Record what each statement leaves in states, "
+                                 "and give back the report dictionary.",
+                              "self.states = {}\nreport = {}")], _prob)
+    assert ok["status"] == "pass", ok
+    # ...a name only the CODE knows is the decision the student should make.
+    out = check_prompts([_step(1, "Build calcObj and use it.",
+                               "calcObj = Calculator()")], _prob)
+    assert out["status"] == "fail" and "calcObj" in out["summary"], out
+    # Short names are not leaks - `x` and `i` match half the English language.
+    assert check_prompts([_step(1, "Return the total you accumulated.",
+                                "x = 0\nfor i in y:\n    x += i")],
+                         _prob)["status"] == "pass"
+    # An unparseable reference must not crash the gate; it fails elsewhere.
+    assert check_prompts([_step(1, "Do the thing.", "def (")],
+                         _prob)["status"] == "pass"
+    assert check_prompts([], _prob)["status"] == "pass"
+
+    print("gates.py self-check OK")

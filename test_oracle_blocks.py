@@ -366,3 +366,62 @@ def test_error_path_sequences_kill_what_valid_input_cannot(problems):
                                 for a, b in zip(out["results"], base["results"])):
             killed += 1
     assert killed >= 3, f"only {killed} guard mutants died to bad input"
+
+
+# ── the decomposer needs the class it is writing inside ──────────────────
+
+def test_the_decomposer_is_shown_the_class_but_not_the_body_it_must_write(problems):
+    """It is asked for a method BODY and was given the docstring and the `def`
+    line - so for calculateExpressions it had to guess that the input arrives
+    on self.expressions, that _replaceVariables exists and what it returns on
+    bad input, and that a Calculator is what evaluates. It guessed, and the
+    assembled body was gated against an oracle built from the real class."""
+    p = problems["advanced-calculator-calculate-expressions"]
+    around = context.surrounding_class(p)
+    assert "def calculateExpressions(self):" in around
+    assert "YOUR CHUNKS GO HERE" in around
+    # the siblings the chunks actually run against
+    assert "def _replaceVariables(self, expr):" in around
+    assert "class Calculator:" in around
+    # ...but never this method's own body
+    assert "report['_return_'] = value" not in around
+    compile(around, "<t>", "exec")
+
+
+def test_a_plain_function_gets_no_class_context(problems):
+    assert context.surrounding_class({"entry_hint": "f", "solution": "def f(): pass"}) == ""
+
+
+# ── gate 2: a sub-question states a goal, never the method ───────────────
+
+def _step(prompt, reference):
+    from types import SimpleNamespace
+    return SimpleNamespace(step_id="Part 1", prompt=prompt, reference=reference)
+
+
+def test_a_prompt_that_names_the_mechanism_is_rejected(problems):
+    """Showing the decomposer the reference is necessary - it cannot match an
+    oracle built from that code otherwise - and it pulls the PROMPTS towards
+    describing it. Nothing checked the prompts, so the pull won."""
+    from main.gates import check_prompts
+    p = problems["advanced-calculator-calculate-expressions"]
+    out = check_prompts([_step("Initialize the states and report dictionary.",
+                               "self.states = {}")], p)
+    assert out["status"] == "fail" and "Initialize" in out["summary"]
+
+
+def test_a_prompt_in_the_problems_own_words_is_accepted(problems):
+    from main.gates import check_prompts
+    p = problems["advanced-calculator-calculate-expressions"]
+    out = check_prompts([_step("Work through the statements in order and give "
+                               "back a report of what each one left behind.",
+                               "self.states = {}\nreport = {}")], p)
+    assert out["status"] == "pass", out["summary"]
+
+
+def test_a_name_only_the_solution_uses_is_a_leak(problems):
+    from main.gates import check_prompts
+    p = problems["stack-pop"]
+    out = check_prompts([_step("Return whatever removedNode was holding.",
+                               "removedNode = self.top")], p)
+    assert out["status"] == "fail" and "removedNode" in out["summary"]

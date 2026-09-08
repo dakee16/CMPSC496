@@ -191,6 +191,14 @@ For each sub-problem provide:
   - "reference": ONE correct Python implementation of JUST that chunk, as body
     code inside the function. Do NOT write the function header.
 
+    When a REFERENCE IMPLEMENTATION is given, your references are that code
+    SPLIT UP - same statements, same order, same behaviour. Do not rewrite it,
+    do not tidy it, do not "improve" it: it is the code the students are
+    graded against, and any difference is a defect. The chunks are checked by
+    stacking them and running them, so anything you change will be caught.
+    This applies to the reference code ONLY - the "prompt" beside it still
+    states a goal and never leaks the method, exactly as above.
+
     INDENTATION: write every line at the depth it actually occupies once the
     chunks are stacked in order, measuring from the function body as column 0.
     A chunk that starts a fresh statement in the function body begins at column
