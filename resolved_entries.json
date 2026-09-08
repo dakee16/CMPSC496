@@ -1,53 +1,90 @@
 {
-  "ab0ffb04c9595dcc19438a12eab9c705db503c2f898794a86bfe897f212569c3": {
-    "entry_name": "digit_sum",
+  "d0eb61eec2fc323718a94bd5018a52a52158ad3984d85b0e8b2763a38712a1ba": {
+    "entry_name": "_mt_run_calls",
     "params": [
-      "n"
+      "calls"
     ],
     "confirmed": true,
-    "slug": "digit-sum"
+    "slug": "stack-is-empty"
   },
-  "ab7a4b01f44882644a35a7682f55ff91ab54bebdc0a41af46093ad5b75c67a5d": {
-    "entry_name": "is_palindrome_string",
+  "144aa68071d1b3caa0aced17343ac9615f8c027836e0081b2f9432de1d2aa71b": {
+    "entry_name": "_mt_run_calls",
     "params": [
-      "text"
+      "calls"
     ],
     "confirmed": true,
-    "slug": "is-palindrome-string"
+    "slug": "stack-len"
   },
-  "c12bc7251d031e59f53a692dab33491a2443963d2d5c5b3e6dad61e0780bb375": {
-    "entry_name": "reverse_integer",
+  "8bef56650627e9c866691b074e48f49dc90066993fb0e4b1b281d187aba549f7": {
+    "entry_name": "_mt_run_calls",
     "params": [
-      "n"
+      "calls"
     ],
     "confirmed": true,
-    "slug": "reverse-integer"
+    "slug": "stack-push"
   },
-  "adff88a42865108c274a41ad3fc149400fb0b83fb33380418e3b488a6a7638a9": {
-    "entry_name": "stack",
+  "f7d7f39391ed071a4a03b522d8eea927672f1ff2aed64e72346dde25c492cf43": {
+    "entry_name": "_mt_run_calls",
     "params": [
-      "operations"
+      "calls"
     ],
     "confirmed": true,
-    "slug": "stack"
+    "slug": "stack-pop"
   },
-  "badc903336e818c1ede21c9adadf4efb052206a3c259e10542962c202fba9293": {
-    "entry_name": "calculator",
+  "e191291aaeb9593dea50c4347ed6e921e28b349b8a234e3d37f286e1cdf5601b": {
+    "entry_name": "_mt_run_calls",
     "params": [
-      "expression",
-      "mode"
+      "calls"
     ],
     "confirmed": true,
-    "slug": "calculator"
+    "slug": "stack-peek"
   },
-  "a6319fd88df80038062ce9205b85396129868a942ffa2ad7554522c641c11054": {
-    "entry_name": "advanced_calculator",
+  "3124afe3b3a5abc703fcf96d41ae4d9bfb4c1b5947ed17a287fd6aec78cf736a": {
+    "entry_name": "_mt_run_calls",
     "params": [
-      "expressions",
-      "mode",
-      "states"
+      "calls"
     ],
     "confirmed": true,
-    "slug": "advanced-calculator"
+    "slug": "calculator-is-number"
+  },
+  "53bdfdb8de6df5e353022d8ef15d2489f6e50373876956ccad4d46a6f3b24897": {
+    "entry_name": "_mt_run_calls",
+    "params": [
+      "calls"
+    ],
+    "confirmed": true,
+    "slug": "calculator-get-postfix"
+  },
+  "113a1e42f7d650f8d6396932a38e0f184c5c3e394bebe83e2581d7288baba78e": {
+    "entry_name": "_mt_run_calls",
+    "params": [
+      "calls"
+    ],
+    "confirmed": true,
+    "slug": "calculator-calculate"
+  },
+  "5b4e9ad085608e0d4ccaaec257cd0b2eb9de522a64922e28f37f778e87ff0e3e": {
+    "entry_name": "_mt_run_calls",
+    "params": [
+      "calls"
+    ],
+    "confirmed": true,
+    "slug": "advanced-calculator-is-variable"
+  },
+  "d6f581d5f2305020f0a8d1ad027c543b0e4288f40820114072aef86a56e9d888": {
+    "entry_name": "_mt_run_calls",
+    "params": [
+      "calls"
+    ],
+    "confirmed": true,
+    "slug": "advanced-calculator-replace-variables"
+  },
+  "ab76384be624e7c5f9582dcdcb278aea68454535aa7f770d1415e44bdd88484e": {
+    "entry_name": "_mt_run_calls",
+    "params": [
+      "calls"
+    ],
+    "confirmed": true,
+    "slug": "advanced-calculator-calculate-expressions"
   }
 }

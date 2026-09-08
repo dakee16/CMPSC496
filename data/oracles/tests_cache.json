@@ -1,512 +1,3927 @@
 {
-  "badc903336e818c1ede21c9adadf4efb052206a3c259e10542962c202fba9293": {
+  "d0eb61eec2fc323718a94bd5018a52a52158ad3984d85b0e8b2763a38712a1ba": {
     "final_tests": [
       {
         "input": [
-          "3 + 5",
-          "calculate"
+          [
+            [
+              "new"
+            ],
+            [
+              "isEmpty"
+            ],
+            [
+              "push",
+              5
+            ],
+            [
+              "isEmpty"
+            ]
+          ]
         ],
-        "expected": 8.0
+        "expected": [
+          null,
+          true,
+          null,
+          false
+        ]
       },
       {
         "input": [
-          "10 / 2",
-          "calculate"
+          [
+            [
+              "push",
+              2
+            ],
+            [
+              "isEmpty"
+            ]
+          ]
         ],
-        "expected": 5.0
+        "expected": [
+          null,
+          false
+        ]
       },
       {
         "input": [
-          "2 ^ 3",
-          "calculate"
+          [
+            [
+              "push",
+              1
+            ],
+            [
+              "push",
+              3
+            ],
+            [
+              "isEmpty"
+            ]
+          ]
         ],
-        "expected": 8.0
+        "expected": [
+          null,
+          null,
+          false
+        ]
       },
       {
         "input": [
-          "(1 + 2) * 3",
-          "calculate"
+          [
+            [
+              "push",
+              5
+            ],
+            [
+              "push",
+              10
+            ],
+            [
+              "pop"
+            ],
+            [
+              "isEmpty"
+            ]
+          ]
         ],
-        "expected": 9.0
+        "expected": [
+          null,
+          null,
+          10,
+          false
+        ]
       },
       {
         "input": [
-          "-4 + 5",
-          "calculate"
+          [
+            [
+              "push",
+              4
+            ],
+            [
+              "push",
+              8
+            ],
+            [
+              "push",
+              12
+            ],
+            [
+              "isEmpty"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "isEmpty"
+            ]
+          ]
         ],
-        "expected": 1.0
+        "expected": [
+          null,
+          null,
+          null,
+          false,
+          12,
+          false
+        ]
       },
       {
         "input": [
-          "(3 + 2) / (1 - 5)",
-          "calculate"
+          [
+            [
+              "push",
+              7
+            ],
+            [
+              "isEmpty"
+            ],
+            [
+              "push",
+              9
+            ],
+            [
+              "pop"
+            ],
+            [
+              "isEmpty"
+            ]
+          ]
         ],
-        "expected": -1.25
+        "expected": [
+          null,
+          false,
+          null,
+          9,
+          false
+        ]
       },
       {
         "input": [
-          "1.5 * 2.5",
-          "calculate"
+          [
+            [
+              "push",
+              6
+            ],
+            [
+              "push",
+              11
+            ],
+            [
+              "push",
+              15
+            ],
+            [
+              "pop"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "isEmpty"
+            ]
+          ]
         ],
-        "expected": 3.75
+        "expected": [
+          null,
+          null,
+          null,
+          15,
+          11,
+          false
+        ]
       },
       {
         "input": [
-          "(2 + 3) ^ 2",
-          "calculate"
+          [
+            [
+              "push",
+              3
+            ],
+            [
+              "push",
+              2
+            ],
+            [
+              "isEmpty"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "isEmpty"
+            ]
+          ]
         ],
-        "expected": 25.0
+        "expected": [
+          null,
+          null,
+          false,
+          2,
+          false
+        ]
       },
       {
         "input": [
-          "1 / 0",
-          "postfix"
+          [
+            [
+              "push",
+              8
+            ],
+            [
+              "push",
+              1
+            ],
+            [
+              "isEmpty"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "isEmpty"
+            ]
+          ]
         ],
-        "expected": "1.0 0.0 /"
+        "expected": [
+          null,
+          null,
+          false,
+          1,
+          8,
+          true
+        ]
       },
       {
         "input": [
-          "-3.14",
-          "is_number"
+          [
+            [
+              "push",
+              4
+            ],
+            [
+              "isEmpty"
+            ],
+            [
+              "push",
+              5
+            ],
+            [
+              "pop"
+            ],
+            [
+              "isEmpty"
+            ],
+            [
+              "push",
+              6
+            ]
+          ]
         ],
-        "expected": true
+        "expected": [
+          null,
+          false,
+          null,
+          5,
+          false,
+          null
+        ]
       },
       {
         "input": [
-          "25 +",
-          "postfix"
+          [
+            [
+              "push",
+              1
+            ],
+            [
+              "isEmpty"
+            ]
+          ]
         ],
-        "expected": null
+        "expected": [
+          null,
+          false
+        ]
       },
       {
         "input": [
-          "",
-          "calculate"
+          [
+            [
+              "push",
+              3
+            ],
+            [
+              "push",
+              5
+            ],
+            [
+              "isEmpty"
+            ]
+          ]
         ],
-        "expected": null
+        "expected": [
+          null,
+          null,
+          false
+        ]
       },
       {
         "input": [
-          "",
-          "is_number"
+          [
+            [
+              "push",
+              10
+            ],
+            [
+              "push",
+              20
+            ],
+            [
+              "pop"
+            ],
+            [
+              "isEmpty"
+            ]
+          ]
         ],
-        "expected": false
+        "expected": [
+          null,
+          null,
+          20,
+          false
+        ]
       },
       {
         "input": [
-          "2.56p",
-          "is_number"
+          [
+            [
+              "isEmpty"
+            ],
+            [
+              "push",
+              7
+            ],
+            [
+              "push",
+              8
+            ],
+            [
+              "isEmpty"
+            ]
+          ]
         ],
-        "expected": false
+        "expected": [
+          true,
+          null,
+          null,
+          false
+        ]
       },
       {
         "input": [
-          "(2 * ( ( 5 + 3) ^ 2 + (1 + 4 )))",
-          "postfix"
+          [
+            [
+              "push",
+              4
+            ],
+            [
+              "push",
+              6
+            ],
+            [
+              "pop"
+            ],
+            [
+              "isEmpty"
+            ],
+            [
+              "peek"
+            ]
+          ]
         ],
-        "expected": "2.0 5.0 3.0 + 2.0 ^ 1.0 4.0 + + *"
+        "expected": [
+          null,
+          null,
+          6,
+          false,
+          4
+        ]
       },
       {
         "input": [
-          "2 * ( 5 + 3 ) ^  2 + ) 1 + 4 (",
-          "postfix"
+          [
+            [
+              "push",
+              9
+            ],
+            [
+              "isEmpty"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "isEmpty"
+            ],
+            [
+              "push",
+              11
+            ],
+            [
+              "isEmpty"
+            ]
+          ]
         ],
-        "expected": null
+        "expected": [
+          null,
+          false,
+          9,
+          true,
+          null,
+          false
+        ]
       },
       {
         "input": [
-          "2 * (3 + 4)",
-          "calculate"
+          [
+            [
+              "push",
+              15
+            ],
+            [
+              "push",
+              25
+            ],
+            [
+              "push",
+              35
+            ],
+            [
+              "isEmpty"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "isEmpty"
+            ]
+          ]
         ],
-        "expected": 14.0
+        "expected": [
+          null,
+          null,
+          null,
+          false,
+          35,
+          false
+        ]
       },
       {
         "input": [
-          "5 - 3 ^ 2",
-          "calculate"
+          [
+            [
+              "isEmpty"
+            ],
+            [
+              "push",
+              12
+            ],
+            [
+              "push",
+              14
+            ],
+            [
+              "push",
+              16
+            ],
+            [
+              "pop"
+            ],
+            [
+              "isEmpty"
+            ],
+            [
+              "peek"
+            ]
+          ]
         ],
-        "expected": -4.0
+        "expected": [
+          true,
+          null,
+          null,
+          null,
+          16,
+          false,
+          14
+        ]
       },
       {
         "input": [
-          "(1 + 2) * (3 - 4)",
-          "calculate"
+          [
+            [
+              "push",
+              18
+            ],
+            [
+              "isEmpty"
+            ],
+            [
+              "push",
+              20
+            ],
+            [
+              "pop"
+            ],
+            [
+              "isEmpty"
+            ],
+            [
+              "push",
+              22
+            ],
+            [
+              "peek"
+            ]
+          ]
         ],
-        "expected": -3.0
+        "expected": [
+          null,
+          false,
+          null,
+          20,
+          false,
+          null,
+          22
+        ]
       },
       {
         "input": [
-          "-5 + 10",
-          "calculate"
+          [
+            [
+              "push",
+              30
+            ],
+            [
+              "push",
+              40
+            ],
+            [
+              "isEmpty"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "isEmpty"
+            ],
+            [
+              "push",
+              50
+            ],
+            [
+              "isEmpty"
+            ]
+          ]
         ],
-        "expected": 5.0
+        "expected": [
+          null,
+          null,
+          false,
+          40,
+          false,
+          null,
+          false
+        ]
       },
       {
         "input": [
-          "(2.5 + 3.5) * 2",
-          "calculate"
+          [
+            [
+              "push",
+              5
+            ],
+            [
+              "push",
+              10
+            ],
+            [
+              "push",
+              15
+            ],
+            [
+              "isEmpty"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "isEmpty"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "isEmpty"
+            ]
+          ]
         ],
-        "expected": 12.0
+        "expected": [
+          null,
+          null,
+          null,
+          false,
+          15,
+          false,
+          10,
+          false
+        ]
       },
       {
         "input": [
-          "(1 - 2) ^ 3",
-          "postfix"
+          [
+            [
+              "push",
+              3
+            ],
+            [
+              "push",
+              6
+            ],
+            [
+              "isEmpty"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "isEmpty"
+            ],
+            [
+              "push",
+              9
+            ],
+            [
+              "peek"
+            ],
+            [
+              "isEmpty"
+            ]
+          ]
         ],
-        "expected": "1.0 2.0 - 3.0 ^"
+        "expected": [
+          null,
+          null,
+          false,
+          6,
+          false,
+          null,
+          9,
+          false
+        ]
       },
       {
         "input": [
-          "-3.5",
-          "is_number"
+          [
+            [
+              "isEmpty"
+            ],
+            [
+              "push",
+              5
+            ],
+            [
+              "isEmpty"
+            ]
+          ]
         ],
-        "expected": true
+        "expected": [
+          true,
+          null,
+          false
+        ]
       },
       {
         "input": [
-          "5.0 + 4.0",
-          "postfix"
+          [
+            [
+              "push",
+              7
+            ],
+            [
+              "push",
+              8
+            ],
+            [
+              "pop"
+            ],
+            [
+              "isEmpty"
+            ]
+          ]
         ],
-        "expected": "5.0 4.0 +"
+        "expected": [
+          null,
+          null,
+          8,
+          false
+        ]
       },
       {
         "input": [
-          "5 - 3 * 2",
-          "calculate"
+          [
+            [
+              "push",
+              10
+            ],
+            [
+              "push",
+              20
+            ],
+            [
+              "isEmpty"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "isEmpty"
+            ]
+          ]
         ],
-        "expected": -1.0
+        "expected": [
+          null,
+          null,
+          false,
+          20,
+          false
+        ]
       },
       {
         "input": [
-          "(1 + 2) ^ 3",
-          "calculate"
+          [
+            [
+              "push",
+              4
+            ],
+            [
+              "push",
+              6
+            ],
+            [
+              "pop"
+            ],
+            [
+              "push",
+              8
+            ],
+            [
+              "isEmpty"
+            ]
+          ]
         ],
-        "expected": 27.0
+        "expected": [
+          null,
+          null,
+          6,
+          null,
+          false
+        ]
       },
       {
         "input": [
-          "-4 + 2",
-          "calculate"
+          [
+            [
+              "push",
+              12
+            ],
+            [
+              "push",
+              14
+            ],
+            [
+              "push",
+              16
+            ],
+            [
+              "pop"
+            ],
+            [
+              "isEmpty"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "isEmpty"
+            ]
+          ]
         ],
-        "expected": -2.0
+        "expected": [
+          null,
+          null,
+          null,
+          16,
+          false,
+          14,
+          false
+        ]
       },
       {
         "input": [
-          "1.5 + 2.5",
-          "calculate"
+          [
+            [
+              "push",
+              3
+            ],
+            [
+              "push",
+              5
+            ],
+            [
+              "push",
+              7
+            ],
+            [
+              "isEmpty"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "isEmpty"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "isEmpty"
+            ]
+          ]
         ],
-        "expected": 4.0
+        "expected": [
+          null,
+          null,
+          null,
+          false,
+          7,
+          false,
+          5,
+          false
+        ]
       },
       {
         "input": [
-          "(3 + 2) / (1 - 0.5)",
-          "calculate"
+          [
+            [
+              "push",
+              1
+            ],
+            [
+              "isEmpty"
+            ],
+            [
+              "push",
+              2
+            ],
+            [
+              "push",
+              3
+            ],
+            [
+              "pop"
+            ],
+            [
+              "isEmpty"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "isEmpty"
+            ]
+          ]
         ],
-        "expected": 10.0
+        "expected": [
+          null,
+          false,
+          null,
+          null,
+          3,
+          false,
+          2,
+          false
+        ]
       },
       {
         "input": [
-          "(2 + 3) * 4",
-          "postfix"
+          [
+            [
+              "push",
+              4
+            ],
+            [
+              "push",
+              6
+            ],
+            [
+              "isEmpty"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "isEmpty"
+            ],
+            [
+              "push",
+              8
+            ],
+            [
+              "isEmpty"
+            ]
+          ]
         ],
-        "expected": "2.0 3.0 + 4.0 *"
-      },
-      {
-        "input": [
-          "-5.5",
-          "is_number"
-        ],
-        "expected": true
-      },
-      {
-        "input": [
-          "abc",
-          "is_number"
-        ],
-        "expected": false
+        "expected": [
+          null,
+          null,
+          false,
+          6,
+          4,
+          true,
+          null,
+          false
+        ]
       }
     ],
     "strong": false,
-    "kill_rate": 0.7910447761194029,
-    "kill_rate_direct": 0.7910447761194029,
-    "validated_at": "2026-09-07T00:04:34+00:00",
+    "kill_rate": 1.0,
+    "kill_rate_direct": 1.0,
+    "status": "doctest_verified",
+    "needs_review": false,
+    "undetermined": 0,
+    "kill_rate_lower": 1.0,
+    "kill_rate_upper": 1.0,
+    "validated_at": "2026-09-08T06:04:49+00:00",
     "breakdown": {
-      "total_mutants": 67,
-      "killed": 53,
+      "total_mutants": 2,
+      "killed": 2,
       "killed_on_retry": 0,
       "proven_equivalent": 0,
-      "unresolved": 14,
+      "unresolved": 0,
       "mutants": [
         {
-          "label": "line 219: not in -> in",
+          "label": "line 13: remove `return self.top is None`",
           "status": "killed"
         },
         {
-          "label": "line 221: and -> or",
-          "status": "killed"
-        },
-        {
-          "label": "line 130: or -> and",
-          "status": "undetermined"
-        },
-        {
-          "label": "line 133: == -> !=",
-          "status": "killed"
-        },
-        {
-          "label": "line 141: True -> False",
-          "status": "killed"
-        },
-        {
-          "label": "line 142: 0 -> 1",
-          "status": "killed"
-        },
-        {
-          "label": "line 143: < -> <=",
-          "status": "killed"
-        },
-        {
-          "label": "line 187: or -> and",
-          "status": "killed"
-        },
-        {
-          "label": "line 190: == -> !=",
-          "status": "killed"
-        },
-        {
-          "label": "line 221: == -> !=",
-          "status": "killed"
-        },
-        {
-          "label": "line 221: or -> and",
-          "status": "killed"
-        },
-        {
-          "label": "line 222: False -> True",
-          "status": "killed"
-        },
-        {
-          "label": "line 135: is -> is not",
-          "status": "killed"
-        },
-        {
-          "label": "line 140: 1 -> 2",
-          "status": "undetermined"
-        },
-        {
-          "label": "line 140: 1 -> 2",
-          "status": "killed"
-        },
-        {
-          "label": "line 140: 2 -> 3",
-          "status": "undetermined"
-        },
-        {
-          "label": "line 140: 2 -> 3",
-          "status": "undetermined"
-        },
-        {
-          "label": "line 140: 3 -> 4",
-          "status": "undetermined"
-        },
-        {
-          "label": "line 146: += -> -=",
-          "status": "killed"
-        },
-        {
-          "label": "line 187: in -> not in",
-          "status": "killed"
-        },
-        {
-          "label": "line 217: == -> !=",
-          "status": "killed"
-        },
-        {
-          "label": "line 136: False -> True",
-          "status": "killed"
-        },
-        {
-          "label": "line 146: 1 -> 2",
-          "status": "killed"
-        },
-        {
-          "label": "line 149: == -> !=",
-          "status": "killed"
-        },
-        {
-          "label": "line 151: += -> -=",
-          "status": "killed"
-        },
-        {
-          "label": "line 156: += -> -=",
-          "status": "killed"
-        },
-        {
-          "label": "line 168: False -> True",
-          "status": "killed"
-        },
-        {
-          "label": "line 169: == -> !=",
-          "status": "killed"
-        },
-        {
-          "label": "line 175: += -> -=",
-          "status": "killed"
-        },
-        {
-          "label": "line 198: < -> <=",
-          "status": "killed"
-        },
-        {
-          "label": "line 202: == -> !=",
-          "status": "killed"
-        },
-        {
-          "label": "line 212: or -> and",
-          "status": "undetermined"
-        },
-        {
-          "label": "line 217: 1 -> 2",
-          "status": "killed"
-        },
-        {
-          "label": "line 217: 0 -> 1",
-          "status": "killed"
-        },
-        {
-          "label": "line 151: 1 -> 2",
-          "status": "killed"
-        },
-        {
-          "label": "line 157: is not -> is",
-          "status": "undetermined"
-        },
-        {
-          "label": "line 162: += -> -=",
-          "status": "undetermined"
-        },
-        {
-          "label": "line 170: and -> or",
-          "status": "killed"
-        },
-        {
-          "label": "line 175: 1 -> 2",
-          "status": "killed"
-        },
-        {
-          "label": "line 176: in -> not in",
-          "status": "killed"
-        },
-        {
-          "label": "line 184: += -> -=",
-          "status": "killed"
-        },
-        {
-          "label": "line 198: 2 -> 3",
-          "status": "killed"
-        },
-        {
-          "label": "line 203: + -> -",
-          "status": "killed"
-        },
-        {
-          "label": "line 204: == -> !=",
-          "status": "killed"
-        },
-        {
-          "label": "line 159: or -> and",
-          "status": "undetermined"
-        },
-        {
-          "label": "line 170: != -> ==",
-          "status": "killed"
-        },
-        {
-          "label": "line 177: and -> or",
-          "status": "killed"
-        },
-        {
-          "label": "line 183: True -> False",
-          "status": "killed"
-        },
-        {
-          "label": "line 184: 1 -> 2",
-          "status": "undetermined"
-        },
-        {
-          "label": "line 205: - -> +",
-          "status": "killed"
-        },
-        {
-          "label": "line 206: == -> !=",
-          "status": "killed"
-        },
-        {
-          "label": "line 159: is -> is not",
-          "status": "undetermined"
-        },
-        {
-          "label": "line 159: not in -> in",
-          "status": "undetermined"
-        },
-        {
-          "label": "line 177: != -> ==",
-          "status": "killed"
-        },
-        {
-          "label": "line 178: or -> and",
-          "status": "killed"
-        },
-        {
-          "label": "line 207: * -> /",
-          "status": "killed"
-        },
-        {
-          "label": "line 208: == -> !=",
-          "status": "killed"
-        },
-        {
-          "label": "line 178: > -> >=",
-          "status": "undetermined"
-        },
-        {
-          "label": "line 179: and -> or",
-          "status": "killed"
-        },
-        {
-          "label": "line 209: / -> *",
-          "status": "killed"
-        },
-        {
-          "label": "line 211: ** -> *",
-          "status": "killed"
-        },
-        {
-          "label": "line 170: 1 -> 2",
-          "status": "killed"
-        },
-        {
-          "label": "line 179: == -> !=",
-          "status": "killed"
-        },
-        {
-          "label": "line 179: != -> ==",
-          "status": "undetermined"
-        },
-        {
-          "label": "line 177: 1 -> 2",
-          "status": "killed"
-        },
-        {
-          "label": "line 178: 1 -> 2",
-          "status": "killed"
-        },
-        {
-          "label": "line 179: 1 -> 2",
+          "label": "line 13: is -> is not",
           "status": "killed"
         }
       ]
     },
-    "slug": "calculator"
+    "slug": "stack-is-empty"
+  },
+  "144aa68071d1b3caa0aced17343ac9615f8c027836e0081b2f9432de1d2aa71b": {
+    "final_tests": [
+      {
+        "input": [
+          [
+            [
+              "new"
+            ],
+            [
+              "len"
+            ],
+            [
+              "push",
+              2
+            ],
+            [
+              "push",
+              4
+            ],
+            [
+              "push",
+              6
+            ],
+            [
+              "len"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          0,
+          null,
+          null,
+          null,
+          3
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              1
+            ],
+            [
+              "push",
+              2
+            ],
+            [
+              "len"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          2
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              3
+            ],
+            [
+              "push",
+              4
+            ],
+            [
+              "len"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "len"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          2,
+          4,
+          1
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              5
+            ],
+            [
+              "push",
+              6
+            ],
+            [
+              "push",
+              7
+            ],
+            [
+              "len"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "len"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "len"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          3,
+          7,
+          2,
+          6,
+          1
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "len"
+            ],
+            [
+              "push",
+              8
+            ],
+            [
+              "push",
+              9
+            ],
+            [
+              "len"
+            ]
+          ]
+        ],
+        "expected": [
+          0,
+          null,
+          null,
+          2
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              10
+            ],
+            [
+              "push",
+              11
+            ],
+            [
+              "pop"
+            ],
+            [
+              "len"
+            ],
+            [
+              "push",
+              12
+            ],
+            [
+              "len"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          11,
+          1,
+          null,
+          2
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              13
+            ],
+            [
+              "len"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "len"
+            ],
+            [
+              "push",
+              14
+            ],
+            [
+              "push",
+              15
+            ],
+            [
+              "len"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          1,
+          13,
+          0,
+          null,
+          null,
+          2
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              16
+            ],
+            [
+              "push",
+              17
+            ],
+            [
+              "len"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "len"
+            ],
+            [
+              "push",
+              18
+            ],
+            [
+              "len"
+            ],
+            [
+              "pop"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          2,
+          17,
+          1,
+          null,
+          2,
+          18
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              19
+            ],
+            [
+              "push",
+              20
+            ],
+            [
+              "len"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "len"
+            ],
+            [
+              "push",
+              21
+            ],
+            [
+              "len"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "len"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          2,
+          20,
+          1,
+          null,
+          2,
+          21,
+          1
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "len"
+            ],
+            [
+              "push",
+              22
+            ],
+            [
+              "push",
+              23
+            ],
+            [
+              "push",
+              24
+            ],
+            [
+              "len"
+            ]
+          ]
+        ],
+        "expected": [
+          0,
+          null,
+          null,
+          null,
+          3
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              25
+            ],
+            [
+              "len"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "len"
+            ],
+            [
+              "push",
+              26
+            ],
+            [
+              "push",
+              27
+            ],
+            [
+              "len"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "len"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          1,
+          25,
+          0,
+          null,
+          null,
+          2,
+          27,
+          1
+        ]
+      }
+    ],
+    "strong": true,
+    "kill_rate": 1.0,
+    "kill_rate_direct": 1.0,
+    "status": "strong",
+    "needs_review": false,
+    "undetermined": 0,
+    "kill_rate_lower": 1.0,
+    "kill_rate_upper": 1.0,
+    "validated_at": "2026-09-08T06:04:59+00:00",
+    "breakdown": {
+      "total_mutants": 9,
+      "killed": 9,
+      "killed_on_retry": 0,
+      "proven_equivalent": 0,
+      "unresolved": 0,
+      "mutants": [
+        {
+          "label": "line 16: remove `count = 0`",
+          "status": "killed"
+        },
+        {
+          "label": "line 17: remove `temp = self.top`",
+          "status": "killed"
+        },
+        {
+          "label": "line 18: remove `while temp:`",
+          "status": "killed"
+        },
+        {
+          "label": "line 21: remove `return count`",
+          "status": "killed"
+        },
+        {
+          "label": "line 19: remove `count += 1`",
+          "status": "killed"
+        },
+        {
+          "label": "line 20: remove `temp = temp.next`",
+          "status": "killed"
+        },
+        {
+          "label": "line 16: 0 -> 1",
+          "status": "killed"
+        },
+        {
+          "label": "line 19: += -> -=",
+          "status": "killed"
+        },
+        {
+          "label": "line 19: 1 -> 2",
+          "status": "killed"
+        }
+      ]
+    },
+    "slug": "stack-len"
+  },
+  "8bef56650627e9c866691b074e48f49dc90066993fb0e4b1b281d187aba549f7": {
+    "final_tests": [
+      {
+        "input": [
+          [
+            [
+              "new"
+            ],
+            [
+              "push",
+              2
+            ],
+            [
+              "push",
+              4
+            ],
+            [
+              "peek"
+            ],
+            [
+              "len"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          4,
+          2
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              5
+            ],
+            [
+              "push",
+              10
+            ],
+            [
+              "pop"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          10
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              1
+            ],
+            [
+              "push",
+              3
+            ],
+            [
+              "push",
+              7
+            ],
+            [
+              "peek"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "len"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          7,
+          7,
+          2
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              4
+            ],
+            [
+              "push",
+              8
+            ],
+            [
+              "pop"
+            ],
+            [
+              "push",
+              6
+            ],
+            [
+              "peek"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          8,
+          null,
+          6
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              9
+            ],
+            [
+              "push",
+              2
+            ],
+            [
+              "pop"
+            ],
+            [
+              "push",
+              3
+            ],
+            [
+              "len"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "pop"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          2,
+          null,
+          2,
+          3,
+          9
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              0
+            ],
+            [
+              "push",
+              -1
+            ],
+            [
+              "peek"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "len"
+            ],
+            [
+              "push",
+              5
+            ],
+            [
+              "pop"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          -1,
+          -1,
+          1,
+          null,
+          5
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              12
+            ],
+            [
+              "push",
+              15
+            ],
+            [
+              "push",
+              18
+            ],
+            [
+              "pop"
+            ],
+            [
+              "len"
+            ],
+            [
+              "push",
+              20
+            ],
+            [
+              "peek"
+            ],
+            [
+              "pop"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          18,
+          2,
+          null,
+          20,
+          20
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              7
+            ],
+            [
+              "push",
+              14
+            ],
+            [
+              "pop"
+            ],
+            [
+              "push",
+              21
+            ],
+            [
+              "push",
+              28
+            ],
+            [
+              "len"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "pop"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          14,
+          null,
+          null,
+          3,
+          28,
+          21
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              3
+            ],
+            [
+              "push",
+              6
+            ],
+            [
+              "push",
+              9
+            ],
+            [
+              "peek"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "push",
+              12
+            ],
+            [
+              "len"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          9,
+          9,
+          null,
+          3
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              11
+            ],
+            [
+              "push",
+              13
+            ],
+            [
+              "pop"
+            ],
+            [
+              "push",
+              17
+            ],
+            [
+              "push",
+              19
+            ],
+            [
+              "peek"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "len"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          13,
+          null,
+          null,
+          19,
+          19,
+          2
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              4
+            ],
+            [
+              "push",
+              8
+            ],
+            [
+              "push",
+              12
+            ],
+            [
+              "pop"
+            ],
+            [
+              "push",
+              16
+            ],
+            [
+              "len"
+            ],
+            [
+              "peek"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "pop"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          12,
+          null,
+          3,
+          16,
+          16,
+          8
+        ]
+      }
+    ],
+    "strong": true,
+    "kill_rate": 1.0,
+    "kill_rate_direct": 1.0,
+    "status": "strong",
+    "needs_review": false,
+    "undetermined": 0,
+    "kill_rate_lower": 1.0,
+    "kill_rate_upper": 1.0,
+    "validated_at": "2026-09-08T06:05:05+00:00",
+    "breakdown": {
+      "total_mutants": 3,
+      "killed": 3,
+      "killed_on_retry": 0,
+      "proven_equivalent": 0,
+      "unresolved": 0,
+      "mutants": [
+        {
+          "label": "line 16: remove `node = Node(value)`",
+          "status": "killed"
+        },
+        {
+          "label": "line 17: remove `node.next = self.top`",
+          "status": "killed"
+        },
+        {
+          "label": "line 18: remove `self.top = node`",
+          "status": "killed"
+        }
+      ]
+    },
+    "slug": "stack-push"
+  },
+  "f7d7f39391ed071a4a03b522d8eea927672f1ff2aed64e72346dde25c492cf43": {
+    "final_tests": [
+      {
+        "input": [
+          [
+            [
+              "new"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "push",
+              2
+            ],
+            [
+              "push",
+              4
+            ],
+            [
+              "pop"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "pop"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          null,
+          4,
+          2,
+          null
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              1
+            ],
+            [
+              "push",
+              3
+            ],
+            [
+              "pop"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          3
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              5
+            ],
+            [
+              "push",
+              10
+            ],
+            [
+              "push",
+              15
+            ],
+            [
+              "pop"
+            ],
+            [
+              "pop"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          15,
+          10
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              7
+            ],
+            [
+              "push",
+              8
+            ],
+            [
+              "pop"
+            ],
+            [
+              "push",
+              9
+            ],
+            [
+              "pop"
+            ],
+            [
+              "pop"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          8,
+          null,
+          9,
+          7
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              4
+            ],
+            [
+              "push",
+              6
+            ],
+            [
+              "push",
+              2
+            ],
+            [
+              "pop"
+            ],
+            [
+              "push",
+              3
+            ],
+            [
+              "pop"
+            ],
+            [
+              "pop"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          2,
+          null,
+          3,
+          6
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              12
+            ],
+            [
+              "push",
+              14
+            ],
+            [
+              "pop"
+            ],
+            [
+              "push",
+              16
+            ],
+            [
+              "pop"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "pop"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          14,
+          null,
+          16,
+          12,
+          null
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              20
+            ],
+            [
+              "push",
+              25
+            ],
+            [
+              "push",
+              30
+            ],
+            [
+              "pop"
+            ],
+            [
+              "push",
+              35
+            ],
+            [
+              "pop"
+            ],
+            [
+              "push",
+              40
+            ],
+            [
+              "pop"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          30,
+          null,
+          35,
+          null,
+          40
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              0
+            ],
+            [
+              "push",
+              -1
+            ],
+            [
+              "pop"
+            ],
+            [
+              "push",
+              -2
+            ],
+            [
+              "pop"
+            ],
+            [
+              "pop"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          -1,
+          null,
+          -2,
+          0
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              100
+            ],
+            [
+              "push",
+              200
+            ],
+            [
+              "push",
+              300
+            ],
+            [
+              "pop"
+            ],
+            [
+              "push",
+              400
+            ],
+            [
+              "pop"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "pop"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          300,
+          null,
+          400,
+          200,
+          100
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              50
+            ],
+            [
+              "push",
+              75
+            ],
+            [
+              "push",
+              100
+            ],
+            [
+              "pop"
+            ],
+            [
+              "push",
+              125
+            ],
+            [
+              "pop"
+            ],
+            [
+              "push",
+              150
+            ],
+            [
+              "pop"
+            ],
+            [
+              "pop"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          100,
+          null,
+          125,
+          null,
+          150,
+          75
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              9
+            ],
+            [
+              "push",
+              8
+            ],
+            [
+              "push",
+              7
+            ],
+            [
+              "pop"
+            ],
+            [
+              "push",
+              6
+            ],
+            [
+              "pop"
+            ],
+            [
+              "push",
+              5
+            ],
+            [
+              "pop"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "pop"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          7,
+          null,
+          6,
+          null,
+          5,
+          8,
+          9
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              2
+            ],
+            [
+              "push",
+              4
+            ],
+            [
+              "pop"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          4
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              1
+            ],
+            [
+              "push",
+              3
+            ],
+            [
+              "push",
+              5
+            ],
+            [
+              "pop"
+            ],
+            [
+              "pop"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          5,
+          3
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              10
+            ],
+            [
+              "push",
+              20
+            ],
+            [
+              "push",
+              30
+            ],
+            [
+              "pop"
+            ],
+            [
+              "len"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          30,
+          2
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              15
+            ],
+            [
+              "push",
+              25
+            ],
+            [
+              "pop"
+            ],
+            [
+              "push",
+              35
+            ],
+            [
+              "peek"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          25,
+          null,
+          35
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              100
+            ],
+            [
+              "push",
+              200
+            ],
+            [
+              "pop"
+            ],
+            [
+              "push",
+              300
+            ],
+            [
+              "len"
+            ],
+            [
+              "pop"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          200,
+          null,
+          2,
+          300
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              5
+            ],
+            [
+              "push",
+              10
+            ],
+            [
+              "push",
+              15
+            ],
+            [
+              "pop"
+            ],
+            [
+              "push",
+              20
+            ],
+            [
+              "pop"
+            ],
+            [
+              "pop"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          15,
+          null,
+          20,
+          10
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              50
+            ],
+            [
+              "pop"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "push",
+              60
+            ],
+            [
+              "push",
+              70
+            ],
+            [
+              "peek"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          50,
+          null,
+          null,
+          null,
+          70
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              3
+            ],
+            [
+              "push",
+              6
+            ],
+            [
+              "push",
+              9
+            ],
+            [
+              "pop"
+            ],
+            [
+              "push",
+              12
+            ],
+            [
+              "len"
+            ],
+            [
+              "pop"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          9,
+          null,
+          3,
+          12
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              4
+            ],
+            [
+              "push",
+              8
+            ],
+            [
+              "pop"
+            ],
+            [
+              "push",
+              12
+            ],
+            [
+              "push",
+              16
+            ],
+            [
+              "pop"
+            ],
+            [
+              "pop"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          8,
+          null,
+          null,
+          16,
+          12
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              1
+            ],
+            [
+              "push",
+              2
+            ],
+            [
+              "push",
+              3
+            ],
+            [
+              "pop"
+            ],
+            [
+              "push",
+              4
+            ],
+            [
+              "push",
+              5
+            ],
+            [
+              "pop"
+            ],
+            [
+              "pop"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          3,
+          null,
+          null,
+          5,
+          4
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              0
+            ],
+            [
+              "pop"
+            ],
+            [
+              "push",
+              -1
+            ],
+            [
+              "push",
+              -2
+            ],
+            [
+              "pop"
+            ],
+            [
+              "len"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          0,
+          null,
+          null,
+          -2,
+          1
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              5
+            ],
+            [
+              "push",
+              10
+            ],
+            [
+              "pop"
+            ],
+            [
+              "push",
+              15
+            ],
+            [
+              "pop"
+            ],
+            [
+              "pop"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          10,
+          null,
+          15,
+          5
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              7
+            ],
+            [
+              "push",
+              8
+            ],
+            [
+              "push",
+              9
+            ],
+            [
+              "pop"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "len"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          9,
+          8,
+          1
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              4
+            ],
+            [
+              "push",
+              6
+            ],
+            [
+              "pop"
+            ],
+            [
+              "push",
+              12
+            ],
+            [
+              "pop"
+            ],
+            [
+              "peek"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          6,
+          null,
+          12,
+          4
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              0
+            ],
+            [
+              "pop"
+            ],
+            [
+              "pop"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          0,
+          null
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              11
+            ],
+            [
+              "push",
+              13
+            ],
+            [
+              "push",
+              17
+            ],
+            [
+              "pop"
+            ],
+            [
+              "len"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "pop"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          17,
+          2,
+          13,
+          11
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              20
+            ],
+            [
+              "push",
+              25
+            ],
+            [
+              "pop"
+            ],
+            [
+              "push",
+              30
+            ],
+            [
+              "peek"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "pop"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          25,
+          null,
+          30,
+          30,
+          20
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              2
+            ],
+            [
+              "push",
+              4
+            ],
+            [
+              "push",
+              6
+            ],
+            [
+              "pop"
+            ],
+            [
+              "len"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "pop"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          6,
+          2,
+          4,
+          2,
+          null
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              3
+            ],
+            [
+              "push",
+              5
+            ],
+            [
+              "pop"
+            ],
+            [
+              "push",
+              7
+            ],
+            [
+              "push",
+              9
+            ],
+            [
+              "pop"
+            ],
+            [
+              "len"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          5,
+          null,
+          null,
+          9,
+          2
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              8
+            ],
+            [
+              "push",
+              10
+            ],
+            [
+              "pop"
+            ],
+            [
+              "push",
+              12
+            ],
+            [
+              "pop"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "len"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          10,
+          null,
+          12,
+          8,
+          0
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              1
+            ],
+            [
+              "push",
+              2
+            ],
+            [
+              "push",
+              3
+            ],
+            [
+              "pop"
+            ],
+            [
+              "peek"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "pop"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          3,
+          2,
+          2,
+          1,
+          null
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              15
+            ],
+            [
+              "push",
+              20
+            ],
+            [
+              "pop"
+            ],
+            [
+              "push",
+              25
+            ],
+            [
+              "peek"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "pop"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          20,
+          null,
+          25,
+          25,
+          15,
+          null
+        ]
+      }
+    ],
+    "strong": false,
+    "kill_rate": 0.8333333333333334,
+    "kill_rate_direct": 0.8333333333333334,
+    "status": "needs_review",
+    "needs_review": true,
+    "undetermined": 1,
+    "kill_rate_lower": 0.8333333333333334,
+    "kill_rate_upper": 1.0,
+    "validated_at": "2026-09-08T06:05:24+00:00",
+    "breakdown": {
+      "total_mutants": 6,
+      "killed": 5,
+      "killed_on_retry": 0,
+      "proven_equivalent": 0,
+      "unresolved": 1,
+      "mutants": [
+        {
+          "label": "line 17: remove `if self.top is None:`",
+          "status": "killed"
+        },
+        {
+          "label": "line 19: remove `node = self.top`",
+          "status": "killed"
+        },
+        {
+          "label": "line 20: remove `self.top = node.next`",
+          "status": "killed"
+        },
+        {
+          "label": "line 21: remove `node.next = None`",
+          "status": "undetermined"
+        },
+        {
+          "label": "line 22: remove `return node.value`",
+          "status": "killed"
+        },
+        {
+          "label": "line 17: is -> is not",
+          "status": "killed"
+        }
+      ]
+    },
+    "slug": "stack-pop"
+  },
+  "e191291aaeb9593dea50c4347ed6e921e28b349b8a234e3d37f286e1cdf5601b": {
+    "final_tests": [
+      {
+        "input": [
+          [
+            [
+              "new"
+            ],
+            [
+              "peek"
+            ],
+            [
+              "push",
+              2
+            ],
+            [
+              "push",
+              4
+            ],
+            [
+              "peek"
+            ],
+            [
+              "len"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          null,
+          4,
+          2
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              1
+            ],
+            [
+              "push",
+              3
+            ],
+            [
+              "peek"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          3
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              5
+            ],
+            [
+              "push",
+              10
+            ],
+            [
+              "peek"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "peek"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          10,
+          10,
+          5
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              7
+            ],
+            [
+              "push",
+              8
+            ],
+            [
+              "push",
+              9
+            ],
+            [
+              "peek"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "peek"
+            ],
+            [
+              "len"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          9,
+          9,
+          8,
+          2
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "peek"
+            ],
+            [
+              "push",
+              4
+            ],
+            [
+              "push",
+              6
+            ],
+            [
+              "peek"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          6
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              2
+            ],
+            [
+              "push",
+              4
+            ],
+            [
+              "pop"
+            ],
+            [
+              "peek"
+            ],
+            [
+              "len"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          4,
+          2,
+          1
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              0
+            ],
+            [
+              "pop"
+            ],
+            [
+              "peek"
+            ],
+            [
+              "push",
+              3
+            ],
+            [
+              "peek"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          0,
+          null,
+          null,
+          3
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              11
+            ],
+            [
+              "push",
+              12
+            ],
+            [
+              "peek"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "peek"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          12,
+          12,
+          11,
+          null
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              15
+            ],
+            [
+              "push",
+              20
+            ],
+            [
+              "push",
+              25
+            ],
+            [
+              "peek"
+            ],
+            [
+              "len"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "peek"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          25,
+          3,
+          25,
+          20
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              30
+            ],
+            [
+              "push",
+              35
+            ],
+            [
+              "peek"
+            ],
+            [
+              "pop"
+            ],
+            [
+              "push",
+              40
+            ],
+            [
+              "peek"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          35,
+          35,
+          null,
+          40
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "push",
+              50
+            ],
+            [
+              "peek"
+            ],
+            [
+              "push",
+              55
+            ],
+            [
+              "pop"
+            ],
+            [
+              "peek"
+            ],
+            [
+              "len"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          50,
+          null,
+          55,
+          50,
+          1
+        ]
+      }
+    ],
+    "strong": true,
+    "kill_rate": 1.0,
+    "kill_rate_direct": 1.0,
+    "status": "strong",
+    "needs_review": false,
+    "undetermined": 0,
+    "kill_rate_lower": 1.0,
+    "kill_rate_upper": 1.0,
+    "validated_at": "2026-09-08T06:14:13+00:00",
+    "breakdown": {
+      "total_mutants": 3,
+      "killed": 3,
+      "killed_on_retry": 0,
+      "proven_equivalent": 0,
+      "unresolved": 0,
+      "mutants": [
+        {
+          "label": "line 16: remove `if self.top is None:`",
+          "status": "killed"
+        },
+        {
+          "label": "line 18: remove `return self.top.value`",
+          "status": "killed"
+        },
+        {
+          "label": "line 16: is -> is not",
+          "status": "killed"
+        }
+      ]
+    },
+    "slug": "stack-peek"
+  },
+  "3124afe3b3a5abc703fcf96d41ae4d9bfb4c1b5947ed17a287fd6aec78cf736a": {
+    "final_tests": [
+      {
+        "input": [
+          [
+            [
+              "new"
+            ],
+            [
+              "_isNumber",
+              " 2.560 "
+            ],
+            [
+              "_isNumber",
+              "7 56"
+            ],
+            [
+              "_isNumber",
+              "2.56p"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          true,
+          false,
+          false
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpr",
+              "3 + 5"
+            ],
+            [
+              "_getPostfix"
+            ],
+            [
+              "_isNumber",
+              "3"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          "!TypeError",
+          true
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpr",
+              "10 - 2"
+            ],
+            [
+              "_getPostfix"
+            ],
+            [
+              "_isNumber",
+              "10"
+            ],
+            [
+              "_isNumber",
+              "2"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          "!TypeError",
+          true,
+          true
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpr",
+              "7 * 8"
+            ],
+            [
+              "_isNumber",
+              "7"
+            ],
+            [
+              "_isNumber",
+              "8"
+            ],
+            [
+              "_getPostfix"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          true,
+          true,
+          "!TypeError"
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpr",
+              "4 / 2"
+            ],
+            [
+              "_isNumber",
+              "4"
+            ],
+            [
+              "_isNumber",
+              "2"
+            ],
+            [
+              "calculate"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          true,
+          true,
+          2.0
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpr",
+              "12 + 15 - 3"
+            ],
+            [
+              "_getPostfix"
+            ],
+            [
+              "_isNumber",
+              "12"
+            ],
+            [
+              "_isNumber",
+              "15"
+            ],
+            [
+              "_isNumber",
+              "3"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          "!TypeError",
+          true,
+          true,
+          true
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpr",
+              "5 * (2 + 3)"
+            ],
+            [
+              "_getPostfix"
+            ],
+            [
+              "_isNumber",
+              "5"
+            ],
+            [
+              "_isNumber",
+              "2"
+            ],
+            [
+              "_isNumber",
+              "3"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          "!TypeError",
+          true,
+          true,
+          true
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpr",
+              "(1 + 2) * 3"
+            ],
+            [
+              "_getPostfix"
+            ],
+            [
+              "_isNumber",
+              "1"
+            ],
+            [
+              "_isNumber",
+              "2"
+            ],
+            [
+              "_isNumber",
+              "3"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          "!TypeError",
+          true,
+          true,
+          true
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpr",
+              "9 - (4 / 2)"
+            ],
+            [
+              "_getPostfix"
+            ],
+            [
+              "_isNumber",
+              "9"
+            ],
+            [
+              "_isNumber",
+              "4"
+            ],
+            [
+              "_isNumber",
+              "2"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          "!TypeError",
+          true,
+          true,
+          true
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpr",
+              "6 + 7 - 8 * 2"
+            ],
+            [
+              "_getPostfix"
+            ],
+            [
+              "_isNumber",
+              "6"
+            ],
+            [
+              "_isNumber",
+              "7"
+            ],
+            [
+              "_isNumber",
+              "8"
+            ],
+            [
+              "_isNumber",
+              "2"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          "!TypeError",
+          true,
+          true,
+          true,
+          true
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpr",
+              "0 / 1"
+            ],
+            [
+              "_getPostfix"
+            ],
+            [
+              "_isNumber",
+              "0"
+            ],
+            [
+              "_isNumber",
+              "1"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          "!TypeError",
+          true,
+          true
+        ]
+      }
+    ],
+    "strong": true,
+    "kill_rate": 1.0,
+    "kill_rate_direct": 1.0,
+    "status": "strong",
+    "needs_review": false,
+    "undetermined": 0,
+    "kill_rate_lower": 1.0,
+    "kill_rate_upper": 1.0,
+    "validated_at": "2026-09-08T06:14:20+00:00",
+    "breakdown": {
+      "total_mutants": 5,
+      "killed": 5,
+      "killed_on_retry": 0,
+      "proven_equivalent": 0,
+      "unresolved": 0,
+      "mutants": [
+        {
+          "label": "line 15: remove `try:`",
+          "status": "killed"
+        },
+        {
+          "label": "line 16: remove `float(txt)`",
+          "status": "killed"
+        },
+        {
+          "label": "line 17: remove `return True`",
+          "status": "killed"
+        },
+        {
+          "label": "line 17: True -> False",
+          "status": "killed"
+        },
+        {
+          "label": "line 19: False -> True",
+          "status": "killed"
+        }
+      ]
+    },
+    "slug": "calculator-is-number"
   }
 }

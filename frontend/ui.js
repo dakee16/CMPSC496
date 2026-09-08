@@ -164,17 +164,29 @@ const allowedOn = (page, role) => !page || role === page || role === "teacher";
 
 function requireSession(role){
   const s = Session.get();
-  if (!s || !s.name || !allowedOn(role, s.role)) {
-    location.replace("login.html");
-    return null;
-  }
+
   // Confirm with the server without blocking the page. A cookie that expired
   // while the tab sat open lands back on sign-in instead of failing later, on
   // a save the student thought had gone through.
-  Session.check().then(me => {
-    if (!me || !allowedOn(role, me.role)) location.replace("login.html");
+  const confirm = Session.check().then(me => {
+    if (!me || !allowedOn(role, me.role)) { location.replace("login.html"); return null; }
+    return me;
   });
-  return s;
+
+  if (s && s.name && allowedOn(role, s.role)) return s;
+
+  // No CACHED session - which is not the same thing as being signed out, and
+  // treating it as such is how "watch" appeared broken. Session lives in
+  // sessionStorage, which is per-TAB: any link opened with target="_blank"
+  // starts with an empty one while the cookie, the actual credential, is still
+  // perfectly valid. Redirecting here sent the new tab to login.html, which saw
+  // the good cookie and forwarded it to the role's home page - so clicking
+  // "watch" on the upload page silently landed back on the upload page.
+  //
+  // The server is the authority. Let the check above decide, and redraw the
+  // header once it answers so the account chip is not left blank.
+  confirm.then(me => { if (me) remountHeader(); });
+  return null;
 }
 
 /* Any route may answer 401 once the cookie expires. Handling that in one place
@@ -209,7 +221,16 @@ const esc = s => String(s == null ? "" : s)
    The page's own <title> is left alone. This used to overwrite it with
    "MicroTutor" / "MicroTutor Portal", which meant no page could ever carry a
    descriptive tab title of its own. */
+// The options the page last mounted with, so the header can be redrawn once an
+// async session check fills in an account the first paint did not have.
+let _headerOpts = null;
+
+function remountHeader(){
+  if (_headerOpts) mountHeader(_headerOpts);
+}
+
 function mountHeader({active = "", wide = false, variant = "", crumbs = null} = {}){
+  _headerOpts = {active, wide, variant, crumbs};
   const s = Session.get();
   // Mounting twice would leave two headers stacked, and the second one's
   // account chip floating loose over the page - exactly the "second, faded

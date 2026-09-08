@@ -350,7 +350,7 @@ if __name__ == "__main__":
     # Patched in THIS module's globals - run as __main__ that is the namespace
     # prepare_assignment_stream actually resolves the name in.
     _real = prepare_problem
-    globals()["prepare_problem"] = lambda p: _outcomes[p["slug"]]
+    globals()["prepare_problem"] = lambda p, emit=None: _outcomes[p["slug"]]
     try:
         events = list(prepare_assignment_stream(
             [{"slug": s, "title": s.upper()} for s in ("a", "b", "c")]))

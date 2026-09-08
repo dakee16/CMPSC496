@@ -441,8 +441,10 @@ def get_oracle_tests(problem: dict, n: int = 10, emit=None) -> list[dict]:
     entry = cache.get(key)
 
     if _is_validated(entry):
-        print(f"  [oracle] {slug}: validation SKIPPED (cached "
-              f"strong={entry['strong']}, kill_rate={entry.get('kill_rate', 0):.2f})")
+        # status, not strong=False - see the verdict print below.
+        print(f"  [oracle] {slug}: validation SKIPPED (cached status="
+              f"{entry.get('status') or ('strong' if entry['strong'] else 'weak')}"
+              f", kill_rate={entry.get('kill_rate', 0):.2f})")
         cached_tests = _entry_tests(entry)
         # A watcher must be told the suite was REUSED. Silence here reads as a
         # mutation stage that never started, which looks like a hang.
@@ -472,11 +474,24 @@ def get_oracle_tests(problem: dict, n: int = 10, emit=None) -> list[dict]:
     # writes the same entry from the same report, and two hand-built copies
     # drift the moment a field is added (A4 added four).
     validated = verdict_entry(report, slug)
+    # Print the STATUS, not the `strong` bit. The bit has only two values and
+    # there are three outcomes, so a needs_review problem printed as WEAK while
+    # the very next line - and the stored verdict - said needs_review. A log
+    # that contradicts the verdict sends someone chasing a bug that is not there.
+    # The range is printed with it, because for needs_review the two bounds are
+    # the whole reason a human is being asked.
+    status = (validated.get("status") or
+              ("strong" if validated["strong"] else "weak")).upper()
+    span = ""
+    if validated.get("kill_rate_lower") != validated.get("kill_rate_upper"):
+        span = (f" [{validated['kill_rate_lower']:.2f}-"
+                f"{validated['kill_rate_upper']:.2f}, "
+                f"{validated.get('undetermined', 0)} undetermined]")
     print(f"  [oracle] {slug or '?'}: {len(tests)} -> "
           f"{len(validated['final_tests'])} tests, "
           f"kill_rate={validated['kill_rate']:.2f} "
           f"(direct {validated['kill_rate_direct']:.2f}) "
-          f"{'STRONG' if validated['strong'] else 'WEAK'}")
+          f"{status}{span}")
 
     cache[key] = validated          # verdict_entry already carries the slug
     _save_cache(cache)

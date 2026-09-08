@@ -558,7 +558,8 @@ def playground_problem(slug: str, request: Request):
     from tests.sandbox import _load_cache
 
     row = get_supabase().table("problems").select(
-        "slug, title, description, difficulty, solution, ready, prepare_error"
+        "slug, title, description, difficulty, solution, ready, prepare_error, "
+        "context, group_slug, group_title, group_description"
     ).eq("slug", slug).execute().data
     if not row:
         raise HTTPException(status_code=404, detail=f"Problem '{slug}' not found.")
@@ -593,10 +594,14 @@ def playground_detail(slug: str):
     from tests.sandbox import _load_cache, passes_tests, run_solution
 
     row = get_supabase().table("problems").select(
-        "slug, title, description, difficulty, solution").eq("slug", slug).execute().data
+        "slug, title, description, difficulty, solution, context, group_slug, "
+        "group_title, group_description").eq("slug", slug).execute().data
     if not row:
         raise HTTPException(status_code=404, detail=f"Problem '{slug}' not found.")
-    problem = row[0]
+    # get_resolved_entry and the mutant replay below both EXECUTE this problem,
+    # so it has to carry its class context or a method resolves to a bare
+    # `def pop(self)` that cannot run.
+    problem = {**row[0], **_context_of(row[0])}
     solution = problem.get("solution") or ""
     # The solution is needed BELOW to recompute mutants, but it must not be
     # returned. Everything sent back is built from `public_problem`.
@@ -757,6 +762,29 @@ def prepare_live_mirror(assignment_id: str, slug: str, request: Request):
                                       "X-Accel-Buffering": "no"})
 
 
+@app.get("/teacher/problems/{assignment_id}/{slug}/transcript")
+def problem_transcript(assignment_id: str, slug: str, request: Request):
+    """The saved narration of the run that blocked this problem.
+
+    The after-the-fact half of /teacher/prepare/live: that one attaches to a run
+    in progress, this one replays a run that has already finished. Only problems
+    that did NOT pass have one - see main/transcripts.py.
+
+    Teacher-gated like every other route that carries a transcript: it contains
+    the ground truth, the oracle suite and the chunk references."""
+    from main import transcripts
+
+    require_teacher(request)
+    saved = transcripts.load(assignment_id, slug)
+    if not saved:
+        raise HTTPException(status_code=404, detail={
+            "reason_code": "no_transcript",
+            "message": (f"No saved run for '{slug}'. Transcripts are kept only "
+                        f"for problems that did not pass, and are cleared once "
+                        f"a problem is fixed.")})
+    return saved
+
+
 @app.post("/playground/live")
 def playground_live(req: LiveRunRequest, request: Request):
     from fastapi.responses import StreamingResponse
@@ -772,13 +800,20 @@ def playground_live(req: LiveRunRequest, request: Request):
     # Same contract as /decompose_chunks: curated problems keep their ground
     # truth in the DB; uploads carry it in the request. No ground truth = no
     # oracle = nothing to watch - hard error, not a degraded run.
-    if not problem["solution"] or not problem["description"]:
-        row = get_supabase().table("problems").select(
-            "slug, title, description, solution").eq("slug", req.slug).execute().data
-        if row:
-            problem["solution"] = problem["solution"] or (row[0].get("solution") or "").strip()
-            problem["description"] = problem["description"] or (row[0].get("description") or "")
-            problem["title"] = req.title or row[0].get("title") or req.slug
+    # The context blob is fetched UNCONDITIONALLY, not only when the solution is
+    # missing. A method problem without it is not a degraded problem, it is the
+    # WRONG problem: is_method() goes false, main/context.py stops assembling the
+    # class around the method, and the entry point resolves to `pop` instead of
+    # the sequence driver. Every class problem then dies at oracle generation
+    # with "no usable test cases", because a bare `def pop(self)` cannot be run.
+    row = get_supabase().table("problems").select(
+        "slug, title, description, solution, context, group_slug, group_title, "
+        "group_description").eq("slug", req.slug).execute().data
+    if row:
+        problem["solution"] = problem["solution"] or (row[0].get("solution") or "").strip()
+        problem["description"] = problem["description"] or (row[0].get("description") or "")
+        problem["title"] = req.title or row[0].get("title") or req.slug
+        problem.update(_context_of(row[0]))
     if not problem["solution"]:
         raise HTTPException(
             status_code=400,
@@ -821,6 +856,32 @@ _PUBLIC_PROBLEM_COLS = ("id, slug, title, difficulty, description, topic_tags,"
 # module a method was carved out of, which includes the teacher's reference
 # implementations of the class's OTHER methods - for Stack.pop it contains a
 # finished push(). Serving it to a student hands them four of the five answers.
+
+
+def _context_of(row: dict) -> dict:
+    """The class-context fields from a stored problem row, flattened back onto
+    the problem dict main/context.py expects.
+
+    The inverse of _group_columns. It exists because reading a method problem
+    back WITHOUT these is silently catastrophic rather than merely lossy: the
+    problem still looks valid, so nothing errors - it just stops being a method
+    and starts being an unrunnable bare function. Any route that loads a problem
+    for execution must go through here."""
+    from main.sessions import CONTEXT_FIELDS
+    context = row.get("context") or {}
+    if isinstance(context, str):                  # jsonb can come back as text
+        import json as _j
+        try:
+            context = _j.loads(context)
+        except Exception:
+            context = {}
+    out = {k: context[k] for k in CONTEXT_FIELDS if k in context}
+    # The group columns live beside the blob, not inside it, and group_title is
+    # what names the class in the sequence driver.
+    for k in ("group_slug", "group_title", "group_description"):
+        if row.get(k) is not None:
+            out[k] = row[k]
+    return out
 
 
 def _group_columns(problem: dict) -> dict:
@@ -928,13 +989,24 @@ def upload_assignment(req: AssignmentUpload, request: Request):
     # channel lifetime; main/publish.py knows only that it was handed an `emit`.
     from main.prepare_bus import finish as bus_finish, key as bus_key
     from main.prepare_bus import open_channel, publish as bus_publish
+    from main import transcripts
     opened: list[str] = []
+    # The same events, kept per problem so a run that did NOT pass can be
+    # replayed later. The bus is live-only and dies with the request, which is
+    # why "watch" was useless the moment an upload finished - and an hour later
+    # is exactly when an instructor sits down to fix things.
+    taped: dict[str, list] = {}
 
     def emit_for(slug: str):
         k = bus_key(assignment_id, slug)
         open_channel(k)
         opened.append(k)
-        return lambda ev: bus_publish(k, ev)
+        tape = taped.setdefault(slug, [])
+
+        def emit(ev):
+            tape.append(ev)
+            bus_publish(k, ev)
+        return emit
 
     def events():
         yield _json.dumps({"event": "parsed", "assignment_id": assignment_id,
@@ -988,6 +1060,14 @@ def upload_assignment(req: AssignmentUpload, request: Request):
                             # warning field.
                             ev = {**ev, "ready": False,
                                   "error": f"prepared, but could not be saved: {e}"[:300]}
+                    # AFTER the save, so `ready` here is the outcome actually
+                    # recorded - a problem that prepared but failed to store is
+                    # not ready, and its transcript has to be kept too.
+                    try:
+                        transcripts.record(assignment_id, ev.get("slug", "?"),
+                                           taped.pop(ev.get("slug", "?"), []), ev)
+                    except Exception:
+                        pass          # evidence is a nicety; never fail an upload for it
                 yield _json.dumps(ev) + "\n"
         finally:
             # A disconnect or a crash must not leave watchers hanging on a run
@@ -1160,7 +1240,17 @@ def teacher_problem_retry(req: ProblemRetryRequest, request: Request):
                                  "each its own entry.")
 
     problem["slug"] = req.slug                     # identity is the row's
-    result = prepare_problem(problem)
+    # Taped for the same reason the upload tapes: if this retry ALSO does not
+    # pass, the instructor needs the new evidence, not the run from an hour ago.
+    # A retry that succeeds clears the old transcript - transcripts.record does
+    # that itself when `ready` is true.
+    from main import transcripts
+    tape: list = []
+    result = prepare_problem(problem, emit=tape.append)
+    try:
+        transcripts.record(req.assignment_id, req.slug, tape, result)
+    except Exception:
+        pass
 
     sb = get_supabase()
     try:
@@ -1197,9 +1287,13 @@ def manual_split(req: ManualSplitRequest, request: Request):
     require_teacher(request)
     sb = get_supabase()
     row = sb.table("problems").select(
-        "slug, title, description, solution").eq("slug", req.slug).execute().data
+        "slug, title, description, solution, context, group_slug, group_title, "
+        "group_description").eq("slug", req.slug).execute().data
     if not row:
         raise HTTPException(status_code=404, detail=f"Problem '{req.slug}' not found.")
+    # save_manual_decomposition runs assert_serveable, which executes the
+    # problem against its oracle - so the class context has to ride along.
+    row = [{**row[0], **_context_of(row[0])}]
     problem = row[0]
     try:
         out = save_manual_decomposition(problem, req.header, req.chunks)

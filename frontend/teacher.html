@@ -114,6 +114,30 @@
   .fixActs{display:flex; gap:var(--s2); align-items:center; flex-wrap:wrap;
     margin-top:var(--s4)}
 
+  /* The saved run, replayed inside the fix panel. */
+  .story{margin:0 0 var(--s4); border:1px solid var(--glass-line);
+    border-radius:var(--r-md); background:var(--surface-raised)}
+  .story > summary{cursor:pointer; padding:11px 14px; font-size:13px;
+    font-weight:600; color:var(--text); list-style:none}
+  .story > summary::-webkit-details-marker{display:none}
+  .story > summary::before{content:"▸"; display:inline-block; width:14px;
+    color:var(--text-subtle); transition:transform .15s var(--ease)}
+  .story[open] > summary::before{transform:rotate(90deg)}
+  .storyBody{padding:0 14px 14px}
+  .storyCols{display:grid; gap:var(--s4);
+    grid-template-columns:repeat(auto-fit,minmax(250px,1fr))}
+  .storyCols h4{margin:0 0 9px; font-size:11px; text-transform:uppercase;
+    letter-spacing:.09em; color:var(--text-subtle)}
+  .sList{list-style:none; margin:0; padding:0; display:grid; gap:8px}
+  .sList li{padding:9px 11px; border-radius:9px; background:var(--surface);
+    border:1px solid var(--glass-line); font-size:12.5px}
+  .sList b{font-family:var(--font-mono); font-size:11.5px; color:var(--text);
+    overflow-wrap:anywhere}
+  .sWord{margin-left:7px; font-size:10.5px; font-weight:600; padding:2px 7px;
+    border-radius:var(--r-pill); background:var(--warning-bg);
+    color:var(--warning); white-space:nowrap}
+  .sWhy{margin-top:5px; color:var(--text-muted); font-size:12px; line-height:1.55}
+
   /* The end-of-run review prompt. */
   .rvScrim{position:fixed; inset:0; z-index:50; display:grid; place-items:center;
     padding:var(--s4); background:rgba(8,11,18,.62); backdrop-filter:blur(3px);
@@ -805,6 +829,104 @@ function ckList(items){
     </li>`).join("")}</ul>`;
 }
 
+/* ---------- what actually happened to this problem ---------- */
+
+// The stages the pipeline walks, in order, named the way an instructor would
+// describe them rather than the way the code does.
+const STORY_STAGE = {
+  start:          "Reading your solution",
+  entry:          "Working out which function to test",
+  oracle_gen:     "Writing test cases from your solution",
+  oracle_verify:  "Checking those test cases are strong enough",
+  decomposition:  "Splitting the problem into steps",
+  necessity:      "Checking every step does real work",
+  finished:       "Ready for students",
+};
+
+// What a probe finding MEANS, and what to do about it. This is the payload of
+// the whole review flow: the three findings need opposite responses, and an
+// instructor who is not told which one happened cannot act.
+const STORY_PROBE = {
+  never_reached: ["never reached",
+    "No test case ever runs this line, so changing it changes nothing. That is "
+    + "a gap in the tests rather than a problem with your solution - an example "
+    + "that reaches this line would settle it."],
+  no_infection: ["no visible effect",
+    "The line runs, but changing it never altered the decision it makes. More "
+    + "test cases of the same kind will not separate them."],
+  propagation: ["effect swallowed",
+    "Changing the line really does alter what it decides, but the difference "
+    + "never reaches the answer. Separating them needs a differently shaped "
+    + "test, not more of the same."],
+  unknown: ["could not tell",
+    "The check itself could not run, so nothing was learned either way."],
+};
+
+function runStory(tape){
+  if (!tape || !tape.events) return "";
+  const ev = tape.events, out = tape.outcome || {};
+  const pct = x => Math.round((x || 0) * 100) + "%";
+
+  // Stages, in the order they were reached, with the one that stopped it marked.
+  const blocked = ev.find(e => e.type === "blocked");
+  const stages = ev.filter(e => e.type === "stage" && STORY_STAGE[e.name])
+    .map(e => e.name);
+  const seen = [...new Set(stages)];
+  const rows = seen.map((name, i) => {
+    const last = i === seen.length - 1;
+    const bad = last && blocked;
+    return `<li class="${bad ? "fail" : "ok"}"><span class="ckMark"
+      >${bad ? "!" : "✓"}</span><span class="ckLabel">${esc(STORY_STAGE[name])}</span></li>`;
+  }).join("");
+
+  // The undetermined checks, with the finding for each.
+  const probes = ev.filter(e => e.type === "probe_result");
+  const probeRows = probes.map(p => {
+    const [word, why] = STORY_PROBE[p.verdict]
+      || [String(p.verdict || "?"), p.detail || ""];
+    return `<li><b>${esc(p.label || "a check")}</b>
+      <span class="sWord">${esc(word)}</span>
+      <div class="sWhy">${esc(why)}</div></li>`;
+  }).join("");
+
+  let verdict = "";
+  if (out.needs_review){
+    verdict = `<div class="banner warn" style="margin:0 0 var(--s3)">
+      <b>This one needs your judgement, not necessarily a fix.</b><br>
+      Between ${pct(out.kill_rate_lower)} and ${pct(out.kill_rate_upper)} of the
+      deliberate errors were caught. ${out.undetermined || 0}
+      check${out.undetermined === 1 ? "" : "s"} could not be decided either way,
+      and the answer genuinely depends on ${out.undetermined === 1 ? "it" : "them"}.
+      Until someone looks, this stays hidden from students.</div>`;
+  } else if (blocked){
+    verdict = `<div class="banner bad" style="margin:0 0 var(--s3)">
+      <b>Stopped at: ${esc(STORY_STAGE[blocked.at] || blocked.at || "preparation")}.</b>
+      ${esc(out.error || blocked.error || "")}</div>`;
+  }
+
+  const trunc = ev.some(e => e.type === "transcript_truncated")
+    ? `<p class="hint" style="margin:var(--s3) 0 0">This run was long; the
+       middle of it was not kept. The setup and the outcome are complete.</p>` : "";
+
+  return `<details class="story" open>
+    <summary>What happened when this was prepared</summary>
+    <div class="storyBody">
+      ${verdict}
+      <div class="storyCols">
+        <div>
+          <h4>How far it got</h4>
+          <ul class="ckList">${rows || "<li class='pending'><span class='ckMark'>·</span><span class='ckLabel'>No stages recorded.</span></li>"}</ul>
+        </div>
+        ${probeRows ? `<div>
+          <h4>The checks nothing could decide</h4>
+          <ul class="sList">${probeRows}</ul>
+        </div>` : ""}
+      </div>
+      ${trunc}
+    </div>
+  </details>`;
+}
+
 async function openFix(host, assignment, slug, prob){
   if (!host) return;
   // One panel at a time: two open editors on one screen invite editing the
@@ -813,13 +935,23 @@ async function openFix(host, assignment, slug, prob){
   host.dataset.slug = slug;
   host.innerHTML = `<div class="fixPanel">${skeletonRows(2)}</div>`;
 
-  let d;
+  let d, tape = null;
   try {
     const r = await fetch(
       `${API}/teacher/problems/${encodeURIComponent(slug)}/source`
       + `?assignment_id=${encodeURIComponent(assignment.id)}`);
     if (!r.ok) throw new Error();
     d = await r.json();
+    // The saved run, if this problem has one. Fetched in the same breath as the
+    // source because the panel is useless without it: "here is your code, try
+    // again" tells an instructor nothing about WHY it did not pass. A 404 is
+    // ordinary - problems that passed keep no transcript.
+    try {
+      const t = await fetch(
+        `${API}/teacher/problems/${encodeURIComponent(assignment.id)}`
+        + `/${encodeURIComponent(slug)}/transcript`);
+      if (t.ok) tape = await t.json();
+    } catch { /* no transcript is not an error */ }
   } catch {
     host.innerHTML = `<div class="fixPanel"><div class="banner bad"
       style="margin:0">Could not load this problem's text.
@@ -837,6 +969,7 @@ async function openFix(host, assignment, slug, prob){
         >${d.ready ? "ready" : "blocked"}</span>
       <button class="ghost fixX" type="button" id="fixClose">Close</button>
     </div>
+    ${runStory(tape)}
     <div class="fixGrid">
       <div>
         <label for="fixSrc" class="hint" style="display:block; margin:0 0 7px">
