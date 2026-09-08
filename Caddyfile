@@ -1,0 +1,42 @@
+# Caddyfile - TLS, and the network fence the app's threat model assumes.
+#
+# WHY THE FENCE MATTERS. Registration checks only that an address ENDS WITH
+# psu.edu (main/auth.py:122) - there is no confirmation email. On a public URL
+# anyone can register nobody@psu.edu and reach main/execution.py, which says
+# plainly that it is a hardened harness and not a secure sandbox. auth.py's own
+# header states the assumption: "the network boundary is the college VPN".
+# This file is that boundary.
+#
+# PORT 80 MUST STAY OPEN TO THE WORLD in the server firewall. The Let's Encrypt
+# challenge arrives from their validation servers, not from campus. Firewalling
+# 80 to PSU ranges lets issuance succeed once and then silently fail to RENEW
+# about 60 days later, taking the site down at a moment nobody is watching.
+# Blocking belongs here, at the application layer, not in the firewall.
+
+{$MICROTUTOR_DOMAIN} {
+	# Space-separated CIDRs, from MICROTUTOR_ALLOWED_CIDRS, e.g.
+	#     MICROTUTOR_ALLOWED_CIDRS=128.118.0.0/16 146.186.0.0/16
+	# Defaults to everything (docker-compose.yml) so the site is reachable
+	# before PSU IT answers. Narrow it as soon as you have the real ranges.
+	@campus remote_ip {$MICROTUTOR_ALLOWED_CIDRS}
+
+	handle @campus {
+		reverse_proxy app:8000
+	}
+
+	# An explicit refusal, not a timeout: "the site is broken" and "you are not
+	# on the VPN" must not look the same to a student at 2am.
+	handle {
+		respond "Not available from this network. Connect to the Penn State VPN and reload." 403
+	}
+
+	# On by default so you can VERIFY the fence actually sees real client IPs.
+	# Docker publishes 80/443 with an iptables DNAT that normally preserves the
+	# source address, but if these logs show 172.x.x.x for every request then
+	# Caddy is matching the Docker gateway, the allowlist is meaningless, and
+	# the proxy needs host networking instead. Check before you narrow the CIDRs.
+	log {
+		output stdout
+		format console
+	}
+}

@@ -1,0 +1,58 @@
+# docker-compose.yml - the whole deployment: the app, and Caddy in front of it.
+#
+#   docker compose up -d --build              start, or apply a change
+#   docker compose logs -f app                watch the app
+#   git pull && docker compose up -d --build  ship a new commit
+#
+# Caddy owns 80/443, gets and renews its own TLS certificate, and refuses any
+# request from outside the allowed networks. See Caddyfile.
+
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    # Secrets and tunables. Create it on the server from .env.example; it is
+    # gitignored and never enters the image (.dockerignore).
+    env_file: .env
+    environment:
+      # Pinned HERE rather than in .env so the volume paths cannot be forgotten
+      # or mistyped on a new box. `environment` wins over `env_file`, and
+      # start.sh refuses to boot if these point anywhere but the volume.
+      MICROTUTOR_SESSION_DB: /data/grading_sessions.sqlite3
+      MICROTUTOR_ORACLE_CACHE: /data/oracles/tests_cache.json
+      MICROTUTOR_TRANSCRIPTS: /data/transcripts.json
+      PORT: "8000"
+    volumes:
+      - microtutor-data:/data
+    # `expose`, NOT `ports`. Publishing 8000 to the host would serve the app on
+    # http://<server-ip>:8000 - straight past Caddy, and therefore past both the
+    # network allowlist and TLS. Only Caddy can reach it.
+    expose:
+      - "8000"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # Required: the hostname the certificate is issued for.
+      MICROTUTOR_DOMAIN: ${MICROTUTOR_DOMAIN:?set MICROTUTOR_DOMAIN in .env}
+      # Space-separated CIDRs allowed to reach the app. Defaults to everything
+      # so the site works before PSU IT sends the real ranges - tighten it the
+      # moment you have them.
+      MICROTUTOR_ALLOWED_CIDRS: ${MICROTUTOR_ALLOWED_CIDRS:-0.0.0.0/0 ::/0}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Certificates live here. Lose this volume and Caddy re-issues on next
+      # boot, which is fine but counts against Let's Encrypt rate limits.
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - app
+
+volumes:
+  microtutor-data:
+  caddy-data:
+  caddy-config:

@@ -262,7 +262,16 @@ def test_a_forged_cookie_is_not_a_session():
     good = c.cookies[auth.SESSION_COOKIE]
     body, sig = good.split(".")
 
-    for bad in (f"{body}x.{sig}", f"{body}.{sig[:-1]}A", "junk", ""):
+    # Flip a character that carries FULL information, and only if it actually
+    # changes. This used to be sig[:-1] + "A", which was wrong twice over: the
+    # signature is base64url of a 32-byte HMAC, so its final character encodes
+    # only 2 significant bits (16 possible values) - about one run in 16 the
+    # real signature already ended in "A", the "forged" cookie was byte for byte
+    # the VALID one, and the test asserted 401 on a cookie the server is right
+    # to accept. A security test that fails 6% of the time gets re-run, not read.
+    forged_sig = ("B" if sig[0] == "A" else "A") + sig[1:]
+
+    for bad in (f"{body}x.{sig}", f"{body}.{forged_sig}", "junk", ""):
         c.cookies.set(auth.SESSION_COOKIE, bad)
         assert c.get("/auth/me").status_code == 401, f"accepted {bad[:20]!r}"
 
