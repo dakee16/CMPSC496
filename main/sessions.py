@@ -199,6 +199,35 @@ def load_session(session_id: str, db_path: str | None = None) -> dict:
 # What a class-derived problem carries beyond the plain four. Named once here
 # because create_session writes it and problem_of reads it, and the two drifting
 # apart would mean a method graded against a program it was not decomposed from.
+def context_of(row: dict) -> dict:
+    """The class-context fields from a stored problem row, flattened back onto
+    the problem dict main/context.py expects.
+
+    Reading a method problem back WITHOUT these is silently catastrophic rather
+    than merely lossy: nothing errors, the problem just stops being a method and
+    starts being an unrunnable bare function with a different content_hash. Any
+    code that loads a problem from the database and then executes it, or looks
+    it up by hash, must go through here - main/grades.py did neither, which is
+    why a grade sheet could not find the decomposition its own students had
+    already been served.
+
+    Lives here beside CONTEXT_FIELDS so there is one implementation;
+    frontend/api_server._context_of delegates to it."""
+    context = row.get("context") or {}
+    if isinstance(context, str):                  # jsonb can come back as text
+        try:
+            context = json.loads(context)
+        except Exception:
+            context = {}
+    out = {k: context[k] for k in CONTEXT_FIELDS if k in context}
+    # The group columns live beside the blob, not inside it, and group_title is
+    # what names the class in the sequence driver.
+    for k in ("group_slug", "group_title", "group_description"):
+        if row.get(k) is not None:
+            out[k] = row[k]
+    return out
+
+
 CONTEXT_FIELDS = ("context_prefix", "context_suffix", "context_indent",
                   "entry_hint", "group_slug", "group_title", "group_description")
 

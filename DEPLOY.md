@@ -3,14 +3,14 @@
 Two containers on one box: the app, and Caddy in front of it holding TLS and
 the network fence. `docker-compose.yml` runs both.
 
-The app serves the API **and** `frontend/`, so the browser is same-origin —
+The app serves the API **and** `frontend/`, so the browser is same-origin -
 no CORS, no second service, no separate frontend deploy.
 
 ## Why not serverless
 
 Vercel and friends break three things this app depends on: grading sessions are
 SQLite on local disk (`main/sessions.py:22,61`), teacher upload runs for
-**minutes** (`frontend/api_server.py:956`) against function caps of 60–300s, and
+**minutes** (`frontend/api_server.py:956`) against function caps of 60-300s, and
 `prepare_bus.py` / `auth.py:294` / `trace.py` keep cross-request state in process
 memory. All three want one long-lived process with a real disk.
 
@@ -94,7 +94,7 @@ MICROTUTOR_ALLOWED_CIDRS    (leave empty until PSU IT sends the ranges)
 
 Generate a **fresh** session secret; do not reuse the local one.
 
-Do **not** set the three `/data` paths here — `docker-compose.yml:19-21` pins
+Do **not** set the three `/data` paths here - `docker-compose.yml:19-21` pins
 them, so they cannot be mistyped on a new box.
 
 Do **not** set `DATABASE_URL`, `MICROTUTOR_EXECUTION_BACKEND`, or anything under
@@ -117,7 +117,7 @@ LAUNCHED: uvicorn frontend.api_server:app --host 0.0.0.0 --port 8000 --workers 1
 certificate obtained successfully          (from caddy)
 ```
 
-No seed line means the volume did not mount — stop and fix before anyone signs
+No seed line means the volume did not mount - stop and fix before anyone signs
 in. `main/grading.py:371` loads every problem's tests from that cache, and it is
 minutes of paid model work per problem to regenerate.
 
@@ -137,12 +137,12 @@ docker compose logs caddy | tail -20
 ```
 
 If every request logs `172.x.x.x`, Caddy is matching the Docker bridge and the
-allowlist would be meaningless — fix that before narrowing `MICROTUTOR_ALLOWED_CIDRS`.
+allowlist would be meaningless - fix that before narrowing `MICROTUTOR_ALLOWED_CIDRS`.
 
 ## 7. Lock it to the PSU network
 
 Ask PSU IT for the VPN's **egress** ranges (what the outside world sees when a
-student is on the VPN — not the campus wired blocks). Then:
+student is on the VPN - not the campus wired blocks). Then:
 
 ```bash
 nano .env      # MICROTUTOR_ALLOWED_CIDRS=128.118.0.0/16 146.186.0.0/16
@@ -152,7 +152,7 @@ docker compose up -d
 Test from off-VPN: you should get the 403 naming the VPN, not a timeout.
 
 This matters more than it looks. Registration checks only that an address *ends
-with* `psu.edu` (`main/auth.py:122`) — there is no confirmation email — so on a
+with* `psu.edu` (`main/auth.py:122`) - there is no confirmation email - so on a
 public URL anyone can create an account and reach `main/execution.py`, which
 states plainly that it is a hardened harness, not a secure sandbox.
 
@@ -163,7 +163,7 @@ cd microtutor && git pull && docker compose up -d --build
 ```
 
 The named volume survives rebuilds. Take a Lightsail **snapshot** before
-anything risky — it is the one-click way back.
+anything risky - it is the one-click way back.
 
 ## Operational notes
 
@@ -171,7 +171,7 @@ anything risky — it is the one-click way back.
   brute-force counter (`auth.py:294`) and the trace ring are process-local and
   wrong with a second worker. Scale up, not out; scaling out means moving those
   three to Postgres first.
-- **The app is not published to the host** — `expose`, not `ports`. Publishing
+- **The app is not published to the host** - `expose`, not `ports`. Publishing
   8000 would serve it on `http://<ip>:8000`, past both TLS and the fence.
 - **Student code runs as non-root.** The container starts as root only to chown
   the volume, then `start.sh` drops to `appuser` before uvicorn starts.

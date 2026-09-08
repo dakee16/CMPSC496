@@ -441,7 +441,7 @@ function renderList(filter){
           p.undetermined || 0} mutant${p.undetermined === 1 ? "" : "s"} undetermined. Best case ${
           Math.round((p.kill_rate_upper || 0) * 100)}%, worst case ${
           Math.round((p.kill_rate_lower || 0) * 100)}%.">oracle ${
-          Math.round((p.kill_rate_lower || 0) * 100)}–${
+          Math.round((p.kill_rate_lower || 0) * 100)}-${
           Math.round((p.kill_rate_upper || 0) * 100)}%</span>`);
       else if (p.oracle === "weak")
         tags.push(`<span class="tag warn">oracle weak</span>`);
@@ -497,7 +497,7 @@ async function openProblem(slug){
   const r = $("dReady");
   r.className = "tag " + (d.ready ? "ok" : stale ? "warn"
                                   : (d.prepare_error ? "bad" : "dim"));
-  r.textContent = d.ready ? "ready" : stale ? "fixed — re-prepare"
+  r.textContent = d.ready ? "ready" : stale ? "fixed - re-prepare"
                           : (d.prepare_error ? "failed" : "not prepared");
   $("dError").hidden = !d.prepare_error || d.ready;
   $("dError").className = stale ? "banner warn failNote" : "banner bad failNote";
@@ -725,13 +725,13 @@ const HANDLERS = {
 
   round_start(ev){
     mutRound = ev.round;
-    line(`<b>Round ${ev.round} of ${ev.max_rounds}</b> — scoring the suite as it
+    line(`<b>Round ${ev.round} of ${ev.max_rounds}</b> - scoring the suite as it
       stands (${ev.n_tests} tests).`);
   },
 
   mutants(ev){
     mutRows = new Map();
-    line(`<b>${ev.total}</b> mutants — single mechanical edits of the ground
+    line(`<b>${ev.total}</b> mutants - single mechanical edits of the ground
       truth. Each is run against every oracle test; a mutant no test can tell
       from the real solution is a hole in the suite.`);
     const bar = document.createElement("div");
@@ -756,11 +756,11 @@ const HANDLERS = {
       setChip(row, "killed");
       const by = (ev.per_test || []).filter(t => !t.pass).length;
       mutLog(ev.index, ev.crashed
-        ? `Crashed or hung where the original ran — killed. <code>${esc(ev.error || "")}</code>`
+        ? `Crashed or hung where the original ran - killed. <code>${esc(ev.error || "")}</code>`
         : `Killed in phase 1: disagreed with the expected output on <b>${by}</b> test${by === 1 ? "" : "s"}.`);
     } else {
       setChip(row, "survived");
-      mutLog(ev.index, `Survived phase 1 — every oracle test agreed with this broken version.`);
+      mutLog(ev.index, `Survived phase 1 - every oracle test agreed with this broken version.`);
     }
   },
 
@@ -778,7 +778,7 @@ const HANDLERS = {
         : ` No survivors.`), ev.survivors.length ? "" : "good");
   },
 
-  retry_start(ev){ mutLog(ev.index, `— Repair attempt: ${esc(ev.detail || "")}`); },
+  retry_start(ev){ mutLog(ev.index, `- Repair attempt: ${esc(ev.detail || "")}`); },
   probes(ev){
     mutLog(ev.index, `Trying <b>${(ev.inputs || []).length}</b> free boundary
       probes (deterministic, no model cost).`);
@@ -786,16 +786,16 @@ const HANDLERS = {
   // B2 - the free sweep now runs BEFORE any model call, so the transcript has
   // to show it in that position or the cost story reads backwards.
   sweep(ev){
-    mutLog(ev.index, `Sweeping <b>${ev.n}</b> generated inputs — deterministic,
+    mutLog(ev.index, `Sweeping <b>${ev.n}</b> generated inputs - deterministic,
       seeded, and still free. The model is only asked once these come up empty.`);
   },
-  probes_exhausted(ev){ mutLog(ev.index, esc(ev.detail || "No probe separated them — asking the model.")); },
+  probes_exhausted(ev){ mutLog(ev.index, esc(ev.detail || "No probe separated them - asking the model.")); },
 
   // A5 tier 2. Asking for the divergence POINT rather than for inputs is the
   // change that killed the reverse_integer overflow bug, so it is worth
   // narrating: the model supplies a target, the arithmetic happens locally.
   divergence_point(ev){
-    mutLog(ev.index, `Tier 2 — asked where the two programs must diverge rather
+    mutLog(ev.index, `Tier 2 - asked where the two programs must diverge rather
       than for an input. Model says <b>${esc(String(ev.variable))}</b> must reach
       <b>${esc((ev.values || []).join(", "))}</b>.`);
   },
@@ -808,7 +808,7 @@ const HANDLERS = {
   llm_asking(ev){ mutLog(ev.index, esc(ev.detail || "Asking the model for distinguishing inputs…")); },
   llm_candidates(ev){
     mutLog(ev.index, `Model proposed: <code>${esc(j(ev.inputs || []))}</code>
-      — inputs only; execution decides what they prove.`);
+      - inputs only; execution decides what they prove.`);
   },
   disagreement(ev){
     mutLog(ev.index, `Found a real disagreement (${esc(ev.source)} input):
@@ -817,11 +817,11 @@ const HANDLERS = {
   },
   killed_by_earlier_counterexample(ev){ mutLog(ev.index, esc(ev.detail || "")); },
   oracle_grown(ev){
-    mutLog(ev.index, `Added as a new oracle test — suite is now
+    mutLog(ev.index, `Added as a new oracle test - suite is now
       <b>${ev.n_tests}</b> tests.`);
   },
   search_empty(ev){ mutLog(ev.index, esc(ev.detail || "")); },
-  search_error(ev){ mutLog(ev.index, `Search failed: <code>${esc(ev.error || "")}</code> — left undetermined.`); },
+  search_error(ev){ mutLog(ev.index, `Search failed: <code>${esc(ev.error || "")}</code> - left undetermined.`); },
   // equivalence_sweep_start / equivalence_sweep_result were removed with A1.
   // Nothing emits them any more, and their text stated the rule that was
   // deleted - that total agreement across the sweep "excuses a survivor". The
@@ -836,7 +836,7 @@ const HANDLERS = {
     const WHAT = {
       never_reached: ["NEVER REACHED",
         "No test ever runs this line, so the edit cannot matter. This is a gap "
-        + "in the tests, not an equivalence question — a test that reaches here "
+        + "in the tests, not an equivalence question - a test that reaches here "
         + "would settle it."],
       no_infection: ["NO INFECTION",
         "The line runs, but the edit never changed the decision it makes. More "
@@ -874,17 +874,17 @@ const HANDLERS = {
   stopping_early(ev){
     line(`<b>Stopping early.</b> ${esc(ev.detail || "")}`, "warn");
   },
-  expanding_suite(ev){ line(esc(ev.detail || "Still weak — expanding the suite.")); },
+  expanding_suite(ev){ line(esc(ev.detail || "Still weak - expanding the suite.")); },
   suite_expanded(ev){
     line(`Added <b>${ev.added}</b> fresh ground-truth-verified test${ev.added === 1 ? "" : "s"}
-      (suite now ${ev.n_tests}) — rescoring.`);
+      (suite now ${ev.n_tests}) - rescoring.`);
   },
   expansion_empty(ev){ line(esc(ev.detail || "No new distinct tests could be generated."), "bad"); },
   base_run_failed(ev){ line(`Ground truth failed on the suite: <code>${esc(ev.error || "")}</code>`, "bad"); },
   evaluation_done(){ /* the verdict event right after carries the story */ },
 
   // A4. Three outcomes, not two. `strong` is a single bit and a needs_review
-  // problem also has strong=false — rendering that as "ORACLE WEAK" tells the
+  // problem also has strong=false - rendering that as "ORACLE WEAK" tells the
   // instructor their problem is broken when it may need no change at all, on
   // the exact screen the upload page's "Review now" button sends them to.
   verdict(ev){
@@ -905,13 +905,13 @@ const HANDLERS = {
       : `${pct(ev.kill_rate_direct)} of mutants killed as handed in`;
 
     const why = review
-      ? ` — ${ev.undetermined} mutant${ev.undetermined === 1 ? "" : "s"} could not
+      ? ` - ${ev.undetermined} mutant${ev.undetermined === 1 ? "" : "s"} could not
           be judged either way, and the verdict genuinely hangs on ${
           ev.undetermined === 1 ? "it" : "them"}. Open the mutants above: a
           <b>never reached</b> finding means a missing test, while
           <b>no infection</b> means more tests of the same kind cannot help.`
       : ev.strong && scored
-        ? ` — the worst case already clears the cutoff, so the undetermined
+        ? ` - the worst case already clears the cutoff, so the undetermined
             ${ev.undetermined === 1 ? "mutant" : "mutants"} cannot change the answer.`
         : "";
 
@@ -921,7 +921,7 @@ const HANDLERS = {
       <span>${rate} (cutoff ${pct(ev.cutoff)}) · ${pct(ev.kill_rate)} after repair ·
       ${ev.n_tests} tests over ${ev.rounds} round${ev.rounds === 1 ? "" : "s"}${
       ev.insufficient_mutants
-        ? " · too few mutants to judge — never STRONG" : ""}.${why} Verdict persisted.</span>`;
+        ? " · too few mutants to judge - never STRONG" : ""}.${why} Verdict persisted.</span>`;
     curBody.appendChild(v);
   },
 
@@ -943,12 +943,12 @@ const HANDLERS = {
       line(`<span class="necline">${c.necessary
         ? `<span class="tag ok">load-bearing</span>`
         : `<span class="tag bad">not needed</span>`}
-        <b>${esc(c.step_id)}</b> — knocked out, the assembly
+        <b>${esc(c.step_id)}</b> - knocked out, the assembly
         ${c.necessary ? "broke (" : "STILL PASSED ("}${esc(c.outcome || "")})</span>`);
     });
     line(ev.status === "pass"
-      ? `Gate 1 <b>passed</b> — every chunk proved necessary.`
-      : `Gate 1: <b>${esc(ev.status)}</b> — ${esc((ev.summary || "").split("\n")[0])}`,
+      ? `Gate 1 <b>passed</b> - every chunk proved necessary.`
+      : `Gate 1: <b>${esc(ev.status)}</b> - ${esc((ev.summary || "").split("\n")[0])}`,
       ev.status === "pass" ? "good" : "bad");
   },
 
@@ -956,7 +956,7 @@ const HANDLERS = {
     settleStage("bad");
     const b = document.createElement("div");
     b.className = "blockedCard";
-    b.innerHTML = `<b>Blocked at ${esc(ev.at)} — ${esc(ev.error_type)}</b>
+    b.innerHTML = `<b>Blocked at ${esc(ev.at)} - ${esc(ev.error_type)}</b>
       ${esc(ev.message)}`;
     (curBody || $("runFeed")).appendChild(b);
     curStage = curBody = null;
@@ -1020,7 +1020,7 @@ async function consumeRun(resp){
     }
   } catch (e) {
     if (e.name !== "AbortError") HANDLERS.error({message: String(e)});
-    else konsole("— stopped watching; the run continues on the server —");
+    else konsole("- stopped watching; the run continues on the server -");
   }
   return sawError;
 }
@@ -1065,7 +1065,7 @@ async function watchPrepare(assignmentId, slug){
   if (running) return;
   beginRun();
   $("runBtn").hidden = true;              // there is nothing to start here
-  konsole(`— mirroring the upload's preparation of "${slug}" —`);
+  konsole(`- mirroring the upload's preparation of "${slug}" -`);
 
   let resp;
   try {

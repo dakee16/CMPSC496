@@ -329,6 +329,28 @@ def decompose_chunks_route(req: DecomposeRequest, request: Request):
         public = create_session(problem, result, content_hash(problem),
                                 student_id=claims["sub"])
 
+        # Open the archive's spine row. create_session writes to the SERVER's
+        # own SQLite store, which is where grading reads from; mt_sessions is
+        # the durable record everything else joins against, and it was the one
+        # writer of the five in main/archive.py that nothing ever called.
+        #
+        # Every consequence was silent. main/grades.step_counts reads
+        # total_chunks from here for its denominator and found none, so a
+        # finished assignment reported "nothing to grade". save_session_end
+        # UPDATEs this row, so closing a session that was never opened wrote
+        # nothing and raised nothing. And the grade sheet's "turned up" column
+        # is a set built from these rows, so a student who worked for an hour
+        # without submitting read as missing.
+        from main.archive import save_session_start
+        # No email: the cookie carries sub / username / name / role and no
+        # address, and student_email is a denormalised convenience beside the
+        # student_id that actually identifies the row. Writing the username
+        # into a column named for an address would be worse than leaving it
+        # null - it reads as fact to whoever queries it next.
+        save_session_start(get_supabase(), claims["sub"],
+                           {**public, "slug": req.slug,
+                            "content_hash": content_hash(problem)})
+
         # NO oracle pre-warm here. get_oracle_tests() is the WRITE path: on a
         # miss it generates inputs and runs mutation testing, minutes of paid
         # work triggered by a student pressing Start. Preparation now happens
@@ -897,21 +919,8 @@ def _context_of(row: dict) -> dict:
     problem still looks valid, so nothing errors - it just stops being a method
     and starts being an unrunnable bare function. Any route that loads a problem
     for execution must go through here."""
-    from main.sessions import CONTEXT_FIELDS
-    context = row.get("context") or {}
-    if isinstance(context, str):                  # jsonb can come back as text
-        import json as _j
-        try:
-            context = _j.loads(context)
-        except Exception:
-            context = {}
-    out = {k: context[k] for k in CONTEXT_FIELDS if k in context}
-    # The group columns live beside the blob, not inside it, and group_title is
-    # what names the class in the sequence driver.
-    for k in ("group_slug", "group_title", "group_description"):
-        if row.get(k) is not None:
-            out[k] = row[k]
-    return out
+    from main.sessions import context_of
+    return context_of(row)
 
 
 def _group_columns(problem: dict) -> dict:

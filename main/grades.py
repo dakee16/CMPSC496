@@ -128,11 +128,21 @@ def step_counts(client, problems: list[dict]) -> dict[str, int]:
 def assignment_problems(client, assignment_id: str) -> list[dict]:
     """Every READY problem in one assignment, with the fields the pool key
     needs. Unready problems are excluded because students were never served
-    them, so grading anyone against them would mark work nobody could do."""
-    return client.table("problems").select(
-        "slug, title, description, solution, ready").eq(
+    them, so grading anyone against them would mark work nobody could do.
+
+    `context` is one of those fields. content_hash() folds context_prefix and
+    context_suffix into the key, so a METHOD problem read back without them
+    hashes as though it were a plain function and matches nothing in the chunk
+    pool - every class problem then counted 0 steps, the denominator came out
+    0, and a sheet with real submissions behind it rendered as "nothing to
+    grade". See main/sessions.context_of."""
+    from .sessions import context_of
+    rows = client.table("problems").select(
+        "slug, title, description, solution, ready, context, group_slug, "
+        "group_title, group_description").eq(
         "assignment_id", assignment_id).eq("ready", True).order(
         "slug").execute().data or []
+    return [{**r, **context_of(r)} for r in rows]
 
 
 def roster(client) -> list[dict]:

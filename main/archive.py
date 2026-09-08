@@ -171,8 +171,16 @@ def _write(client, table: str, row: dict) -> bool:
 
 # ── the five writers ─────────────────────────────────────────────────────
 # Each takes student_id first and returns immediately when it is None. That
-# single guard is what makes this module inert today and live the moment
-# current_student() starts returning an id.
+# single guard is what kept this module inert before current_student() started
+# returning an id.
+#
+# ALL FIVE ARE NOW CALLED. Four of them were wired up when identity landed and
+# save_session_start was not, which nothing detected because every one of its
+# consequences is silent: no row is missing from a page that never renders, and
+# save_session_end UPDATEs a row that was never INSERTed without raising. The
+# grade sheet reads its denominator from mt_sessions.total_chunks, so a whole
+# assignment reported "nothing to grade" while the submissions sat in
+# mt_submissions. If a sixth writer is added, wire it and check here.
 
 def save_session_start(client, student_id: str | None, session: dict,
                        email: str | None = None) -> None:
