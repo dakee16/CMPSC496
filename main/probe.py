@@ -164,6 +164,24 @@ def _instrument(tree, index, kind, slot):
                         ast.fix_missing_locations(work)
                         return work, rec
         return None
+    elif kind.startswith("del:"):
+        # A deleted statement has no operator and no decision, so infection and
+        # propagation do not apply to it - but REACHABILITY does, and it is the
+        # one verdict a teacher can act on directly ("no test gets there; write
+        # one"). Marking the spot costs one call inserted immediately before
+        # the statement, which runs exactly when control reaches it.
+        #
+        # Worth doing rather than skipping: statement deletion is the largest
+        # mutation kind by far, and it was 22 of AdvancedCalculator's 22
+        # undetermined checks and 8 of Calculator's 12. Refusing the whole
+        # class of them left the fix panel with nothing to say on precisely
+        # the problems that most needed it.
+        block = getattr(node, kind[4:], None)
+        if not isinstance(block, list) or slot >= len(block):
+            return None
+        block.insert(slot, ast.Expr(value=call()))
+        ast.fix_missing_locations(work)
+        return work, "def _p():\n    _S['reached'] += 1\n"
     elif kind == "const" and isinstance(node, ast.Constant):
         p = parent.get(id(node))
         if not (isinstance(p, ast.Compare) and len(p.ops) == 1
@@ -200,13 +218,19 @@ def _instrument(tree, index, kind, slot):
 
 def probe_site(solution_src: str, entry: str | None, inputs: list,
                index: int, kind: str, slot: int = 0,
-               timeout: float = PROBE_TIMEOUT) -> dict:
+               timeout: float = PROBE_TIMEOUT, wrap=None) -> dict:
     """Run the oracle tests with the mutated line instrumented.
 
     Returns {"ok", "reached", "differed", "verdict", "error"}. `verdict` is one
     of NEVER_REACHED / NO_INFECTION / PROPAGATION / UNKNOWN - and UNKNOWN
     whenever anything at all went wrong, because a probe that could not run
-    must never be mistaken for a probe that saw no difference."""
+    must never be mistaken for a probe that saw no difference.
+
+    `solution_src` must be the SAME source the mutant's `index` was computed
+    against - the index is a position in `list(ast.walk(...))`, which means
+    nothing in any other tree. For a method that is the bare `def`, which does
+    not run on its own, so `wrap` is given the instrumented method and returns
+    the module to execute. See main/mutation.evaluate_oracle."""
     fail = {"ok": False, "reached": 0, "differed": 0, "verdict": UNKNOWN}
     try:
         tree = ast.parse(solution_src)
@@ -217,7 +241,12 @@ def probe_site(solution_src: str, entry: str | None, inputs: list,
         return {**fail, "error": "shape not instrumentable"}
     work, recorder = built
     try:
-        code = recorder + "\n" + ast.unparse(work)
+        code = ast.unparse(work)
+        if wrap:
+            code = wrap(code)             # seat the instrumented METHOD in its
+                                          # class; `_p` stays a module global,
+                                          # which a method body can still see
+        code = recorder + "\n" + code
     except Exception as e:
         return {**fail, "error": f"unparse: {e}"}
 
@@ -242,6 +271,16 @@ def probe_site(solution_src: str, entry: str | None, inputs: list,
         return {**fail, "error": got.get("error", "probe failed")}
 
     reached, differed = got["reached"], got["differed"]
+    if kind.startswith("del:"):
+        # `differed` is structurally 0 here - there is no operator to apply two
+        # ways - so the NO_INFECTION branch below would read as "the edit
+        # changed no decision" about an edit that has no decision to change.
+        # Reachability is the whole of what a deletion probe can honestly say.
+        return {"ok": True, "reached": reached, "differed": 0,
+                "verdict": NEVER_REACHED if reached == 0 else UNKNOWN,
+                "error": None if reached == 0 else
+                         f"statement ran {reached}x; a deletion has no decision "
+                         f"to compare, so only reachability is knowable"}
     verdict = (NEVER_REACHED if reached == 0
                else NO_INFECTION if differed == 0
                else PROPAGATION)
@@ -356,5 +395,49 @@ if __name__ == "__main__":
     idx = next(i for i, n in enumerate(ast.walk(tree)) if isinstance(n, ast.BoolOp))
     r = probe_site(BOOLOP, "f", [[1, 2]], idx, "bool", 0)
     assert not r["ok"] and r["verdict"] == UNKNOWN, r
+
+    # ── a DELETED statement: reachability only, and it must be honest ─────
+    GUARD = ("def f(n):\n"
+             "    if n < 0:\n"
+             "        n = 0\n"
+             "        return -1\n"
+             "    return n * 2\n")
+    # No input is negative, so the guard's body never runs. That is a hole in
+    # the SUITE, and it is the one finding a teacher can act on directly.
+    # Statement deletion is the largest mutation kind there is, so declining to
+    # instrument it left most survivors with no explanation at all.
+    i, k, sl = _site_for(GUARD, "remove `return -1`")
+    r = probe_site(GUARD, "f", [[1], [2], [7]], i, k, sl)
+    assert r["ok"] and r["verdict"] == NEVER_REACHED, r
+    assert r["reached"] == 0, r
+    # ...and once a test does get there, the probe must NOT claim the deletion
+    # changed nothing: a deletion has no decision to compare either way, so
+    # `differed == 0` is structural rather than evidence of harmlessness.
+    r = probe_site(GUARD, "f", [[1], [-3]], i, k, sl)
+    assert r["ok"] and r["reached"] == 1, r
+    assert r["verdict"] == UNKNOWN, r
+    assert "only reachability" in (r["error"] or ""), r
+
+    # A METHOD is instrumented in its own tree and seated afterwards - the
+    # index means nothing in the assembled module. See main/mutation.
+    METH = {"entry_hint": "peek", "group_title": "S", "context_indent": 8,
+            "context_prefix": "class S:\n    def __init__(self):\n"
+                              "        self.v = []\n\n    def peek(self):",
+            "context_suffix": ""}
+    from .context import build_program, solution_body
+    # Two statements in the guard body: a block of one cannot lose its only
+    # statement, so there would be no deletion site to probe.
+    SRC = ("def peek(self):\n    if not self.v:\n        self.v = []\n"
+           "        return None\n    return self.v[-1]\n")
+    i, k, sl = _site_for(SRC, "remove `return None`")
+    r = probe_site(SRC, "_mt_run_calls", [[[["peek"]]]], i, k, sl,
+                   wrap=lambda src: build_program(
+                       METH, solution_body({"solution": src})))
+    assert r["ok"], r
+    assert r["reached"] == 1 and r["verdict"] == UNKNOWN, r
+    r = probe_site(SRC, "_mt_run_calls", [[[["v"]]]], i, k, sl,
+                   wrap=lambda src: build_program(
+                       METH, solution_body({"solution": src})))
+    assert r["ok"] and r["verdict"] == NEVER_REACHED, r
 
     print("probe.py self-check OK")

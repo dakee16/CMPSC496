@@ -232,9 +232,14 @@ def _persist_verdict(problem: dict, report: dict) -> None:
     That sentence used to be a promise this function had to keep by hand, and
     it broke the moment A4 added fields on the other side. The shape now comes
     from oracle_store.verdict_entry, which both callers share."""
-    from .oracle_store import verdict_entry
+    from .oracle_store import oracle_features, verdict_entry
     cache = _load_cache()
-    cache[content_hash(problem)] = verdict_entry(report, problem.get("slug", ""))
+    # `features` too, or this writes an entry that is stale the instant it
+    # lands: is_stale would see a class problem validated with "calls" alone
+    # and re-run the whole oracle on every upload, gate check and accept,
+    # forever - each time overwriting it with the same incomplete stamp.
+    cache[content_hash(problem)] = verdict_entry(
+        report, problem.get("slug", ""), features=oracle_features(problem))
     _save_cache(cache)
 
 

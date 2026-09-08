@@ -251,6 +251,16 @@ def _generate_blocks(problem: dict, cls: str, target: str,
         f"index past the end.\n\n"
         f"CRITICAL:\n"
         f"- Every program must exercise {cls}.{target}.\n"
+        # 4 above says this, and all ten programs generated for
+        # AdvancedCalculator still used valid input - leaving all twenty-two of
+        # its surviving mutants (`self.states = {{}}` / `return None` on the
+        # invalid branches) untouched. Repeated here as a hard quota because
+        # that is the only form the model reliably obeys.
+        f"- At least HALF the programs must use INVALID input, so the failure "
+        f"path runs: an undefined name, a malformed statement, an empty "
+        f"value, a division by zero. Then observe what was left behind - a "
+        f"method that is supposed to reset something on failure can only be "
+        f"checked by failing it first.\n"
         f"- To check something about an object that is REMOVED, keep a "
         f"reference to it BEFORE removing it.\n"
         f"- Read only the attributes listed above. Nothing else.\n"
@@ -324,6 +334,19 @@ def _generate_call_sequences(problem: dict, n: int) -> list[list]:
         f"object is a good edge case, but it must not be the only kind.\n"
         f"- Vary length: some 2-3 calls, some 8-12, interleaving different "
         f"methods so ordering bugs show up.\n"
+        # Guard branches are where the surviving mutants live. Every
+        # undetermined check on Calculator.calculate sat on one - `if not
+        # isinstance(self.__expr, str)`, `if postfix is None`, `if right == 0` -
+        # and not one generated sequence ever fed input that reached them,
+        # because nothing here asked for any. Eight sequences that do kill
+        # seven of the twelve.
+        f"- Drive the ERROR PATHS. Some sequences must call {target} before "
+        f"anything has been set up, and others must feed values that are "
+        f"malformed, empty, or make the work itself fail - an unparseable "
+        f"expression, a division by zero, an empty collection, an index past "
+        f"the end. A guard branch no sequence reaches cannot be checked at "
+        f"all, so a suite of only well-formed input leaves the whole failure "
+        f"half of the method untested.\n"
         f"- Only JSON-serializable arguments (numbers, strings, booleans, "
         f"arrays). Integers within -1000..1000, strings under 30 chars.\n"
         f"- Do NOT include expected results. Only the calls.\n\n"
@@ -440,13 +463,54 @@ def _is_ambiguous_output(inp: list, out) -> bool:
     return False
 
 
+# `<Foo object at 0x7fb2...>` - what json.dumps(default=str) makes of an object
+# whose class defines no __str__. The address is different in every subprocess.
+_OBJECT_ADDR = re.compile(r" object at 0x[0-9a-fA-F]+>")
+
+
+def _useless_block(inp: list, out, method: bool = True) -> bool:
+    """True for a block test that must never enter the suite.
+
+    Two ways a block looks perfectly healthy and checks nothing, both of which
+    a returned VALUE cannot suffer from and so nothing upstream guards against.
+
+    An observation that is an OBJECT is recorded as its memory address, which
+    changes in every subprocess. The reference then disagrees with itself: the
+    base run and each mutant run get different addresses, every mutant is
+    scored as killed, and a suite that tests nothing is certified STRONG. The
+    same test then fails for every student. `Stack` escapes this only because
+    HW3's `Node` happens to define __str__ and `Calculator` does not.
+
+    And a block whose observations are all blank or all errors returns the
+    identical list for every possible implementation - twelve of Calculator's
+    did, and four of AdvancedCalculator's ended on a name that was never
+    assigned. No edit to the code under test can ever change such a list, so it
+    can never kill a mutant and can never fail a student. It is not a test.
+
+    `method` is what makes the shape test safe, exactly as it is in
+    main.mutation._drop_blocks. Only a METHOD problem can have a block, and a
+    method's ordinary input is a LIST of calls - so a bare string in the first
+    slot identifies a block unambiguously there and nowhere else. Judging on
+    shape alone would throw away is_palindrome('racecar'), whose expected value
+    is a bool rather than a list of observations."""
+    from main.context import ERROR_PREFIX
+    if not method or not (len(inp) == 1 and isinstance(inp[0], str)):
+        return False                      # an ordinary call list or arg list
+    if not isinstance(out, list):
+        return True
+    if _OBJECT_ADDR.search(json.dumps(out, default=str)):
+        return True
+    return all(o is None or (isinstance(o, str) and o.startswith(ERROR_PREFIX))
+               for o in out)
+
+
 def make_oracle_tests(problem: dict, n: int = 12) -> list[dict]:
     """Generate inputs, run ground-truth to compute expected outputs.
     Filters out ambiguous inputs (multiple valid answers, duplicates that
     break common approaches) so the gate only tests unambiguous cases."""
     # For a METHOD this is the whole module the method lives in, not the bare
     # `def` - a method has no ground truth outside its class.
-    from main.context import reference_program
+    from main.context import is_method, reference_program
     solution = reference_program(problem)
     if not solution.strip():
         return []
@@ -469,6 +533,10 @@ def make_oracle_tests(problem: dict, n: int = 12) -> list[dict]:
         if out is None:
             continue
         if _is_ambiguous_output(inp, out):
+            continue
+        if _useless_block(inp, out, is_method(problem)):
+            print(f"  [oracle] {problem.get('slug','?')}: dropped a block that "
+                  f"observes nothing")
             continue
         tests.append({"input": inp, "expected": out})
 
@@ -594,7 +662,18 @@ def get_oracle_tests(problem: dict, n: int = 10, emit=None) -> list[dict]:
           f"(direct {validated['kill_rate_direct']:.2f}) "
           f"{status}{span}")
 
-    cache[key] = validated          # verdict_entry already carries the slug
+    # An instructor's ACCEPTANCE is not part of the verdict, and a fresh
+    # verdict_entry does not carry one - so a plain assignment here erased it.
+    # /teacher/problems/accept writes the acceptance and then re-prepares, which
+    # lands right back in this function: the endpoint deleted the very thing it
+    # had just recorded, reported success from its own in-memory copy, and left
+    # the problem blocked. Carrying it forward cannot certify anything it
+    # should not - oracle_store.certified still honours an acceptance only
+    # while the CURRENT status is needs_review.
+    prior = cache.get(key) or {}
+    cache[key] = {**{k: prior[k] for k in ("accepted_by", "accepted_at")
+                     if k in prior},
+                  **validated}           # verdict_entry already carries the slug
     _save_cache(cache)
     return validated["final_tests"]
 

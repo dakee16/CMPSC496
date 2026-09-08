@@ -224,6 +224,14 @@ def module_with_method(problem: dict, method_src: str) -> str | None:
     for i in range(len(prefix) - 1, -1, -1):
         if prefix[i].strip().startswith(("def ", "async def ")):
             cut = i
+            # ...and above its DECORATORS. `method_src` carries its own - the
+            # parser's method span starts at the first decorator - so cutting at
+            # the `def` line leaves the old `@property` in place and splices a
+            # second one under it. `property(property(f))` is not callable, so
+            # every retry of Calculator.calculate produced a class that raises
+            # TypeError on read, and then saved it.
+            while cut and prefix[cut - 1].lstrip().startswith("@"):
+                cut -= 1
             break
     if cut is None:
         return None
@@ -333,8 +341,15 @@ def fixed_internals(problem: dict) -> set[str]:
              if isinstance(f, ast.FunctionDef) and f.name not in exercises]
     called = {n.func.attr for f in given for n in ast.walk(f)
               if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)}
+    # `self.__expr` is name-mangled to `_Calculator__expr`, and mangling only
+    # happens inside a class body - a block runs at module level, so reading it
+    # is AttributeError every single time. Offering it as permitted produced
+    # twelve Calculator blocks whose every observation was a constant error: the
+    # exact "looks healthy, tests air" failure the permitted set exists to stop.
+    # A private name is also the one thing a teacher has said is NOT contract.
     return {n.attr for f in given for n in ast.walk(f)
-            if isinstance(n, ast.Attribute) and n.attr not in called}
+            if isinstance(n, ast.Attribute) and n.attr not in called
+            and not n.attr.startswith("__")}
 
 
 def block_is_permitted(problem: dict, block: str) -> bool:
@@ -350,9 +365,16 @@ def block_is_permitted(problem: dict, block: str) -> bool:
         tree = ast.parse(block)
     except SyntaxError:
         return False
-    allowed = fixed_internals(problem) | set(class_methods(problem)) | BUILTIN_CALLS.keys()
-    return all(n.attr in allowed
-               for n in ast.walk(tree) if isinstance(n, ast.Attribute))
+    # CALLS are excluded, exactly as fixed_internals excludes them when it
+    # derives the set: `sorted(C.states.keys())` is behaviour on a local dict,
+    # not state of the object under test. Policing every Attribute node instead
+    # rejected any block that used ordinary Python - .keys, .copy, .split,
+    # .append - which is why two AdvancedCalculator methods ended up with zero
+    # blocks while their permitted set was non-empty.
+    allowed = fixed_internals(problem) | set(class_methods(problem))
+    called = {id(n.func) for n in ast.walk(tree) if isinstance(n, ast.Call)}
+    return all(n.attr in allowed for n in ast.walk(tree)
+               if isinstance(n, ast.Attribute) and id(n) not in called)
 
 
 def reference_program(problem: dict) -> str:
@@ -576,6 +598,59 @@ if __name__ == "__main__":
     # driver's - those are deliberately two different things.
     assert header_of(meth) == "def push(self, value):", header_of(meth)
     assert header_of(flat) == "", "a plain function builds its own header"
+
+    # ── blocks: what a block may touch, and what it may not ──────────────
+    # A class shaped like HW3's Calculator: a PRIVATE field, two @property
+    # names that look exactly like methods in the source, and one given method
+    # whose attribute reads are the class's fixed contract.
+    prop = {"entry_hint": "calculate", "group_title": "Calc", "context_indent": 8,
+            "description": "A calculator.",
+            "solution": "@property\ndef calculate(self):\n    return self.total\n",
+            "context_prefix": "class Calc:\n    def __init__(self):\n"
+                              "        self.__expr = None\n        self.total = 0\n\n"
+                              "    @property\n    def getExpr(self):\n"
+                              "        return self.__expr\n\n"
+                              "    @property\n    def calculate(self):",
+            "context_suffix": ""}
+    assert class_properties(prop) == ["getExpr", "calculate"], class_properties(prop)
+    # `total` is contract - __init__ sets it and the student cannot rename it.
+    # `__expr` is NOT, however often the given code touches it: it is mangled to
+    # _Calc__expr, so a block reading it gets AttributeError every single time.
+    assert fixed_internals(prop) == {"total"}, fixed_internals(prop)
+    # A @property read like a method observes nothing, so the call is rewritten.
+    assert uncall_properties(prop, "x.calculate()") == "x.calculate"
+    assert uncall_properties(prop, "x.setExpr('1')") == "x.setExpr('1')", \
+        "a genuine method must not be stripped of its call"
+    # Ordinary Python is not an attempt to reach inside the object under test.
+    assert block_is_permitted(prop, "x = Calc()\nsorted([x.total])\nx.total")
+    assert block_is_permitted(prop, "x = Calc()\n'a b'.split()\nx.calculate")
+    assert not block_is_permitted(prop, "x = Calc()\nx.secret"), \
+        "a bare read of an attribute the given code never fixed"
+    assert block_is_permitted(prop, [["calculate"]]), "a call list is not a block"
+
+    # ── a decorated method survives the round trip through its module ────
+    spliced = module_with_method(prop, prop["solution"])
+    assert spliced.count("@property\n    def calculate") == 1, spliced
+    ns = {}
+    exec(compile(spliced, "<t>", "exec"), ns)          # and it still RUNS:
+    assert ns["Calc"]().calculate == 0, "the property must still read as a value"
+
+    # ── the block driver: a program, not a call list ─────────────────────
+    ns = {}
+    exec(compile(build_program(meth, "node = Node(value)\nnode.next = self.top\n"
+                                     "self.top = node\nself.n += 1"),
+                 "<t>", "exec"), ns)
+    # A reference held ACROSS a call is the whole point: nothing you can call
+    # after a pop reveals whether the node that left was unlinked - the popped
+    # node is unreachable. This fixture's `pop` does NOT unlink it, and the
+    # block is what says so; a call list cannot ask the question at all.
+    assert ns[SEQ_ENTRY]("x = Stack()\nx.push(1)\nx.push(2)\n"
+                         "n = x.top\nx.pop()\nn.next is None") == \
+        [None, None, None, None, 2, False]
+    # A raising statement records the error and the block CONTINUES.
+    assert ns[SEQ_ENTRY]("x = Stack()\nx.nope()\nlen(x)") == \
+        [None, ERROR_PREFIX + "AttributeError", 0]
+    assert ns[SEQ_ENTRY]("x = (").pop().startswith(ERROR_PREFIX), "a bad block"
 
     # A method too trivial to mutate is trusted only when the teacher's own
     # recorded run actually reaches it.

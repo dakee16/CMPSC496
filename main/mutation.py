@@ -440,17 +440,33 @@ def _candidate_inputs(problem: dict, original: str, mutant_code: str,
     return inputs
 
 
-def _probe_inputs(tests: list) -> list[list]:
+def _drop_blocks(tests: list, method: bool) -> list:
+    """`tests` without the block PROGRAMS. A block is a program, not an argument
+    list: there is nothing to vary, and mutating one would produce broken Python
+    rather than a new case.
+
+    `method` is what makes this safe. Only a METHOD problem can have a block,
+    and a method's ordinary input is a LIST of calls - so a bare string in the
+    first slot identifies a block unambiguously there. Deciding on the shape
+    alone, with no idea what kind of problem it belongs to, threw away every
+    test of every plain function whose first argument happens to be a string:
+    is_palindrome('racecar') looks exactly like a block. Those problems lost
+    both the free boundary probes and the whole deterministic sweep, so their
+    mutants went to the paid search unexamined and came back undetermined."""
+    if not method:
+        return tests
+    return [t for t in tests
+            if not (t.get("input") and isinstance(t["input"][0], str))]
+
+
+def _probe_inputs(tests: list, method: bool = False) -> list[list]:
     """Boundary variants of the inputs we already have: one argument at a time
     pushed to 0/±1/its neighbours, a list or string emptied, a bool flipped.
 
     Free, deterministic, and it catches the off-by-one and sign mutants the
     model reliably fails to think of - so `likely_equivalent` is only reached
     after these have been tried too."""
-    # Block tests are PROGRAMS, not argument lists: there is nothing to vary,
-    # and mutating one would produce broken Python rather than a new case.
-    tests = [t for t in tests
-             if not (t.get("input") and isinstance(t["input"][0], str))]
+    tests = _drop_blocks(tests, method)
     out = []
     for inp in [t["input"] for t in tests][:2]:
         for i, arg in enumerate(inp):
@@ -467,17 +483,15 @@ def _probe_inputs(tests: list) -> list[list]:
     return list({_key(c): c for c in out}.values())[:_MAX_PROBE_INPUTS]
 
 
-def _sweep_inputs(tests: list, n: int | None = None) -> list[list]:
+def _sweep_inputs(tests: list, n: int | None = None,
+                  method: bool = False) -> list[list]:
     """A broad, deterministic, type-directed input sweep - no LLM involved.
 
     Shapes are taken from the inputs we already have, then each argument is
     varied far more widely than _probe_inputs does: signs, zeros, boundaries,
     long and empty sequences, duplicates, sorted and reversed orders. Seeded,
     so two runs produce byte-identical sweeps."""
-    # Block tests are PROGRAMS, not argument lists: there is nothing to vary,
-    # and mutating one would produce broken Python rather than a new case.
-    tests = [t for t in tests
-             if not (t.get("input") and isinstance(t["input"][0], str))]
+    tests = _drop_blocks(tests, method)
     if n is None:                       # late-bound: see _candidate_inputs
         n = _EQUIVALENCE_SWEEP_SIZE
     seeds = [t["input"] for t in tests]
@@ -615,7 +629,8 @@ def _counterexample_test(problem: dict, original: str, mutant_code: str,
 
     `emit`, when given, narrates each phase for live UIs; None (the default,
     and the production path) changes nothing."""
-    probes = _probe_inputs(tests)
+    method = is_method(problem)
+    probes = _probe_inputs(tests, method)
     if emit:
         emit({"type": "probes", "inputs": probes,
               "detail": "free deterministic boundary probes (no LLM cost)"})
@@ -634,7 +649,7 @@ def _counterexample_test(problem: dict, original: str, mutant_code: str,
     # once: a disagreement is a counterexample, and total agreement is
     # evidence of harmlessness. So the free version goes first, and the model
     # is only paid once ~180 deterministic inputs have come up empty.
-    sweep = _sweep_inputs(tests)
+    sweep = _sweep_inputs(tests, method=method)
     if emit:
         emit({"type": "sweep", "n": len(sweep),
               "detail": f"{len(sweep)} generated inputs, still free "
@@ -761,7 +776,11 @@ def evaluate_oracle(problem: dict, oracle_tests: list, emit=None) -> dict:
     insufficient_mutants and is never strong, however the ratio comes out.
     `kill_rate_direct` is the same ratio BEFORE counterexample repair - the
     strength of the suite exactly as handed in, for comparing two suites."""
-    solution = problem.get("solution", "")
+    # The METHOD alone, kept under its own name for the whole function. Mutant
+    # indices are positions in THIS tree, and `solution` is about to become the
+    # assembled module - a different tree with eight times as many nodes, in
+    # which those indices address unrelated code. See the probe call below.
+    bare = problem.get("solution", "")
     entry = get_resolved_entry(problem)["entry_name"]
     # Mutants are generated from the METHOD ALONE, then seated back into its
     # class. Mutating the assembled module instead would spend the budget
@@ -769,14 +788,14 @@ def evaluate_oracle(problem: dict, oracle_tests: list, emit=None) -> dict:
     # injected driver - none of which is the code this problem asks a student
     # for, so a suite that missed those edits would be called weak for no
     # reason. A plain function is its own module, so both are the same string.
-    mutants = generate_mutants(solution)
+    mutants = generate_mutants(bare)
     if emit:
         # Unseated on purpose: the playground shows the one-line edit, not the
         # whole class wrapped around it.
         emit({"type": "mutants", "total": len(mutants),
               "mutants": [{"index": i, "label": m["label"], "code": m["code"]}
                           for i, m in enumerate(mutants)]})
-    solution = _runnable(problem, solution)
+    solution = _runnable(problem, bare)
     mutants = [{**m, "code": _runnable(problem, m["code"])} for m in mutants]
 
     tests = list(oracle_tests)              # working set grows; caller's list untouched
@@ -887,9 +906,18 @@ def evaluate_oracle(problem: dict, oracle_tests: list, emit=None) -> dict:
             # the real oracle tests run. This changes no verdict (A1: evidence
             # never excuses); it turns a bare "undetermined" into one of three
             # findings a person can actually act on. See main/probe.py.
-            pr = probe_site(solution, entry, [t["input"] for t in tests],
+            #
+            # `bare`, not `solution`. The index came from generate_mutants(bare)
+            # and only means something in that tree: handing it the assembled
+            # module made every index address unrelated code - a Compare became
+            # a FunctionDef, a Constant became an Assign - so _instrument
+            # refused all 35 sites and every class problem reported
+            # verdict=unknown, reached=0. The instrumented method is seated by
+            # `wrap` afterwards, which is a no-op for a plain function.
+            pr = probe_site(bare, entry, [t["input"] for t in tests],
                             m.get("index", -1), m.get("kind", ""),
-                            m.get("slot", 0))
+                            m.get("slot", 0),
+                            wrap=lambda src: _runnable(problem, src))
             probes[i] = pr
             if em:
                 em({"type": "probe_result", **pr,

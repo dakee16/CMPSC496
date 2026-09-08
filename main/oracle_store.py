@@ -70,9 +70,17 @@ def verdict_entry(report: dict, slug: str = "", features=None) -> dict:
             # changed a decision that was swallowed - and it was being computed
             # and then dropped here, leaving the fix panel with nothing to say
             # beyond "inconclusive".
+            # `error` rides along too: an UNKNOWN verdict has two very
+            # different causes, and dropping the reason left them identical in
+            # the fix panel. "shape not instrumentable" means the probe cannot
+            # watch this KIND of edit at all (a deleted statement, a bare
+            # constant) and no test would change that - while a timeout or a
+            # crash means it could not run THIS time. Telling a teacher to go
+            # write a test only makes sense for one of them.
             "mutants": [{"label": m["label"], "status": m["status"],
                          **({"probe": {k: (m.get("probe") or {}).get(k)
-                                       for k in ("verdict", "reached", "differed")}}
+                                       for k in ("verdict", "reached",
+                                                 "differed", "error")}}
                             if m.get("probe") else {})}
                         for m in report.get("mutants", [])],
         },
@@ -173,18 +181,33 @@ def oracle_features(problem: dict) -> set:
             # observed nothing - a suite that looked healthy and tested air.
             # Bumping the name makes those verdicts stale, which is the whole
             # point of recording features rather than a single bit.
-            feats.add("blocks/3")
+            #
+            # /4: the permitted set no longer offers name-mangled privates,
+            # block_is_permitted no longer rejects ordinary Python, blocks that
+            # cannot observe anything are dropped, and both generators are now
+            # told to drive the error paths. Every suite generated before that
+            # was measuring a different thing.
+            feats.add("blocks/4")
     except Exception:
         pass
     return feats
 
 
 def is_stale(entry, problem: dict) -> bool:
-    """True when a re-run could add a kind of test this verdict never saw."""
+    """True when this verdict was reached with a DIFFERENT set of generators
+    than a run today would use.
+
+    Either direction counts, and the second one is not symmetry for its own
+    sake. A run that could ADD a kind of test never asked the full question -
+    that is the case this was written for. But a run that would no longer
+    PRODUCE a kind of test is just as wrong: Calculator's only permitted
+    internal was a name Python hides, so its cached suite is twelve blocks that
+    observe nothing, and a one-way check would keep them forever precisely
+    because the fix REMOVED a generator rather than adding one."""
     if not is_validated(entry):
         return False                       # not validated at all; a separate case
     had = set(entry.get("features") or ["calls"])
-    return bool(oracle_features(problem) - had)
+    return oracle_features(problem) != had
 
 
 def certified(entry) -> bool:
