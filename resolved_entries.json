@@ -108,5 +108,29 @@
     ],
     "confirmed": true,
     "slug": "stack-pop"
+  },
+  "6c9cb12bf29283f13e1874a158eee904266fdd35bcccef1c152a58eaac6f8a18": {
+    "entry_name": "_getPostfix",
+    "params": [
+      "txt"
+    ],
+    "confirmed": true,
+    "slug": "calculator-get-postfix"
+  },
+  "3b60c6c37569e8a64b437e595e40a3b58ac7a88e056f69d663d0ea40da88a330": {
+    "entry_name": "push",
+    "params": [
+      "value"
+    ],
+    "confirmed": true,
+    "slug": "stack-push"
+  },
+  "e0502d93dadaa393ea35190eb83a656919557ffc65c4aad694d9ae8351a25b3f": {
+    "entry_name": "_isNumber",
+    "params": [
+      "txt"
+    ],
+    "confirmed": true,
+    "slug": "calculator-is-number"
   }
 }

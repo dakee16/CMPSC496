@@ -563,9 +563,7 @@ $("go").onclick = async () => {
     return fail("Could not reach the server. Is the backend running?");
   }
   if (!resp.ok) {
-    let msg = "Upload failed.";
-    try { const j = await resp.json(); msg = (j.detail && j.detail.message) || msg; } catch {}
-    return fail(msg);
+    return fail(await httpError(resp, "Upload failed."));
   }
 
   if (await consumeRun(resp)) return;
@@ -606,6 +604,30 @@ function fail(msg){
   $("summary").innerHTML = `<div class="banner bad">${esc(msg)}</div>`;
   endRun();
   toast(msg, "bad");
+}
+
+/* The server's own message when it sent one, else something that NAMES the
+   failure.
+
+   Both callers used to do `(j.detail && j.detail.message) || "Upload failed."`
+   and throw the status away. That reads fine for the errors this app raises by
+   hand - those put a dict in `detail` - but FastAPI's own errors put a STRING
+   there ({"detail": "Not Found"}), so `.message` is undefined and every one of
+   them collapsed into the same generic sentence. A 404 from a server running a
+   build without the route and a 500 from one that crashed were indistinguish-
+   able in the UI. The status is the whole diagnosis; keep it. */
+async function httpError(resp, fallback){
+  let d = null;
+  try { d = await resp.json(); } catch {}
+  const m = d && d.detail && d.detail.message;
+  if (m) return m;
+  if (resp.status === 404)
+    return `${fallback} The server has no route for this (404) - it is almost `
+         + `certainly running an older build. Restart the backend.`;
+  if (resp.status === 401 || resp.status === 403)
+    return `${fallback} You are not signed in as an instructor (${resp.status}).`;
+  const body = (typeof (d && d.detail) === "string") ? ` ${d.detail}` : "";
+  return `${fallback} (HTTP ${resp.status})${body}`;
 }
 
 /* One event in, one row change out. The `preparing` event is the only signal
@@ -1364,9 +1386,7 @@ async function reprepare(a, scope){
     return fail("Could not reach the server. Is the backend running?");
   }
   if (!resp.ok){
-    let msg = "Could not start.";
-    try { const j = await resp.json(); msg = (j.detail && j.detail.message) || msg; } catch {}
-    return fail(msg);
+    return fail(await httpError(resp, "Could not start."));
   }
   if (await consumeRun(resp)) return;
   endRun();
