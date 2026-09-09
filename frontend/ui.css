@@ -558,6 +558,12 @@ summary:focus-visible{outline:2px solid var(--accent-ink); outline-offset:3px}
       border:2px solid var(--text-subtle)}
 .stat.solved{color:var(--success)}
 .stat.solved .dotmark{background:var(--success); border-color:var(--success)}
+/* Finished, but at least one step used the shown answer. The SAME colour as
+   solved, because it is done and a list that keeps nagging about it sends the
+   student back to redo work they have already been through - with a hollow
+   mark rather than a filled one, so the two claims stay tellable apart. */
+.stat.helped{color:var(--success)}
+.stat.helped .dotmark{border-color:var(--success); background:transparent}
 .stat.progress{color:var(--warning)}
 .stat.progress .dotmark{border-color:var(--warning);
       background:linear-gradient(90deg,var(--warning) 50%,transparent 50%)}

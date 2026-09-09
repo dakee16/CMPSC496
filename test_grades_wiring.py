@@ -100,3 +100,77 @@ def test_the_session_route_opens_the_spine_row():
     assert "create_session" in route
     assert route.index("create_session") < route.index("save_session_start"), \
         "the row records what the session actually became"
+
+
+# ── a finished problem has to look finished ──────────────────────────────
+
+def _student_js():
+    html = (pathlib.Path(__file__).parent / "frontend" / "student.html").read_text()
+    import re
+    return re.findall(r"<script>(.*?)</script>", html, re.S)[-1]
+
+
+def _api_src():
+    return (pathlib.Path(__file__).parent / "frontend" / "api_server.py").read_text()
+
+
+def test_completing_with_help_is_recorded_somewhere():
+    """/mark_solved writes the `solved` table ONLY for an independent solve, so
+    a problem finished with a shown answer was recorded nowhere at all: the
+    list held it at "In progress" forever and the assignment bar never moved -
+    one screen after the app told the student it was "recorded as solved with
+    help"."""
+    route = _api_src().split("def get_solved")[1].split("\n@app.")[0]
+    assert "mt_sessions" in route, "the only place an assisted finish is recorded"
+    assert "completed_at" in route, "...and only a FINISHED session counts"
+    assert '"assisted"' in route, "the two claims are returned apart"
+
+
+def test_mark_solved_still_means_they_did_it_themselves():
+    """The guard against fixing the above by widening `solved`. That table is
+    read by /history to say "you solved this before", and it has to keep
+    meaning the student's own work."""
+    route = _api_src().split("def mark_solved")[1].split("\n@app.")[0]
+    assert "if independent:" in route
+    i = route.index("if independent:")
+    assert 'table("solved")' in route[i:], "the write must stay behind the guard"
+
+
+def test_the_student_list_counts_finished_problems_not_just_independent_ones():
+    """Three separate places count progress - the assignment card, the problem
+    header, and each class group. All three must agree, or a bar moves while
+    the number beside it does not."""
+    js = _student_js()
+    assert "function isDone(slug)" in js
+    # The invariant, stated directly: nothing counts progress by asking SOLVED
+    # alone. statusOf is the one place that may, because distinguishing the two
+    # is its whole job.
+    # Exactly two lines may ask SOLVED directly: isDone, which is the
+    # predicate, and statusOf, whose whole job is telling the two apart.
+    for i, ln in enumerate(js.splitlines(), 1):
+        if "SOLVED.has(" not in ln:
+            continue
+        if "ASSISTED.has(" in ln or 'return "solved"' in ln:
+            continue
+        raise AssertionError(f"line {i} counts independent solves only: {ln.strip()}")
+    # ...and all three progress counts go through the predicate.
+    counts = [ln for ln in js.splitlines()
+              if "isDone" in ln and ".filter(" in ln]
+    assert len(counts) == 3, counts
+
+
+def test_an_assisted_finish_reads_as_done_not_as_in_progress():
+    js = _student_js()
+    assert 'ASSISTED.has(slug)) return "helped"' in js
+    assert '"helped": "Solved with help"' in js or 'helped: "Solved with help"' in js
+    # ...and the state has a colour of its own, or it renders unstyled.
+    css = (pathlib.Path(__file__).parent / "frontend" / "ui.css").read_text()
+    assert ".stat.helped{" in css
+
+
+def test_finishing_records_the_kind_of_finish_it_actually_was():
+    """The server is about to report the same split back, and disagreeing with
+    it for one screen is how a problem reads Solved until the next reload."""
+    js = _student_js()
+    fn = js.split("async function finish(")[1].split("\n}")[0]
+    assert "res.solved_independently ? SOLVED : ASSISTED" in fn

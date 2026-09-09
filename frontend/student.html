@@ -996,7 +996,15 @@ const CHEV = `<svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill=
   stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"
   aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>`;
 
-let SOLVED = new Set();
+let SOLVED = new Set();      // did it themselves
+let ASSISTED = new Set();    // finished it, but a step used the shown answer
+/* Both count as DONE. A problem completed with help is not left on the list as
+   unfinished work: the student has nothing further to do on it, and telling
+   them otherwise sends them back to redo something they have already been
+   through. What it is NOT is the same claim - see STAT_LABEL - and it is not a
+   grade either, which is counted from passing submissions and never from
+   these. */
+function isDone(slug){ return SOLVED.has(slug) || ASSISTED.has(slug); }
 let ASSIGNMENTS = [];          // enriched with slugs / solved / last
 let openAssign = null;         // the assignment currently open
 let PROBLEMS = [];             // its problems
@@ -1015,9 +1023,11 @@ function touch(slug){
 
 function statusOf(slug, touched){
   if (SOLVED.has(slug)) return "solved";
+  if (ASSISTED.has(slug)) return "helped";
   return touched[slug] ? "progress" : "todo";
 }
-const STAT_LABEL = {solved: "Solved", progress: "In progress", todo: "Not started"};
+const STAT_LABEL = {solved: "Solved", helped: "Solved with help",
+                    progress: "In progress", todo: "Not started"};
 function statMark(state){
   return `<span class="stat ${state}"><span class="dotmark" aria-hidden="true"></span>${
     STAT_LABEL[state]}</span>`;
@@ -1048,6 +1058,7 @@ async function loadAssignments(){
     return listError($("assignCard"), loadAssignments);
   }
   SOLVED = new Set(solved.slugs || []);
+  ASSISTED = new Set(solved.assisted || []);
 
   const list = (d.assignments || []).filter(a => a.ready > 0);
   if (!list.length){
@@ -1080,7 +1091,7 @@ async function loadAssignments(){
       // when the truth is "we could not ask".
       failed = true;
     }
-    const solvedN = slugs.filter(s => SOLVED.has(s)).length;
+    const solvedN = slugs.filter(isDone).length;
     const last = Math.max(0, ...slugs.map(s => touched[s] || 0));
     return {...a, slugs, solvedN, last, failed};
   }));
@@ -1184,12 +1195,16 @@ async function openAssignment(a){
 function renderProblems(){
   const touched = touchMap();
   const q = pQuery.trim().toLowerCase();
-  const rank = {progress: 0, todo: 1, solved: 2};
+  const rank = {progress: 0, todo: 1, helped: 2, solved: 3};
 
   const rows = PROBLEMS
     .map(p => ({p, state: statusOf(p.slug, touched)}))
     .filter(({p, state}) =>
-      (pFilter === "all" || state === pFilter) &&
+      // The Solved chip means FINISHED - a student filtering for what they
+      // have done should not have half of it hidden behind a distinction they
+      // did not ask about.
+      (pFilter === "all" || state === pFilter ||
+       (pFilter === "solved" && state === "helped")) &&
       (!q || String(p.title || p.slug).toLowerCase().includes(q) ||
              String(p.slug).toLowerCase().includes(q)))
     .sort((a, b) => pSort === "status"
@@ -1197,7 +1212,7 @@ function renderProblems(){
         String(a.p.title || a.p.slug).localeCompare(String(b.p.title || b.p.slug))
       : String(a.p.title || a.p.slug).localeCompare(String(b.p.title || b.p.slug)));
 
-  const solvedN = PROBLEMS.filter(p => SOLVED.has(p.slug)).length;
+  const solvedN = PROBLEMS.filter(p => isDone(p.slug)).length;
   const pct = PROBLEMS.length ? Math.round(solvedN / PROBLEMS.length * 100) : 0;
   $("probSummary").textContent = PROBLEMS.length
     ? `${solvedN} of ${PROBLEMS.length} solved` : "";
@@ -1265,7 +1280,7 @@ function renderProblems(){
        surviving the current filter - otherwise typing in the search box would
        quietly change the denominator and read as lost progress. */
     const all = PROBLEMS.filter(p => p.group_slug === g.key);
-    const done = all.filter(p => SOLVED.has(p.slug)).length;
+    const done = all.filter(p => isDone(p.slug)).length;
     const complete = done === all.length;
     return `<li class="grouprow"><details class="pgroup"${complete ? "" : " open"}>
       <summary>
@@ -1759,9 +1774,13 @@ async function finish(res){
       method: "POST", headers: {"Content-Type": "application/json"},
       body: JSON.stringify({session_id: sessionId})
     });
-    // Record it locally too, so going back one screen shows it as solved
-    // without a round trip to re-read /solved.
-    if (openProblem) SOLVED.add(openProblem.slug);
+    // Record it locally too, so going back one screen shows it as done
+    // without a round trip to re-read /solved. Which set matters: the server
+    // is about to report the same split back, and disagreeing with it for one
+    // screen is how a problem reads "Solved" until the next reload.
+    if (openProblem){
+      (res.solved_independently ? SOLVED : ASSISTED).add(openProblem.slug);
+    }
   } catch {}
   // Both graphs, now that there is a finished function to draw the second one
   // from. Awaited last so a slow render never delays the "solved" message.

@@ -1770,9 +1770,36 @@ def get_solved(request: Request):
     Was /solved/{student_id}, which handed anyone else's progress to anyone
     who could type a uuid."""
     claims = require_student(request)
-    result = get_supabase().table("solved").select("problem_slug").eq(
-        "student_id", claims["sub"]).execute()
-    return {"slugs": [r["problem_slug"] for r in (result.data or [])]}
+    sb = get_supabase()
+    done = {r["problem_slug"] for r in
+            (sb.table("solved").select("problem_slug")
+             .eq("student_id", claims["sub"]).execute().data or [])}
+
+    # ...and every session that actually FINISHED. /mark_solved writes the
+    # `solved` table ONLY for an independent solve, so a problem completed with
+    # a shown answer was recorded nowhere: the list held it at "In progress"
+    # forever and the assignment bar never moved, one screen after the app had
+    # told the student it was "recorded as solved with help". Nothing was.
+    #
+    # Read here rather than widening `solved`, because mt_sessions already
+    # carries the distinction (migrations/004_archive.sql) and the two claims
+    # are different: `solved` means they did it themselves, and that is what
+    # the independent list must keep meaning.
+    #
+    # It cannot inflate a grade. The grade sheet counts passing SUBMISSIONS
+    # (main/grades.tally) and never reads either of these.
+    assisted = set()
+    try:
+        for r in (sb.table("mt_sessions")
+                  .select("slug, solved_independently")
+                  .eq("student_id", claims["sub"])
+                  .not_.is_("completed_at", "null").execute().data or []):
+            (done if r.get("solved_independently") else assisted).add(r["slug"])
+    except Exception as e:
+        # A student's progress list must still render if the archive is
+        # unreachable - it degrades to the independent solves it always showed.
+        print(f"  ⚠️  /solved: could not read mt_sessions: {str(e)[:160]}")
+    return {"slugs": sorted(done), "assisted": sorted(assisted - done)}
 
 
 @app.get("/history/{slug}")

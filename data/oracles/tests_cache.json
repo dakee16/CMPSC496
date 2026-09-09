@@ -6588,34 +6588,17 @@
           [
             [
               "setExpression",
-              "x = 10; y = 20; z = x + y; return z"
+              "a = 5; return a"
             ],
             [
-              "calculateExpressions"
-            ],
-            [
-              "_replaceVariables"
+              "_replaceVariables",
+              "a"
             ]
           ]
         ],
         "expected": [
           null,
-          {
-            "x = 10": {
-              "x": 10.0
-            },
-            "y = 20": {
-              "x": 10.0,
-              "y": 20.0
-            },
-            "z = x + y": {
-              "x": 10.0,
-              "y": 20.0,
-              "z": 30.0
-            },
-            "_return_": 30.0
-          },
-          "!TypeError"
+          null
         ]
       },
       {
@@ -6623,29 +6606,17 @@
           [
             [
               "setExpression",
-              "a = 3; b = a * 2; return b"
+              "x = 10; y = x + 5; return y"
             ],
             [
-              "calculateExpressions"
-            ],
-            [
-              "_replaceVariables"
+              "_replaceVariables",
+              "y"
             ]
           ]
         ],
         "expected": [
           null,
-          {
-            "a = 3": {
-              "a": 3.0
-            },
-            "b = a * 2": {
-              "a": 3.0,
-              "b": 6.0
-            },
-            "_return_": 6.0
-          },
-          "!TypeError"
+          null
         ]
       },
       {
@@ -6653,34 +6624,17 @@
           [
             [
               "setExpression",
-              "m = 5; n = m + 10; o = n * 2; return o"
+              "a = 5; b = a / 0; return b"
             ],
             [
-              "calculateExpressions"
-            ],
-            [
-              "_replaceVariables"
+              "_replaceVariables",
+              "b"
             ]
           ]
         ],
         "expected": [
           null,
-          {
-            "m = 5": {
-              "m": 5.0
-            },
-            "n = m + 10": {
-              "m": 5.0,
-              "n": 15.0
-            },
-            "o = n * 2": {
-              "m": 5.0,
-              "n": 15.0,
-              "o": 30.0
-            },
-            "_return_": 30.0
-          },
-          "!TypeError"
+          null
         ]
       },
       {
@@ -6688,40 +6642,22 @@
           [
             [
               "setExpression",
-              "p = 1; q = p + 1; r = q + p; s = r * 2; return s"
+              "a = 5; b = 7 + a; return b"
             ],
             [
-              "calculateExpressions"
+              "_replaceVariables",
+              "b"
             ],
             [
-              "_replaceVariables"
+              "_replaceVariables",
+              "a"
             ]
           ]
         ],
         "expected": [
           null,
-          {
-            "p = 1": {
-              "p": 1.0
-            },
-            "q = p + 1": {
-              "p": 1.0,
-              "q": 2.0
-            },
-            "r = q + p": {
-              "p": 1.0,
-              "q": 2.0,
-              "r": 3.0
-            },
-            "s = r * 2": {
-              "p": 1.0,
-              "q": 2.0,
-              "r": 3.0,
-              "s": 6.0
-            },
-            "_return_": 6.0
-          },
-          "!TypeError"
+          null,
+          null
         ]
       },
       {
@@ -6729,34 +6665,17 @@
           [
             [
               "setExpression",
-              "a = 4; b = a + 6; c = b - 2; return c"
+              "x = 5; y = x * 2; z = y - x; return z"
             ],
             [
-              "calculateExpressions"
-            ],
-            [
-              "_replaceVariables"
+              "_replaceVariables",
+              "z"
             ]
           ]
         ],
         "expected": [
           null,
-          {
-            "a = 4": {
-              "a": 4.0
-            },
-            "b = a + 6": {
-              "a": 4.0,
-              "b": 10.0
-            },
-            "c = b - 2": {
-              "a": 4.0,
-              "b": 10.0,
-              "c": 8.0
-            },
-            "_return_": 8.0
-          },
-          "!TypeError"
+          null
         ]
       },
       {
@@ -6764,34 +6683,22 @@
           [
             [
               "setExpression",
-              "x = 8; y = 3; z = x / y; return z"
+              "a = 5; b = a + 2; c = b * 3; return c"
             ],
             [
-              "calculateExpressions"
+              "_replaceVariables",
+              "c"
             ],
             [
-              "_replaceVariables"
+              "_replaceVariables",
+              "b"
             ]
           ]
         ],
         "expected": [
           null,
-          {
-            "x = 8": {
-              "x": 8.0
-            },
-            "y = 3": {
-              "x": 8.0,
-              "y": 3.0
-            },
-            "z = x / y": {
-              "x": 8.0,
-              "y": 3.0,
-              "z": 2.6666666666666665
-            },
-            "_return_": 2.6666666666666665
-          },
-          "!TypeError"
+          null,
+          null
         ]
       },
       {
@@ -6799,40 +6706,17 @@
           [
             [
               "setExpression",
-              "a = 0; b = 1; c = a + b; d = c * 5; return d"
+              "a = 5; b = a + 2; return b"
             ],
             [
-              "calculateExpressions"
-            ],
-            [
-              "_replaceVariables"
+              "_replaceVariables",
+              "c"
             ]
           ]
         ],
         "expected": [
           null,
-          {
-            "a = 0": {
-              "a": 0.0
-            },
-            "b = 1": {
-              "a": 0.0,
-              "b": 1.0
-            },
-            "c = a + b": {
-              "a": 0.0,
-              "b": 1.0,
-              "c": 1.0
-            },
-            "d = c * 5": {
-              "a": 0.0,
-              "b": 1.0,
-              "c": 1.0,
-              "d": 5.0
-            },
-            "_return_": 5.0
-          },
-          "!TypeError"
+          null
         ]
       },
       {
@@ -6840,34 +6724,17 @@
           [
             [
               "setExpression",
-              "alpha = 100; beta = alpha / 4; gamma = beta + 10; return gamma"
+              "a = 5; b = a + 2; return b"
             ],
             [
-              "calculateExpressions"
-            ],
-            [
-              "_replaceVariables"
+              "_replaceVariables",
+              ""
             ]
           ]
         ],
         "expected": [
           null,
-          {
-            "alpha = 100": {
-              "alpha": 100.0
-            },
-            "beta = alpha / 4": {
-              "alpha": 100.0,
-              "beta": 25.0
-            },
-            "gamma = beta + 10": {
-              "alpha": 100.0,
-              "beta": 25.0,
-              "gamma": 35.0
-            },
-            "_return_": 35.0
-          },
-          "!TypeError"
+          ""
         ]
       },
       {
@@ -6875,29 +6742,22 @@
           [
             [
               "setExpression",
-              "i = -5; j = i * -1; return j"
+              "a = 5; b = a + 2; return b"
             ],
             [
-              "calculateExpressions"
+              "_replaceVariables",
+              "a"
             ],
             [
-              "_replaceVariables"
+              "_replaceVariables",
+              "b"
             ]
           ]
         ],
         "expected": [
           null,
-          {
-            "i = -5": {
-              "i": -5.0
-            },
-            "j = i * -1": {
-              "i": -5.0,
-              "j": 5.0
-            },
-            "_return_": 5.0
-          },
-          "!TypeError"
+          null,
+          null
         ]
       },
       {
@@ -6905,52 +6765,114 @@
           [
             [
               "setExpression",
-              "x = 2; y = x * 3; z = y + 1; return z"
+              "a = 5; b = a + 2; return b"
             ],
             [
-              "calculateExpressions"
-            ],
-            [
-              "_replaceVariables"
+              "_replaceVariables",
+              "x"
             ]
           ]
         ],
         "expected": [
           null,
-          {
-            "x = 2": {
-              "x": 2.0
-            },
-            "y = x * 3": {
-              "x": 2.0,
-              "y": 6.0
-            },
-            "z = y + 1": {
-              "x": 2.0,
-              "y": 6.0,
-              "z": 7.0
-            },
-            "_return_": 7.0
-          },
-          "!TypeError"
+          null
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "a = 5; b = a + 2; return b"
+            ],
+            [
+              "_replaceVariables",
+              "a"
+            ],
+            [
+              "_replaceVariables",
+              "b"
+            ],
+            [
+              "_replaceVariables",
+              "c"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          null
+        ]
+      },
+      {
+        "input": [
+          [
+            [
+              "setExpression",
+              "a = 5; b = a + 2; return b"
+            ],
+            [
+              "_replaceVariables",
+              "a"
+            ],
+            [
+              "_replaceVariables",
+              "b"
+            ],
+            [
+              "_replaceVariables",
+              "a = 5"
+            ]
+          ]
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          null
+        ]
+      },
+      {
+        "input": [
+          "x = AdvancedCalculator()\nx.setExpression('a = 5;b = 7 + a;a = 7;c = a + b;c = a * 0;return c')\nstate_before = x.states\nx._replaceVariables()\nstate_before"
+        ],
+        "expected": [
+          null,
+          null,
+          null,
+          "!TypeError",
+          {}
+        ]
+      },
+      {
+        "input": [
+          "x = AdvancedCalculator()\nx.setExpression('a = 5;b = 7 + a;a = 7;c = a / 0;return c')\nx._replaceVariables()\nx.expressions"
+        ],
+        "expected": [
+          null,
+          null,
+          "!TypeError",
+          "a = 5;b = 7 + a;a = 7;c = a / 0;return c"
         ]
       }
     ],
     "strong": true,
-    "kill_rate": 1.0,
-    "kill_rate_direct": 1.0,
+    "kill_rate": 0.8888888888888888,
+    "kill_rate_direct": 0.8888888888888888,
     "status": "strong",
     "needs_review": false,
-    "undetermined": 0,
-    "kill_rate_lower": 1.0,
+    "undetermined": 1,
+    "kill_rate_lower": 0.8888888888888888,
     "kill_rate_upper": 1.0,
-    "validated_at": "2026-09-08T18:24:01+00:00",
+    "validated_at": "2026-09-09T00:25:06+00:00",
     "breakdown": {
       "total_mutants": 9,
-      "killed": 9,
+      "killed": 8,
       "killed_on_retry": 0,
       "proven_equivalent": 0,
-      "unresolved": 0,
+      "unresolved": 1,
       "mutants": [
         {
           "label": "line 25: remove `out = []`",
@@ -6974,7 +6896,13 @@
         },
         {
           "label": "line 32: remove `out.append(str(self.states[word]))`",
-          "status": "killed"
+          "status": "undetermined",
+          "probe": {
+            "verdict": "never_reached",
+            "reached": 0,
+            "differed": 0,
+            "error": null
+          }
         },
         {
           "label": "line 34: remove `try:`",
@@ -6992,7 +6920,7 @@
     },
     "slug": "advanced-calculator-replace-variables",
     "features": [
-      "blocks",
+      "blocks/4",
       "calls"
     ]
   },
