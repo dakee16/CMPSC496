@@ -132,5 +132,53 @@
     ],
     "confirmed": true,
     "slug": "calculator-is-number"
+  },
+  "5921c31e7dede6dc5546803b1ae5de61983962db0742eaa8727fd086f85c7f59": {
+    "entry_name": "_mt_run_calls",
+    "params": [
+      "calls"
+    ],
+    "confirmed": true,
+    "slug": "stack-pop"
+  },
+  "7a5941f5537c56430fb2caffa6ef7fba29fd56f7ffbbf56f88d27dc788765394": {
+    "entry_name": "_mt_run_calls",
+    "params": [
+      "calls"
+    ],
+    "confirmed": true,
+    "slug": "stack-is-empty"
+  },
+  "0782f44a42855915ecc73e7aaab9f2d96c574def638020e2b8ca6c6a98d6075b": {
+    "entry_name": "_mt_run_calls",
+    "params": [
+      "calls"
+    ],
+    "confirmed": true,
+    "slug": "stack-len"
+  },
+  "31e1e28ced33ef3c153da3f550d94b9a8d15fb4e57d1023d84bab1e31114ca67": {
+    "entry_name": "_mt_run_calls",
+    "params": [
+      "calls"
+    ],
+    "confirmed": true,
+    "slug": "stack-push"
+  },
+  "efc09bc1369d9199cce55078584f8bc9fcc059591e36995652c2e94efcc5d642": {
+    "entry_name": "_mt_run_calls",
+    "params": [
+      "calls"
+    ],
+    "confirmed": true,
+    "slug": "stack-peek"
+  },
+  "54d18cbf0df8cd37dae7c0f970ae422e961872c16c86da2a819759ec064c2bcb": {
+    "entry_name": "_mt_run_calls",
+    "params": [
+      "calls"
+    ],
+    "confirmed": true,
+    "slug": "calculator-is-number"
   }
 }

@@ -433,3 +433,54 @@ def session_snapshot(session_id: str, db_path: str | None = None) -> dict | None
     finally:
         conn.close()
     return _row_to_session(r) if r is not None else None
+
+
+def completed_answers(student_id: str, slugs: list[str],
+                      db_path: str | None = None) -> dict:
+    """What this student actually got accepted, per problem.
+
+    {slug: {"code": <body at column 0>, "assisted": bool}} for every COMPLETED
+    session they own among `slugs`. Newest completed session per slug wins - a
+    student who works a problem twice gets the run they finished last.
+
+    Reads the accepted chunks rather than their submissions, because those are
+    two different claims: `accepted_json` is what the session actually built the
+    solution out of, including a step that was answered by revealing the
+    reference, and that is exactly what belongs in a file that has to RUN. The
+    `assisted` flag travels with it so the caller can say so out loud rather
+    than passing a shown answer off as the student's own.
+
+    Never raises: a handback that cannot read one session must still hand back
+    the rest of the assignment."""
+    if not student_id or not slugs:
+        return {}
+    conn = _connect(db_path)
+    try:
+        rows = conn.execute(
+            "SELECT slug, accepted_json, assisted, updated_at FROM sessions"
+            " WHERE student_id=? AND state='completed'"
+            " ORDER BY updated_at ASC", (student_id,)).fetchall()
+    except Exception:
+        return {}
+    finally:
+        conn.close()
+
+    want, out = set(slugs), {}
+    for r in rows:                       # ascending, so the last write wins
+        if r["slug"] not in want:
+            continue
+        try:
+            accepted = json.loads(r["accepted_json"]) or []
+        except Exception:
+            continue
+        code = "\n".join(a.get("code", "") for a in accepted if a.get("code"))
+        if not code.strip():
+            continue
+        out[r["slug"]] = {
+            "code": code,
+            # The session-level flag is the durable one, but a per-chunk
+            # provenance is more precise when it is there.
+            "assisted": bool(r["assisted"]) or any(
+                a.get("provenance") == "revealed_reference" for a in accepted),
+        }
+    return out

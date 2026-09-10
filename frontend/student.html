@@ -221,6 +221,41 @@
     color:var(--text-muted); line-height:1.65}
   /* A rejection is feedback about THIS panel, so it lands in this panel. It
      used to appear only as another chat bubble on the far side of the screen. */
+  /* "Show the case it failed", under a wrong verdict. */
+  .failCase{margin-top:11px}
+  .failCase > summary{cursor:pointer; font-size:12.5px; color:var(--text-dim);
+                      list-style:none; display:inline-flex; align-items:center;
+                      gap:6px; padding:4px 0; user-select:none}
+  .failCase > summary::-webkit-details-marker{display:none}
+  .failCase > summary::before{content:"▸"; font-size:10px; transition:transform .15s}
+  .failCase[open] > summary::before{transform:rotate(90deg)}
+  .failCase > summary:hover{color:var(--text)}
+  .failCase pre{margin:8px 0 0}
+
+  /* The completed-file download, under the assignment progress bar. */
+  .handback{display:flex; align-items:center; gap:var(--s4); flex-wrap:wrap;
+            margin-top:var(--s4); padding-top:var(--s4);
+            border-top:1px solid var(--glass-line)}
+  .handback .hbText{display:flex; flex-direction:column; gap:2px; min-width:0;
+                    flex:1 1 220px}
+  .handback strong{font-size:13.5px; font-weight:600}
+  .handback span{font-size:12.5px; color:var(--text-dim); line-height:1.5}
+  .handback button{flex:none}
+
+  /* "Looking for your earlier work…", above the skeleton bubbles. */
+  .restoring{display:flex; align-items:center; gap:9px; padding:2px 2px var(--s3);
+             font-size:12.5px; color:var(--text-dim); line-height:1.5}
+  @media (prefers-reduced-motion:reduce){ .restoring .spin{animation:none} }
+
+  /* The "or submit the plan from my chat" alternative, under the upload button. */
+  .orRow{max-width:440px; margin:var(--s4) auto 0}
+  .orLine{display:flex; align-items:center; gap:var(--s3); margin-bottom:var(--s3);
+          color:var(--text-dim); font-size:11.5px; letter-spacing:.06em;
+          text-transform:uppercase}
+  .orLine::before, .orLine::after{content:""; flex:1; height:1px;
+          background:var(--glass-line)}
+  .orNote{margin:var(--s2) 0 0; font-size:12px; color:var(--text-dim);
+          line-height:1.55}
   #designMsg:empty{display:none}
   #designMsg{max-width:440px; margin:var(--s3) auto 0; text-align:left}
   #designMsg .banner{margin-top:0}
@@ -468,6 +503,17 @@
                aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i></i></div>
         </div>
 
+        <!-- The finished work, as the file it came from. Sits with the progress
+             summary because that is where "how far am I" is already answered,
+             and it appears only once there is something in it to download. -->
+        <div class="handback" id="handbackRow" hidden>
+          <div class="hbText">
+            <strong id="handbackTitle">Your completed file</strong>
+            <span id="handbackSub"></span>
+          </div>
+          <button class="ghost" id="handbackBtn">Download .py</button>
+        </div>
+
         <!-- Sixteen items is already past comfortable scanning, and this list
              is meant to grow. -->
         <div class="filters">
@@ -602,6 +648,22 @@
                 <button id="designBtn">Submit design</button>
               </div>
 
+              <!-- The second way in. The page has been drawing this student's
+                   plan from their chat the whole time it has been locked, and
+                   without this the only way to submit that plan was to
+                   screenshot it and upload it back to the same app. Placed
+                   directly under the upload button, because it is an
+                   alternative to uploading, not a separate feature - and it
+                   only appears once there is actually a plan to send. -->
+              <div class="orRow" id="planSubmitRow" hidden>
+                <span class="orLine"><span>or</span></span>
+                <button class="ghost" id="planSubmitBtn">
+                  Submit the plan from my chat
+                </button>
+                <p class="orNote">Judged exactly like an uploaded diagram &mdash;
+                  it is your plan either way.</p>
+              </div>
+
               <details>
                 <summary>See an example</summary>
                 <ul>
@@ -676,9 +738,12 @@
     <div class="card graphCard" id="planCard" hidden>
       <div class="chead" style="border:0; padding:0 0 10px">
         <h2>Your plan so far</h2>
-        <span class="pill" style="margin-left:auto">built from your chat</span>
+        <!-- Swaps to "locked in" once the design is approved. Two pills rather
+             than one relabelled one would let both be true at once. -->
+        <span class="pill" style="margin-left:auto" id="planSource">built from your chat</span>
+        <span class="pill ok" id="planLock" hidden>locked in &mdash; approved</span>
       </div>
-      <p class="hint" style="margin:-2px 0 12px">
+      <p class="hint" style="margin:-2px 0 12px" id="planHint">
         This grows as you describe your approach. If a step is missing here,
         it was missing from what you said.
       </p>
@@ -759,16 +824,8 @@ function openGate(){
     wrap.addEventListener("animationend",
       () => wrap.classList.remove("unlocking"), {once: true});
   }
-  if (!$("designOK")){
-    const ok = document.createElement("div");
-    ok.id = "designOK";
-    ok.className = "designOK";
-    ok.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none"
-        stroke="currentColor" stroke-width="2.6" stroke-linecap="round"
-        stroke-linejoin="round" aria-hidden="true"><path d="m4 12 5.5 5.5L20 7"/></svg>
-      <span>Design accepted. The editor is unlocked for this problem.</span>`;
-    $("workCard").insertBefore(ok, $("stepCount"));
-  }
+  markUnlocked("Design accepted. The editor is unlocked for this problem.");
+  freezePlan();
   toast("Design accepted - the editor is unlocked.", "ok");
   if (editor){
     // The editor has been sized to a hidden box until now. Re-seat the step's
@@ -781,6 +838,39 @@ function openGate(){
   }
 }
 
+/* The standing "editor is unlocked" bar.
+
+   A bar, not a toast, and not show(): a toast is gone in seconds and show()
+   writes into #msg, which the next grading verdict overwrites. Reopening a
+   problem you had already unlocked showed nothing at all about that, so the
+   editor being open looked like luck. It stays on screen for the problem. */
+function markUnlocked(text){
+  let ok = $("designOK");
+  if (!ok){
+    ok = document.createElement("div");
+    ok.id = "designOK";
+    ok.className = "designOK";
+    ok.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+        stroke="currentColor" stroke-width="2.6" stroke-linecap="round"
+        stroke-linejoin="round" aria-hidden="true"><path d="m4 12 5.5 5.5L20 7"/></svg>
+      <span></span>`;
+    $("workCard").insertBefore(ok, $("stepCount"));
+  }
+  ok.querySelector("span").textContent = text;
+}
+
+/* Fix the plan where it stands and say so on the card, so a student who keeps
+   chatting is not left wondering why the drawing stopped following them. */
+function freezePlan(){
+  planFrozen = true;
+  const ping = $("planPing"); if (ping) ping.remove();
+  if ($("planLock")) $("planLock").hidden = false;
+  if ($("planSource")) $("planSource").hidden = true;
+  if ($("planHint")) $("planHint").textContent =
+    "This is the plan your design was approved on, so it stays as it is now. "
+    + "Keep chatting for help while you code - it will not change the drawing.";
+}
+
 // Review rounds are kept separate from chatLog: the reviewer judges "did they
 // fix what I asked last round", and mixing it with the tutor conversation makes
 // both harder for the model to follow.
@@ -791,21 +881,54 @@ let designFileRef = null;
 // refresh because it belongs to a STUDENT and there is nobody to key it to yet
 // - see main/archive.py for where it goes once PSU login is live.
 let planGraph = null, planBusy = false, planSeen = new Set();
+// FROZEN once the design is approved. The plan that passed the gate is the plan
+// the student is now implementing, and letting the chat keep rewriting it means
+// the picture beside the editor stops being the thing that was approved - so a
+// student asking "why is my loop wrong" could watch their accepted plan quietly
+// mutate underneath them. The chat carries on; only the drawing is fixed.
+let planFrozen = false;
+// Whether the page has already nudged down to the plan card this problem. The
+// nudge happens ONCE, when the plan first has something in it.
+let planNudged = false;
 
 /* Draw the plan graph, flashing whatever is new since the last draw.
 
-   The card no longer yanks the page to itself when it first appears: it is
-   visible from the moment a problem opens (showing its empty state), and a new
-   node announces itself with a highlight plus a "Plan updated" pill on the chat
-   panel, which is where the student is actually looking. */
+   The card does not YANK the page to itself on every change - it is visible
+   from the moment a problem opens (showing its empty state), and later changes
+   announce themselves with a highlight plus a "Plan updated" pill on the chat
+   panel, which is where the student is actually looking.
+
+   The FIRST time it has anything in it is different, and is the one moment the
+   page moves on its own. A student who has just described their approach has no
+   reason to believe anything was drawn from it, and the pill alone was being
+   missed: it appears on the far side of the screen from the sentence they just
+   typed. So the first plan gets a short nudge downwards - enough to bring the
+   top of the drawing into view, not so much that the chat leaves it. */
 function paintPlan(graph){
   const ids = (graph && graph.nodes || []).map(n => n.id);
   const fresh = ids.filter(id => !planSeen.has(id));
   ids.forEach(id => planSeen.add(id));
   renderGraph($("planLive"), graph,
     "Describe your approach in the chat and your plan will appear here.",
-    {height: 420, flash: fresh, legend: !!(graph && graph.nodes || []).length});
-  if (fresh.length) showPlanPing();
+    {height: 420, flash: fresh, legend: !!ids.length});
+  syncPlanSubmit();
+  if (!fresh.length) return;
+  if (planNudged) return showPlanPing();
+  planNudged = true;
+  nudgeToPlan();
+}
+
+/* The one-time nudge. Deliberately NOT scrollIntoView: that centres the card
+   and pushes the chat off screen, which is the behaviour the pill replaced. A
+   fixed, modest scroll keeps both in frame and stays out of the way of a
+   student who is already scrolling themselves. */
+function nudgeToPlan(){
+  const card = $("planCard");
+  if (!card || card.hidden) return;
+  const top = card.getBoundingClientRect().top;
+  const want = window.innerHeight * 0.55;      // bring its top into the lower half
+  if (top <= want) return;                     // already visible enough
+  scrollBy({top: Math.min(top - want, 260), behavior: "smooth"});
 }
 
 /* "Plan updated", on the chat panel, because the graph is a full page-width
@@ -827,6 +950,12 @@ function showPlanPing(){
 async function refreshPlanGraph(){
   // Fire-and-forget: this is a drawing, never a gate. It must not delay the
   // tutor's reply, and a failure must leave the last good picture on screen.
+  //
+  // Once the design is approved the plan is FIXED. Re-extracting it from a
+  // conversation that is now about debugging would quietly rewrite the plan the
+  // student was approved on - and the later the conversation goes, the less it
+  // is about the plan at all, so the redraw gets worse as it gets less welcome.
+  if (planFrozen) return;
   if (planBusy || !openProblem) return;
   planBusy = true;
   try {
@@ -978,6 +1107,108 @@ async function uploadDesign(){
   } finally {
     setBusy(btn, false);
     if (!designFileRef) disable(btn, "Choose a PNG, JPEG or PDF first.");
+  }
+}
+
+/* Submit the plan the page drew from this student's chat, instead of a file.
+
+   Shares everything with uploadDesign() below the network call: the same
+   reviewer, the same rubric, the same transcript bookkeeping, the same unlock.
+   What it skips is the screenshot round trip. */
+async function submitPlanGraph(){
+  const btn = $("planSubmitBtn");
+  if (!planGraph || !(planGraph.nodes || []).length){
+    return designMsg("warn", "There is no plan yet - describe your approach in "
+      + "the chat and it will appear below.");
+  }
+  setBusy(btn, true, "Reviewing…");
+  designMsg("info", "Reading your plan. This takes a few seconds.");
+  try {
+    const r = await fetch(`${API}/design_review/plan`, {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({slug: openProblem.slug, graph: planGraph,
+                            history: designLog, messages: chatLog})
+    });
+    const data = await r.json();
+    if (!r.ok){
+      return designMsg("bad", (data.detail && data.detail.message)
+        || "Could not review that plan. Try again.");
+    }
+    designLog.push({role: "user", content: "[submitted the plan from my chat]"});
+    designLog.push({role: "assistant", content: data.reply});
+    hideChips();
+    bubble("me", "Submitted my plan from the chat");
+    bubble("bot", data.reply);
+    designMsg(data.approved ? "ok" : "warn", data.reply);
+    if (data.approved) openGate();          // freezes the plan as it stands
+  } catch (e) {
+    designMsg("bad", "Could not reach the reviewer. Check your connection and "
+      + "try again - nothing was submitted.");
+  } finally {
+    setBusy(btn, false);
+  }
+}
+
+/* The button only exists when there is something to send. Called from every
+   place the plan can change, so it never sits there promising to submit an
+   empty drawing. */
+function syncPlanSubmit(){
+  const row = $("planSubmitRow");
+  if (!row) return;
+  row.hidden = tutorReleased || !(planGraph && (planGraph.nodes || []).length);
+}
+
+/* ---------- the completed file ----------
+
+   The assignment file back, with their own answers under each `def`. Offered
+   as soon as ONE problem is finished rather than only at 100%: the file is
+   runnable at every stage - unfinished problems keep the body they were handed
+   - and a student who has done four of eleven has something worth keeping. */
+function syncHandback(done, total){
+  const row = $("handbackRow");
+  if (!row) return;
+  row.hidden = !done;
+  if (!done) return;
+  const all = done === total;
+  $("handbackTitle").textContent = all
+    ? "Your completed file" : "Your file so far";
+  $("handbackSub").textContent = all
+    ? "Every problem, with your answers in place."
+    : `Your answers for ${done} of ${total}. The rest is left exactly as it was `
+      + `handed out, so the file still runs.`;
+}
+
+async function downloadHandback(){
+  const btn = $("handbackBtn");
+  if (!openAssign) return;
+  setBusy(btn, true, "Building…");
+  try {
+    const r = await fetch(`${API}/assignments/${openAssign.id}/handback`);
+    if (!r.ok){
+      let m = "Could not build your file. Try again.";
+      try { m = (await r.json()).detail.message || m; } catch (e) {}
+      return toast(m, "bad");
+    }
+    // Blob + a temporary link, not a plain navigation: a navigation to a failed
+    // request would leave the student staring at a JSON error page instead of
+    // a message they can act on.
+    const name = (r.headers.get("Content-Disposition") || "")
+      .match(/filename="([^"]+)"/);
+    const url = URL.createObjectURL(await r.blob());
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = name ? name[1] : "assignment.py";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    // Revoked on the next tick, not immediately: Safari cancels an in-flight
+    // download if the object URL disappears in the same frame as the click.
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+    toast("Downloaded.", "ok");
+  } catch (e) {
+    toast("Could not reach the server. Check your connection.", "bad");
+  } finally {
+    setBusy(btn, false);
   }
 }
 
@@ -1219,6 +1450,7 @@ function renderProblems(){
   $("probSummaryBar").querySelector("i").style.width = pct + "%";
   $("probSummaryBar").setAttribute("aria-valuenow", String(pct));
   $("probSummaryBar").classList.toggle("done", pct === 100);
+  syncHandback(solvedN, PROBLEMS.length);
 
   if (!PROBLEMS.length){
     $("problems").innerHTML = `<li style="grid-column:1/-1"><div class="empty"
@@ -1386,6 +1618,14 @@ async function start(p){
   designLog = [];
   planGraph = null;
   planSeen = new Set();
+  planFrozen = false;
+  planNudged = false;
+  if ($("planLock")) $("planLock").hidden = true;
+  if ($("planSource")) $("planSource").hidden = false;
+  if ($("planHint")) $("planHint").textContent =
+    "This grows as you describe your approach. If a step is missing here, "
+    + "it was missing from what you said.";
+  syncPlanSubmit();
   const ok = $("designOK"); if (ok) ok.remove();
   const ping = $("planPing"); if (ping) ping.remove();
   clearDesign();
@@ -1393,9 +1633,10 @@ async function start(p){
   // The plan card is visible from the start, showing its empty state. A card
   // that appears out of nowhere three replies in is a card nobody notices.
   $("planCard").hidden = false;
-  paintPlan(null);
   $("dualCard").hidden = true;
-  resetChat(p.title || p.slug);
+  // NOT resetChat() and NOT paintPlan(null) yet: both assert this is a fresh
+  // start, and we do not know that until /history answers. See historyLoading.
+  historyLoading();
   applyTutorGate();
   setReviewMode(false);
 
@@ -1419,7 +1660,13 @@ async function start(p){
   ensureEditor();
   render();
   applyTutorGate();
-  await restoreHistory(p);
+  // Nothing to put back, so this IS a fresh start - say hello and draw the
+  // empty plan. Skipped when history was restored (it painted both already) and
+  // when the student has already moved to another problem.
+  if (!await restoreHistory(p)){
+    resetChat(p.title || p.slug);
+    paintPlan(null);
+  }
 }
 
 /* Put back what this student already did on this problem.
@@ -1433,15 +1680,21 @@ async function start(p){
    belong to a GRADING SESSION, and /decompose_chunks just issued a fresh one -
    replaying old answers into it would claim steps this session never graded.
    Reopening a problem still starts the solving over; what comes back is the
-   thinking around it. */
+   thinking around it.
+
+   Returns TRUE when it has painted the chat and the plan itself, so the caller
+   knows not to overwrite them with a fresh greeting - and true as well when the
+   student has moved on mid-fetch, because whatever they moved to owns those
+   panels now. False means "nothing here, start clean". */
 async function restoreHistory(p){
   let h;
   try {
     const r = await fetch(`${API}/history/${encodeURIComponent(p.slug)}`);
-    if (!r.ok) return;
+    if (!r.ok) return false;
     h = await r.json();
-  } catch { return; }                 // a cold archive is not a broken problem
-  if (!h || !h.found || openProblem !== p) return;   // they moved on while we waited
+  } catch { return false; }           // a cold archive is not a broken problem
+  if (openProblem !== p) return true;                // they moved on; hands off
+  if (!h || !h.found) return false;                  // nothing recorded
 
   if (h.messages && h.messages.length){
     $("clog").innerHTML = "";
@@ -1460,21 +1713,31 @@ async function restoreHistory(p){
 
   if (h.plan && h.plan.nodes && h.plan.nodes.length){
     planGraph = h.plan;
-    // Seed planSeen FIRST so a restored plan does not flash every node as new
-    // and ping "Plan updated" about a conversation that finished days ago.
+    // Seed planSeen FIRST so a restored plan does not flash every node as new,
+    // ping "Plan updated" about a conversation that finished days ago, or nudge
+    // the page down to a drawing the student has already seen.
     h.plan.nodes.forEach(n => planSeen.add(n.id));
+    planNudged = true;
     paintPlan(h.plan);
   }
 
   // The design gate is passed ONCE per problem. Re-demanding the same diagram
   // to reread your own finished work is a toll, not a lesson.
+  //
+  // This is stated on a STANDING bar rather than through show(), which writes
+  // into #msg and is wiped by the next grading verdict. Coming back to a
+  // problem you had already unlocked said nothing at all about why the editor
+  // was open, so the state read as an accident.
   if (h.design_approved || h.solved){
     tutorReleased = true;
     applyTutorGate();
-    if (!$("designOK")) show("ok", h.solved
-      ? "You solved this before. The editor is open - the steps start again from the top."
-      : "Your design for this problem was already accepted, so the editor is open.");
+    markUnlocked(h.solved
+      ? "You solved this before. The editor is unlocked - the steps start again from the top."
+      : "Your design was accepted earlier. The editor is unlocked for this problem.");
+    // An approved plan stays approved, so it stays fixed across sessions too.
+    if (planGraph && (planGraph.nodes || []).length) freezePlan();
   }
+  syncPlanSubmit();
 
   // The finished comparison, if there is one to show.
   if (h.plan && h.code && h.comparison){
@@ -1483,6 +1746,14 @@ async function restoreHistory(p){
                                comparison: h.comparison});
     $("planCard").hidden = true;
   }
+
+  // BOTH panels must be resolved before returning true, or the caller leaves
+  // them alone and a skeleton shimmers forever. `found` is true for a student
+  // who has ANY row on this problem, and a design row alone is enough - so a
+  // half-restored problem is a real state, not a defensive hypothetical.
+  if (!(h.messages && h.messages.length)) resetChat(p.title || p.slug);
+  if (!(h.plan && h.plan.nodes && h.plan.nodes.length)) paintPlan(null);
+  return true;
 }
 
 /* Decomposition never arrived. Drop the loading skeleton so it does not shimmer
@@ -1491,6 +1762,12 @@ function failStart(msg){
   $("stepper").innerHTML = "";
   $("stepTotal").textContent = "";
   $("probBarLab").textContent = "";
+  // This path returns from start() before restoreHistory() ever runs, so the
+  // chat and plan skeletons raised on the way in have nobody to clear them.
+  // A shimmer that never resolves reads as a hung page on top of a failure the
+  // student can actually see and act on.
+  if (openProblem) resetChat(openProblem.title || openProblem.slug);
+  paintPlan(null);
   show("bad", msg);
 }
 
@@ -1752,9 +2029,23 @@ $("submit").onclick = async () => {
          `<pre class="code" style="margin-top:11px">${esc(res.revealed_reference)}</pre>`);
     return;
   }
-  show("bad", res.reason);
+  // A wrong answer now comes with the case that caught it, folded away. Closed
+  // by default because the point of the step is for them to find it themselves;
+  // one click away because "wrong on at least one case" and no case is a shrug,
+  // and a student with no way forward stops rather than thinks.
+  show("bad", res.reason, failingCaseHTML(res.failing_case));
   $("attempts").textContent = `Attempt ${res.attempts} of 2.`;
 };
+
+/* The disclosure holding one failing case. Empty string when the server sent
+   none - a crash or a timeout has no case to show. */
+function failingCaseHTML(text){
+  if (!text || !String(text).trim()) return "";
+  return `<details class="failCase">
+      <summary>Show the case it failed</summary>
+      <pre class="code">${esc(text)}</pre>
+    </details>`;
+}
 
 async function finish(res){
   render();
@@ -1923,6 +2214,30 @@ function showChatCoach(){
   window.addEventListener("scroll", placeCoach, true);
 }
 
+/* What the panels show while /history is in flight.
+
+   Reopening a problem you have worked on before fetches the chat and the plan
+   from the archive, and that takes a moment. Until it lands the page was
+   showing a confident FRESH state - the tutor's opening greeting and "describe
+   your approach and your plan will appear here" - which is the one thing that
+   is definitely wrong for a student who has been here before. Then it would
+   flip. So the greeting waits until we know there is nothing to restore, and
+   the space it will occupy says it is looking.
+
+   Skeletons rather than a spinner, matching everything else that fetches on
+   this page (ui.css: "Every fetch shows one of these, never a blank page"),
+   and sized to what is coming so the layout does not jump when it arrives. */
+function historyLoading(){
+  $("clog").innerHTML =
+    `<div class="restoring" role="status">
+       <span class="spin" aria-hidden="true"></span>
+       <span>Looking for your earlier work on this problem&hellip;</span>
+     </div>` + skeletonRows(3);
+  chatLog = [];
+  hideChips();
+  $("planLive").innerHTML = skeletonRows(2);
+}
+
 function resetChat(title){
   $("clog").innerHTML = "";
   chatLog = [];
@@ -1976,8 +2291,14 @@ async function sendToTutor(text){
     // plan has not shown they have one, and that is exactly the case this gate
     // exists to catch. `ready` now only tells them what to do next.
     if (data.ready && !tutorReleased){
-      bubble("bot", "Your plan sounds workable - draw it up and submit it as a "
-                  + "PNG, JPEG, or PDF to unlock the editor.");
+      // Deliberately NOT "your plan is workable". The tutor reads a plan; the
+      // review WALKS it through an example, and the two do not always agree -
+      // a plan that counts nodes until the next one is None reads perfectly and
+      // is off by one. Promising the plan is correct here and then rejecting it
+      // thirty seconds later is worse than not promising.
+      bubble("bot", "Sounds like you have a plan. Put it forward and I will "
+                  + "check it properly - either submit the plan from this chat, "
+                  + "or upload your own drawing as a PNG, JPEG, or PDF.");
     }
   } catch (e) {
     thinking.textContent = "Could not reach the tutor. Check your connection.";
@@ -2021,6 +2342,8 @@ dDrop.addEventListener("drop", e => {
 dFile.addEventListener("change", e => pickDesign(e.target.files && e.target.files[0]));
 $("designClear").onclick = () => { clearDesign(); dDrop.focus(); };
 $("designBtn").addEventListener("click", uploadDesign);
+$("planSubmitBtn").addEventListener("click", submitPlanGraph);
+$("handbackBtn").addEventListener("click", downloadHandback);
 
 $("cform").addEventListener("submit", e => { e.preventDefault(); submitChat(); });
 $("cinput").addEventListener("input", e => autogrow(e.target));

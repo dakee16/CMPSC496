@@ -32,15 +32,38 @@ SB = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_KEY"])
 
 
 def load_problems() -> list[dict]:
-    """Every problem with its ground-truth solution.
+    """Every problem with its ground-truth solution, AND its class context.
+
+    `context` is not optional here, and leaving it out was silently wasting the
+    entire run on any class assignment. The oracle cache is keyed by
+    content_hash, which mixes in context_prefix/context_suffix (identity.py:56)
+    so that Calculator._isNumber and AdvancedCalculator._isNumber - same
+    docstring, same body, different class around them - cannot share one oracle.
+    Those two fields live inside the `context` JSON column and are flattened
+    back onto the row by context_of(); the serving path does that before it
+    looks anything up (api_server._stored_problem).
+
+    Warm-up did not, so it hashed every method problem as though it were a bare
+    function and filed the result under a key grading never reads. On HW3 that
+    was 0 of 11 keys matching: a full pass - minutes of mutation testing and
+    real model spend, 129 mutants on _getPostfix alone - after which every
+    problem still reported oracle_missing, and the natural response is to run it
+    again. A plain function has no context, so both sides hashed the empty
+    string and agreed, which is why this survived the flat-function assignments.
 
     Same query research/research_agent.py uses - note that its copy is currently
     pinned to a 3-slug TEMP slice, so this deliberately re-states the full-set
     version rather than importing it. Warm-up wants everything."""
+    from .sessions import context_of
+
     res = SB.table("problems").select(
-        "slug, title, description, difficulty, solution"
+        "slug, title, description, difficulty, solution, context, "
+        "group_slug, group_title, group_description"
     ).execute()
-    return res.data or []
+    # Flattened the SAME way the serving path flattens it, so the key this
+    # writes is the key grading looks up. A plain function has no `context` and
+    # context_of returns nothing for it, leaving the row unchanged.
+    return [{**row, **context_of(row)} for row in (res.data or [])]
 
 
 _VERDICT_KEYS = ("strong", "kill_rate", "kill_rate_direct", "validated_at",

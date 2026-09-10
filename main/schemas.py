@@ -83,6 +83,11 @@ class GradeResult(BaseModel):
     reason_code: str
     # Internal diagnostics; stripped at the API boundary.
     failures: List[dict] = []
+    # ONE failing case, already rendered for a human, and the one thing here
+    # that IS meant to reach the student - behind a disclosure they open. Being
+    # told "wrong on at least one case" and not which case is the difference
+    # between a hint and a shrug. Deliberately one, never the suite.
+    failing_case: Optional[str] = None
     internal_detail: Optional[str] = None
     # Correct, but not the canonical approach - the caller may offer a replan.
     divergent: bool = False
