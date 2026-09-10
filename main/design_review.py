@@ -107,12 +107,27 @@ no code fences, no bullet lists.
 """.replace("{{WORKABLE_PLAN}}", WORKABLE_PLAN)
 
 
-# How much of the tutor conversation to carry in. Enough for the plan they
-# talked through, not so much that the picture stops being what is judged.
-MAX_CHAT_CHARS = 2400
+# How much of the tutor conversation to carry in.
+#
+# This was 2400 while the TUTOR reads up to 40 turns of 2000 chars each, and
+# that asymmetry was a bug on its own: the two graders hold one bar (see
+# prompts.WORKABLE_PLAN) but only one of them was being shown the plan. Clipping
+# keeps the TAIL, so the piece that fell off the front was the opening turns -
+# which is exactly where a student says what they keep track of. The reviewer
+# then rejected them for a missing piece they had stated first.
+#
+# ponytail: still a tail clip, just a roomy one. A conversation past this is
+# longer than the tutor's own MAX_TURNS window, so nothing is judged that the
+# tutor did not also see. If it ever bites, keep head+tail rather than growing.
+MAX_CHAT_CHARS = 12000
+
+# The page's own markers for "I pressed the submit button". They are UI events,
+# not things the student said about the problem, and crediting them as plan
+# content is how "[submitted the plan from my chat]" ends up quoted back as a step.
+_MARKERS = {"[submitted a design]", "[submitted the plan from my chat]"}
 
 
-def _already_said(chat_log: list[dict] | None) -> str:
+def _already_said(chat_log: list[dict] | None, primary: bool = False) -> str:
     """What the STUDENT has already explained to the tutor, in their own words.
 
     The reviewer used to see the picture and nothing else, so a student who
@@ -128,10 +143,41 @@ def _already_said(chat_log: list[dict] | None) -> str:
     student did. That is the whole thing this gate exists to prevent."""
     said = [m.get("content", "") for m in (chat_log or [])
             if m.get("role") == "user" and isinstance(m.get("content"), str)
-            and m["content"].strip() and m["content"] != "[submitted a design]"]
+            and m["content"].strip() and m["content"].strip() not in _MARKERS]
     if not said:
         return ""
     joined = "\n".join(f"- {t.strip()}" for t in said)[-MAX_CHAT_CHARS:]
+
+    if primary:
+        # THE PLAN CAME FROM THE CHAT, so the chat IS the plan and these words
+        # are the submission - not context supporting a separate drawing.
+        #
+        # The clause below used to read "do NOT approve on this alone: the
+        # drawing must still show the shape of the solution". On this path there
+        # is no drawing: the step list is a model's re-transcription OF THESE
+        # WORDS, produced by graphs.plan_graph. Demanding it corroborate them
+        # asks a derived artifact to vouch for its own source, and every place
+        # the transcription lost something - it clips each label to 60
+        # characters - became a rejection of the student for the extractor's
+        # summary. That is the failure this branch exists to stop.
+        return "\n".join([
+            "\n\n=== THE PLAN BEING SUBMITTED (the student's own words) ===",
+            joined,
+            "",
+            "THIS IS THE SUBMISSION. The step list in the message below is a "
+            "flowchart the page drew FROM these words, shown so you can see "
+            "the shape - it is not a second, independent artifact and it is "
+            "not evidence about them. Where the two differ, THESE WORDS WIN: "
+            "the list is a summary and its labels are cut short at 60 "
+            "characters, so a step that reads oddly or incompletely there is a "
+            "shortened label, not a flaw in the plan. Never quote a step label "
+            "back as though the student wrote it, and never reject over "
+            "wording that appears only in the list. Judge these words against "
+            "the rubric, exactly as you would judge a drawing of them. "
+            "Anything only the TUTOR said is not the student's plan and counts "
+            "for nothing.",
+        ])
+
     return "\n".join([
         "\n\n=== WHAT THIS STUDENT HAS ALREADY EXPLAINED (their own words) ===",
         joined,
@@ -356,19 +402,24 @@ def review_plan_graph(problem: dict, graph: dict,
                          "than another round here.",
                 "approved": False, "round": rounds}
 
-    ask = ("Here is my plan for this problem, as the steps and flow I described:"
+    ask = ("Here is my plan for this problem. Above are the messages where I "
+           "described it; below is the same plan as the page drew it:"
            if not prior else
-           "Here is my updated plan, as the steps and flow I described:")
+           "Here is my updated plan. Above are the messages where I described "
+           "it; below is the same plan as the page drew it:")
     messages = prior + [{"role": "user", "content": f"{ask}\n\n{drawn}"}]
 
     raw = chat(TUTOR_MODEL,
                _SYSTEM
-               + "\n\nTHIS PLAN ARRIVED AS A STEP LIST AND FLOW, not as a picture, "
-                 "because the student built it in the chat rather than drawing it. "
-                 "Judge it exactly as you would judge a flowchart of the same "
-                 "content. Never comment on its neatness, legibility or format - "
-                 "there is no picture to be neat."
-               + _context(problem) + _already_said(chat_log),
+               + "\n\nTHIS PLAN ARRIVED AS THE STUDENT'S OWN MESSAGES, plus a step "
+                 "list the page drew from them - not as a picture, because the "
+                 "student built it in the chat rather than drawing it. Judge the "
+                 "MESSAGES; read the step list only as the shape of them. Never "
+                 "comment on neatness, legibility or format - there is no picture "
+                 "to be neat - and never send them back over a step label, which "
+                 "is a machine's 60-character summary of a sentence they wrote in "
+                 "full above."
+               + _context(problem) + _already_said(chat_log, primary=True),
                messages, temperature=0.2, fmt="json")
     try:
         data = _json.loads(raw)
@@ -414,4 +465,32 @@ if __name__ == "__main__":
     assert "and if it is empty?" not in said, "a tutor question is not their plan"
     assert "[submitted a design]" not in said, "the upload marker is not a plan"
     assert _already_said([]) == "" and _already_said(None) == ""
+    # Both submit buttons leave a marker in the log. Neither is a plan step, and
+    # one of them got quoted back to a student as though they had written it.
+    for _m in _MARKERS:
+        assert _already_said([{"role": "user", "content": _m},
+                              {"role": "user", "content": "i loop over it"}]) \
+            .count(_m) == 0, f"{_m} is a button press, not a plan"
+
+    # THE DIVERGENCE BUG. Submitting from the chat, the chat IS the plan: the
+    # step list is a re-transcription of it, so the reviewer must be told these
+    # words win, not that they are unproven without a drawing to back them.
+    _turns = [{"role": "user", "content": "i keep a running count"}]
+    ctx_primary = _already_said(_turns, primary=True)
+    ctx_upload = _already_said(_turns)
+    assert "Do NOT approve on this alone" in ctx_upload, \
+        "an uploaded drawing is still the thing being judged"
+    assert "Do NOT approve on this alone" not in ctx_primary, \
+        "a graph drawn from the chat cannot be evidence about the chat"
+    assert "THESE WORDS WIN" in ctx_primary
+    assert "60" in ctx_primary, "the reviewer must know labels are clipped"
+
+    # The tutor reads up to 40 turns; the reviewer used to read 2400 characters
+    # of them, tail-first, so a plan's OPENING - where the state usually gets
+    # stated - fell off and was then rejected as missing.
+    opener = "i keep a running total in a variable called count"
+    long_chat = ([{"role": "user", "content": opener}]
+                 + [{"role": "user", "content": "x" * 200}] * 20)
+    assert opener in _already_said(long_chat, primary=True), \
+        "the first thing they said must survive a normal conversation"
     print("design_review self-check ok")

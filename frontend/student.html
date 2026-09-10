@@ -233,8 +233,13 @@
   .failCase pre{margin:8px 0 0}
 
   /* The completed-file download, under the assignment progress bar. */
+  /* Separated on BOTH sides. It had 16px and a rule above it and nothing at
+     all below, so the Download button's bottom edge sat exactly 0px off the
+     filter row - the button read as part of the filter bar rather than as the
+     end of the block it belongs to, and the filters looked wedged under the
+     "Your file so far" text. A band needs two edges. */
   .handback{display:flex; align-items:center; gap:var(--s4); flex-wrap:wrap;
-            margin-top:var(--s4); padding-top:var(--s4);
+            margin:var(--s4) 0 var(--s6); padding-top:var(--s4);
             border-top:1px solid var(--glass-line)}
   .handback .hbText{display:flex; flex-direction:column; gap:2px; min-width:0;
                     flex:1 1 220px}
@@ -880,7 +885,16 @@ let designFileRef = null;
 // The plan graph lives here between calls. It round-trips to the server on each
 // refresh because it belongs to a STUDENT and there is nobody to key it to yet
 // - see main/archive.py for where it goes once PSU login is live.
-let planGraph = null, planBusy = false, planSeen = new Set();
+let planGraph = null, planSeen = new Set();
+// Refreshes run one at a time, in order, and NONE IS EVER DROPPED.
+//
+// This was a plain `planBusy` flag with `if (planBusy) return;`, which threw
+// away any refresh that arrived while one was in flight and never retried it.
+// The turn that got thrown away was reliably the LAST one - the message that
+// answered the tutor's final question and made it say "sounds like you have a
+// plan" - so the student pressed submit and the reviewer judged a graph that
+// was missing the very step they had just explained, and sent them back for it.
+let planQueue = Promise.resolve();
 // FROZEN once the design is approved. The plan that passed the gate is the plan
 // the student is now implementing, and letting the chat keep rewriting it means
 // the picture beside the editor stops being the thing that was approved - so a
@@ -947,17 +961,24 @@ function showPlanPing(){
   $("tutorMode").after(b);
 }
 
-async function refreshPlanGraph(){
-  // Fire-and-forget: this is a drawing, never a gate. It must not delay the
-  // tutor's reply, and a failure must leave the last good picture on screen.
+/* Queue a redraw and hand back a promise for when the queue is empty.
+
+   Callers on the chat path ignore the promise - the drawing must never delay
+   the tutor's reply. submitPlanGraph() awaits it, because there the graph stops
+   being a drawing and becomes the thing that gets judged. */
+function refreshPlanGraph(){
+  planQueue = planQueue.then(drawPlanGraph, drawPlanGraph);
+  return planQueue;
+}
+
+async function drawPlanGraph(){
+  // A failure must leave the last good picture on screen.
   //
   // Once the design is approved the plan is FIXED. Re-extracting it from a
   // conversation that is now about debugging would quietly rewrite the plan the
   // student was approved on - and the later the conversation goes, the less it
   // is about the plan at all, so the redraw gets worse as it gets less welcome.
-  if (planFrozen) return;
-  if (planBusy || !openProblem) return;
-  planBusy = true;
+  if (planFrozen || !openProblem) return;
   try {
     const r = await fetch(`${API}/plan_graph`, {
       method: "POST", headers: {"Content-Type": "application/json"},
@@ -973,8 +994,6 @@ async function refreshPlanGraph(){
     }
   } catch (e) {
     /* keep the previous drawing */
-  } finally {
-    planBusy = false;
   }
 }
 
@@ -1117,13 +1136,21 @@ async function uploadDesign(){
    What it skips is the screenshot round trip. */
 async function submitPlanGraph(){
   const btn = $("planSubmitBtn");
-  if (!planGraph || !(planGraph.nodes || []).length){
-    return designMsg("warn", "There is no plan yet - describe your approach in "
-      + "the chat and it will appear below.");
-  }
   setBusy(btn, true, "Reviewing…");
   designMsg("info", "Reading your plan. This takes a few seconds.");
   try {
+    // CATCH THE GRAPH UP FIRST. It is drawn in the background while the student
+    // reads each reply, so the last thing they said is routinely not in it yet -
+    // and the last thing they said is what made the tutor answer "sounds like
+    // you have a plan". Submitting whatever happened to be lying around meant
+    // the reviewer judged the conversation minus its final turn and sent them
+    // back for the step they had just given. Anywhere else a stale drawing is
+    // cosmetic; here it is the submission.
+    await refreshPlanGraph();
+    if (!planGraph || !(planGraph.nodes || []).length){
+      return designMsg("warn", "There is no plan yet - describe your approach in "
+        + "the chat and it will appear below.");
+    }
     const r = await fetch(`${API}/design_review/plan`, {
       method: "POST", headers: {"Content-Type": "application/json"},
       body: JSON.stringify({slug: openProblem.slug, graph: planGraph,

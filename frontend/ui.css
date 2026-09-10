@@ -159,8 +159,26 @@ body::before{
   background:none; border:0; padding:5px 7px; border-radius:var(--r-sm);
   font:inherit; font-size:12.5px; font-family:var(--font-sans); font-weight:500;
   color:var(--text-muted); cursor:pointer; white-space:nowrap;
-  overflow:hidden; text-overflow:ellipsis; max-width:22ch; min-height:0;
+  overflow:hidden; text-overflow:ellipsis; min-height:0;
   box-shadow:none;
+  /* display:block DEFEATS THE BASE BUTTON RULE, and it is the whole reason an
+     over-long crumb lost BOTH ends - "HW3 - Stacks and Calculators (12
+     problems)" rendered as "tacks and Calculators (12 pro" with no ellipsis
+     anywhere. `button` above is `display:inline-flex; justify-content:center`,
+     and on a flex container text-overflow has no text run to trim, so the
+     ellipsis never fired; the centring then split the overflow evenly across
+     both ends. As a block box the label is ordinary text again: it keeps its
+     beginning and ellipsises once, at the end, where it can be read. */
+  display:block; text-align:left;
+  /* A flex item's min-width is `auto`, i.e. its content - so without this the
+     crumb will not shrink inside .crumbs and gets hard-clipped by the parent's
+     overflow instead of ellipsising itself. */
+  min-width:0;
+  /* No fixed cap. It was 22ch (~165px) while the nav track routinely has 380px
+     to give, so a 42-character assignment name was cut with 200px of empty
+     header beside it. The grid's minmax(0,1fr) track is the real limit, and
+     shrinking into it is what the ellipsis above is for. */
+  max-width:100%;
 }
 .crumbs .crumb:hover{background:var(--accent-tint); color:var(--text);
                      transform:none; box-shadow:none}
