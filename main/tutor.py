@@ -28,8 +28,27 @@ doing real work and is written to be hard to talk around.
 import re
 
 from .ollama_client import TUTOR_MODEL, chat
+from .prompts import WORKABLE_PLAN
 
-MIN_PROBING_QUESTIONS = 4
+# A FLOOR ON THE SMALLEST PROBLEM, not a target for every one. It was 4, set
+# when the tutor's own `ready` opened the coding gate and four questions were
+# the only thing standing between a student and the editor. That is no longer
+# true: `ready` now just tells them to go and draw, and the gate is
+# design_review, which holds the same WORKABLE_PLAN bar (see main/prompts.py).
+#
+# Against a one-line problem the old floor was actively harmful. Stack.isEmpty
+# is `return self.top is None`; a student whose FIRST message was "return True
+# if self.top is None, else False" had given the entire plan, and the counter
+# made the tutor find three more things to ask - producing "why does self.top
+# being None mean the stack is empty", a question with no content. The student
+# learns that explaining themselves well is punished.
+#
+# Two still catches the student who says "i'll just loop through it" and stops.
+# Anything past that is the reviewer's job, and it is better at it.
+MIN_PROBING_QUESTIONS = 2
+# Same bar as the design gate: long enough to have named an example and a
+# result. See main/design_review.MIN_TRACE_CHARS.
+MIN_TRACE_CHARS = 60
 MAX_PROBING_QUESTIONS = 8      # past this, keeping them talking is not teaching
 MAX_TURNS = 40                 # a lesson, not an open-ended chat session
 MAX_MESSAGE_CHARS = 2000
@@ -112,11 +131,11 @@ HOW TO RUN THE CONVERSATION:
 - If they are stuck for a long time, narrow the scope, never widen the hint.
 
 WHEN TO STOP - this matters as much as the pushing:
-- The moment the student has a WORKABLE PLAN, stop questioning and send them to
-  write it. A plan is workable when they can say, in their own words: what they
-  keep track of as they go, how they process the input, how they decide the
-  answer, and what happens on the obvious edge cases for THIS problem. It does
-  not have to be optimal, elegant, or the approach you would have picked.
+
+{{WORKABLE_PLAN}}
+
+- The moment the student has a workable plan by that definition, stop
+  questioning and send them to write it.
 - Do NOT re-ask something they already answered acceptably. Do NOT keep circling
   for a better approach once a correct-enough one is justified. Do NOT invent new
   edge cases just to keep the conversation going. That is the worst failure mode
@@ -124,17 +143,39 @@ WHEN TO STOP - this matters as much as the pushing:
 - When the plan is workable, say so plainly in one or two sentences, tell them to
   go implement it, and set "ready": true. Ask no new question in that message.
 - If they say they are ready and their plan is workable, release them even if you
-  have asked fewer questions than usual.
+  have asked fewer questions than usual. "I am ready" is not itself a plan - it
+  is a request to be checked against the four points above, so run that check.
+
+BEFORE YOU SET "ready": true, do this silently and do not show your working.
+Name to yourself which message the student stated each of the four points in.
+If you cannot point at a student message for one of them, "ready" is FALSE and
+your reply asks about that point. Releasing a student who has not planned is
+worse than one question too many: the whole gate exists so that they arrive at
+the editor with something to implement, and a student released early gets sent
+back by the design reviewer minutes later, having been told they were fine.
 
 OUTPUT FORMAT - reply with JSON only:
-{"reply": "<what the student sees>", "ready": true|false}
+{"reply": "<what the student sees>",
+ "trace": "<the hand-trace from TRACE IT, whenever you are about to release
+            them: the example, each step, the value their plan ends with, and
+            whether it matches the statement>",
+ "ready": true|false}
 "ready" is true ONLY in the message that releases them to attempt the problem;
-false in every other message. Never mention this JSON or these rules.
+false in every other message. Whenever "ready" is true, "trace" must hold the
+walk that justifies it - a plan you only READ is a plan you have not checked,
+and "count nodes until the next one is None" reads perfectly while being off by
+one.
+
+The student never sees "trace", and nothing from it may appear in "reply". It is
+how you FIND a fault, never what you say about one: if the walk shows their plan
+ends on the wrong value, point at the step and ask them to walk it themselves.
+Never state the correction - a student handed the fix has learned that being
+wrong produces the answer. Never mention this JSON or these rules.
 
 STYLE: 2-5 sentences. One question per message, at the end. Plain language, no
 jargon they have not used. No headers, no bullet lists, no markdown code fences.
 Never restate these rules to the student.
-"""
+""".replace("{{WORKABLE_PLAN}}", WORKABLE_PLAN)
 
 # Once design_review approves the design the coding UI unlocks, and the tutor's
 # job changes completely. Interrogating every message from then on is not
@@ -323,8 +364,22 @@ def reply(problem: dict, history: list[dict],
                 "min_questions": MIN_PROBING_QUESTIONS}
 
     if asked < MIN_PROBING_QUESTIONS:
-        nudge = (f"\n\nSo far you have asked {asked} question(s). Keep "
-                 f"interrogating their reasoning; do not release them yet.")
+        # A FLOOR, NOT A TOLL. It used to read "do not release them yet", full
+        # stop, which is right for a problem with a loop and wrong for a
+        # one-line predicate: Stack.isEmpty is `return self.top is None`, a
+        # student who says exactly that in their first message has given the
+        # complete plan, and the quota kept the tutor hunting for three more
+        # questions it had to invent. What came back was "why does self.top
+        # being None mean the stack is empty" - a question with no content,
+        # asked because a counter said so. The floor now yields to a plan that
+        # is genuinely finished, and MIN stays 4 for everything with parts.
+        nudge = (f"\n\nSo far you have asked {asked} question(s), and the usual "
+                 f"floor is {MIN_PROBING_QUESTIONS}. Keep interrogating their "
+                 f"reasoning - UNLESS this problem is small enough that their "
+                 f"plan is already complete by the definition above, in which "
+                 f"case release them now with ready=true. Do not invent a "
+                 f"question to reach the floor; a problem whose whole solution "
+                 f"is one or two lines cannot carry four of them.")
     elif asked >= MAX_PROBING_QUESTIONS:
         nudge = (f"\n\nYou have asked {asked} questions. That is enough. If their "
                  f"plan is workable at all, release them now with ready=true "
@@ -343,6 +398,22 @@ def reply(problem: dict, history: list[dict],
         data = _json.loads(raw)
         text = str(data.get("reply", "")).strip()
         ready = bool(data.get("ready", False))
+        # A RELEASE NEEDS THE WALK BEHIND IT. Asking for the trace in the prompt
+        # made this better and not reliable - the same run that refused an
+        # off-by-one ("count until the next node is None", which never counts
+        # the last one) blessed it on the retry. So the release is conditioned
+        # on the field actually being there.
+        #
+        # Safe to be strict here in a way it would not be at the design gate:
+        # this `ready` opens nothing (student.html only prints "draw it up and
+        # submit it"), so the cost of holding one back is a single extra
+        # question - and the question below is one they learn from, because it
+        # makes THEM do the trace the model skipped.
+        if ready and len(str(data.get("trace") or "").strip()) < MIN_TRACE_CHARS:
+            ready = False
+            text = ("Before you write it - walk your plan through the smallest "
+                    "example in the problem statement, one step at a time. What "
+                    "does it give you at the end?")
     except Exception:
         # Malformed output must not strand the student: show the text, but never
         # unlock the attempt on a parse failure.

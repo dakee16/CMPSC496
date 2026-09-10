@@ -85,6 +85,16 @@ _SAFE_BUILTINS = frozenset({
     # typing aliases the execution harness injects into the run namespace
     "List", "Dict", "Optional", "Tuple", "Set", "Any", "Union", "Callable",
     "Iterable", "Iterator",
+    # EXCEPTIONS. Their absence failed the most ordinary thing a student can
+    # write: `except ValueError:` was read as a reference to an undefined name,
+    # so Calculator._isNumber - whose whole job is try/float/except - was
+    # rejected on its first chunk. A bare exception name is never the "typed the
+    # type name instead of the variable" mistake this gate is looking for.
+    "ArithmeticError", "AssertionError", "AttributeError", "EOFError",
+    "Exception", "IndentationError", "IndexError", "KeyError", "LookupError",
+    "MemoryError", "NameError", "NotImplementedError", "OverflowError",
+    "RecursionError", "RuntimeError", "StopIteration", "SyntaxError",
+    "TypeError", "UnboundLocalError", "ValueError", "ZeroDivisionError",
 })
 
 # These ARE in _SAFE_BUILTINS so `list(map(...))` etc. are fine, but using one
@@ -137,6 +147,178 @@ def _bare_builtin_types(tree) -> set:
             if not (isinstance(par, ast.Call) and par.func is n):
                 bad.add(n.id)
     return bad
+
+
+def _render_case(problem: dict, test: dict, failure: dict) -> str:
+    """ONE failing case, written as the program that produced it.
+
+    "Your solution runs but gives the wrong answer on at least one case" is a
+    shrug: it tells a student they are wrong and nothing about where to look.
+    This renders the case as runnable lines they can trace by hand.
+
+    Deliberately ONE. The suite stays hidden - a student who could read all
+    fifteen tests would write code that satisfies the tests instead of the
+    problem, which is the failure mode oracle secrecy exists to prevent. One
+    counterexample is how a person debugs; fifteen is the answer key."""
+    from .context import is_method
+
+    inp = (test or {}).get("input") or []
+    lines = []
+    if is_method(problem) and inp and isinstance(inp[0], str):
+        lines.append(inp[0].rstrip())          # a block test IS a program
+    elif is_method(problem) and inp and isinstance(inp[0], list):
+        cls = problem.get("group_title") or "Solution"
+        lines.append(f"x = {cls}()")
+        for call in inp[0]:
+            if not (isinstance(call, list) and call):
+                continue
+            name, args = str(call[0]), call[1:]
+            rendered = ", ".join(repr(a) for a in args)
+            if name == "new":
+                lines[0] = f"x = {cls}({rendered})"
+            elif name in ("len", "str", "bool"):
+                lines.append(f"{name}(x)")
+            else:
+                lines.append(f"x.{name}({rendered})")
+    else:
+        name = get_resolved_entry(problem)["entry_name"] or "solution"
+        lines.append(f"{name}({', '.join(repr(a) for a in inp)})")
+
+    out = ["\n".join(lines)]
+    if failure.get("error"):
+        out.append(f"\nit raised: {failure['error']}")
+    else:
+        out.append(f"\nexpected: {_shown(failure.get('expected'))}")
+        out.append(f"you gave: {_shown(failure.get('got'))}")
+    return "\n".join(out)
+
+
+def _shown(v) -> str:
+    """A recorded value as a person should read it.
+
+    execution.brief() wraps every value as {"repr", "type", "len"} so a 7MB
+    result can never cross the IPC boundary. That is the right thing to send
+    between processes and the wrong thing to show a student, who would be told
+    their answer was `{'repr': '[None, None, 4]', 'type': 'list', 'len': 3}`."""
+    if isinstance(v, dict) and "repr" in v and "type" in v:
+        return str(v["repr"])
+    return repr(v)
+
+
+def failing_case(problem: dict, tests: list, failures: list) -> str | None:
+    """The first failing case, rendered - or None when there is nothing to show."""
+    for f in failures or []:
+        i = f.get("index")
+        if isinstance(i, int) and 0 <= i < len(tests or []):
+            try:
+                return _render_case(problem, tests[i], f)
+            except Exception:
+                return None                    # a hint is never worth an error
+    return None
+
+
+_SYNTAX_LINE = re.compile(r"\s*\(line (\d+)\)\s*$")
+
+
+def _syntax_message(raw: str, problem: dict, prefix: str,
+                    student_code: str) -> str:
+    """A parse error the student can act on.
+
+    The compiler sees the WHOLE assembled module - the teacher's classes, the
+    accepted steps above, the injected driver - so it reports the line number in
+    that module. On HW3 a typo on the second line the student typed came back as
+    "invalid syntax (line 94)", and there is no line 94 anywhere they can see.
+    Nothing about their own code was in the message.
+
+    Translated to a line of THEIR submission, and the offending line is quoted,
+    because "If self.top is not None:" beside the words "invalid syntax" is the
+    whole explanation - a capital I. An unmappable number is dropped rather than
+    guessed at: no number at all beats a wrong one."""
+    m = _SYNTAX_LINE.search(raw or "")
+    base = _SYNTAX_LINE.sub("", raw or "").strip() or "invalid syntax"
+    lines = (student_code or "").splitlines()
+    if not m or not lines:
+        return f"Your code doesn't parse: {base}."
+
+    # Everything the assembler puts ABOVE the student's own first line.
+    from .context import is_method
+    if is_method(problem):
+        before = len((problem.get("context_prefix") or "").splitlines())
+    else:
+        before = 1                                   # the def line
+    before += len(prefix.splitlines()) if prefix.strip() else 0
+
+    n = int(m.group(1)) - before                     # 1-based within their code
+    if not (1 <= n <= len(lines)):
+        return f"Your code doesn't parse: {base}."
+    quoted = lines[n - 1].strip()
+    where = f"line {n} of your answer"
+    return (f"Your code doesn't parse: {base}, on {where}"
+            + (f" - `{quoted}`." if quoted else "."))
+
+
+def _module_names(problem: dict) -> set:
+    """Top-level names the assembled program already defines.
+
+    The scope gate asks "does every name this step reads resolve to something
+    real", and for a METHOD the answer depends on the module it was carved out
+    of - which the gate was not looking at. `Stack.push` begins
+    `node = Node(value)`, and `Node` is a class the teacher GAVE the student at
+    the top of the same file; `Calculator._getPostfix` opens by constructing a
+    `Stack()`, defined 150 lines above it. Both came back "isn't defined", on
+    the first chunk, for exactly the code the handout leads them to write.
+
+    Read off the assembled program rather than tracked separately, so it cannot
+    drift from what the student's code will actually run beside. Failure is an
+    empty set: the gate then behaves as it did before, which is conservative in
+    the direction of a false rejection but never of a false pass."""
+    from .context import build_program
+    try:
+        tree = ast.parse(build_program(problem, "pass"))
+    except Exception:
+        return set()
+    out = set()
+    for n in tree.body:
+        if isinstance(n, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            out.add(n.name)
+        elif isinstance(n, ast.Assign):
+            out |= {t.id for t in n.targets if isinstance(t, ast.Name)}
+        elif isinstance(n, ast.AnnAssign) and isinstance(n.target, ast.Name):
+            out.add(n.target.id)
+        elif isinstance(n, (ast.Import, ast.ImportFrom)):
+            out |= {(a.asname or a.name).split(".")[0] for a in n.names}
+    return out
+
+
+def _header_params(header: str) -> set:
+    """Parameter names of the def line the STUDENT is actually writing under.
+
+    THE ONE THING resolved["params"] cannot supply for a method. A method's
+    resolved entry point is the injected call-sequence driver, so its parameter
+    list is ["calls"] - the driver's - while the student is writing the body of
+    `def pop(self):`. The scope gate took the driver's list, so `self` was not
+    in scope, and the very first chunk of every class problem came back
+    "This step uses `self`, which isn't defined" - the teacher's own reference
+    answer included. Every problem in HW3 is a method.
+
+    Parsed from the header rather than pattern-matched so that defaults,
+    *args/**kwargs and keyword-only parameters all resolve. Returns an empty set
+    for anything that is not a def line, which leaves plain functions exactly as
+    they were - their resolved params are already the right answer."""
+    try:
+        tree = ast.parse((header or "").strip() + "\n    pass")
+    except SyntaxError:
+        return set()
+    fn = tree.body[0] if tree.body else None
+    if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        return set()
+    a = fn.args
+    names = {x.arg for x in [*a.posonlyargs, *a.args, *a.kwonlyargs]}
+    if a.vararg:
+        names.add(a.vararg.arg)
+    if a.kwarg:
+        names.add(a.kwarg.arg)
+    return names
 
 
 def _scope_violation(student_code: str, in_scope: set) -> tuple[str, str] | None:
@@ -415,13 +597,18 @@ def grade_submission(session: dict, student_code: str,
                    execution_outcome="policy_violation")
     if (probe.internal_error or "").startswith("syntax:"):
         return _ok("incorrect", "syntax",
-                   f"Your code doesn't parse: {probe.internal_error[7:].strip()}.",
+                   _syntax_message(probe.internal_error[7:].strip(),
+                                   problem, prefix, student_code),
                    "syntax_error")
 
     # ── SCOPE GATE - names the step READS must already exist. Deterministic,
     #    runs before any execution tier or LLM. Catches the wrong parameter
     #    name / typo that would otherwise crash and be excused as our fault. ──
-    in_scope = _names(prefix, ast.Store) | set(resolved["params"])
+    # The header's own parameters are unioned in, not substituted: for a plain
+    # function the two agree, and for a METHOD the resolved params belong to the
+    # injected driver rather than to the def the student is writing under.
+    in_scope = (_names(prefix, ast.Store) | set(resolved["params"])
+                | _header_params(header) | _module_names(problem))
     scope = _scope_violation(student_code, in_scope)
     if scope is not None:
         return _ok("incorrect", "syntax", scope[0], scope[1])
@@ -444,7 +631,8 @@ def grade_submission(session: dict, student_code: str,
         return _ok("incorrect", "execution-final",
                    msg.get(res.outcome, "Your solution didn't pass."),
                    f"final_{res.outcome}", execution_outcome=res.outcome,
-                   failures=res.failures)
+                   failures=res.failures,
+                   failing_case=failing_case(problem, tests, res.failures))
 
     # ── NON-LAST - trusted reference tail ──
     ref_tail = "\n".join((chunks[j].get("reference") or "")
@@ -526,7 +714,8 @@ def _tier3(problem, session, chunk, header, prefix, student_code, upto,
             return _ok("incorrect", "execution-adapted",
                        "Your step runs, but the finished solution gives the "
                        "wrong answer.", "adapted_wrong_output",
-                       execution_outcome="wrong_output", failures=cand.failures)
+                       execution_outcome="wrong_output", failures=cand.failures,
+                       failing_case=failing_case(problem, tests, cand.failures))
         if cand.outcome == "harness_error":
             return _system("harness_error", cand.internal_error)
         break     # crash/timeout: ownership ambiguous -> Tier 4
@@ -571,5 +760,39 @@ if __name__ == "__main__":
 
     # A syntax fragment is classified elsewhere, not here.
     assert _scope_violation("elif x:", params) is None
+
+    # ── what the gate must know about a METHOD ───────────────────────────
+    # Each of these rejected the teacher's OWN reference answer on chunk 1 of a
+    # class problem, which is every problem in HW3.
+    assert _header_params("def pop(self):") == {"self"}
+    assert _header_params("def push(self, value):") == {"self", "value"}
+    assert _header_params("def f(a, b=2, *rest, k=1, **kw):") == \
+        {"a", "b", "rest", "k", "kw"}
+    assert _header_params("") == set() and _header_params("not a def") == set()
+
+    # `self` is the method's, never the injected driver's ["calls"].
+    meth = {"self"}
+    assert _scope_violation("if self.top is None:\n    return None", meth) is None
+    # ...and a typo of it is still the student's error.
+    assert _scope_violation("if slef.top is None:\n    return None",
+                            meth)[1] == "undefined_name"
+
+    # A builtin exception is not an undefined name. Calculator._isNumber is
+    # try/float/except and was failed for naming ValueError.
+    assert _scope_violation("try:\n    float(t)\nexcept ValueError:\n    pass",
+                            {"t"}) is None
+
+    # A class the teacher GAVE the student resolves: Stack.push opens with
+    # `node = Node(value)`, and Calculator._getPostfix constructs a Stack().
+    _mod = {"slug": "t", "description": "d", "entry_hint": "push",
+            "group_title": "Stack",
+            "context_prefix": "class Node:\n    pass\n\n\nclass Stack:\n"
+                              "    def push(self, value):\n",
+            "context_suffix": "", "context_indent": 8,
+            "solution": "pass"}
+    assert "Node" in _module_names(_mod) and "Stack" in _module_names(_mod)
+    assert _module_names({"slug": "x", "solution": "def f():\n    pass"}) is not None
+    assert _scope_violation("node = Node(value)",
+                            {"self", "value"} | _module_names(_mod)) is None
 
     print("grading.py scope-gate self-check OK")

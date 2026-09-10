@@ -182,6 +182,19 @@ HARD RULES for each "prompt":
     (no "loop", "dictionary", "iterate", "initialize", "set X to ...").
   - NO setup-only chunk. Variable creation belongs to whichever chunk needs it.
   - 2 or 3 chunks total. Prefer the fewest meaningful parts.
+  - SAY WHAT THE CHUNK HANDS ON. A chunk that is not the last one must not
+    finish the method, and the student cannot know that from a prompt that
+    only names the goal. "Determine if the stack is empty by checking if it has
+    a top node" reads as the whole job, so a student writes
+    `return self.top is None`, is marked wrong, and cannot see why - the step
+    wanted the answer WORKED OUT and left for the next chunk to return.
+    So end a non-final prompt with what it leaves behind, in plain words:
+      "...and keep the result for the next step."
+      "...without returning it yet - the next step does that."
+    This is an OUTCOME, not a method: it says what must be true when the chunk
+    ends, and still never names a variable, a type or an operation.
+  - Say so on the LAST chunk too, the other way round: it is the one that
+    produces or returns the final answer, so write it as such.
 
 The chunks build on each other in order and, stacked, form a complete correct
 solution (the last one produces/returns the final answer).
@@ -229,3 +242,71 @@ Example for "return True if integer x is a palindrome":
 
 Return JSON only: {"subproblems": [{"prompt": "...", "reference": "..."}, ...]}
 """
+
+# ── the ONE definition of a workable plan ───────────────────────────────────
+#
+# Imported verbatim by BOTH graders that use it: main/tutor.py, which decides in
+# conversation when a student may go and draw, and main/design_review.py, which
+# decides whether the drawing unlocks the editor.
+#
+# They were written separately and drifted, which produced the one failure that
+# costs a student most: the tutor calls a plan workable and sends them off to
+# draw it, and the reviewer then rejects the drawing OF THAT SAME PLAN. Two
+# graders cannot hold one bar by both being told about it in their own words.
+#
+# The negative half matters more than the positive half. Every observed case of
+# the tutor releasing a student who had not planned anything was the same shape:
+# the student agreed with a probing question, and agreement got scored as a
+# plan. So "what is NOT workable" is enumerated, because the model reliably
+# obeys an explicit exclusion and reliably talks itself past a general one.
+WORKABLE_PLAN = """\
+A plan is WORKABLE when the student has said, IN THEIR OWN WORDS, all four of:
+  1. what they keep track of as they go (the state / data structures),
+  2. how they process the input (the loop, recursion, or traversal),
+  3. how they decide and produce the answer,
+  4. what happens on the obvious edge cases for THIS problem.
+It does not have to be optimal, elegant, or the approach you would have picked.
+A slow but correct plan is workable. An unusual but correct plan is workable.
+
+SIZE THE BAR TO THE PROBLEM. Those four are the parts a plan CAN have, not a
+quota every problem owes. A point this problem does not contain is already
+satisfied and must never be asked about: a one-line predicate keeps no state,
+runs no loop, and has no edge case separate from the single condition it
+tests - so "return True when the top is None, else False" is not a partial plan,
+it is the WHOLE plan, and the honest response is to release them.
+
+Before asking anything, ask yourself how many sentences a complete plan for THIS
+problem would take. If the student has already said that much, you are finished.
+Manufacturing a fourth question for a one-line problem is the exact failure this
+section exists to prevent, and it is worse than releasing slightly too early:
+the student learns that explaining themselves clearly is punished with more
+questions.
+
+What is NOT a workable plan, however agreeable the student sounds:
+- AGREEMENT. "Yes", "ok", "got it", "that makes sense", "I'll do that" state
+  nothing. They are answers about your question, not about the problem.
+- YOUR OWN WORDS HANDED BACK. If a step first appeared in one of YOUR questions,
+  the student repeating it has not told you anything - you told them.
+- THREE OF THE FOUR. A missing piece is missing even when the other three are
+  excellent. Name the missing one and ask about it.
+- A plan whose logic does not hold when you trace it by hand on ONE small
+  example. Trace it before you accept it; do not accept it because it sounds
+  like the right shape.
+
+TRACE IT. THIS IS NOT OPTIONAL, and it is the last thing you do before saying
+a plan is workable. Reading a plan and finding it reasonable is not checking it:
+"walk from the top counting nodes until the next one is None" reads perfectly
+and is off by one, because the last node is never counted.
+
+  1. Take the smallest example in the problem statement that is not the empty
+     case. If the statement shows `len(x)` is 3 after three pushes, use that.
+  2. Walk THEIR plan through it one step at a time, writing down what each
+     thing they mentioned holds after every step.
+  3. Say the value their plan ends with.
+  4. If that value is not the one the statement says, their plan has a bug.
+     It is NOT workable, however sensible it sounded. Do not name the bug -
+     ask about the step where the trace went wrong.
+
+You cannot trace a plan whose starting point they never gave you. If the trace
+cannot begin - they said "loop through the nodes" but never said where the
+first one comes from - that is a missing piece, and the question to ask."""

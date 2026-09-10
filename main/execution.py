@@ -22,6 +22,7 @@ import subprocess
 import sys
 import tempfile
 
+from .context import SEQ_ENTRY
 from .schemas import ExecutionResult
 
 # Modules a coding exercise legitimately needs. Everything else is refused.
@@ -59,6 +60,32 @@ class PolicyViolation(Exception):
     """Student code was refused before it ever ran."""
 
 
+def _policed_nodes(tree: ast.AST):
+    """Every node in `tree` EXCEPT the injected call-sequence driver.
+
+    What `code` holds is the whole assembled MODULE, never the student's
+    fragment alone: a method problem is its entire class, plus the driver that
+    replays call sequences and runs block tests. That driver legitimately needs
+    `import ast`, `globals()`, `eval`, `exec` and `compile` - every one of which
+    this policy bans. Walking it refused OUR OWN code and reported it to the
+    student as their violation ("the 'ast' module isn't allowed here"), which
+    made every class problem ungradeable: even the teacher's own reference
+    solution was rejected. A student only ever saw it once their answer PARSED,
+    because an unparseable one returns above before reaching here - so the
+    message always landed on whichever edit happened to fix their syntax.
+
+    Skipped by MODULE-LEVEL name, and that is what stops it being a bypass. A
+    student's chunk is always spliced into a function body or a class method,
+    so nothing they write is ever a direct child of the module: a
+    `def _mt_run_calls` typed into an answer is nested, and stays policed."""
+    stack = [n for n in ast.iter_child_nodes(tree)
+             if not (isinstance(n, ast.FunctionDef) and n.name == SEQ_ENTRY)]
+    while stack:
+        node = stack.pop()
+        yield node
+        stack.extend(ast.iter_child_nodes(node))
+
+
 def check_policy(code: str) -> None:
     """AST safety policy. Raises PolicyViolation with a student-safe message.
 
@@ -68,7 +95,7 @@ def check_policy(code: str) -> None:
     except SyntaxError:
         return                      # syntax is classified separately, not here
 
-    for node in ast.walk(tree):
+    for node in _policed_nodes(tree):
         if isinstance(node, ast.Import):
             for a in node.names:
                 root = a.name.split(".")[0]

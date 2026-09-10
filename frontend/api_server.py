@@ -213,6 +213,16 @@ class PlanGraphRequest(BaseModel, extra="forbid"):
     current: dict | None = None
 
 
+class PlanSubmitRequest(BaseModel, extra="forbid"):
+    """Submit the plan the PAGE drew from this student's chat, in place of an
+    uploaded picture. Same gate, same bar - see main/design_review.review_plan_graph
+    for why this is not a way around it."""
+    slug: str
+    graph: dict
+    history: list[dict] = []
+    messages: list[dict] = []
+
+
 class GraphsRequest(BaseModel, extra="forbid"):
     """Both graphs plus their comparison, for a finished (or in-progress)
     session. The code graph is derived server-side from the session's accepted
@@ -312,11 +322,24 @@ def decompose_chunks_route(req: DecomposeRequest, request: Request):
         # implementations of the class's other methods, so a browser allowed to
         # supply it is a browser that can read it back.
         from main.sessions import CONTEXT_FIELDS
-        ctx = get_supabase().table("problems").select("context").eq(
+        ctx = get_supabase().table("problems").select(
+            "context, title, description").eq(
             "slug", req.slug).limit(1).execute().data
-        if ctx and isinstance(ctx[0].get("context"), dict):
-            problem.update({k: v for k, v in ctx[0]["context"].items()
-                            if k in CONTEXT_FIELDS})
+        if ctx:
+            # THE DESCRIPTION IS PART OF THE ORACLE CACHE KEY (identity.py:56),
+            # and it was being taken from the REQUEST. That makes the key depend
+            # on a client value: a stale tab, or a description edited in the
+            # database after a page load, moves the key, and the problem answers
+            # "oracle_missing" for a reason nothing on screen can explain.
+            # Verified a no-op on the current data - all 11 hash identically
+            # either way - so this closes the hole without moving any key.
+            if ctx[0].get("description") is not None:
+                problem["description"] = ctx[0]["description"]
+            if ctx[0].get("title"):
+                problem["title"] = ctx[0]["title"]
+            if isinstance(ctx[0].get("context"), dict):
+                problem.update({k: v for k, v in ctx[0]["context"].items()
+                                if k in CONTEXT_FIELDS})
 
         result = get_chunk_decomposition(problem)
         # Register a server-owned session. From here the browser never sees a
@@ -486,6 +509,12 @@ def grade_chunk_route(req: ChunkRequest, request: Request):
             "idempotent_replay": state.get("idempotent_replay", False)}
     if reveal_ref is not None:
         body["revealed_reference"] = reveal_ref     # only ever at the limit
+    # ONE failing case, already rendered for a human (main/grading.failing_case).
+    # The exception to "no failures": the suite stays hidden, but a student told
+    # only "wrong on at least one case" has been given a shrug, not a hint. The
+    # page keeps it behind a disclosure they have to open.
+    if result.failing_case:
+        body["failing_case"] = result.failing_case
     return body
 
 
@@ -1924,7 +1953,7 @@ def tutor_chat(req: TutorChatRequest, request: Request):
 
 
 @app.post("/plan_graph")
-def plan_graph_route(req: PlanGraphRequest):
+def plan_graph_route(req: PlanGraphRequest, request: Request):
     """Grow the student's plan graph from what they have said in chat.
 
     Same guarantee as /tutor_chat: public title/description only, never a
@@ -1947,7 +1976,20 @@ def plan_graph_route(req: PlanGraphRequest):
     # captured more of their plan.
     if (req.current or {}).get("meta", {}).get("source") == "design":
         from main.graphs import merge_plan
-        return merge_plan(req.current, fresh)
+        fresh = merge_plan(req.current, fresh)
+
+    # PERSIST IT. save_graph was reached from exactly one place - /graphs, which
+    # only runs when a student FINISHES a problem - so the plan of anyone who
+    # stopped partway was never written down. /history then found no snapshot
+    # and the graph came back empty on reopen, which read as the work having
+    # been thrown away. It is a snapshot per change by design (main/archive.py):
+    # a plan revised three times is the finding, not noise.
+    _student = current_student(request)
+    if _student and fresh.get("nodes"):
+        from main.archive import save_graph
+        prev = [n.get("id") for n in ((req.current or {}).get("nodes") or [])]
+        if [n.get("id") for n in fresh["nodes"]] != prev:   # only real changes
+            save_graph(get_supabase(), _student, req.slug, "plan", fresh)
     return fresh
 
 
@@ -2054,6 +2096,131 @@ async def design_review(request: Request,
                     design.content_type or "", out)
         save_messages(get_supabase(), _student, slug, "design",
                       [{"role": "assistant", "content": out["reply"]}])
+    return out
+
+
+@app.get("/assignments/{assignment_id}/handback")
+def assignment_handback(assignment_id: str, request: Request):
+    """The student's own copy of the assignment file, with their answers in it.
+
+    What they were handed, completed - same classes, same docstrings, same
+    helper code, their body under each `def` at the right indent. It is a
+    RUNNABLE file, so any problem they have not finished keeps the teacher's
+    original body rather than a hole; the header at the top names which is
+    which, so nothing shown is passed off as their own work.
+
+    Their OWN work only: student_id comes from the cookie, so this cannot be
+    pointed at a classmate. It reads no chunk references and no oracle, and a
+    problem the student never opened contributes the same text the assignment
+    already handed them - so this discloses nothing they were not given."""
+    from fastapi.responses import Response
+
+    from main.handback import build_handback
+    from main.sessions import completed_answers
+
+    claims = require_student(request)
+    sb = get_supabase()
+
+    asg = sb.table("assignments").select("id, name, source_file").eq(
+        "id", assignment_id).limit(1).execute().data
+    if not asg:
+        raise HTTPException(status_code=404, detail={
+            "reason_code": "assignment_not_found",
+            "message": "That assignment does not exist."})
+
+    rows = sb.table("problems").select(
+        "slug, title, description, solution, context, group_title, "
+        "group_order, member_order").eq("assignment_id", assignment_id).execute().data or []
+    if not rows:
+        raise HTTPException(status_code=404, detail={
+            "reason_code": "no_problems",
+            "message": "That assignment has no problems to hand back."})
+
+    problems = [{**r, **_context_of(r),
+                 "order": (r.get("group_order") or 0) * 100
+                          + (r.get("member_order") or 0)}
+                for r in rows]
+    problems.sort(key=lambda p: p["order"])
+
+    answers = completed_answers(claims["sub"], [p["slug"] for p in problems])
+    if not answers:
+        raise HTTPException(status_code=409, detail={
+            "reason_code": "nothing_completed",
+            "message": "Finish at least one problem and your file will be "
+                       "ready to download."})
+
+    name = (claims.get("name") or claims.get("username") or "").strip()
+    text = build_handback(
+        problems, {s: a["code"] for s, a in answers.items()},
+        assignment_name=asg[0].get("name") or "Assignment",
+        student_name=name,
+        revealed_slugs={s for s, a in answers.items() if a["assisted"]})
+
+    # The teacher's own filename, so what lands in Downloads is recognisably the
+    # file they were given rather than a slug nobody chose.
+    stem = (asg[0].get("source_file") or "assignment.py").rsplit("/", 1)[-1]
+    if stem.endswith(".py"):
+        stem = stem[:-3]
+    safe = "".join(c if (c.isalnum() or c in "-_") else "_" for c in stem)[:60]
+    who = "".join(c for c in name.split("@")[0] if c.isalnum() or c in "-_")[:40]
+    filename = f"{safe}{'_' + who if who else ''}.py"
+
+    return Response(
+        content=text, media_type="text/x-python",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"',
+                 # The file changes as they finish more problems.
+                 "Cache-Control": "no-store"})
+
+
+@app.post("/design_review/plan")
+def design_review_plan(req: PlanSubmitRequest, request: Request):
+    """Submit the plan graph the page built from this student's own chat.
+
+    The gate used to accept exactly one thing, an uploaded picture - so a
+    student whose plan was already drawn on screen had to screenshot that
+    drawing and upload it back to the same app. Same reviewer, same rubric, same
+    archive row as /design_review; the plan simply arrives as structure instead
+    of as a photo, which also means no vision call."""
+    from main.design_review import DesignRejected, review_plan_graph
+
+    row = get_supabase().table("problems").select(
+        "slug, title, description").eq("slug", req.slug).execute().data
+    if not row:
+        raise HTTPException(status_code=404, detail={
+            "reason_code": "problem_not_found",
+            "message": f"Unknown problem '{req.slug}'."})
+
+    try:
+        out = review_plan_graph(row[0], req.graph, req.history,
+                                chat_log=req.messages)
+    except DesignRejected as e:
+        raise HTTPException(status_code=400, detail={
+            "reason_code": "design_rejected", "message": str(e)})
+    except Exception as e:
+        raise HTTPException(status_code=503, detail={
+            "reason_code": "reviewer_unavailable",
+            "message": "The design reviewer is unavailable right now. Try again "
+                       "shortly.",
+            "detail": str(e)[:120]})
+
+    # Archived exactly like an uploaded design, with no bytes: save_design skips
+    # the storage upload for an empty blob and still writes the row, which is
+    # what /history reads to decide `design_approved` on reopen. Without this a
+    # student who passed the gate this way would be asked to pass it again.
+    from main.archive import save_design, save_messages
+    _student = current_student(request)
+    if _student:
+        save_design(get_supabase(), _student, req.slug, b"",
+                    "application/x-plan-graph", out)
+        save_messages(get_supabase(), _student, req.slug, "design",
+                      [{"role": "assistant", "content": out["reply"]}])
+        if out.get("approved"):
+            # The plan that PASSED the gate is the one worth keeping, and from
+            # here it is frozen - see the student page. Snapshot it now so a
+            # reopen restores the approved plan rather than the last thing the
+            # chat scraper happened to produce.
+            from main.archive import save_graph
+            save_graph(get_supabase(), _student, req.slug, "plan", req.graph)
     return out
 
 

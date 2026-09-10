@@ -68,6 +68,21 @@ _METHOD_WORDS = re.compile(
     re.I)
 
 
+# Names that are ORDINARY ENGLISH as well as common variable names. A prompt
+# saying "keep the result for the next step" is describing an outcome, not
+# leaking `result` - but the leak check cannot tell those apart by spelling, and
+# a false positive here burns a retry on a decomposition that was fine. The list
+# is deliberately short: every word on it is one a person would write in a
+# sentence without thinking about code.
+_ORDINARY = frozenset({
+    "result", "results", "value", "values", "answer", "answers", "count",
+    "total", "sum", "number", "numbers", "item", "items", "step", "steps",
+    "check", "input", "output", "data", "text", "word", "words", "line",
+    "lines", "current", "first", "last", "next", "index", "length", "size",
+    "name", "names", "key", "keys", "start", "end", "empty", "found",
+})
+
+
 def _identifiers(src: str) -> set:
     """Every name the reference code uses - variables and attributes alike."""
     try:
@@ -83,6 +98,33 @@ def _identifiers(src: str) -> set:
     return out
 
 
+# A prompt that says what the chunk leaves for the next one. Deliberately loose
+# on wording and strict on WHEN it is required - see _hands_off_needed.
+_HANDOFF = re.compile(
+    r"next step|next chunk|for the next|later step|keep(s|ing)? (the|it|its)\b"
+    r"|stor(e|es|ing) (the|it|its)\b|without returning|do(es)? not return"
+    r"|ready to\b|leave(s|ing)? (the|it|its)\b|hand(s|ing)? (it|the)"
+    # A model says this a dozen ways. These two came back from real runs and
+    # were flagged as ambiguous when they are not: "link it to the current top
+    # so that it's READY TO become the new top", and "checks if the word starts
+    # with a letter and CAPTURES whether it begins correctly". A miss here costs
+    # a retry on a decomposition that was already clear, which is the one way
+    # this gate can make things worse rather than better.
+    r"|captur(e|es|ing)\b|so (that )?it (can|is|will)\b"
+    r"|(previous|earlier|first|preceding) (step|chunk|part)",
+    re.I)
+
+
+def _returns(reference: str) -> bool:
+    """Does this chunk's own code finish the method?"""
+    try:
+        tree = ast.parse("def _w():\n" + "\n".join(
+            "    " + ln for ln in (reference or "").splitlines()))
+    except SyntaxError:
+        return True                      # unparseable: judged elsewhere, not here
+    return any(isinstance(n, ast.Return) for n in ast.walk(tree))
+
+
 def check_prompts(chunks: list, problem: dict) -> dict:
     """Gate 2. {"status": "pass"|"fail", "summary": str}.
 
@@ -94,15 +136,38 @@ def check_prompts(chunks: list, problem: dict) -> dict:
                           ((problem.get("description") or "") + " " +
                            (problem.get("group_description") or "")).lower()))
     bad = []
-    for c in chunks:
+    for i, c in enumerate(chunks):
         prompt = getattr(c, "prompt", "") or ""
         step = getattr(c, "step_id", "?")
+        reference = getattr(c, "reference", "") or ""
+
+        # THE MISLEADING-STEP CHECK, and the only one here that is about what a
+        # student would DO rather than what they are told. A chunk that is not
+        # last and whose own code never returns must leave its result for the
+        # next chunk - and if the prompt does not say so, it reads as the whole
+        # job. "Determine if the stack is empty by checking if it has a top
+        # node" is answered `return self.top is None` by any reasonable
+        # student, which is then marked wrong for returning too early, with
+        # nothing on screen explaining why.
+        #
+        # Decidable rather than guessed: a chunk whose reference DOES return is
+        # a step that legitimately finishes something, and is never flagged.
+        if i < len(chunks) - 1 and not _returns(reference) \
+                and not _HANDOFF.search(prompt):
+            bad.append(f'{step}: does not finish the method, but does not say '
+                       f'what it leaves for the next step - a student will '
+                       f'answer it as if it were the whole job. End it with '
+                       f'something like "...and keep the result for the next '
+                       f'step."')
+            continue
+
         hit = _METHOD_WORDS.search(prompt)
         if hit:
             bad.append(f'{step}: "{hit.group(0)}" states HOW, not what to achieve')
             continue
         leaked = sorted(n for n in _identifiers(getattr(c, "reference", "") or "")
                         if len(n) > 2 and n.lower() not in said
+                        and n.lower() not in _ORDINARY
                         and re.search(rf"\b{re.escape(n)}\b", prompt))
         if leaked:
             bad.append(f'{step}: names {", ".join(leaked)} - that is a name only '
