@@ -154,17 +154,40 @@ worse than one question too many: the whole gate exists so that they arrive at
 the editor with something to implement, and a student released early gets sent
 back by the design reviewer minutes later, having been told they were fine.
 
+WHEN THEIR APPROACH CANNOT GET THERE - set "offtrack": true.
+
+This is a SEPARATE judgement from what you say, and it does not change what you
+say. Set it when the student has committed to an approach that you can see will
+not produce what the statement asks for, however carefully they implement it -
+not merely incomplete, not merely clumsy, and not merely different from how you
+would do it. Walk their stated approach through the smallest example in the
+statement before you set it: if the walk ends on the right answer, the approach
+is fine and "offtrack" is false, whatever you think of the style.
+
+Set it false when they have not yet stated an approach, when they are still
+thinking out loud, when the approach works but is slow or ugly, or when you are
+merely unsure. An approach wrongly flagged sends a student away from something
+that would have worked, which is worse than letting them discover a dead end by
+walking it.
+
+Your "reply" is UNCHANGED by this flag. Rule: do not announce the hole. Keep
+asking the one question whose honest answer makes them find it themselves. The
+flag is read by the page, not by the student, and the student is offered the
+choice of carrying on or rethinking - so you do not need to warn them, and you
+must not tell them what to do instead.
+
 OUTPUT FORMAT - reply with JSON only:
 {"reply": "<what the student sees>",
  "trace": "<the hand-trace from TRACE IT, whenever you are about to release
             them: the example, each step, the value their plan ends with, and
             whether it matches the statement>",
+ "offtrack": true|false,
  "ready": true|false}
 "ready" is true ONLY in the message that releases them to attempt the problem;
 false in every other message. Whenever "ready" is true, "trace" must hold the
 walk that justifies it - a plan you only READ is a plan you have not checked,
 and "count nodes until the next one is None" reads perfectly while being off by
-one.
+one. "ready" and "offtrack" are never both true.
 
 The student never sees "trace", and nothing from it may appear in "reply". It is
 how you FIND a fault, never what you say about one: if the walk shows their plan
@@ -359,8 +382,11 @@ def reply(problem: dict, history: list[dict],
             text = str(_json.loads(raw).get("reply", "")).strip()
         except Exception:
             text = (raw or "").strip()
+        # No fork here. They are implementing an APPROVED design; offering to
+        # "try something else" now would invite them to abandon the plan the
+        # reviewer already walked through and passed.
         return {"reply": _scrub(text) or "Ask me whenever you get stuck.",
-                "ready": True, "questions_asked": asked,
+                "ready": True, "offtrack": False, "questions_asked": asked,
                 "min_questions": MIN_PROBING_QUESTIONS}
 
     if asked < MIN_PROBING_QUESTIONS:
@@ -398,6 +424,7 @@ def reply(problem: dict, history: list[dict],
         data = _json.loads(raw)
         text = str(data.get("reply", "")).strip()
         ready = bool(data.get("ready", False))
+        offtrack = bool(data.get("offtrack", False))
         # A RELEASE NEEDS THE WALK BEHIND IT. Asking for the trace in the prompt
         # made this better and not reliable - the same run that refused an
         # off-by-one ("count until the next node is None", which never counts
@@ -416,13 +443,17 @@ def reply(problem: dict, history: list[dict],
                     "does it give you at the end?")
     except Exception:
         # Malformed output must not strand the student: show the text, but never
-        # unlock the attempt on a parse failure.
-        text, ready = (raw or "").strip(), False
+        # unlock the attempt on a parse failure - and never raise the fork off
+        # one either. "Your approach is going nowhere" is far too strong a thing
+        # to say because some JSON did not parse.
+        text, ready, offtrack = (raw or "").strip(), False, False
 
     text = _scrub(text)
     if not text:
         text, ready = "Tell me more about how you are thinking about this.", False
-    return {"reply": text, "ready": ready,
+    # A release and a dead end are contradictory verdicts on the same plan. The
+    # release wins: it is the one the model had to produce a hand-trace for.
+    return {"reply": text, "ready": ready, "offtrack": offtrack and not ready,
             "questions_asked": asked + (1 if "?" in text else 0),
             "min_questions": MIN_PROBING_QUESTIONS}
 
@@ -444,6 +475,13 @@ if __name__ == "__main__":
     # A reply that is ONLY code leaves nothing, which reply() turns into a nudge
     # rather than sending an empty bubble.
     assert m._scrub("```\nreturn True\n```") == ""
+
+    # The fork the page offers is driven by a FIELD, not by the reply text: the
+    # tutor still refuses to announce the hole, and the page is what turns the
+    # flag into a choice. Only the planning half has it - see _HELPER_MODE.
+    assert '"offtrack"' in m._SYSTEM, "socratic prompt lost the offtrack signal"
+    assert "offtrack" not in m._HELPER_MODE, \
+        "an approved design must not be second-guessed by the fork"
 
     for name, prompt in (("socratic", m._SYSTEM), ("helper", m._HELPER_MODE)):
         assert "THE TEST" in prompt, f"{name} lost the paste-check"

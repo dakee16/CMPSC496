@@ -58,7 +58,13 @@ def tally(total_steps: int, submissions: list[dict]) -> dict:
     right one, because that is exactly the condition under which /grade_chunk
     reveals the reference. Reading it back off the submissions rather than
     storing a flag keeps this in step with the policy: change the attempt limit
-    and both change together."""
+    and both change together.
+
+    MAX_ATTEMPTS is None by default - the answer is NEVER revealed, a student
+    retries until they get it - so `shown` is then always 0 and every unsolved
+    step is simply not done yet. That case has to be spelt out rather than
+    inherited: `count(...) >= None` is a TypeError, which took the whole grade
+    down the moment any student got anything wrong."""
     by_step: dict[int, list[str]] = {}
     for s in submissions:
         idx = s.get("chunk_index")
@@ -70,7 +76,7 @@ def tally(total_steps: int, submissions: list[dict]) -> dict:
     for verdicts in by_step.values():
         if "correct" in verdicts:
             solved += 1
-        elif verdicts.count("incorrect") >= MAX_ATTEMPTS:
+        elif MAX_ATTEMPTS is not None and verdicts.count("incorrect") >= MAX_ATTEMPTS:
             shown += 1
 
     # A total below what we have seen means the count is stale or missing; the
@@ -377,10 +383,15 @@ def transcript(client, assignment_id: str, student_id: str) -> tuple[str, str]:
             f"Generated  : {_when(datetime.now(timezone.utc).isoformat())}", "",
             f"GRADE      : {agg['solved']} / {total} steps solved"
             + (f"  ({pct}%)" if pct is not None else "  (nothing to grade yet)"),
-            f"             {agg['solved']} solved, {agg['shown']} answer shown, "
-            f"{agg['missed']} not done",
-            "", "A step counts as solved only when the student's own code passed.",
-            "A revealed answer scores the same as one never attempted.", ""]
+            "             " + f"{agg['solved']} solved, "
+            + (f"{agg['shown']} answer shown, " if agg["shown"] else "")
+            + f"{agg['missed']} not done",
+            "", "A step counts as solved only when the student's own code passed."]
+    # Only worth saying where it can still happen. With no attempt limit the
+    # answer is never revealed, and a line explaining how a revealed answer
+    # scores is a rule about a thing that does not exist.
+    head += (["A revealed answer scores the same as one never attempted.", ""]
+             if agg["shown"] else [""])
 
     stem = "".join(c if c.isalnum() else "-" for c in name.lower()).strip("-")
     # A blank line between problems, or the last "(none recorded)" of one runs
@@ -391,22 +402,37 @@ def transcript(client, assignment_id: str, student_id: str) -> tuple[str, str]:
 
 if __name__ == "__main__":
     # The rule that decides a grade, with no database in sight.
-    assert MAX_ATTEMPTS == 2, "the shown-step case below is written against 2"
-
     none = tally(4, [])
     assert none == {"total": 4, "solved": 0, "shown": 0, "missed": 4,
                     "attempted": False}, none
 
-    mixed = tally(4, [
+    rows = [
         {"chunk_index": 0, "verdict": "correct"},
         {"chunk_index": 1, "verdict": "incorrect"},      # one miss, still open
         {"chunk_index": 2, "verdict": "incorrect"},
-        {"chunk_index": 2, "verdict": "incorrect"},      # revealed
+        {"chunk_index": 2, "verdict": "incorrect"},      # twice wrong
         {"chunk_index": 3, "verdict": "indeterminate"},  # grader could not say
-    ])
-    assert mixed["solved"] == 1 and mixed["shown"] == 1, mixed
-    assert mixed["missed"] == 2, mixed
-    assert mixed["solved"] + mixed["shown"] + mixed["missed"] == mixed["total"]
+    ]
+
+    # THE LIVE POLICY: no attempt limit, so nothing is ever shown and a step
+    # missed twice is simply still open. This is the case that used to raise
+    # TypeError rather than return a grade.
+    assert MAX_ATTEMPTS is None, "the answer is never revealed - see sessions.py"
+    live = tally(4, rows)
+    assert live["solved"] == 1 and live["shown"] == 0, live
+    assert live["missed"] == 3, live
+    assert live["solved"] + live["shown"] + live["missed"] == live["total"]
+
+    # ...and the same rows under a limit, for the exam mode sessions.py keeps
+    # the door open for. Two wrong answers and no right one is a shown step.
+    MAX_ATTEMPTS = 2                  # rebinds this module's global, which is
+    try:                              # exactly the name tally() reads
+        capped = tally(4, rows)
+        assert capped["solved"] == 1 and capped["shown"] == 1, capped
+        assert capped["missed"] == 2, capped
+        assert capped["solved"] + capped["shown"] + capped["missed"] == capped["total"]
+    finally:
+        MAX_ATTEMPTS = None
 
     # A wrong answer followed by a right one is solved, not shown. Row order
     # must not decide that, since they arrive unsorted.

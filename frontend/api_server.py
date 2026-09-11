@@ -2070,8 +2070,12 @@ def tutor_chat(req: TutorChatRequest, request: Request):
             verdict = review_plan_graph(row[0], req.plan, [],
                                         chat_log=req.messages)
             if not verdict.get("approved"):
+                # offtrack stays FALSE here. The fork offers "carry on and it
+                # may come out wrong", and this plan cannot carry on at all -
+                # the design gate is about to reject exactly it. The reviewer's
+                # own objection is the message that belongs on screen.
                 out = {**out, "ready": False, "reply": verdict["reply"],
-                       "held_by_review": True}
+                       "offtrack": False, "held_by_review": True}
         except Exception:
             # The gate being unreachable must not strand a student mid-chat.
             # They keep the tutor's reply; the real gate still runs on submit.

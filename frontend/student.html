@@ -382,6 +382,20 @@
   .chips{display:flex; gap:6px; flex-wrap:wrap; align-self:flex-start;
          max-width:100%; margin-top:-3px}
 
+  /* The wrong-direction fork. Styled as a QUESTION the student answers, not as
+     an error they have made: amber rather than red, no icon, and the two
+     answers weighted the same. Carrying on is a real option here - a dead end
+     you walked and understood teaches more than one you were steered around -
+     so nothing in this block is allowed to read as the wrong button. */
+  .chips.fork{margin-top:2px; padding:10px 11px 11px;
+    border-radius:var(--r-md); background:var(--warning-bg);
+    border:1px solid var(--warning-line)}
+  .chips.fork .forkq{flex-basis:100%; margin:0 0 8px; font-size:12.5px;
+    line-height:1.5; color:var(--text-muted)}
+  .chips.fork .chip{background:var(--surface); border-color:var(--border)}
+  .chips.fork .chip:hover{background:var(--accent-tint);
+    border-color:var(--accent-hover); color:var(--text)}
+
   /* Three dots that rise and dim in sequence. Motion is small and slow on
      purpose: a frantic spinner next to a question reads as urgency, and this
      panel is meant to feel like someone thinking before answering. */
@@ -848,6 +862,10 @@ mountHeader({variant: "student", active: "Home", wide: true});
 const $ = id => document.getElementById(id);
 
 let sessionId = null, chunks = [], idx = 0, accepted = [], editor = null, header = "";
+// Columns the function BODY sits at, under its own `def` line. The frozen
+// listing and the editor welded to the bottom of it are one continuous piece
+// of code, so both are drawn on this scale or they disagree by four columns.
+const BODY_INDENT = 4;
 // The tutor is scoped to whatever is open on the LEFT. No problem, no chat.
 let openProblem = null, chatLog = [], chatBusy = false;
 // A student may not write code until they have submitted a DESIGN and the
@@ -1205,6 +1223,7 @@ async function uploadDesign(){
     // The chips are anchored under the greeting; once anything else has been
     // said they are stranded in the middle of the transcript.
     hideChips();
+    hideFork();            // answered by submitting, whichever way they went
     bubble("me", `Submitted design: ${designFileRef.name}`);
     bubble("bot", data.reply);
     // The verdict belongs in the panel the student is looking at, not only in
@@ -1262,6 +1281,7 @@ async function submitPlanGraph(){
     designLog.push({role: "user", content: "[submitted the plan from my chat]"});
     designLog.push({role: "assistant", content: data.reply});
     hideChips();
+    hideFork();
     bubble("me", "Submitted my plan from the chat");
     bubble("bot", data.reply);
     designMsg(data.approved ? "ok" : "warn", data.reply);
@@ -1987,7 +2007,7 @@ function renderContext(){
   const lines = [];
   lines.push({text: header || "def solve(...):", cls: "cHead"});
   accepted.forEach(a => a.code.split("\n").forEach(
-    l => lines.push({text: l ? "    " + l : "", cls: "cAccept"})));
+    l => lines.push({text: l ? " ".repeat(BODY_INDENT) + l : "", cls: "cAccept"})));
 
   $("ctxCode").innerHTML = lines.map(
     l => `<span class="${l.cls}">${esc(l.text) || "&nbsp;"}</span>`).join("\n");
@@ -2111,11 +2131,15 @@ function render(){
     // Numbering continues from the frozen part, so the editor is line N+1 of
     // the same function rather than line 1 of a detached box.
     editor.setOption("firstLineNumber", shown + 1);
-    // Seat the caret at the depth this step actually occupies. The server
-    // re-indents whatever arrives (main/indent.py), so this is a courtesy
-    // rather than a requirement - but a step that continues inside a loop
-    // should LOOK like it continues inside a loop.
-    const pad = " ".repeat((cur && cur.indent) || 0);
+    // Seat the caret where this step's code actually starts, on the same
+    // scale as the frozen listing above it: the function body's own indent
+    // plus whatever nesting the step sits at. `indent` alone is the depth
+    // INSIDE the body, so a top-level step came out at column 0 - flush with
+    // `def`, four columns left of the accepted line it continues from. The
+    // server re-seats whatever arrives (main/indent.py), so the extra column
+    // costs nothing; what it buys is an editor that lines up with the code
+    // above it instead of contradicting it.
+    const pad = " ".repeat(BODY_INDENT + ((cur && cur.indent) || 0));
     editor.setValue(pad);
     editor.setCursor({line: 0, ch: pad.length});
     editor.refresh();
@@ -2334,6 +2358,51 @@ function hideChips(){
   if (c) c.remove();
 }
 
+/* ---------- the wrong-direction fork ----------
+
+   The tutor is forbidden from announcing a hole in a student's reasoning - it
+   asks the question whose honest answer makes them find it. That rule is
+   right, and it has one gap: a student can walk a long way down an approach
+   that cannot work, answering every question honestly, and only learn that at
+   the design gate.
+
+   So the tutor also returns a FLAG, and the flag becomes a choice rather than
+   a warning. Carrying on is a genuine option and is offered as one: an
+   approach you follow to its dead end and understand is worth more than one
+   you abandoned because a machine frowned at it. What the student gets is the
+   fact that there is a fork here, and the say over which way to go. */
+function showFork(){
+  hideFork();
+  const wrap = document.createElement("div");
+  wrap.className = "chips fork";
+  wrap.id = "fork";
+  wrap.innerHTML = `<p class="forkq">This approach may not get you to the right
+    answer. It is your call.</p>
+    <button type="button" class="chip" data-say="I have thought about it - I want to
+      keep going with this approach.">Keep going this way</button>
+    <button type="button" class="chip" data-say="I would like to try a different
+      approach. What should I be asking myself?">Try something else</button>`;
+  wrap.addEventListener("click", e => {
+    const c = e.target.closest(".chip");
+    if (!c) return;
+    // sendToTutor() takes the fork down itself, and only once it has decided
+    // it is actually sending. Clearing it here instead would lose the choice
+    // whenever that call bails out - a turn already in flight, no problem open
+    // - leaving the student with neither the buttons nor a reply.
+    //
+    // The student's CHOICE is what goes into the log, so the rest of the
+    // conversation - and the transcript an instructor reads later - shows
+    // which way they went and that it was theirs to pick.
+    sendToTutor(c.dataset.say.replace(/\s+/g, " ").trim());
+  });
+  $("clog").appendChild(wrap);
+  $("clog").scrollTop = $("clog").scrollHeight;
+}
+function hideFork(){
+  const f = $("fork");
+  if (f) f.remove();
+}
+
 /* ==========================================================
    The one-time pointer at the tutor.
    ========================================================== */
@@ -2475,6 +2544,9 @@ async function sendToTutor(text){
   }
   chatBusy = true;
   hideChips();
+  // Whatever they type next IS their answer to the fork, so a stale pair of
+  // buttons must not sit under it offering the choice a second time.
+  hideFork();
   bubble("me", text);
   chatLog.push({role: "user", content: text});
   const thinking = bubble("bot", "");
@@ -2503,6 +2575,9 @@ async function sendToTutor(text){
     }
     thinking.textContent = data.reply;
     chatLog.push({role: "assistant", content: data.reply});
+    // Planning only. Once the design is approved they are implementing a plan
+    // that has already been walked and passed, and the server pins this false.
+    if (data.offtrack && !tutorReleased) showFork();
     // Not awaited: the graph grows in the background while the student reads
     // the reply. It is a picture, so it must never make the chat feel slower.
     refreshPlanGraph();

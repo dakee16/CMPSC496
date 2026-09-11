@@ -173,12 +173,18 @@ function gPositions(graph, W, H){
           h: G_PAD * 2 + used.length * (H + G_GAPY) - G_GAPY};
 }
 
-function gEdgePath(a, b, back, W, H){
+function gEdgePath(a, b, back, W, H, side){
   const x1 = a.x + W / 2, y1 = a.y + H, x2 = b.x + W / 2, y2 = b.y;
   if (back){
-    // A back edge goes UP. Route it around the right so it never crosses the
-    // body of the loop it belongs to.
-    const side = Math.max(a.x, b.x) + W + 14;
+    // A back edge goes UP, in a channel to the right of the WHOLE grid.
+    //
+    // It used to turn at max(a.x, b.x) + W + 14 - just right of its own two
+    // endpoints - which is only clear of the drawing when those two happen to
+    // sit in the rightmost column. On any branching plan it was a lane running
+    // straight through the node beside them: the loop-back on a digit-sum plan
+    // climbed through `return total`, and its "repeat" label landed on top of
+    // that node's text. `side` now comes from the caller, which knows how wide
+    // the grid is and gives each back edge its own lane.
     return `M ${a.x + W} ${a.y + H / 2} H ${side} V ${b.y + H / 2} H ${b.x + W}`;
   }
   const mid = (y1 + y2) / 2;
@@ -346,28 +352,54 @@ function renderGraph(el, graph, emptyText, opts = {}){
   // Each graph needs its OWN marker id: two graphs on one page (plan and code)
   // both defining id="ah" makes the second definition win for both.
   const uid = "g" + Math.random().toString(36).slice(2, 8);
+  // DIRECTION IS THE ONLY THING THAT TELLS THESE EDGES APART, so the head has
+  // to survive fit-to-view shrinking it. markerUnits defaults to strokeWidth,
+  // so these numbers are multiplied by the 1.5 below before they hit the
+  // screen; the old 8x6 triangle read as a smudge on anything but a tiny graph.
   const parts = [
-    `<defs><marker id="${uid}" markerWidth="9" markerHeight="9" refX="8" refY="3" `,
-    `orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="var(--graph-line)"/></marker></defs>`
+    `<defs><marker id="${uid}" markerWidth="11" markerHeight="8" refX="10" refY="4" `,
+    `orient="auto"><path d="M0,0 L0,8 L10,4 z" fill="var(--graph-line)"/></marker></defs>`
   ];
+
+  // Edge labels are collected and drawn AFTER the nodes. Painted in edge order
+  // they went UNDER any node the routing passes behind, and the one that lost
+  // most often was "repeat" on a loop-back - which, now that no edge is dashed,
+  // is the only word naming the most important edge in the drawing.
+  const elabels = [];
+  // Lanes for the back edges, right of every node. A second one is 14px
+  // further out so nested loops do not draw over each other.
+  const CHAN = w - G_PAD + 14;
+  let lane = 0;
+  // How far right the routing actually reaches. gPositions() sizes the canvas
+  // from the NODE grid alone, so a back edge - which runs in a channel outside
+  // the rightmost column - and its label were laid out past the edge of the
+  // drawing and clipped by fit-to-view.
+  let reach = w;
 
   graph.edges.forEach(e => {
     const a = pos[e.src], b = pos[e.dst];
     if (!a || !b) return;                       // defensive: dangling edge
     const back = e.label === "repeat" || b.y <= a.y;
-    parts.push(`<path d="${gEdgePath(a, b, back, W, H)}" fill="none" `
+    const side = back ? CHAN + (lane++) * 14 : 0;
+    if (back) reach = Math.max(reach, side + G_PAD);
+    // EVERY edge is one solid line with one arrowhead. A back edge used to be
+    // dashed, which students read as "optional", "maybe", or "not really part
+    // of the plan" - none of which it is: it is the loop closing, the most
+    // load-bearing edge in the drawing. It routes around the outside so it
+    // never crosses the body of its own loop, and the arrow says which way it
+    // goes, which is what the dashes were being asked to say and could not.
+    parts.push(`<path d="${gEdgePath(a, b, back, W, H, side)}" fill="none" `
              + `stroke="var(--graph-line)" stroke-width="1.5" `
-             + `stroke-linejoin="round" marker-end="url(#${uid})"${
-                 back ? ' stroke-dasharray="4 3"' : ""}/>`);
+             + `stroke-linejoin="round" marker-end="url(#${uid})"/>`);
     if (e.label){
-      const lx = back ? Math.max(a.x, b.x) + W + 20
-                      : (a.x + b.x) / 2 + W / 2 + 6;
+      const lx = back ? side + 6 : (a.x + b.x) / 2 + W / 2 + 6;
       const ly = back ? (a.y + b.y) / 2 + H / 2 : (a.y + H + b.y) / 2;
+      if (back) reach = Math.max(reach, lx + e.label.length * 6.5 + G_PAD);
       // paint-order lets the halo sit BEHIND the glyphs, so a label crossing an
       // edge stays readable without a box that would clutter the drawing.
-      parts.push(`<text x="${lx}" y="${ly}" font-size="10.5" font-weight="500" `
-               + `fill="var(--graph-label)" stroke="var(--surface)" `
-               + `stroke-width="3.5" paint-order="stroke">${gEsc(e.label)}</text>`);
+      elabels.push(`<text x="${lx}" y="${ly}" font-size="10.5" font-weight="500" `
+                 + `fill="var(--graph-label)" stroke="var(--surface)" `
+                 + `stroke-width="3.5" paint-order="stroke">${gEsc(e.label)}</text>`);
     }
   });
 
@@ -398,6 +430,7 @@ function renderGraph(el, graph, emptyText, opts = {}){
     });
     parts.push(`</g>`);
   });
+  parts.push(...elabels);
 
   const height = opts.height || 420;
   el.innerHTML =
@@ -425,7 +458,8 @@ function renderGraph(el, graph, emptyText, opts = {}){
        </div>`;
 
   const box = el.querySelector(".gview");
-  gAttachView(box, box.querySelector("svg"), box.querySelector(".gzoom"), {w, h});
+  gAttachView(box, box.querySelector("svg"), box.querySelector(".gzoom"),
+              {w: reach, h});
 }
 
 /* Render the finished artifact: both graphs plus what differs between them.

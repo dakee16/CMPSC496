@@ -53,14 +53,6 @@
                   font-variant-numeric:tabular-nums}
   .runhead #cancel{margin-left:auto}
 
-  /* The stages a problem passes through. Shown once, above the list, rather
-     than repeated on every row - the backend reports one "preparing" event per
-     problem, not one per stage, so a per-row stage would be a guess. */
-  .stages{display:flex; gap:6px; flex-wrap:wrap; margin:0 0 var(--s3);
-          font-size:11.5px; color:var(--text-subtle)}
-  .stages span{padding:3px 9px; border-radius:var(--r-pill);
-               background:var(--surface-raised); border:1px solid var(--glass-line)}
-
   /* The per-problem breakdown behind the ready badge. */
   tr.breakdown > td{padding:0; border-bottom:1px solid var(--border)}
   .bdWrap{padding:var(--s3) 6px var(--s4)}
@@ -299,10 +291,6 @@
     <div class="bar" role="progressbar" aria-label="Preparing assignment"
          aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="prog"
          style="margin:0 0 14px"><i id="barFill"></i></div>
-    <p class="stages" aria-label="Stages each problem passes through">
-      <span>generating test cases</span><span>checking test strength</span>
-      <span>splitting into steps</span><span>ready</span>
-    </p>
     <ul class="items" id="items"></ul>
     <!-- Upload results land here. Without a live region a teacher uploads an
          assignment and is told nothing about whether it worked. -->

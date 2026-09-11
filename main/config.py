@@ -107,7 +107,10 @@ class LimitsConfig:
     max_active_sessions_per_user: int = 5
     submissions_per_minute: int = 12
     submissions_per_session_per_minute: int = 6
-    max_attempts_per_chunk: int = 2        # second failure reveals
+    # No max_attempts_per_chunk. Nothing read it, and leaving a "second failure
+    # reveals" knob on the config was a standing claim about a policy that no
+    # longer exists: the answer is never revealed and a student retries until
+    # they get it. The one place the limit lives is sessions.MAX_ATTEMPTS.
 
 
 @dataclass(frozen=True)
