@@ -7,7 +7,7 @@
 <title>Prepare an assignment · MicroTutor</title>
 <!-- The literal is the value used before ui.js runs; Theme.set() then rewrites
      it from the --bg token so it follows the chosen theme. -->
-<meta name="theme-color" content="#0b1120">
+<meta name="theme-color" content="#0c1220">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -27,13 +27,13 @@
     display:flex; gap:var(--s3); align-items:flex-start;
     padding:var(--s3) var(--s3); border-radius:var(--r-md);
     background:var(--surface-raised); border:1px solid var(--glass-line);
-    font-size:14px; animation:rise .3s var(--ease) both;
+    font-size:.9375rem; animation:rise .3s var(--ease) both;
   }
   @keyframes rise{from{opacity:0; transform:translateY(6px)} to{opacity:1; transform:none}}
   ul.items .pill{margin-top:1px; flex:none}
   ul.items .body{min-width:0; flex:1}
   ul.items .nm{font-weight:600; color:var(--text); overflow-wrap:anywhere}
-  ul.items .why{color:var(--text-muted); font-size:12.5px; margin-top:3px; line-height:1.5}
+  ul.items .why{color:var(--text-muted); font-size:.8125rem; margin-top:3px; line-height:1.5}
   /* "watch" opens this one problem's preparation transcript in a new tab. It
      sits with the elapsed time because that is where a teacher looks when a
      problem is taking longer than the others - which is exactly when they want
@@ -49,7 +49,7 @@
   .runhead{display:flex; align-items:center; gap:var(--s3); flex-wrap:wrap;
            margin-bottom:var(--s2)}
   .runhead h2{margin:0}
-  .runhead .count{font-size:13px; color:var(--text-subtle);
+  .runhead .count{font-size:.875rem; color:var(--text-subtle);
                   font-variant-numeric:tabular-nums}
   .runhead #cancel{margin-left:auto}
 
@@ -59,9 +59,9 @@
   .bdList{list-style:none; margin:0; padding:0; display:grid; gap:6px}
   .bdList li{display:flex; gap:10px; align-items:flex-start; padding:9px 11px;
     border-radius:10px; background:var(--surface-raised);
-    border:1px solid var(--glass-line); font-size:13px}
+    border:1px solid var(--glass-line); font-size:.875rem}
   .bdList .bdName{font-weight:600; color:var(--text); flex:none; min-width:150px}
-  .bdList .bdWhy{color:var(--text-muted); font-size:12.5px; line-height:1.5;
+  .bdList .bdWhy{color:var(--text-muted); font-size:.8125rem; line-height:1.5;
     overflow-wrap:anywhere}
   .acts{display:flex; gap:6px; justify-content:flex-end}
   .acts button,.acts select{min-height:0; padding:5px 11px; font-size:12px;
@@ -84,15 +84,15 @@
     align-items:start}
   @media (max-width:820px){ .fixGrid{grid-template-columns:1fr} }
   .fixGrid textarea{width:100%; min-height:300px; resize:vertical;
-    font-family:var(--font-mono); font-size:12.5px; line-height:1.65; tab-size:4}
+    font-family:var(--font-mono); font-size:.8125rem; line-height:1.65; tab-size:4}
   .fixSide h4{margin:0 0 9px; font-size:12px; text-transform:uppercase;
     letter-spacing:.09em; color:var(--text-subtle)}
 
   ul.ckList{list-style:none; margin:0; padding:0; display:grid; gap:7px}
-  ul.ckList li{display:flex; gap:9px; align-items:flex-start; font-size:12.5px;
+  ul.ckList li{display:flex; gap:9px; align-items:flex-start; font-size:.8125rem;
     line-height:1.5; color:var(--text-muted)}
   ul.ckList .ckMark{flex:none; width:16px; height:16px; border-radius:50%;
-    display:grid; place-items:center; font-size:10px; font-weight:700;
+    display:grid; place-items:center; font-size:.75rem; font-weight:700;
     margin-top:1px}
   ul.ckList li.ok      .ckMark{background:var(--success-bg); color:var(--success)}
   ul.ckList li.fail    .ckMark{background:var(--danger-bg);  color:var(--danger)}
@@ -112,14 +112,14 @@
     background:var(--warning-bg); border:1px solid var(--warning-line)}
   .findings h4{margin:0 0 7px; font-size:12px; text-transform:uppercase;
     letter-spacing:.09em; color:var(--warning)}
-  .fLead{margin:0 0 11px; font-size:12.5px; line-height:1.6; color:var(--text)}
+  .fLead{margin:0 0 11px; font-size:.8125rem; line-height:1.6; color:var(--text)}
   .fList{list-style:none; margin:0; padding:0; display:grid; gap:8px}
   .fList li{background:var(--surface); border:1px solid var(--glass-line);
     border-radius:9px; padding:9px 11px}
   .fRow{display:flex; align-items:center; gap:10px; flex-wrap:wrap}
   .fWhat{font-family:var(--font-mono); font-size:12px; color:var(--text);
     font-weight:600; overflow-wrap:anywhere; flex:1; min-width:0}
-  .fJump{flex:none; min-height:0; padding:3px 10px; font-size:11.5px;
+  .fJump{flex:none; min-height:0; padding:3px 10px; font-size:.75rem;
     font-family:var(--font-sans); font-weight:600}
   .fCode{margin:7px 0 0; padding:7px 9px; border-radius:6px;
     background:var(--surface-raised); border:1px solid var(--glass-line);
@@ -132,13 +132,13 @@
      supports marked. Collapsed by default: an instructor who already knows the
      line is harmless should not have to scroll past four paragraphs to say so. */
   .cm{margin-top:11px; padding-top:10px; border-top:1px solid var(--glass-line)}
-  .cm h5{margin:0 0 8px; font-size:11px; font-weight:600; letter-spacing:.09em;
+  .cm h5{margin:0 0 8px; font-size:.75rem; font-weight:600; letter-spacing:.09em;
     text-transform:uppercase; color:var(--text-subtle)}
   /* Real bullets: these are alternatives to weigh, and a list that looks like a
      list reads as one. */
   .cmList{margin:0; padding:0 0 0 18px; display:grid; gap:8px;
     list-style:disc outside}
-  .cmList li{font-size:12.5px; line-height:1.6; color:var(--text-muted);
+  .cmList li{font-size:.8125rem; line-height:1.6; color:var(--text-muted);
     padding-left:2px}
   .cmList li::marker{color:var(--text-subtle)}
   .cmList li b{display:block; color:var(--text); font-weight:600;
@@ -146,24 +146,24 @@
   .cmList li.cmOn::marker{color:var(--success)}
   .cmList li.cmOn b{color:var(--success)}
   .cmList li.cmOff{opacity:.5}
-  .cmTag{float:right; font-size:10px; font-weight:600; letter-spacing:.04em;
+  .cmTag{float:right; font-size:.75rem; font-weight:600; letter-spacing:.04em;
     text-transform:uppercase; color:var(--success)}
-  .cmSeen{margin:9px 0 0; font-size:11.5px; line-height:1.55;
+  .cmSeen{margin:9px 0 0; font-size:.75rem; line-height:1.55;
     color:var(--text-subtle)}
   .cmSeen b{color:var(--text); font-variant-numeric:tabular-nums}
 
   .fAct{display:flex; gap:11px; align-items:flex-start; flex-wrap:wrap;
     margin-top:12px; padding-top:11px; border-top:1px solid var(--glass-line)}
-  .fAct button{flex:none; min-height:0; padding:6px 13px; font-size:12.5px;
+  .fAct button{flex:none; min-height:0; padding:6px 13px; font-size:.8125rem;
     font-family:var(--font-sans)}
-  .fAct button.danger{background:var(--danger); border-color:var(--danger)}
-  .fActWhy{flex:1; min-width:210px; font-size:11.5px; line-height:1.55;
+  .fAct button.danger{background:var(--danger-bg); color:var(--danger); border-color:var(--danger-line)}
+  .fActWhy{flex:1; min-width:210px; font-size:.75rem; line-height:1.55;
     color:var(--text-muted)}
 
   /* The saved run, replayed inside the fix panel. */
   .story{margin:0 0 var(--s4); border:1px solid var(--glass-line);
     border-radius:var(--r-md); background:var(--surface-raised)}
-  .story > summary{cursor:pointer; padding:11px 14px; font-size:13px;
+  .story > summary{cursor:pointer; padding:11px 14px; font-size:.875rem;
     font-weight:600; color:var(--text); list-style:none}
   .story > summary::-webkit-details-marker{display:none}
   .story > summary::before{content:"▸"; display:inline-block; width:14px;
@@ -172,21 +172,21 @@
   .storyBody{padding:0 14px 14px}
   .storyCols{display:grid; gap:var(--s4);
     grid-template-columns:repeat(auto-fit,minmax(250px,1fr))}
-  .storyCols h4{margin:0 0 9px; font-size:11px; text-transform:uppercase;
+  .storyCols h4{margin:0 0 9px; font-size:.75rem; text-transform:uppercase;
     letter-spacing:.09em; color:var(--text-subtle)}
   .sList{list-style:none; margin:0; padding:0; display:grid; gap:8px}
   .sList li{padding:9px 11px; border-radius:9px; background:var(--surface);
-    border:1px solid var(--glass-line); font-size:12.5px}
-  .sList b{font-family:var(--font-mono); font-size:11.5px; color:var(--text);
+    border:1px solid var(--glass-line); font-size:.8125rem}
+  .sList b{font-family:var(--font-mono); font-size:.75rem; color:var(--text);
     overflow-wrap:anywhere}
-  .sWord{margin-left:7px; font-size:10.5px; font-weight:600; padding:2px 7px;
+  .sWord{margin-left:7px; font-size:.75rem; font-weight:600; padding:2px 7px;
     border-radius:var(--r-pill); background:var(--warning-bg);
     color:var(--warning); white-space:nowrap}
   .sWhy{margin-top:5px; color:var(--text-muted); font-size:12px; line-height:1.55}
 
   /* The end-of-run review prompt. */
-  .rvScrim{position:fixed; inset:0; z-index:50; display:grid; place-items:center;
-    padding:var(--s4); background:rgba(8,11,18,.62); backdrop-filter:blur(3px);
+  .rvScrim{position:fixed; inset:0; z-index:var(--z-modal); display:grid; place-items:center;
+    padding:var(--s4); background:var(--scrim); backdrop-filter:blur(3px);
     animation:rvIn .18s var(--ease) both}
   .rvScrim[hidden]{display:none}
   @keyframes rvIn{from{opacity:0} to{opacity:1}}
@@ -195,17 +195,17 @@
     border-radius:var(--r-lg); padding:var(--s4); box-shadow:var(--shadow-lg);
     animation:rise .22s var(--ease) both}
   .rvBox h3{margin:0 0 var(--s3); font-size:17px}
-  .rvLead{margin:0 0 var(--s3); font-size:13.5px; line-height:1.65;
+  .rvLead{margin:0 0 var(--s3); font-size:.875rem; line-height:1.65;
     color:var(--text-muted)}
   .rvList{list-style:none; margin:var(--s4) 0 0; padding:0; display:grid; gap:8px}
   .rvList li{display:flex; gap:var(--s3); align-items:center; padding:10px 12px;
     border-radius:var(--r-md); background:var(--surface-raised);
     border:1px solid var(--glass-line)}
-  .rvList .nm{font-weight:600; font-size:13.5px; min-width:0;
+  .rvList .nm{font-weight:600; font-size:.875rem; min-width:0;
     overflow-wrap:anywhere}
   .rvList .sub{display:block; margin-top:3px; font-weight:400; font-size:12px;
     color:var(--text-subtle); font-variant-numeric:tabular-nums}
-  .rvList a{margin-left:auto; flex:none; font-size:12.5px}
+  .rvList a{margin-left:auto; flex:none; font-size:.8125rem}
   .rvActs{display:flex; gap:var(--s2); justify-content:flex-end;
     margin-top:var(--s4); flex-wrap:wrap}
   .rvFoot{margin:var(--s3) 0 0; font-size:12px; color:var(--text-subtle);
@@ -213,7 +213,7 @@
 
   /* The four-line example. It teaches the format faster than the paragraph
      above it does, so it comes first and the full template comes second. */
-  .fmtLead{font-size:12.5px; color:var(--text-subtle); margin:11px 0 7px}
+  .fmtLead{font-size:.8125rem; color:var(--text-subtle); margin:11px 0 7px}
 
   @media (max-width:720px){
     /* A four-column table does not fit. Drop the created column; the row's
@@ -221,18 +221,65 @@
     th.colWhen, td.colWhen{display:none}
     .acts{flex-wrap:wrap}
   }
+
+  .upload-card{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.1fr); padding:0; overflow:hidden}
+  .upload-info,.upload-action{min-width:0; padding:var(--s8)}
+  .upload-info{border-right:1px solid var(--border); background:var(--surface-raised)}
+  .upload-info .hint{font-size:.9375rem; line-height:1.75}
+  .upload-info details{margin:var(--s6) 0 0 !important}
+  .upload-info summary{font-weight:600}
+  .upload-action{display:flex; flex-direction:column; justify-content:center}
+  .upload-action .drop{padding:36px var(--s6); border-color:var(--border-strong)}
+  .upload-symbol{display:grid; place-items:center; width:52px; height:52px;
+    margin:0 auto var(--s4); border:1px solid var(--border); border-radius:14px;
+    background:var(--surface); color:var(--accent-ink)}
+  .upload-action>.row{align-items:flex-start; gap:var(--s3)}
+  .upload-action #go{width:100%}
+  .upload-action .row .hint{font-size:.8125rem; min-width:0 !important; line-height:1.65}
+  .filechip{max-width:100%}
+  #list{scroll-margin-top:100px}
+  #list>.hint{max-width:74ch; margin-bottom:var(--s6)}
+  #listBody>table{min-width:760px}
+  .acts{gap:8px; flex-wrap:wrap}
+  .acts button,.acts select,.bdList .bdFix{min-height:36px; font-size:.8125rem}
+  .bdWrap{padding:var(--s5); background:var(--surface-raised)}
+  .bdList li{background:var(--surface); flex-wrap:wrap; padding:var(--s4)}
+  .bdList .bdName{flex:1 1 180px; min-width:0; overflow-wrap:anywhere}
+  .bdList .bdWhy{flex:1 1 240px; font-size:.875rem}
+  .fixPanel{background:var(--surface)}
+  .fixGrid textarea{font-size:.875rem; background:var(--code-bg); color:var(--code-text); color-scheme:dark}
+  .rvBox{padding:var(--s8)}
+  .rvLead{font-size:.9375rem}
+  .cmList li.cmOff{opacity:1; color:var(--text-subtle)}
+  .fActWhy{min-width:0}
+  ul.items li{padding:var(--s4); flex-wrap:wrap}
+  ul.items .body{flex-basis:45%}
+  @media (max-width:860px){
+    .upload-card{grid-template-columns:1fr}
+    .upload-info{border-right:0; border-bottom:1px solid var(--border)}
+    .upload-info,.upload-action{padding:var(--s6)}
+  }
+  @media (max-width:720px){
+    #listBody>table{min-width:600px}
+    .rvBox{padding:var(--s6)}
+    .storyCols{grid-template-columns:minmax(0,1fr)}
+  }
+
 </style>
 </head>
 <body>
 <main class="page">
-  <p class="eyebrow">Instructor</p>
-  <h1>Prepare an assignment</h1>
-  <p class="sub">Upload your solutions once. Students only ever see problems that are ready to grade.</p>
+  <div class="page-heading">
+    <p class="eyebrow">Instructor portal</p>
+    <h1>Prepare an assignment</h1>
+    <p class="sub">Turn your Python solutions into guided, step-by-step practice.</p>
+  </div>
 
   <div id="resumeNote"></div>
 
-  <div class="card">
-    <h2>Assignment file</h2>
+  <div class="card upload-card">
+    <div class="upload-info">
+    <div class="section-heading"><span class="section-icon"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg></span><h2>Assignment file</h2></div>
     <p class="hint">
       A plain Python file. Each problem is one function: its <strong>docstring is the
       problem statement students see</strong>, its body is your solution, which students
@@ -253,11 +300,14 @@
       <button class="ghost" id="dl" style="margin-top:11px">Download this template</button>
     </details>
 
+    </div>
+    <div class="upload-action">
     <input type="file" id="file" accept=".py,text/x-python" hidden>
     <div class="drop" id="drop" tabindex="0" role="button"
          aria-label="Choose or drop a Python assignment file">
-      <div class="big" id="dropTitle">Drop a .py file here</div>
-      <div class="sm" id="dropSub">or click to choose one</div>
+      <span class="upload-symbol"><svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V3m-5 5 5-5 5 5M4 15v5a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5"/></svg></span>
+      <div class="big" id="dropTitle">Drop your Python file here</div>
+      <div class="sm" id="dropSub">Browse files · .py up to 2 MB</div>
     </div>
 
     <div id="picked" hidden style="margin-top:14px">
@@ -277,6 +327,7 @@
         Preparing writes test cases, checks they are strong enough to grade against,
         and splits each problem into steps. Expect a minute or two per problem.
       </span>
+    </div>
     </div>
   </div>
 
@@ -327,10 +378,10 @@
   </div>
 
   <div class="card" id="list">
-    <h2>Your assignments</h2>
+    <div class="section-heading"><span class="section-icon"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg></span><h2>Your assignments</h2></div>
     <p class="hint">Only problems marked ready are visible to students.
        Open the ready badge to see which ones did not make it, and why.</p>
-    <div id="listBody"></div>
+    <div id="listBody" class="table-scroll" tabindex="0" role="region" aria-label="Assignments and preparation status"></div>
   </div>
 </main>
 

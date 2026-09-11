@@ -7,7 +7,7 @@
 <title>Grades · MicroTutor</title>
 <!-- The literal is the value used before ui.js runs; Theme.set() then rewrites
      it from the --bg token so it follows the chosen theme. -->
-<meta name="theme-color" content="#0b1120">
+<meta name="theme-color" content="#0c1220">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -24,19 +24,19 @@
 
   .pickrow{display:flex; gap:var(--s3); align-items:flex-end; flex-wrap:wrap}
   .pickrow .field{margin:0; flex:1; min-width:240px; max-width:420px}
-  .pickrow .tally{font-size:12.5px; color:var(--text-subtle); padding-bottom:11px;
+  .pickrow .tally{font-size:.8125rem; color:var(--text-subtle); padding-bottom:11px;
                   font-variant-numeric:tabular-nums}
 
   /* Score and fraction on one line, the breakdown under it. The fraction is the
      grade; the percentage is a convenience, so it is the quieter of the two. */
   .grade{display:flex; align-items:baseline; gap:8px}
-  .grade .frac{font-weight:600; color:var(--text); font-size:14px}
+  .grade .frac{font-weight:600; color:var(--text); font-size:.9375rem}
   .grade .pct{font-size:12px; color:var(--text-subtle)}
-  .split{font-size:11.5px; color:var(--text-subtle); margin-top:3px}
+  .split{font-size:.75rem; color:var(--text-subtle); margin-top:3px}
   .split b{font-weight:600; color:var(--text-muted)}
 
   td.colName{color:var(--text); font-weight:500}
-  td.colMail{font-size:12.5px; overflow-wrap:anywhere}
+  td.colMail{font-size:.8125rem; overflow-wrap:anywhere}
   th.colDl, td.colDl{text-align:right}
   td.colDl button{min-height:0; padding:5px 11px; font-size:12px;
                   font-family:var(--font-sans)}
@@ -46,17 +46,34 @@
        and the transcript header carries the address anyway. */
     th.colMail, td.colMail{display:none}
   }
+
+  .pickrow{margin-top:var(--s5); gap:var(--s6)}
+  .pickrow .field{max-width:560px; min-width:0; flex-basis:280px}
+  .pickrow .tally{font-size:.875rem}
+  .grade .frac{font-size:1rem; font-weight:600}
+  .grade .pct{font-size:.8125rem; color:var(--accent-ink)}
+  .split{font-size:.75rem; line-height:1.65}
+  td.colName{font-size:.9375rem}
+  td.colMail{font-size:.875rem}
+  td.colDl button{min-height:36px; font-size:.8125rem}
+  .grading-note{font-size:.875rem; line-height:1.6; color:var(--text-muted);
+    padding:var(--s3) var(--s4); background:var(--surface-raised); border-left:3px solid var(--accent-line);
+    margin:var(--s5) 0 var(--s6)}
+  .table-scroll table{min-width:800px}
+  @media (max-width:760px){.table-scroll table{min-width:620px}}
+
 </style>
 </head>
 <body>
 <main class="page">
-  <p class="eyebrow">Instructor</p>
-  <h1>Grades</h1>
-  <p class="sub">One row per student. A step counts only when their own code
-    passed, so a revealed answer scores the same as one never attempted.</p>
+  <div class="page-heading">
+    <p class="eyebrow">Instructor portal</p>
+    <h1>Grades &amp; progress</h1>
+    <p class="sub">Review student progress and the work behind each grade.</p>
+  </div>
 
   <div class="card">
-    <h2>Assignment</h2>
+    <h2>Choose an assignment</h2>
     <div class="pickrow">
       <div class="field">
         <label for="pick">Choose an assignment</label>
@@ -67,13 +84,14 @@
   </div>
 
   <div class="card">
-    <h2>Class</h2>
+    <h2>Student results</h2>
     <p class="hint">Download a student's transcript to see the work behind their
       grade: their planning chat, the diagram they uploaded, both graphs, and
       every submission with its verdict.</p>
+    <p class="grading-note">Only steps passed with the student’s own code earn credit. Revealed answers and unattempted steps do not count.</p>
     <!-- Live: the table is replaced when the picker changes, and an instructor
          using a screen reader gets no other signal that it did. -->
-    <div id="body" role="status" aria-live="polite"></div>
+    <div class="table-scroll" tabindex="0" role="region" aria-label="Student grades"><div id="body" role="status" aria-live="polite"></div></div>
   </div>
 </main>
 

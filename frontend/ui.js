@@ -1,5 +1,5 @@
 /* ============================================================
-   MicroTutor shared UI behaviour: session + floating header
+   MicroTutor shared UI behaviour: session + app header
    ------------------------------------------------------------
    Sign-in is username (PSU email) + password, and the thing that
    proves it is an HttpOnly cookie this file cannot read. What
@@ -62,6 +62,7 @@ const Theme = {
     const v = t === "light" ? "light" : "dark";
     try { localStorage.setItem(this.key, v); } catch {}
     document.documentElement.dataset.theme = v;
+    syncThemeControls(v);
     // Keep the browser's own chrome (the mobile address bar) on the same ground
     // as the page. Read from the token so --bg stays the single source of the
     // page's colour; the literal in each page's <meta> is only the value used
@@ -72,6 +73,40 @@ const Theme = {
     if (m && bg) m.setAttribute("content", bg);
   },
 };
+/* Theme controls only change this browser's visual preference. */
+function syncThemeControls(theme){
+  document.querySelectorAll('[data-theme-toggle]').forEach(button => {
+    const label = `Switch to ${theme === "dark" ? "light" : "dark"} mode`;
+    button.setAttribute("aria-label", label);
+    button.title = label;
+  });
+  document.querySelectorAll('#mtsTheme [data-t]').forEach(button => {
+    const selected = button.dataset.t === theme;
+    button.classList.toggle("on", selected);
+    button.setAttribute("aria-pressed", String(selected));
+  });
+}
+function themeToggle(){
+  return `<button class="theme-toggle" type="button" data-theme-toggle
+      aria-label="Switch color theme">
+    <svg class="sun-icon" width="18" height="18" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/>
+    </svg>
+    <svg class="moon-icon" width="18" height="18" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M20.7 13.2A9 9 0 0 1 10.8 3.3a9 9 0 1 0 9.9 9.9Z"/>
+    </svg>
+  </button>`;
+}
+document.querySelectorAll('[data-theme-control]').forEach(host => {
+  host.innerHTML = themeToggle();
+});
+document.addEventListener("click", event => {
+  if (event.target.closest('[data-theme-toggle]')) {
+    Theme.set(Theme.get() === "dark" ? "light" : "dark");
+  }
+});
 Theme.set(Theme.get());
 
 const Session = {
@@ -212,7 +247,7 @@ const initials = n => (n || "?").trim().split(/\s+/).slice(0, 2)
 const esc = s => String(s == null ? "" : s)
   .replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
-/* Floating glass header: navigation left, wordmark centre, account right.
+/* Shared app header: brand and portal, navigation, appearance and account.
 
    ONE header for every authenticated page. `variant` ("student" | "instructor")
    decides which nav items render and defaults to the signed-in role, `active`
@@ -224,6 +259,7 @@ const esc = s => String(s == null ? "" : s)
 // The options the page last mounted with, so the header can be redrawn once an
 // async session check fills in an account the first paint did not have.
 let _headerOpts = null;
+let _headerEvents = null;
 
 function remountHeader(){
   if (_headerOpts) mountHeader(_headerOpts);
@@ -231,6 +267,10 @@ function remountHeader(){
 
 function mountHeader({active = "", wide = false, variant = "", crumbs = null} = {}){
   _headerOpts = {active, wide, variant, crumbs};
+  // Session revalidation can redraw the header. Retire its old listeners.
+  if (_headerEvents) _headerEvents.abort();
+  _headerEvents = new AbortController();
+  const {signal} = _headerEvents;
   const s = Session.get();
   // Mounting twice would leave two headers stacked, and the second one's
   // account chip floating loose over the page - exactly the "second, faded
@@ -267,28 +307,19 @@ function mountHeader({active = "", wide = false, variant = "", crumbs = null} = 
     <path d="M9.5 2.5h5M10 2.5v6.7L4.8 18.6A1.8 1.8 0 0 0 6.4 21.5h11.2a1.8 1.8 0 0 0 1.6-2.9L14 9.2V2.5"/>
     <path d="M7.2 14.5h9.6"/></svg>`;
 
-  // "Practice" is gone. It was a single-item nav pointing at the page the
-  // student was already on, so it navigated nowhere and cost the centre of the
-  // bar. Home covers it. An instructor keeps one extra destination, which sits
-  // on the LEFT beside Home rather than in the middle - the middle is the mark.
+  // Preserve each portal's destinations and the instructor's student-view switch.
   const nav = [`<a class="hbtn ${active === "Home" || !active ? "on" : ""}"
-      id="homeBtn" href="${roleHome}"${active === "Home" || !active
+      id="homeBtn" aria-label="Home" title="Home" href="${roleHome}"${active === "Home" || !active
         ? ' aria-current="page"' : ""}>${homeIcon}<span class="htext">Home</span></a>`];
   if (role === "instructor"){
     nav.push(`<a class="hbtn ${active === "Assignments" ? "on" : ""}"
-      href="teacher.html#list"${active === "Assignments" ? ' aria-current="page"' : ""}
+      aria-label="Assignments" title="Assignments" href="teacher.html#list"${active === "Assignments" ? ' aria-current="page"' : ""}
       >${listIcon}<span class="htext">Assignments</span></a>`);
     nav.push(`<a class="hbtn ${active === "Grades" ? "on" : ""}"
-      href="grades.html"${active === "Grades" ? ' aria-current="page"' : ""}
+      aria-label="Grades" title="Grades" href="grades.html"${active === "Grades" ? ' aria-current="page"' : ""}
       >${gradeIcon}<span class="htext">Grades</span></a>`);
   }
-  // The Playground lives in the profile MENU, not the nav bar. Four labelled
-  // destinations plus the view-as toggle overflow the left track at every
-  // window width the header supports (the track is capped near 490px and the
-  // five buttons want ~615px), and .hnav clips - which is what chopped the
-  // view-as label to a stray glyph. It is also the right home for it: a
-  // pipeline troubleshooter is not somewhere an instructor goes daily, and the
-  // menu is already where the other system-level items live.
+  // The pipeline playground remains in the account menu with system tools.
 
   // An instructor may work through the student side exactly as a student does,
   // and this is the only control that switches between the two. It stores no
@@ -311,12 +342,17 @@ function mountHeader({active = "", wide = false, variant = "", crumbs = null} = 
   const hdr = document.createElement("header");
   hdr.className = "hdr" + (wide ? " wide" : "");
   hdr.innerHTML = `
+    <div class="brand">
+      <a class="wordmark" href="${roleHome}" aria-label="MicroTutor home">
+        <span class="dot" aria-hidden="true"></span>MicroTutor</a>
+      <span class="portal-label">${role === "instructor" ? "Instructor" : "Student"}<br>portal</span>
+    </div>
     <nav class="hnav" aria-label="Main">${nav.join("")}
       <span class="crumbs" id="hcrumbs"></span></nav>
-    <a class="wordmark" href="${roleHome}" aria-label="MicroTutor home">
-      <span class="dot" aria-hidden="true"></span>MicroTutor</a>
-    <div class="account hacct" id="acct">
-      <button class="who" id="whoBtn" aria-haspopup="true" aria-expanded="false">
+    <div class="hacct">
+      ${themeToggle()}
+      <div class="account" id="acct">
+      <button class="who" id="whoBtn" aria-label="Account menu" aria-haspopup="menu" aria-controls="whoMenu" aria-expanded="false">
         <span class="avatar">${esc(initials(s && s.name))}</span>
         <span class="nm">${esc(s ? s.name : "guest")}</span>
         <span class="caret" aria-hidden="true">&#9662;</span>
@@ -328,8 +364,20 @@ function mountHeader({active = "", wide = false, variant = "", crumbs = null} = 
         <button class="mi" id="miSettings" role="menuitem">Settings</button>
         <button class="mi mi-danger" id="miLogout" role="menuitem">Log out</button>
       </div>
+      </div>
     </div>`;
   document.body.prepend(hdr);
+  const main = document.querySelector("main");
+  if (main && !document.querySelector(".skip-link")) {
+    if (!main.id) main.id = "mainContent";
+    main.tabIndex = -1;
+    const skip = document.createElement("a");
+    skip.className = "skip-link";
+    skip.href = `#${main.id}`;
+    skip.textContent = "Skip to content";
+    document.body.prepend(skip);
+  }
+  syncThemeControls(Theme.get());
 
   // ---- profile menu -------------------------------------------------------
   const acct = hdr.querySelector("#acct");
@@ -347,8 +395,32 @@ function mountHeader({active = "", wide = false, variant = "", crumbs = null} = 
   });
   document.addEventListener("click", e => {
     if (!acct.contains(e.target)) closeMenu();
-  });
-  addEventListener("keydown", e => { if (e.key === "Escape") closeMenu(); });
+  }, {signal});
+  addEventListener("keydown", e => {
+    if (e.key === "Escape" && !whoMenu.hidden) {
+      closeMenu(); whoBtn.focus();
+    }
+  }, {signal});
+  acct.addEventListener("focusout", () => {
+    queueMicrotask(() => {
+      if (!acct.contains(document.activeElement)) closeMenu();
+    });
+  }, {signal});
+  acct.addEventListener("keydown", e => {
+    if (e.key === "Escape" && !whoMenu.hidden) {
+      closeMenu(); whoBtn.focus(); e.preventDefault();
+    }
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      whoMenu.hidden = false;
+      whoBtn.setAttribute("aria-expanded", "true");
+      const items = [...whoMenu.querySelectorAll('[role="menuitem"]')];
+      const index = items.indexOf(document.activeElement);
+      const next = e.key === "ArrowDown" ? (index + 1) % items.length
+        : (index <= 0 ? items.length - 1 : index - 1);
+      items[next].focus();
+    }
+  }, {signal});
 
   hdr.querySelector("#miLogout").onclick = async () => {
     // Await it: clearing only sessionStorage would leave the cookie valid, so
@@ -372,7 +444,7 @@ function mountHeader({active = "", wide = false, variant = "", crumbs = null} = 
       hdr.classList.toggle("condensed", scrollY > 24);
       ticking = false;
     });
-  }, {passive: true});
+  }, {passive: true, signal});
 
   return hdr;
 }
@@ -391,35 +463,50 @@ function openSettings(s){
       <div class="modalCard" role="dialog" aria-modal="true" aria-labelledby="mtsTitle">
         <div class="modalHead">
           <h2 id="mtsTitle">Settings</h2>
-          <button class="modalX" id="mtsX" aria-label="Close">&times;</button>
+          <button class="modalX" id="mtsX" aria-label="Close settings">&times;</button>
         </div>
         <div class="modalBody" id="mtsBody"></div>
       </div>`;
     document.body.appendChild(ov);
-    ov.addEventListener("click", e => { if (e.target === ov) ov.hidden = true; });
-    ov.querySelector("#mtsX").onclick = () => { ov.hidden = true; };
-    addEventListener("keydown", e => { if (e.key === "Escape") ov.hidden = true; });
   }
+  const returnFocus = document.getElementById("whoBtn") || document.activeElement;
+  const previousOverflow = document.body.style.overflow;
+  const close = () => {
+    ov.hidden = true;
+    document.body.style.overflow = previousOverflow;
+    if (returnFocus && returnFocus.isConnected) returnFocus.focus();
+  };
+  ov.onclick = e => { if (e.target === ov) close(); };
+  ov.querySelector("#mtsX").onclick = close;
+  ov.onkeydown = e => {
+    if (e.key === "Escape") { e.preventDefault(); close(); }
+    if (e.key !== "Tab") return;
+    const controls = [...ov.querySelectorAll('button:not(:disabled)')];
+    const first = controls[0], last = controls[controls.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault(); last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault(); first.focus();
+    }
+  };
   ov.querySelector("#mtsBody").innerHTML = `
     <div class="setRow"><span>Account</span><b>${esc(s ? s.name : "guest")}</b></div>
-    <div class="setRow"><span>Role</span><b>${esc(s ? s.role : "-")}</b></div>
-    <div class="setRow"><span>Theme</span>
-      <span class="seg" id="mtsTheme">
+    <div class="setRow"><span>Portal</span><b>${s && s.role === "teacher" ? "Instructor" : "Student"}</b></div>
+    <div class="setRow"><span>Appearance</span>
+      <span class="seg" id="mtsTheme" role="group" aria-label="Color theme">
         <button type="button" data-t="dark">Dark</button>
         <button type="button" data-t="light">Light</button>
       </span>
     </div>
-    <p class="setNote">Your role is set by the course staff, not here. Ask your
-      instructor if it looks wrong.</p>`;
-
-  const seg = ov.querySelector("#mtsTheme");
-  const paintSeg = () => seg.querySelectorAll("button").forEach(b =>
-    b.classList.toggle("on", b.dataset.t === Theme.get()));
-  seg.querySelectorAll("button").forEach(b =>
-    b.onclick = () => { Theme.set(b.dataset.t); paintSeg(); });
-  paintSeg();
-
+    <p class="setNote">Your appearance preference is saved on this browser.
+      Contact your instructor if your account role needs to change.</p>`;
+  ov.querySelectorAll("[data-t]").forEach(b => {
+    b.onclick = () => Theme.set(b.dataset.t);
+  });
+  syncThemeControls(Theme.get());
   ov.hidden = false;
+  document.body.style.overflow = "hidden";
+  ov.querySelector("#mtsX").focus();
 }
 
 /* Breadcrumb trail in the header, e.g. Home / Practice Set / Count Vowels.

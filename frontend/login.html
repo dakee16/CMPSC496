@@ -7,7 +7,7 @@
 <title>Sign in · MicroTutor</title>
 <!-- The literal is the value used before ui.js runs; Theme.set() then rewrites
      it from the --bg token so it follows the chosen theme. -->
-<meta name="theme-color" content="#0b1120">
+<meta name="theme-color" content="#0c1220">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -18,44 +18,59 @@
 <link rel="stylesheet" href="tokens.css">
 <link rel="stylesheet" href="ui.css">
 <style>
-  /* Everything here is layout. The field, button, note and error styles all
-     come from ui.css, so this card cannot drift from the rest of the app. */
-  body{display:grid; place-items:center; padding:var(--s6)}
-  .gate{width:min(440px,100%)}
-
-  /* The wordmark is the SAME .wordmark element the floating header renders -
-     one implementation, so the first screen and every screen after it cannot
-     drift apart. This page only positions it. */
-  .markrow{display:flex; margin-bottom:var(--s6)}
-
-  /* One rhythm for the whole card: 24 between blocks, 16 between fields,
-     8 inside a field. The card ran tall with uneven gaps before. */
-  .gate .card{padding:var(--s6); margin:0}
-  .gate h1{font-size:26px; margin-bottom:var(--s2)}
-  .gate .sub{margin-bottom:var(--s6)}
+  body{display:grid; place-items:center; padding:var(--s8); min-height:100dvh}
+  .gate{width:min(1080px,100%)}
+  .markrow{display:flex; align-items:center; justify-content:space-between; margin-bottom:var(--s6)}
+  .auth-layout{display:grid; grid-template-columns:1fr 1fr; border:1px solid var(--border);
+    border-radius:20px; overflow:hidden; box-shadow:var(--shadow-2); background:var(--surface)}
+  .auth-intro{display:flex; flex-direction:column; padding:var(--s12);
+    background:var(--brand-bg); color:var(--brand-text)}
+  .auth-intro .eyebrow{color:var(--brand-accent); margin-bottom:var(--s12)}
+  .auth-intro h2{font-size:clamp(2rem,3.8vw,3rem); line-height:1.12; letter-spacing:-.045em;
+    max-width:10ch; margin:0 0 var(--s6); font-weight:500}
+  .auth-intro p{font-size:1rem; line-height:1.75; color:var(--brand-muted); margin:0; max-width:31ch}
+  .auth-method{list-style:none; padding:var(--s8) 0 0; margin:var(--s8) 0 0;
+    border-top:1px solid var(--brand-line); display:grid; gap:var(--s5)}
+  .auth-method li{display:flex; gap:var(--s4); align-items:baseline; font-size:.9375rem}
+  .auth-method .num{font:500 .75rem var(--font-mono); color:var(--brand-accent)}
+  .auth-method strong{font-weight:500}
+  .auth-caption{margin-top:auto; padding-top:var(--s12); color:var(--brand-muted); font-size:.8125rem}
+  .gate .card{padding:var(--s12); margin:0; border:0; border-radius:0; box-shadow:none}
+  .gate h1{font-size:1.75rem; margin-bottom:var(--s2)}
+  .gate .sub{font-size:.9375rem; margin-bottom:var(--s6)}
   .gate .field + .field{margin-top:var(--s4)}
-  /* First and last sit on one line: they are one fact, and stacking them makes
-     a four-field form out of a two-field one. */
-  .names{display:grid; grid-template-columns:1fr 1fr; gap:var(--s3)}
-  /* The card's rhythm comes from `.field + .field`, so the inner fields must
-     not also carry ui.css's own bottom margin - two rules stacking is what put
-     a wider gap under this row than under every other field. */
+  .names{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:var(--s3)}
   .names .field{margin-bottom:0}
   .names .field + .field{margin-top:0}
   .names + .field{margin-top:var(--s4)}
-  @media (max-width:380px){ .names{grid-template-columns:1fr} }
-  #go{width:100%; margin-top:var(--s6)}
-
-  .swap{margin-top:var(--s6); padding-top:var(--s4);
-        border-top:1px solid var(--glass-line);
-        font-size:12.5px; color:var(--text-muted); text-align:center}
-  .swap button{background:none; border:0; padding:0; font:inherit; cursor:pointer;
+  .gate input{min-height:48px}
+  #go{width:100%; min-height:48px; margin-top:var(--s4)}
+  #err:empty{display:none}
+  .swap{margin:var(--s6) 0 0; padding-top:var(--s5); border-top:1px solid var(--border);
+    font-size:.875rem; color:var(--text-muted); text-align:center}
+  .swap button{background:none; border:0; padding:4px; font:inherit; cursor:pointer;
     color:var(--accent-ink); font-weight:600; box-shadow:none; min-height:0}
-  .swap button:hover{text-decoration:underline; transform:none; box-shadow:none;
-    background:none}
-
-  .gate .note{margin-top:var(--s6)}
+  .swap button:hover{background:var(--accent-tint); text-decoration:underline; box-shadow:none}
+  .gate .note{margin-top:var(--s6); background:var(--surface-raised); border-color:var(--border);
+    font-size:.8125rem; line-height:1.65}
   form{margin:0}
+  @media (max-width:850px){
+    .auth-intro,.gate .card{padding:var(--s8)}
+    .auth-intro h2{font-size:2.25rem}
+  }
+  @media (max-width:680px){
+    body{padding:var(--s5) var(--s4); align-items:start}
+    .gate{max-width:460px}
+    .markrow{margin-bottom:var(--s5)}
+    .auth-layout{grid-template-columns:1fr}
+    .auth-intro{padding:var(--s6)}
+    .auth-intro .eyebrow{margin-bottom:var(--s3)}
+    .auth-intro h2{font-size:1.75rem; max-width:none; margin-bottom:var(--s3)}
+    .auth-intro p{max-width:none; font-size:.9375rem}
+    .auth-method,.auth-caption{display:none}
+    .gate .card{padding:var(--s6)}
+  }
+  @media (max-width:380px){.names{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -63,9 +78,22 @@
 <main class="gate">
   <div class="markrow">
     <span class="wordmark"><span class="dot" aria-hidden="true"></span>MicroTutor</span>
+    <span data-theme-control></span>
   </div>
 
-  <div class="card">
+  <div class="auth-layout">
+    <aside class="auth-intro" aria-label="About MicroTutor">
+      <p class="eyebrow">CMPSC 496 · MicroTutor</p>
+      <h2>Programming, one step at a time.</h2>
+      <p>Think through your approach, write your code, and learn from feedback along the way.</p>
+      <ol class="auth-method">
+        <li><span class="num">01</span><strong>Plan your approach</strong></li>
+        <li><span class="num">02</span><strong>Build it step by step</strong></li>
+        <li><span class="num">03</span><strong>Test your understanding</strong></li>
+      </ol>
+      <div class="auth-caption">A workspace for students and instructors.</div>
+    </aside>
+    <div class="card">
     <h1 id="title">Sign in</h1>
     <p class="sub" id="sub">Step by step programming practice, graded by running
       your code.</p>
@@ -124,9 +152,9 @@
     </p>
 
     <div class="note">
-      <strong>Instructors:</strong> sign in with the same form. Staff accounts
-      are marked as staff by us, so there is nothing to choose here - the site
-      sends you to the right place.
+      <strong>Students &amp; instructors</strong><br>
+      Sign in with your Penn State email. Your account opens the right portal automatically.
+    </div>
     </div>
   </div>
 </main>

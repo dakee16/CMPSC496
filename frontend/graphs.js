@@ -26,11 +26,11 @@ const G_MINW = 150, G_MAXW = 280; // node width bounds
 // the same dark greys on the light theme - edge labels came out at 3.07:1 and
 // the arrows were nearly invisible. Tokens flip with the theme for free.
 const G_STYLE = {
-  start:  {fill: "var(--glass-bg-strong)", stroke: "var(--accent-hover)", text: "var(--accent-ink)"},
-  end:    {fill: "var(--glass-bg-strong)", stroke: "var(--accent-hover)", text: "var(--accent-ink)"},
+  start:  {fill: "var(--glass-bg-strong)", stroke: "var(--accent-ink)", text: "var(--accent-ink)"},
+  end:    {fill: "var(--glass-bg-strong)", stroke: "var(--accent-ink)", text: "var(--accent-ink)"},
   step:   {fill: "var(--surface)", stroke: "var(--graph-node-line)", text: "var(--text-subtle)"},
   branch: {fill: "var(--surface)", stroke: "var(--warning)",         text: "var(--warning)"},
-  loop:   {fill: "var(--surface)", stroke: "var(--accent-hover)",    text: "var(--accent-ink)"},
+  loop:   {fill: "var(--surface)", stroke: "var(--accent-ink)",    text: "var(--accent-ink)"},
   return: {fill: "var(--surface)", stroke: "var(--success)",         text: "var(--success)"}
 };
 

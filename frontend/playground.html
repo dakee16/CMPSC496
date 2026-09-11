@@ -7,7 +7,7 @@
 <title>Playground · MicroTutor</title>
 <!-- The literal is the value used before ui.js runs; Theme.set() then rewrites
      it from the --bg token so it follows the chosen theme. -->
-<meta name="theme-color" content="#0b1120">
+<meta name="theme-color" content="#0c1220">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -33,7 +33,7 @@
   /* ---- problem list (left) ---- */
   .plist{position:sticky; top:96px; max-height:calc(100vh - 128px);
          display:flex; flex-direction:column; padding:14px}
-  .plist input[type=search]{margin-bottom:10px; font-size:13px}
+  .plist input[type=search]{margin-bottom:10px; font-size:.875rem}
   .pitems{overflow-y:auto; display:flex; flex-direction:column; gap:4px;
           margin:0 -4px; padding:0 4px}
   /* flex:none on every child. A flex column whose content overflows shrinks
@@ -48,7 +48,7 @@
      problems in one pile the header is off-screen almost immediately. */
   .pgroup{position:sticky; top:0; z-index:var(--z-base);
           display:flex; align-items:baseline; gap:var(--s2);
-          font-size:11px; font-weight:600; letter-spacing:.1em;
+          font-size:.75rem; font-weight:600; letter-spacing:.1em;
           text-transform:uppercase; color:var(--text-subtle);
           margin:12px 0 5px; padding:5px 4px;
           background:var(--glass-bg-strong);
@@ -66,7 +66,7 @@
   .prow:hover:not(:disabled){background:var(--accent-tint); transform:none;
         box-shadow:none; border-color:transparent}
   .prow.on{background:var(--accent-tint); border-color:var(--accent-line)}
-  .prow .nm{display:flex; align-items:center; gap:7px; font-size:13.5px;
+  .prow .nm{display:flex; align-items:center; gap:7px; font-size:.875rem;
             font-weight:500; font-family:var(--font-sans)}
   .prow .nm .dot{width:7px; height:7px; border-radius:50%; flex:none}
   .dot-ok{background:var(--success)}
@@ -74,26 +74,26 @@
   .dot-stale{background:var(--warning)}
   .dot-none{background:var(--text-subtle); opacity:.55}
   .prow .meta{display:flex; gap:5px; flex-wrap:wrap; margin:5px 0 0 14px}
-  .tag{font-size:10px; font-weight:600; letter-spacing:.04em; padding:2px 7px;
+  .tag{font-size:.75rem; font-weight:600; letter-spacing:.04em; padding:2px 7px;
        border-radius:var(--r-pill); text-transform:uppercase; white-space:nowrap}
   .tag.ok{background:var(--success-bg); color:var(--success)}
   .tag.bad{background:var(--danger-bg); color:var(--danger)}
   .tag.warn{background:var(--warning-bg); color:var(--warning)}
   .tag.dim{background:var(--accent-tint); color:var(--text-subtle)}
   .tag.acc{background:var(--accent-tint); color:var(--accent-ink)}
-  .plegend{margin:10px 2px 0; font-size:11.5px; color:var(--text-subtle);
+  .plegend{margin:10px 2px 0; font-size:.75rem; color:var(--text-subtle);
            line-height:1.6; border-top:1px solid var(--glass-line); padding-top:9px}
 
   /* ---- selected problem ---- */
   .probHead{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:4px}
   .probHead h2{margin:0; font-size:19px}
-  .probHead code{font-size:11.5px}
+  .probHead code{font-size:.75rem}
   .probCols{display:grid; grid-template-columns:minmax(0,5fr) minmax(0,7fr);
             gap:16px; margin-top:14px}
   @media (max-width:900px){ .probCols{grid-template-columns:1fr} }
-  .probCols h3{font-size:11px; font-weight:600; letter-spacing:.1em;
+  .probCols h3{font-size:.75rem; font-weight:600; letter-spacing:.1em;
                text-transform:uppercase; color:var(--text-subtle); margin:0 0 7px}
-  .pdesc{font-size:13px; line-height:1.65; color:var(--text-muted);
+  .pdesc{font-size:.875rem; line-height:1.65; color:var(--text-muted);
          white-space:pre-wrap; max-height:260px; overflow-y:auto;
          padding-right:6px}
   .pdesc::-webkit-scrollbar{width:8px}
@@ -110,15 +110,15 @@
   .paramsHead h2{margin:0; font-size:15px; flex:1}
   .paramGroups{display:grid; grid-template-columns:repeat(auto-fit,minmax(290px,1fr));
                gap:8px 26px; margin-top:12px}
-  .pgTitle{grid-column:1 / -1; font-size:11px; font-weight:600; letter-spacing:.1em;
+  .pgTitle{grid-column:1 / -1; font-size:.75rem; font-weight:600; letter-spacing:.1em;
            text-transform:uppercase; color:var(--accent-ink); margin:8px 0 0;
            padding-top:10px; border-top:1px solid var(--glass-line)}
   .pgTitle:first-child{margin-top:0; padding-top:0; border-top:0}
   .knob{padding:6px 0 2px}
   .knob .krow{display:flex; align-items:baseline; gap:8px}
-  .knob label{margin:0; font-size:12.5px; color:var(--text-muted); flex:1;
+  .knob label{margin:0; font-size:.8125rem; color:var(--text-muted); flex:1;
               cursor:help}
-  .knob .kval{font-family:var(--font-mono); font-size:12.5px; font-weight:600;
+  .knob .kval{font-family:var(--font-mono); font-size:.8125rem; font-weight:600;
               color:var(--text); min-width:44px; text-align:right;
               font-variant-numeric:tabular-nums}
   .knob.changed .kval{color:var(--accent-ink)}
@@ -140,17 +140,17 @@
              border-radius:var(--r-md); padding:14px 16px; margin-bottom:10px;
              box-shadow:var(--shadow-1),var(--glass-lift)}
   .stageCard>header{display:flex; align-items:flex-start; gap:10px}
-  .stageCard h3{margin:0; font-size:13.5px; font-weight:600; flex:1;
+  .stageCard h3{margin:0; font-size:.875rem; font-weight:600; flex:1;
                 color:var(--text); line-height:1.5}
   .sIcon{flex:none; width:22px; height:22px; border-radius:50%; margin-top:1px;
-         display:grid; place-items:center; font-size:11px; font-weight:700}
+         display:grid; place-items:center; font-size:.75rem; font-weight:700}
   .sIcon.run{border:2px solid var(--accent-line); border-top-color:var(--accent);
              animation:spin .8s linear infinite}
   @keyframes spin{to{transform:rotate(360deg)}}
   .sIcon.ok{background:var(--success-bg); color:var(--success)}
   .sIcon.bad{background:var(--danger-bg); color:var(--danger)}
   @media (prefers-reduced-motion:reduce){ .sIcon.run{animation:none} }
-  .sBody{margin:10px 0 0 32px; display:grid; gap:8px; font-size:13px;
+  .sBody{margin:10px 0 0 32px; display:grid; gap:8px; font-size:.875rem;
          color:var(--text-muted); min-width:0}
   .sBody:empty{display:none}
   .sline{line-height:1.55}
@@ -162,7 +162,7 @@
   /* console for captured pipeline prints (decomposition retries live here) */
   .konsole{background:var(--code-bg-deep); border:1px solid var(--border);
            border-radius:var(--r-sm); padding:10px 12px; margin:0;
-           font-family:var(--font-mono); font-size:11.5px; line-height:1.6;
+           font-family:var(--font-mono); font-size:.75rem; line-height:1.6;
            color:var(--code-dim); max-height:300px; overflow:auto;
            white-space:pre-wrap; word-break:break-word}
   .konsole::-webkit-scrollbar{width:8px}
@@ -170,7 +170,7 @@
 
   /* oracle test table */
   .otable{width:100%; border-collapse:collapse; font-family:var(--font-mono);
-          font-size:11.5px}
+          font-size:.75rem}
   .otable th{font-family:var(--font-sans)}
   .otable td{padding:6px; word-break:break-all}
   .otableWrap{max-height:280px; overflow:auto; border:1px solid var(--glass-line);
@@ -187,14 +187,14 @@
   .mutlist{display:grid; gap:4px}
   .mut{border:1px solid var(--glass-line); border-radius:var(--r-sm)}
   .mut summary{display:flex; align-items:center; gap:9px; padding:7px 10px;
-               cursor:pointer; list-style:none; font-size:12.5px}
+               cursor:pointer; list-style:none; font-size:.8125rem}
   .mut summary::-webkit-details-marker{display:none}
-  .mut .mlabel{font-family:var(--font-mono); font-size:11.5px; flex:1;
+  .mut .mlabel{font-family:var(--font-mono); font-size:.75rem; flex:1;
                color:var(--text-muted); word-break:break-all}
   .mut .mlog{margin:0 10px 9px 31px; display:grid; gap:4px; font-size:12px;
              color:var(--text-subtle); line-height:1.5}
-  .mut .mlog code{font-size:11px; word-break:break-all}
-  .mchip{flex:none; font-size:10px; font-weight:700; letter-spacing:.05em;
+  .mut .mlog code{font-size:.75rem; word-break:break-all}
+  .mchip{flex:none; font-size:.75rem; font-weight:700; letter-spacing:.05em;
          text-transform:uppercase; padding:2px 8px; border-radius:var(--r-pill)}
   .mchip.pend{background:var(--accent-tint); color:var(--text-subtle)}
   .mchip.killed{background:var(--success-bg); color:var(--success)}
@@ -208,7 +208,7 @@
   .probe{margin-top:5px; padding:7px 10px; border-radius:7px;
     background:var(--warning-bg); border:1px solid var(--warning-line, transparent);
     font-size:12px; line-height:1.55}
-  .probe b{color:var(--warning); font-family:var(--font-mono); font-size:11px;
+  .probe b{color:var(--warning); font-family:var(--font-mono); font-size:.75rem;
     letter-spacing:.05em}
   .probe .pnum{font-variant-numeric:tabular-nums; color:var(--text-subtle)}
 
@@ -216,7 +216,7 @@
   /* align-items:flex-start, not center: the review copy runs to several lines
      and a centred title drifts into the middle of the paragraph. */
   .verdict{display:flex; align-items:flex-start; gap:12px; padding:12px 14px;
-           border-radius:var(--r-sm); font-size:13.5px; line-height:1.5}
+           border-radius:var(--r-sm); font-size:.875rem; line-height:1.5}
   .verdict b{font-family:var(--font-display); font-size:15px; letter-spacing:.02em;
              flex:none; white-space:nowrap}
   .verdict span b{font-family:inherit; font-size:inherit; white-space:normal}
@@ -230,14 +230,14 @@
                 border:1px solid var(--danger-line, var(--warning-line))}
   .chunkCard{border:1px solid var(--glass-line); border-radius:var(--r-sm);
              padding:10px 12px}
-  .chunkCard .cp{font-size:12.5px; color:var(--text); margin:0 0 8px; line-height:1.5}
+  .chunkCard .cp{font-size:.8125rem; color:var(--text); margin:0 0 8px; line-height:1.5}
   .chunkCard .cp .tag{margin-right:7px; vertical-align:1px}
   .chunkCard pre{margin:0; max-height:180px}
-  .necline{display:flex; align-items:center; gap:9px; font-size:12.5px}
+  .necline{display:flex; align-items:center; gap:9px; font-size:.8125rem}
 
   .blockedCard{background:var(--danger-bg); border:1px solid var(--danger-line);
                border-radius:var(--r-sm); padding:12px 14px; color:var(--danger);
-               font-size:13px; line-height:1.6; word-break:break-word}
+               font-size:.875rem; line-height:1.6; word-break:break-word}
   .blockedCard b{display:block; margin-bottom:3px}
 
   #rawLog{max-height:420px}
@@ -247,20 +247,64 @@
         background-size:400% 100%; animation:skelSweep 1.4s ease infinite}
   @keyframes skelSweep{from{background-position:100% 0} to{background-position:0 0}}
   @media (prefers-reduced-motion:reduce){ .skel{animation:none} }
+
+  .pgrid{grid-template-columns:300px minmax(0,1fr); gap:var(--s6)}
+  .plist{top:100px; padding:var(--s5); max-height:calc(100dvh - 124px); min-width:0}
+  .plist-title{font-size:1rem; margin:0 0 var(--s4)}
+  .plist input[type=search]{font-size:1rem}
+  .pgroup{border:0; border-radius:0; background:var(--surface); padding:10px 4px; line-height:1.6}
+  .prow{padding:12px; border-radius:var(--r-sm)}
+  .prow .nm{font-size:.9375rem; overflow-wrap:anywhere}
+  .prow .meta{gap:6px; margin-top:var(--s2)}
+  .prow.on{border-color:var(--accent-line); box-shadow:inset 3px 0 0 var(--accent)}
+  .tag,.mchip{font-size:.75rem; letter-spacing:0; text-transform:none}
+  .plegend{font-size:.8125rem; line-height:1.9}
+  .pdesc{font-size:1rem; max-height:320px}
+  .probCols h3,.pgTitle{font-size:.75rem}
+  .paramGroups{grid-template-columns:repeat(auto-fit,minmax(min(260px,100%),1fr)); gap:var(--s4) var(--s8)}
+  .knob label,.knob .kval{font-size:.875rem}
+  .knob input[type=range]{height:24px}
+  .stageCard{padding:var(--s5); margin-bottom:var(--s4)}
+  .stageCard h3{font-size:1rem}
+  .sBody{font-size:.9375rem; line-height:1.7}
+  .otable{font-size:.8125rem}
+  .otable th{position:sticky; top:0; background:var(--surface-raised)}
+  .konsole{font-size:.8125rem}
+  .verdict{flex-wrap:wrap; padding:var(--s4)}
+  .mut .mlabel,.mut .mlog code{font-size:.8125rem}
+  .mut summary{padding:12px; flex-wrap:wrap}
+  .chunkCard{padding:var(--s4)}
+  .chunkCard .cp{font-size:.9375rem}
+  #pEmpty{min-height:220px; display:grid; place-items:center; text-align:center;
+    border-style:dashed; background:var(--surface-raised)}
+  #pEmpty .hint{max-width:46ch; font-size:1rem}
+  @media (max-width:1000px){
+    .pgrid{grid-template-columns:minmax(0,1fr)}
+    .plist{position:relative; top:0; max-height:360px}
+  }
+  @media (max-width:720px){
+    .sBody{margin-left:0}
+    .paramsHead{flex-wrap:wrap}
+    .costNote{min-width:0; flex-basis:100%}
+  }
+
 </style>
 </head>
 <body>
 <main class="page wide">
-  <p class="eyebrow">Pipeline troubleshooter</p>
+  <div class="page-heading">
+  <p class="eyebrow">Instructor portal · Pipeline tools</p>
   <h1>Playground</h1>
   <p class="sub" style="max-width:74ch">Watch the real pipeline prepare a problem
     &mdash; oracle generation, mutation testing, decomposition, the necessity
     gate &mdash; event by event. Adjust any knob and rerun to see what changes.
     Every run makes real model calls and persists its verdict, exactly as an
     upload would.</p>
+  </div>
 
   <div class="pgrid">
     <aside class="card plist">
+      <h2 class="plist-title">Problems</h2>
       <label class="sr-only" for="pFilter">Filter problems</label>
       <input type="search" id="pFilter" placeholder="Filter problems&hellip;">
       <div class="pitems" id="pList" role="listbox" aria-label="Problems">
