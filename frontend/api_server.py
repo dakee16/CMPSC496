@@ -4,6 +4,8 @@ Place this file in your microprog_phase1/ folder and run:
     pip install fastapi uvicorn
     uvicorn api_server:app --port 8000 --reload
 """
+from datetime import datetime, timezone
+
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -192,6 +194,9 @@ class TutorChatRequest(BaseModel, extra="forbid"):
     slug: str
     messages: list[dict] = []
     chunk_prompt: str | None = None
+    # The plan the page has drawn from this chat. Sent so the tutor can put a
+    # release past the REAL gate before promising anything - see /tutor_chat.
+    plan: dict | None = None
     # Whether this student's design has been approved by /design_review. It only
     # selects the tutor's POSTURE (push back vs. help), so a forged `true` costs
     # nothing worse than a friendlier tutor - it can never reveal a solution,
@@ -379,9 +384,62 @@ def decompose_chunks_route(req: DecomposeRequest, request: Request):
         # work triggered by a student pressing Start. Preparation now happens
         # once at teacher-upload time (main/publish.py), and a problem that did
         # not survive it is never offered to a student in the first place.
+        # THE STEPS ARE HELD BACK until the design is accepted (the
+        # instructors' requirement). The count and each step's indent still
+        # travel, so the page can show how many there are and size itself;
+        # only the PROMPTS - which are the answer, split up - are withheld.
+        # /session_steps hands them over once the gate is passed.
+        if not _design_approved(claims["sub"], req.slug):
+            public = {**public, "steps_locked": True,
+                      "chunks": [{**c, "prompt": ""} for c in public["chunks"]]}
         return public          # session_id, decomposition_id, header, PUBLIC chunks
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=f"Decomposition unavailable: {e}")
+
+
+def _design_approved(student_id: str | None, slug: str) -> bool:
+    """Has this student had a design accepted for this problem?
+
+    The one fact the STEPS are gated on. Read from mt_designs rather than
+    trusted from the browser: the step prompts are a decomposition of the
+    answer, and "1. work out whether the stack is empty / 2. return it" read
+    before designing is the shape of the solution, handed over. A page that
+    merely hides them is a page whose network tab shows them."""
+    if not student_id:
+        return False
+    try:
+        rows = (get_supabase().table("mt_designs").select("approved")
+                .eq("student_id", student_id).eq("slug", slug)
+                .eq("approved", True).limit(1).execute().data)
+        return bool(rows)
+    except Exception:
+        # An unreachable archive must not hand out the steps.
+        return False
+
+
+@app.get("/session_steps/{session_id}")
+def session_steps(session_id: str, request: Request):
+    """The step prompts, once the design gate has been passed.
+
+    Called by the page the moment a design is approved. Re-checks the approval
+    here rather than believing the caller."""
+    from main.sessions import public_chunks, session_snapshot
+
+    claims = require_student(request)
+    snap = session_snapshot(session_id)
+    if snap is None:
+        raise HTTPException(status_code=404, detail={
+            "reason_code": "session_not_found", "message": "Unknown session."})
+    if snap.get("student_id") and snap["student_id"] != claims["sub"]:
+        raise HTTPException(status_code=403, detail={
+            "reason_code": "not_your_session",
+            "message": "That session belongs to someone else."})
+    if not _design_approved(claims["sub"], snap.get("slug", "")):
+        raise HTTPException(status_code=403, detail={
+            "reason_code": "design_not_approved",
+            "message": "Your design has not been accepted yet."})
+    return {"chunks": public_chunks(snap["chunks"]),
+            "total_chunks": len(snap["chunks"])}
 
 
 @app.post("/grade_chunk")
@@ -441,9 +499,11 @@ def grade_chunk_route(req: ChunkRequest, request: Request):
         # text instead would put a flat answer into the accepted prefix and break
         # the NEXT step's assembly, one chunk after the mistake.
         accept_code = align_submission(session, req.student_code)
-    elif result.verdict == "incorrect" and session["attempts"] + 1 >= MAX_ATTEMPTS:
-        # Second failure: reveal THIS chunk's reference, record its provenance,
-        # mark the session assisted, and move on.
+    elif (result.verdict == "incorrect" and MAX_ATTEMPTS is not None
+          and session["attempts"] + 1 >= MAX_ATTEMPTS):
+        # Only reachable when a limit is configured. MAX_ATTEMPTS is None by
+        # default (main/sessions.py): the reference is never revealed, and a
+        # student keeps their own attempt at every step.
         reveal_ref = session["chunks"][session["index"]].get("reference", "")
         accept_code, provenance = reveal_ref, "revealed_reference"
 
@@ -1817,18 +1877,33 @@ def get_solved(request: Request):
     #
     # It cannot inflate a grade. The grade sheet counts passing SUBMISSIONS
     # (main/grades.tally) and never reads either of these.
-    assisted = set()
+    assisted, opened, last_slug = set(), set(), None
     try:
-        for r in (sb.table("mt_sessions")
-                  .select("slug, solved_independently")
-                  .eq("student_id", claims["sub"])
-                  .not_.is_("completed_at", "null").execute().data or []):
-            (done if r.get("solved_independently") else assisted).add(r["slug"])
+        rows = (sb.table("mt_sessions")
+                .select("slug, solved_independently, completed_at, started_at")
+                .eq("student_id", claims["sub"])
+                .order("started_at", desc=True).execute().data or [])
+        # The most recently OPENED problem, for the "Continue where you left
+        # off" affordance on the assignment list. That used to come from a
+        # timestamp in localStorage; started_at has always been the same fact,
+        # recorded server-side.
+        last_slug = rows[0]["slug"] if rows else None
+        for r in rows:
+            opened.add(r["slug"])
+            if r.get("completed_at"):
+                (done if r.get("solved_independently") else assisted).add(r["slug"])
     except Exception as e:
         # A student's progress list must still render if the archive is
         # unreachable - it degrades to the independent solves it always showed.
         print(f"  ⚠️  /solved: could not read mt_sessions: {str(e)[:160]}")
-    return {"slugs": sorted(done), "assisted": sorted(assisted - done)}
+    # `opened` is what "In progress" now means, and it comes from HERE rather
+    # than from a note in localStorage. The old note was per-browser: it
+    # survived a server wipe (so a cleared account still showed work in
+    # progress), it did not follow a student to another machine, and it was
+    # invisible to the instructor. mt_sessions has recorded every problem
+    # opened since sign-in landed; nothing new is stored to make this work.
+    return {"slugs": sorted(done), "assisted": sorted(assisted - done),
+            "opened": sorted(opened - done - assisted), "last_slug": last_slug}
 
 
 @app.get("/history/{slug}")
@@ -1864,33 +1939,83 @@ def student_problem_history(slug: str, request: Request):
         print(f"  \u26a0\ufe0f  history unavailable for {slug}: {str(e)[:160]}")
         return empty
 
+    # WHERE THIS STUDENT'S HISTORY BEGINS. A restart writes a marker rather
+    # than deleting anything (see /problems/{slug}/restart), so everything
+    # before the newest marker is still archived for the instructor and simply
+    # not replayed to the student.
+    since = max((m.get("created_at") or "") for m in (h.get("messages") or [])
+                if m.get("phase") == "restart") if any(
+        m.get("phase") == "restart" for m in (h.get("messages") or [])) else ""
+
+    def _after(row):
+        return not since or (row.get("created_at") or "") > since
+
     # Snapshots, newest wins: save_graph appends a row every time the plan
     # changes, and what the student wants back is the last one they saw.
     latest = {}
     for g in h.get("graphs") or []:
-        if g.get("graph"):
+        if g.get("graph") and _after(g):
             latest[g.get("kind")] = g["graph"]
     plan, code = latest.get("plan"), latest.get("code")
 
     msgs = [{"role": m["role"], "content": m["content"], "at": m.get("created_at")}
             for m in (h.get("messages") or [])
-            if m.get("phase") == "tutor" and m.get("role") in ("user", "assistant")]
+            if m.get("phase") == "tutor" and m.get("role") in ("user", "assistant")
+            and _after(m)]
 
     solved = bool(sb.table("solved").select("problem_slug").eq(
         "student_id", claims["sub"]).eq("problem_slug", slug).execute().data)
 
     return {"slug": slug,
-            "found": bool(msgs or plan or code or h.get("designs")),
+            "found": bool(msgs or plan or code
+                          or [d for d in (h.get("designs") or []) if _after(d)]),
             "solved": solved,
             # Approved ONCE is approved: the gate exists to make a student plan
             # before coding, and they already did that for this problem. Making
             # them re-upload the same diagram to reread their own finished work
             # would be a toll, not a lesson.
-            "design_approved": any(d.get("approved") for d in (h.get("designs") or [])),
+            "design_approved": any(d.get("approved") for d in (h.get("designs") or [])
+                                   if _after(d)),
             "messages": msgs, "plan": plan, "code": code,
             # Recomputed rather than stored: compare() is deterministic and free,
             # and the snapshot rows hold the two graphs but not their diff.
             "comparison": compare(plan, code) if (plan and code) else None}
+
+
+@app.post("/problems/{slug}/restart")
+def restart_problem(slug: str, request: Request):
+    """Start this problem over, as if the student had never opened it.
+
+    NOTHING IS DELETED. The old conversation, designs and graphs stay in the
+    archive and still appear in the instructor's transcript - a student who
+    went round three times is the finding, and a restart that erased it would
+    hide exactly the thing worth seeing. What changes is where the STUDENT's
+    history begins: a marker row is written, and /history only replays what
+    came after the newest one.
+
+    The marker is an mt_messages row with phase='restart'. A third phase needs
+    no migration, and /history already keeps only phase='tutor' rows, so the
+    marker can never surface as a chat bubble."""
+    claims = require_student(request)
+    sb = get_supabase()
+    row = sb.table("problems").select("slug").eq("slug", slug).limit(1).execute().data
+    if not row:
+        raise HTTPException(status_code=404, detail={
+            "reason_code": "problem_not_found",
+            "message": f"Unknown problem '{slug}'."})
+    try:
+        sb.table("mt_messages").insert({
+            "session_id": None, "student_id": claims["sub"], "slug": slug,
+            "phase": "restart", "role": "system",
+            "content": "student restarted this problem",
+            "created_at": datetime.now(timezone.utc).isoformat()}).execute()
+    except Exception as e:
+        print(f"  ⚠️  restart failed for {slug}: {type(e).__name__}: {str(e)[:200]}")
+        raise HTTPException(status_code=503, detail={
+            "reason_code": "restart_failed",
+            "message": "Could not restart this problem. Try again.",
+            "detail": f"{type(e).__name__}: {str(e)[:100]}"})
+    return {"slug": slug, "restarted": True}
 
 
 @app.post("/tutor_chat")
@@ -1923,6 +2048,34 @@ def tutor_chat(req: TutorChatRequest, request: Request):
             "reason_code": "tutor_unavailable",
             "message": "The tutor is unavailable right now. Try again shortly.",
             "detail": str(e)[:120]})
+
+    # ── THE TUTOR DOES NOT GET TO PROMISE WHAT THE GATE WILL SAY ──────────
+    #
+    # Twice now a student was told "sounds like you have a plan", submitted it,
+    # and was rejected seconds later - once for an off-by-one, once for doing
+    # the lowercase/strip AFTER the loop. Two graders reading the same plan and
+    # disagreeing is not something a shared rubric fixed, because they were
+    # never reading it at the same moment.
+    #
+    # So before the tutor releases anyone, the ACTUAL gate reviews the plan the
+    # page has drawn, and if it objects the student hears that objection now -
+    # from the tutor, in the chat, while they are still thinking - instead of
+    # after a submission. One judgement, delivered once.
+    #
+    # Costs one extra call, and only on the turn that would have released them.
+    # Skipped when the page sent no plan, or when the gate is already open.
+    if out.get("ready") and not req.design_ok and (req.plan or {}).get("nodes"):
+        try:
+            from main.design_review import review_plan_graph
+            verdict = review_plan_graph(row[0], req.plan, [],
+                                        chat_log=req.messages)
+            if not verdict.get("approved"):
+                out = {**out, "ready": False, "reply": verdict["reply"],
+                       "held_by_review": True}
+        except Exception:
+            # The gate being unreachable must not strand a student mid-chat.
+            # They keep the tutor's reply; the real gate still runs on submit.
+            pass
 
     # Archive only the NEW turns - the student's last message and this reply.
     # The client resends the whole history every call, so writing all of it

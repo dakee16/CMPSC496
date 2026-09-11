@@ -158,10 +158,19 @@ def build_handback(problems: list[dict], answers: dict,
 
 
 if __name__ == "__main__":
+    import os
+
     from .assignments import parse_assignment_file
 
-    src = open("assignment_hw3.py").read()
-    probs = parse_assignment_file(src, "assignment_hw3.py")["problems"]
+    # The fixture is a real assignment file, kept out of the repo. Without it
+    # there is nothing to rebuild, so skip rather than fail: a self-check that
+    # breaks when a sample file moves teaches nothing about this module.
+    FIXTURE = os.environ.get("MICROTUTOR_HW3", "assignment_hw3.py")
+    if not os.path.exists(FIXTURE):
+        print(f"handback.py self-check SKIPPED (no {FIXTURE})")
+        raise SystemExit(0)
+    src = open(FIXTURE).read()
+    probs = parse_assignment_file(src, FIXTURE)["problems"]
 
     # ── the rebuilt file IS the original ──────────────────────────────────
     rebuilt = "\n".join(original_lines(probs))

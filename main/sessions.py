@@ -22,7 +22,20 @@ _DEFAULT_DB = os.path.join(
     "data", "grading_sessions.sqlite3")
 
 SESSION_TTL_HOURS = 12
-MAX_ATTEMPTS = 2          # second failure reveals the reference
+# UNLIMITED ATTEMPTS, and the reference is never revealed. It was 2, after
+# which the answer was shown and the session marked "assisted".
+#
+# The instructors asked for this directly, and it follows the same principle as
+# the rest of the system: a student who is handed the answer has learned that
+# being stuck produces one. There is no deadline inside a problem, so the only
+# thing a limit bought was ending the loop - and ending it by showing the answer
+# ends the learning too. A stuck student now has the tutor, the failing case,
+# and as many tries as they want.
+#
+# None means no limit. Kept as a name rather than deleted because the grading
+# route and the page both read it, and a number here is how a future
+# "reveal after N in an exam" mode would be turned back on.
+MAX_ATTEMPTS = None
 
 # How long a submission may sit RESERVED (claimed, no result) before another
 # attempt with the same id may reclaim it. Must exceed the slowest realistic

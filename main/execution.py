@@ -23,6 +23,7 @@ import sys
 import tempfile
 
 from .context import SEQ_ENTRY
+from .pyvalue import SOURCE as _PYVALUE_SRC, dumps as _dumps, loads as _loads
 from .schemas import ExecutionResult
 
 # Modules a coding exercise legitimately needs. Everything else is refused.
@@ -114,8 +115,14 @@ def check_policy(code: str) -> None:
 # Child-process harness. Mirrors the trusted harness's entry resolution so a
 # student candidate and the reference resolve the same function, but adds
 # resource limits and output caps.
-_STUDENT_HARNESS = r'''
-import json, re, sys, os
+#
+# Payload and result are PYTHON LITERALS, not JSON: JSON has no integer dict
+# keys, no tuples and no sets, so a problem keyed by year received '2019' where
+# it wrote 2019 and every correct solution raised KeyError. The encoder is
+# prepended from main/pyvalue.py - it cannot be imported here, because this runs
+# under `-I`, which strips the script directory from sys.path.
+_STUDENT_HARNESS = _PYVALUE_SRC + r'''
+import ast as _ast, json, re, sys, os
 try:
     import resource
 except ImportError:
@@ -166,7 +173,7 @@ def brief(v, cap=160):
     return {"repr": r, "type": t, "len": n}
 
 def main():
-    payload = json.load(open(sys.argv[1]))
+    payload = _ast.literal_eval(open(sys.argv[1]).read())
     limits(payload["mem"], payload["cpu"])
     sys.stdin.close()
     devnull = open(os.devnull, "w")
@@ -178,7 +185,7 @@ def main():
           "Iterable": Iterable, "Iterator": Iterator}
     def emit(obj):
         sys.stdout = real_stdout
-        print(json.dumps(obj, default=str))
+        print(mt_lit(obj))
     try:
         exec(compile(payload["code"], "<student>", "exec"), ns)
     except Exception as e:
@@ -246,11 +253,12 @@ def run_student_code(code: str, inputs: list, entry_name: str | None = None,
         return "syntax", [], f"{e.msg} (line {e.lineno})"
 
     workdir = tempfile.mkdtemp(prefix="mt_student_")
-    payload_path = os.path.join(workdir, "payload.json")
+    payload_path = os.path.join(workdir, "payload.txt")
     try:
         with open(payload_path, "w") as f:
-            json.dump({"code": code, "inputs": inputs, "entry_name": entry_name,
-                       "tests": tests, "mem": _MEM_BYTES, "cpu": _CPU_SECONDS}, f)
+            f.write(_dumps({"code": code, "inputs": inputs,
+                            "entry_name": entry_name, "tests": tests,
+                            "mem": _MEM_BYTES, "cpu": _CPU_SECONDS}))
         proc = subprocess.run(
             [sys.executable, "-I", "-S", "-c", _STUDENT_HARNESS, payload_path],
             capture_output=True, text=True, timeout=timeout,
@@ -283,7 +291,7 @@ def run_student_code(code: str, inputs: list, entry_name: str | None = None,
         return ("exec_error", [], (proc.stderr or "no output")[:200]) if proc.returncode \
             else ("harness_error", [], "empty harness output")
     try:
-        data = json.loads(out.splitlines()[-1])
+        data = _loads(out.splitlines()[-1])
     except Exception:
         return "harness_error", [], "unparseable harness output"
 

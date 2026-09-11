@@ -206,5 +206,15 @@
     ],
     "confirmed": true,
     "slug": "employee-update"
+  },
+  "2b777a263910dcde881a4b18a27afe7b2e8cf76d082a7e3d65863e50f1967d96": {
+    "entry_name": "employee_update",
+    "params": [
+      "d",
+      "bonus",
+      "year"
+    ],
+    "confirmed": true,
+    "slug": "employee-update"
   }
 }

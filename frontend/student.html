@@ -221,6 +221,33 @@
     color:var(--text-muted); line-height:1.65}
   /* A rejection is feedback about THIS panel, so it lands in this panel. It
      used to appear only as another chat bubble on the far side of the screen. */
+  /* Start-over confirmation. */
+  .modalWrap{position:fixed; inset:0; z-index:120; display:grid; place-items:center;
+    background:rgba(6,8,18,.66); padding:var(--s4);
+    animation:modalIn .13s ease-out}
+  @keyframes modalIn{from{opacity:0} to{opacity:1}}
+  .modalCard{width:min(430px,100%); background:var(--surface); border-radius:16px;
+    border:1px solid var(--glass-line); padding:var(--s6) var(--s5) var(--s5);
+    box-shadow:0 24px 70px -24px rgba(0,0,0,.7)}
+  .modalCard h2{margin:0 0 9px; font-size:18px}
+  .modalCard p{margin:0 0 10px; font-size:13.5px; color:var(--text-muted);
+    line-height:1.62}
+  .modalCard .fine{font-size:12.5px; color:var(--text-dim); margin-bottom:0}
+  button.danger{background:var(--danger-bg); color:var(--danger);
+    border:1px solid transparent}
+  button.danger:hover:not(:disabled){filter:brightness(1.12)}
+  .ghost.danger{background:transparent; color:var(--danger)}
+  .ghost.danger:hover:not(:disabled){background:var(--danger-bg)}
+  @media (prefers-reduced-motion:reduce){.modalWrap{animation:none}}
+
+  /* Anything held inert while the archive loads. */
+  .inert{pointer-events:none; opacity:.45}
+
+  /* The steps, before the design is accepted. */
+  .planLocked h2{margin:0 0 6px}
+  .planLocked p{margin:0; font-size:13px; color:var(--text-dim); line-height:1.6;
+                max-width:60ch}
+
   /* "Show the case it failed", under a wrong verdict. */
   .failCase{margin-top:11px}
   .failCase > summary{cursor:pointer; font-size:12.5px; color:var(--text-dim);
@@ -396,6 +423,14 @@
     background:var(--code-bg); border:1px solid var(--glass-line)}
   :root[data-theme="light"] .gview{background:var(--surface-raised)}
   .gview svg{display:block; cursor:grab}
+  /* Fullscreen: the browser paints its own black behind the element, so the
+     card's background has to be restated or the drawing sits on nothing. */
+  .gview:fullscreen{width:100vw; height:100vh; border-radius:0;
+    background:var(--code-bg)}
+  :root[data-theme="light"] .gview:fullscreen{background:var(--surface-raised)}
+  /* ...and the fallback for a browser that refuses the fullscreen API. */
+  .gview.gfake{position:fixed; inset:0; width:100vw; height:100vh; z-index:80;
+    border-radius:0}
   .gview.panning svg{cursor:grabbing}
   .gview:focus-visible{outline:2px solid var(--accent-ink); outline-offset:2px}
   .gctl{position:absolute; right:10px; bottom:10px; display:flex; gap:var(--s1);
@@ -553,20 +588,33 @@
         <div class="card">
           <div class="statement" id="statement"></div>
 
-          <div class="planhead">
+          <!-- THE STEPS ARE PART OF THE ANSWER, and stay hidden until the
+               design is approved. The instructors asked for this: a student who
+               can read "1. work out whether the stack is empty / 2. return it"
+               before designing has been handed the shape of the solution, which
+               is the one thing the design gate exists to make them produce
+               themselves. Held back on the SERVER too - see /decompose_chunks -
+               so it is not a display trick a reader of the page can undo. -->
+          <div class="planhead" id="planHead" hidden>
             <h2>Your plan</h2>
             <span class="pill" id="stepTotal">&hellip;</span>
           </div>
+          <div class="planLocked" id="planLocked">
+            <h2>Your plan</h2>
+            <p>This problem is broken into steps, and they appear here once your
+               design is accepted. Work out the approach first - that is the part
+               the steps would otherwise do for you.</p>
+          </div>
           <!-- Overall progress for the problem, so "how far in am I" is answered
                without counting pills. -->
-          <div class="probprog">
+          <div class="probprog" id="probProg" hidden>
             <div class="bar" id="probBar" role="progressbar" aria-label="Steps complete"
                  aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i></i></div>
             <span class="lab" id="probBarLab"></span>
           </div>
-          <p class="hint" style="margin-bottom:10px">Work through these in order.
-             Finished steps stay clickable if you want to look back.</p>
-          <ol class="stepper" id="stepper"></ol>
+          <p class="hint" id="planHint2" style="margin-bottom:10px" hidden>Work through
+             these in order. Finished steps stay clickable if you want to look back.</p>
+          <ol class="stepper" id="stepper" hidden></ol>
         </div>
 
         <div class="card" id="workCard">
@@ -694,6 +742,11 @@
           <div class="row" style="margin-top:13px" id="workControls">
             <button id="submit">Submit step</button>
             <button class="ghost" id="backP">Another problem</button>
+            <!-- Pushed to the right and styled as the quiet, destructive one:
+                 it is the only control here that throws work away, and it sits
+                 beside two a student presses constantly. -->
+            <button class="ghost danger" id="restartBtn"
+                    style="margin-left:auto">Start over</button>
           </div>
           <div class="row" style="margin-top:13px" id="reviewControls" hidden>
             <button id="backToNow">Back to the current step</button>
@@ -767,6 +820,26 @@
   </section>
 </main>
 
+
+<!-- Restart confirmation. A real dialog rather than confirm(): the browser's
+     own box cannot be styled, appears detached from the page, and on some
+     mobile browsers can be suppressed entirely - which would turn a mis-tap
+     into silently wiping the conversation. -->
+<div class="modalWrap" id="restartModal" hidden>
+  <div class="modalCard" role="dialog" aria-modal="true"
+       aria-labelledby="restartTitle" aria-describedby="restartBody">
+    <h2 id="restartTitle">Start this problem over?</h2>
+    <p id="restartBody">Your chat, your plan and your design go back to empty,
+      and the problem opens as if you had never seen it. Your steps start again
+      from the first one.</p>
+    <p class="fine">Nothing is lost from your instructor's record - this attempt
+      stays in your transcript alongside the new one.</p>
+    <div class="row" style="justify-content:flex-end; margin-top:18px">
+      <button class="ghost" id="restartNo">Keep working</button>
+      <button class="danger" id="restartYes">Start over</button>
+    </div>
+  </div>
+</div>
 <script src="ui.js"></script>
 <script src="graphs.js"></script>
 <script>
@@ -791,6 +864,12 @@ let reviewIdx = null;
 function applyTutorGate(){
   const wrap = $("editorWrap"), panel = $("designPanel"), code = $("code");
   const btn = $("submit");
+  // The steps are part of the answer - see the markup. They appear with the
+  // editor, never before it.
+  for (const id of ["planHead", "probProg", "planHint2", "stepper"]){
+    if ($(id)) $(id).hidden = !tutorReleased;
+  }
+  if ($("planLocked")) $("planLocked").hidden = tutorReleased;
   if (btn){
     if (!tutorReleased) disable(btn, "Submit your design first - the editor "
       + "unlocks once the tutor accepts it.");
@@ -831,6 +910,7 @@ function openGate(){
   }
   markUnlocked("Design accepted. The editor is unlocked for this problem.");
   freezePlan();
+  loadSteps();          // the prompts were withheld until this moment
   toast("Design accepted - the editor is unlocked.", "ok");
   if (editor){
     // The editor has been sized to a hidden box until now. Re-seat the step's
@@ -840,6 +920,24 @@ function openGate(){
       matchGutter();
       editor.focus();
     });
+  }
+}
+
+/* Fetch the step prompts, which the server withholds until the design is
+   accepted. Until then `chunks` carries empty prompts - the right count, the
+   right indents, and nothing that gives the answer away. */
+async function loadSteps(){
+  if (!sessionId) return;
+  try {
+    const r = await fetch(`${API}/session_steps/${encodeURIComponent(sessionId)}`);
+    if (!r.ok) return;                    // stay locked rather than guess
+    const d = await r.json();
+    if (d.chunks && d.chunks.length){
+      chunks = d.chunks;
+      render();
+    }
+  } catch (e) {
+    /* the editor is open either way; the steps arrive on the next load */
   }
 }
 
@@ -1185,6 +1283,52 @@ function syncPlanSubmit(){
   row.hidden = tutorReleased || !(planGraph && (planGraph.nodes || []).length);
 }
 
+/* ---------- starting a problem over ---------- */
+
+let restartPrev = null;      // focus to restore when the dialog closes
+
+function openRestart(){
+  if (!openProblem) return;
+  restartPrev = document.activeElement;
+  $("restartModal").hidden = false;
+  $("restartNo").focus();
+}
+
+function closeRestart(){
+  $("restartModal").hidden = true;
+  if (restartPrev && restartPrev.focus) restartPrev.focus();
+}
+
+/* Confirmed. The server writes a marker rather than deleting anything, so this
+   attempt stays in the instructor's transcript; what the STUDENT gets back is
+   an untouched problem. Then just re-open it - start() already rebuilds every
+   panel from scratch, so there is no second reset path to keep in step. */
+async function doRestart(){
+  const btn = $("restartYes");
+  const p = openProblem;
+  if (!p) return;
+  setBusy(btn, true, "Starting over\u2026");
+  try {
+    const r = await fetch(`${API}/problems/${encodeURIComponent(p.slug)}/restart`,
+                          {method: "POST"});
+    if (!r.ok){
+      let m = "Could not start over. Try again.";
+      try { m = (await r.json()).detail.message || m; } catch (e) {}
+      return toast(m, "bad");
+    }
+    closeRestart();
+    OPENED.add(p.slug);
+    SOLVED.delete(p.slug);
+    ASSISTED.delete(p.slug);
+    await start(p);
+    toast("Started over. This problem is fresh again.", "ok");
+  } catch (e) {
+    toast("Could not reach the server. Nothing was changed.", "bad");
+  } finally {
+    setBusy(btn, false);
+  }
+}
+
 /* ---------- the completed file ----------
 
    The assignment file back, with their own answers under each `def`. Offered
@@ -1256,6 +1400,12 @@ const CHEV = `<svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill=
 
 let SOLVED = new Set();      // did it themselves
 let ASSISTED = new Set();    // finished it, but a step used the shown answer
+// Opened but not finished. From the SERVER (mt_sessions), not from a note this
+// browser keeps: the old localStorage version outlived a wiped account, did not
+// follow a student to a second machine, and no instructor could see it.
+let OPENED = new Set();
+// The most recently opened problem, for the "Continue" row. Server-side too.
+let LAST_SLUG = null;
 /* Both count as DONE. A problem completed with help is not left on the list as
    unfinished work: the student has nothing further to do on it, and telling
    them otherwise sends them back to redo something they have already been
@@ -1269,20 +1419,18 @@ let PROBLEMS = [];             // its problems
 let pQuery = "", pFilter = "all", pSort = "alpha";
 
 const TOUCH_KEY = "mt.touched";
-function touchMap(){
-  try { return JSON.parse(localStorage.getItem(TOUCH_KEY) || "{}"); }
-  catch { return {}; }
-}
-function touch(slug){
-  const t = touchMap();
-  t[slug] = Date.now();
-  try { localStorage.setItem(TOUCH_KEY, JSON.stringify(t)); } catch {}
+/* RETIRED. "In progress" came from a note this browser kept, which survived a
+   wiped account, never followed a student to a second machine, and no
+   instructor could see. It is mt_sessions now - see /solved. The old key is
+   cleared on load so a stale note cannot outlive the change. */
+function clearLegacyTouch(){
+  try { localStorage.removeItem(TOUCH_KEY); } catch (e) {}
 }
 
-function statusOf(slug, touched){
+function statusOf(slug){
   if (SOLVED.has(slug)) return "solved";
   if (ASSISTED.has(slug)) return "helped";
-  return touched[slug] ? "progress" : "todo";
+  return OPENED.has(slug) ? "progress" : "todo";
 }
 const STAT_LABEL = {solved: "Solved", helped: "Solved with help",
                     progress: "In progress", todo: "Not started"};
@@ -1317,6 +1465,8 @@ async function loadAssignments(){
   }
   SOLVED = new Set(solved.slugs || []);
   ASSISTED = new Set(solved.assisted || []);
+  OPENED = new Set(solved.opened || []);
+  LAST_SLUG = solved.last_slug || null;
 
   const list = (d.assignments || []).filter(a => a.ready > 0);
   if (!list.length){
@@ -1334,7 +1484,6 @@ async function loadAssignments(){
   // One extra request per assignment, to learn which slugs it contains. With a
   // handful of assignments that is cheaper than a new endpoint; if a course
   // ever has fifty, /assignments should carry the slugs itself.
-  const touched = touchMap();
   ASSIGNMENTS = await Promise.all(list.map(async a => {
     let slugs = [], failed = false;
     try {
@@ -1350,7 +1499,7 @@ async function loadAssignments(){
       failed = true;
     }
     const solvedN = slugs.filter(isDone).length;
-    const last = Math.max(0, ...slugs.map(s => touched[s] || 0));
+    const last = LAST_SLUG && slugs.includes(LAST_SLUG) ? 1 : 0;
     return {...a, slugs, solvedN, last, failed};
   }));
 
@@ -1451,12 +1600,11 @@ async function openAssignment(a){
 /* The problem list: left-aligned names, status on the right, filtered and
    sorted in one place. */
 function renderProblems(){
-  const touched = touchMap();
   const q = pQuery.trim().toLowerCase();
   const rank = {progress: 0, todo: 1, helped: 2, solved: 3};
 
   const rows = PROBLEMS
-    .map(p => ({p, state: statusOf(p.slug, touched)}))
+    .map(p => ({p, state: statusOf(p.slug)}))
     .filter(({p, state}) =>
       // The Solved chip means FINISHED - a student filtering for what they
       // have done should not have half of it hidden behind a distinction they
@@ -1622,8 +1770,11 @@ async function start(p){
   const name = p.title || p.slug;
   document.title = `${name} · MicroTutor`;
   $("probTitle").textContent = name;
-  // Opening a problem is what makes it "in progress" on the list behind us.
-  touch(p.slug);
+  // Opening a problem is what makes it "in progress", and the SERVER records
+  // that: /decompose_chunks opens an mt_sessions row, which /solved reads back
+  // as `opened`. Marked locally too so the list behind is right immediately,
+  // without waiting for a round trip.
+  OPENED.add(p.slug);
   const asg = openAssign ? openAssign.name : ($("assignName").textContent || "").trim();
   $("crumb2").textContent = asg ? `${asg}  ›  ${name}` : name;
   setCrumbs([
@@ -1717,11 +1868,11 @@ async function restoreHistory(p){
   let h;
   try {
     const r = await fetch(`${API}/history/${encodeURIComponent(p.slug)}`);
-    if (!r.ok) return false;
+    if (!r.ok) { setRestoring(false); return false; }
     h = await r.json();
-  } catch { return false; }           // a cold archive is not a broken problem
-  if (openProblem !== p) return true;                // they moved on; hands off
-  if (!h || !h.found) return false;                  // nothing recorded
+  } catch { setRestoring(false); return false; }   // a cold archive is fine
+  if (openProblem !== p) return true;              // they moved on; hands off
+  if (!h || !h.found) { setRestoring(false); return false; }   // nothing recorded
 
   if (h.messages && h.messages.length){
     $("clog").innerHTML = "";
@@ -1761,6 +1912,7 @@ async function restoreHistory(p){
     markUnlocked(h.solved
       ? "You solved this before. The editor is unlocked - the steps start again from the top."
       : "Your design was accepted earlier. The editor is unlocked for this problem.");
+    loadSteps();      // reopening an unlocked problem gets its steps back too
     // An approved plan stays approved, so it stays fixed across sessions too.
     if (planGraph && (planGraph.nodes || []).length) freezePlan();
   }
@@ -1780,6 +1932,7 @@ async function restoreHistory(p){
   // half-restored problem is a real state, not a defensive hypothetical.
   if (!(h.messages && h.messages.length)) resetChat(p.title || p.slug);
   if (!(h.plan && h.plan.nodes && h.plan.nodes.length)) paintPlan(null);
+  setRestoring(false);
   return true;
 }
 
@@ -1795,6 +1948,7 @@ function failStart(msg){
   // student can actually see and act on.
   if (openProblem) resetChat(openProblem.title || openProblem.slug);
   paintPlan(null);
+  setRestoring(false);
   show("bad", msg);
 }
 
@@ -2061,7 +2215,11 @@ $("submit").onclick = async () => {
   // one click away because "wrong on at least one case" and no case is a shrug,
   // and a student with no way forward stops rather than thinks.
   show("bad", res.reason, failingCaseHTML(res.failing_case));
-  $("attempts").textContent = `Attempt ${res.attempts} of 2.`;
+  // "Attempt 3 of 2" would be a lie now that there is no limit and the answer
+  // is never shown. A plain count still tells them where they are without
+  // implying a countdown to being given it.
+  $("attempts").textContent = res.attempts
+    ? `Attempt ${res.attempts}. Keep going - take as many as you need.` : "";
 };
 
 /* The disclosure holding one failing case. Empty string when the server sent
@@ -2254,7 +2412,38 @@ function showChatCoach(){
    Skeletons rather than a spinner, matching everything else that fetches on
    this page (ui.css: "Every fetch shows one of these, never a blank page"),
    and sized to what is coming so the layout does not jump when it arrives. */
+/* Everything a student must not touch while /history is in flight.
+
+   The chat box stayed live during the restore, so a message typed then was
+   sent against an empty chatLog and, a moment later, wiped by the transcript
+   landing on top of it. The design panel is locked for the same reason: a
+   design submitted before we know whether this problem was already unlocked is
+   a round of review nobody needed. */
+function setRestoring(on){
+  for (const id of ["cinput", "designBtn", "designFile", "planSubmitBtn",
+                    "submit"]){
+    const el = $(id);
+    if (!el) continue;
+    if (on) disable(el, "Loading your earlier work on this problem…");
+    else if (id === "submit") applyTutorGate();      // owns its own state
+    else enable(el);
+  }
+  // The drop zone is a <div role="button">, and `disabled` means nothing on a
+  // div - it would have stayed clickable while looking locked. A class that
+  // kills pointer events is the only thing that actually stops it.
+  const drop = $("designDrop");
+  if (drop){
+    drop.classList.toggle("inert", !!on);
+    drop.setAttribute("aria-disabled", on ? "true" : "false");
+    drop.tabIndex = on ? -1 : 0;
+  }
+  const inp = $("cinput");
+  if (inp) inp.placeholder = on
+    ? "Loading your earlier work…" : "Explain your thinking, or ask a question";
+}
+
 function historyLoading(){
+  setRestoring(true);
   $("clog").innerHTML =
     `<div class="restoring" role="status">
        <span class="spin" aria-hidden="true"></span>
@@ -2298,7 +2487,11 @@ async function sendToTutor(text){
         slug: openProblem.slug,
         messages: chatLog,
         chunk_prompt: chunks[idx] ? chunks[idx].prompt : null,
-        design_ok: tutorReleased
+        design_ok: tutorReleased,
+        // So the tutor can put a release past the REAL gate before promising
+        // anything. Without it the tutor says "sounds workable" and the gate
+        // rejects the same plan thirty seconds later.
+        plan: planGraph
       })
     });
     const data = await r.json();
@@ -2371,6 +2564,17 @@ $("designClear").onclick = () => { clearDesign(); dDrop.focus(); };
 $("designBtn").addEventListener("click", uploadDesign);
 $("planSubmitBtn").addEventListener("click", submitPlanGraph);
 $("handbackBtn").addEventListener("click", downloadHandback);
+$("restartBtn").addEventListener("click", openRestart);
+$("restartNo").addEventListener("click", closeRestart);
+$("restartYes").addEventListener("click", doRestart);
+// Backdrop click or Escape dismisses it: a destructive dialog must be easy to
+// get out of and hard to confirm by accident.
+$("restartModal").addEventListener("click", e => {
+  if (e.target === $("restartModal")) closeRestart();
+});
+addEventListener("keydown", e => {
+  if (e.key === "Escape" && !$("restartModal").hidden) closeRestart();
+});
 
 $("cform").addEventListener("submit", e => { e.preventDefault(); submitChat(); });
 $("cinput").addEventListener("input", e => autogrow(e.target));
@@ -2400,6 +2604,7 @@ addEventListener("resize", matchGutter);
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(matchGutter);
 
 clearDesign();
+clearLegacyTouch();
 loadAssignments();
 </script>
 </body>

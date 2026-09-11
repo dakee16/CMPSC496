@@ -13,6 +13,8 @@ absent oracle must never be silently accepted as a basis for a verdict.
 import json
 import os
 
+from . import pyvalue
+
 # Backend data location. Overridable for local development.
 DEFAULT_ORACLE_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -102,11 +104,48 @@ class OracleUnusableError(RuntimeError):
         self.reason_code = reason_code
 
 
+# THE THIRD BOUNDARY. Inputs and results now cross into the grading subprocess
+# as Python literals (main/pyvalue.py), but the cache on DISK is still JSON -
+# and JSON loses exactly the same things there. A test keyed by year would be
+# destroyed on the way to the file rather than on the way to the child, which
+# is worse: it survives the run that created it and breaks on the next boot.
+#
+# So a test list JSON cannot hold is stored as literal TEXT under
+# `final_tests_src` instead. Everything JSON can hold is stored exactly as
+# before, so every existing cache file loads unchanged and no problem needs
+# re-preparing.
+_TESTS_SRC = "final_tests_src"
+
+
+def _encode_entry(entry):
+    if not isinstance(entry, dict) or _TESTS_SRC in entry:
+        return entry
+    tests = entry.get("final_tests")
+    if tests is None or pyvalue.json_safe(tests):
+        return entry
+    out = {k: v for k, v in entry.items() if k != "final_tests"}
+    out[_TESTS_SRC] = pyvalue.dumps(tests)
+    return out
+
+
+def _decode_entry(entry):
+    if not isinstance(entry, dict) or _TESTS_SRC not in entry:
+        return entry
+    out = {k: v for k, v in entry.items() if k != _TESTS_SRC}
+    try:
+        out["final_tests"] = pyvalue.loads(entry[_TESTS_SRC])
+    except Exception as e:
+        print(f"  ⚠️  unreadable cached tests for {entry.get('slug','?')}: {e}")
+        out["final_tests"] = []
+    return out
+
+
 def load_cache() -> dict:
     path = cache_path()
     if os.path.exists(path):
         try:
-            return json.load(open(path))
+            raw = json.load(open(path))
+            return {k: _decode_entry(v) for k, v in raw.items()}
         except Exception:
             pass
     return {}
@@ -117,7 +156,8 @@ def save_cache(cache: dict) -> None:
     path = cache_path()
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        json.dump(cache, open(path, "w"), indent=2)
+        json.dump({k: _encode_entry(v) for k, v in cache.items()},
+                  open(path, "w"), indent=2)
     except Exception as e:
         print(f"  ⚠️  Could not save oracle cache: {e}")
 

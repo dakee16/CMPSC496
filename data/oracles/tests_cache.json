@@ -11088,5 +11088,332 @@
       "blocks/4",
       "calls"
     ]
+  },
+  "09a946d8b5a2329dde5df3a60dcef91318bbf433fb5de81265c4063e469bcd3a": {
+    "final_tests": [
+      {
+        "input": [
+          "hello world"
+        ],
+        "expected": {
+          "h": 1,
+          "e": 1,
+          "l": 3,
+          "o": 2,
+          "w": 1,
+          "r": 1,
+          "d": 1
+        }
+      },
+      {
+        "input": [
+          "Python programming!"
+        ],
+        "expected": {
+          "p": 2,
+          "y": 1,
+          "t": 1,
+          "h": 1,
+          "o": 2,
+          "n": 2,
+          "r": 2,
+          "g": 2,
+          "a": 1,
+          "m": 2,
+          "i": 1
+        }
+      },
+      {
+        "input": [
+          "Test case 123"
+        ],
+        "expected": {
+          "t": 2,
+          "e": 2,
+          "s": 2,
+          "c": 1,
+          "a": 1
+        }
+      },
+      {
+        "input": [
+          "Single letter a"
+        ],
+        "expected": {
+          "s": 1,
+          "i": 1,
+          "n": 1,
+          "g": 1,
+          "l": 2,
+          "e": 3,
+          "t": 2,
+          "r": 1,
+          "a": 1
+        }
+      },
+      {
+        "input": [
+          "No letters 123!!!"
+        ],
+        "expected": {
+          "n": 1,
+          "o": 1,
+          "l": 1,
+          "e": 2,
+          "t": 2,
+          "r": 1,
+          "s": 1
+        }
+      },
+      {
+        "input": [
+          "Mixed CASE letters"
+        ],
+        "expected": {
+          "m": 1,
+          "i": 1,
+          "x": 1,
+          "e": 4,
+          "d": 1,
+          "c": 1,
+          "a": 1,
+          "s": 2,
+          "l": 1,
+          "t": 2,
+          "r": 1
+        }
+      },
+      {
+        "input": [
+          "Repeated letters: aaa bbb ccc"
+        ],
+        "expected": {
+          "r": 2,
+          "e": 5,
+          "p": 1,
+          "a": 4,
+          "t": 3,
+          "d": 1,
+          "l": 1,
+          "s": 1,
+          "b": 3,
+          "c": 3
+        }
+      },
+      {
+        "input": [
+          "Just spaces    "
+        ],
+        "expected": {
+          "j": 1,
+          "u": 1,
+          "s": 3,
+          "t": 1,
+          "p": 1,
+          "a": 1,
+          "c": 1,
+          "e": 1
+        }
+      },
+      {
+        "input": [
+          "1234567890"
+        ],
+        "expected": {}
+      },
+      {
+        "input": [
+          "Empty string test: "
+        ],
+        "expected": {
+          "e": 2,
+          "m": 1,
+          "p": 1,
+          "t": 4,
+          "y": 1,
+          "s": 2,
+          "r": 1,
+          "i": 1,
+          "n": 1,
+          "g": 1
+        }
+      }
+    ],
+    "strong": true,
+    "kill_rate": 1.0,
+    "kill_rate_direct": 1.0,
+    "status": "strong",
+    "needs_review": false,
+    "undetermined": 0,
+    "kill_rate_lower": 1.0,
+    "kill_rate_upper": 1.0,
+    "validated_at": "2026-09-10T23:31:45+00:00",
+    "breakdown": {
+      "total_mutants": 6,
+      "killed": 6,
+      "killed_on_retry": 0,
+      "proven_equivalent": 0,
+      "unresolved": 0,
+      "mutants": [
+        {
+          "label": "line 21: remove `counts = {}`",
+          "status": "killed"
+        },
+        {
+          "label": "line 22: remove `for char in txt.lower():`",
+          "status": "killed"
+        },
+        {
+          "label": "line 25: remove `return counts`",
+          "status": "killed"
+        },
+        {
+          "label": "line 24: + -> -",
+          "status": "killed"
+        },
+        {
+          "label": "line 24: 1 -> 2",
+          "status": "killed"
+        },
+        {
+          "label": "line 24: 0 -> 1",
+          "status": "killed"
+        }
+      ]
+    },
+    "slug": "frequency",
+    "features": [
+      "calls"
+    ]
+  },
+  "72cdcb21223b3c61fc358ba41f87f52bc6daf395019c4ae6448c42da5db8adc4": {
+    "strong": true,
+    "kill_rate": 1.0,
+    "kill_rate_direct": 1.0,
+    "status": "strong",
+    "needs_review": false,
+    "undetermined": 0,
+    "kill_rate_lower": 1.0,
+    "kill_rate_upper": 1.0,
+    "validated_at": "2026-09-10T23:31:50+00:00",
+    "breakdown": {
+      "total_mutants": 10,
+      "killed": 10,
+      "killed_on_retry": 0,
+      "proven_equivalent": 0,
+      "unresolved": 0,
+      "mutants": [
+        {
+          "label": "line 20: remove `seen = {}`",
+          "status": "killed"
+        },
+        {
+          "label": "line 21: remove `for value in d.values():`",
+          "status": "killed"
+        },
+        {
+          "label": "line 23: remove `inverted = {}`",
+          "status": "killed"
+        },
+        {
+          "label": "line 24: remove `for key, value in d.items():`",
+          "status": "killed"
+        },
+        {
+          "label": "line 27: remove `return inverted`",
+          "status": "killed"
+        },
+        {
+          "label": "line 22: + -> -",
+          "status": "killed"
+        },
+        {
+          "label": "line 25: == -> !=",
+          "status": "killed"
+        },
+        {
+          "label": "line 22: 1 -> 2",
+          "status": "killed"
+        },
+        {
+          "label": "line 25: 1 -> 2",
+          "status": "killed"
+        },
+        {
+          "label": "line 22: 0 -> 1",
+          "status": "killed"
+        }
+      ]
+    },
+    "slug": "invert",
+    "features": [
+      "calls"
+    ],
+    "final_tests_src": "[{'input': [{'apple': 1, 'banana': 2, 'cherry': 3, 'date': 4}], 'expected': {1: 'apple', 2: 'banana', 3: 'cherry', 4: 'date'}}, {'input': [{'x': 10, 'y': 20, 'z': 30}], 'expected': {10: 'x', 20: 'y', 30: 'z'}}, {'input': [{'name': 'Alice', 'age': 25, 'city': 'Wonderland', 'country': 'Wonderland'}], 'expected': {'Alice': 'name', 25: 'age'}}, {'input': [{'key1': 'value1', 'key2': 'value2', 'key3': 'value3'}], 'expected': {'value1': 'key1', 'value2': 'key2', 'value3': 'key3'}}, {'input': [{'a': 5, 'b': 6, 'c': 7}], 'expected': {5: 'a', 6: 'b', 7: 'c'}}, {'input': [{'one': 1, 'two': 2, 'three': 3, 'four': 4}], 'expected': {1: 'one', 2: 'two', 3: 'three', 4: 'four'}}, {'input': [{'first': 'A', 'second': 'B', 'third': 'C', 'fourth': 'D'}], 'expected': {'A': 'first', 'B': 'second', 'C': 'third', 'D': 'fourth'}}, {'input': [{'k1': 100, 'k2': 200, 'k3': 300}], 'expected': {100: 'k1', 200: 'k2', 300: 'k3'}}, {'input': [{'single': 42}], 'expected': {42: 'single'}}, {'input': [{}], 'expected': {}}]"
+  },
+  "9385c53abb2241e8393a56ab8d5f5cf1ba2ad906737b23c5929b5c124957ef46": {
+    "strong": true,
+    "kill_rate": 1.0,
+    "kill_rate_direct": 1.0,
+    "status": "strong",
+    "needs_review": false,
+    "undetermined": 0,
+    "kill_rate_lower": 1.0,
+    "kill_rate_upper": 1.0,
+    "validated_at": "2026-09-10T23:31:56+00:00",
+    "breakdown": {
+      "total_mutants": 10,
+      "killed": 10,
+      "killed_on_retry": 0,
+      "proven_equivalent": 0,
+      "unresolved": 0,
+      "mutants": [
+        {
+          "label": "line 16: remove `previous = d[year - 1]`",
+          "status": "killed"
+        },
+        {
+          "label": "line 17: remove `updated = {}`",
+          "status": "killed"
+        },
+        {
+          "label": "line 18: remove `for name in previous:`",
+          "status": "killed"
+        },
+        {
+          "label": "line 21: remove `d[year] = updated`",
+          "status": "killed"
+        },
+        {
+          "label": "line 22: remove `return d`",
+          "status": "killed"
+        },
+        {
+          "label": "line 19: remove `title, status, salary = previous[name]`",
+          "status": "killed"
+        },
+        {
+          "label": "line 20: remove `updated[name] = [title, status, salar...`",
+          "status": "killed"
+        },
+        {
+          "label": "line 16: - -> +",
+          "status": "killed"
+        },
+        {
+          "label": "line 16: 1 -> 2",
+          "status": "killed"
+        },
+        {
+          "label": "line 20: + -> -",
+          "status": "killed"
+        }
+      ]
+    },
+    "slug": "employee-update",
+    "features": [
+      "calls"
+    ],
+    "final_tests_src": "[{'input': [{2020: {'Alice': ['Developer', 'Full-time', 50000], 'Bob': ['Designer', 'Part-time', 30000]}}, 5000, 2021], 'expected': {2020: {'Alice': ['Developer', 'Full-time', 50000], 'Bob': ['Designer', 'Part-time', 30000]}, 2021: {'Alice': ['Developer', 'Full-time', 55000], 'Bob': ['Designer', 'Part-time', 35000]}}}, {'input': [{2021: {'Charlie': ['Manager', 'Full-time', 80000], 'Diana': ['Analyst', 'Full-time', 55000]}}, 10000, 2022], 'expected': {2021: {'Charlie': ['Manager', 'Full-time', 80000], 'Diana': ['Analyst', 'Full-time', 55000]}, 2022: {'Charlie': ['Manager', 'Full-time', 90000], 'Diana': ['Analyst', 'Full-time', 65000]}}}, {'input': [{2019: {'Eve': ['CTO', 'Full-time', 120000], 'Frank': ['Intern', 'Part-time', 20000]}}, 15000, 2020], 'expected': {2019: {'Eve': ['CTO', 'Full-time', 120000], 'Frank': ['Intern', 'Part-time', 20000]}, 2020: {'Eve': ['CTO', 'Full-time', 135000], 'Frank': ['Intern', 'Part-time', 35000]}}}, {'input': [{2020: {'Grace': ['Sales Lead', 'Full-time', 70000]}}, 2000, 2021], 'expected': {2020: {'Grace': ['Sales Lead', 'Full-time', 70000]}, 2021: {'Grace': ['Sales Lead', 'Full-time', 72000]}}}, {'input': [{2021: {'Hank': ['Product Owner', 'Full-time', 90000], 'Ivy': ['Marketing Specialist', 'Full-time', 45000]}}, 3000, 2022], 'expected': {2021: {'Hank': ['Product Owner', 'Full-time', 90000], 'Ivy': ['Marketing Specialist', 'Full-time', 45000]}, 2022: {'Hank': ['Product Owner', 'Full-time', 93000], 'Ivy': ['Marketing Specialist', 'Full-time', 48000]}}}, {'input': [{2022: {'Jack': ['Support Engineer', 'Full-time', 40000]}}, 2500, 2023], 'expected': {2022: {'Jack': ['Support Engineer', 'Full-time', 40000]}, 2023: {'Jack': ['Support Engineer', 'Full-time', 42500]}}}, {'input': [{2020: {'Kate': ['HR Manager', 'Full-time', 65000], 'Leo': ['Data Scientist', 'Full-time', 95000]}}, 5000, 2021], 'expected': {2020: {'Kate': ['HR Manager', 'Full-time', 65000], 'Leo': ['Data Scientist', 'Full-time', 95000]}, 2021: {'Kate': ['HR Manager', 'Full-time', 70000], 'Leo': ['Data Scientist', 'Full-time', 100000]}}}, {'input': [{2018: {'Mia': ['UX Researcher', 'Part-time', 35000], 'Nina': ['Content Writer', 'Full-time', 40000]}}, 7000, 2019], 'expected': {2018: {'Mia': ['UX Researcher', 'Part-time', 35000], 'Nina': ['Content Writer', 'Full-time', 40000]}, 2019: {'Mia': ['UX Researcher', 'Part-time', 42000], 'Nina': ['Content Writer', 'Full-time', 47000]}}}, {'input': [{2021: {'Oscar': ['DevOps Engineer', 'Full-time', 85000], 'Paul': ['QA Tester', 'Part-time', 30000]}}, 6000, 2022], 'expected': {2021: {'Oscar': ['DevOps Engineer', 'Full-time', 85000], 'Paul': ['QA Tester', 'Part-time', 30000]}, 2022: {'Oscar': ['DevOps Engineer', 'Full-time', 91000], 'Paul': ['QA Tester', 'Part-time', 36000]}}}, {'input': [{2020: {'Quinn': ['Business Analyst', 'Full-time', 75000]}}, 8000, 2021], 'expected': {2020: {'Quinn': ['Business Analyst', 'Full-time', 75000]}, 2021: {'Quinn': ['Business Analyst', 'Full-time', 83000]}}}]"
   }
 }

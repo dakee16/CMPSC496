@@ -19,12 +19,18 @@ from main.ollama_client import chat, OPENAI_MODEL
 GEN_MODEL = OPENAI_MODEL   # system role: oracle test-input generation
                            # (main/mutation.py imports GEN_MODEL from here)
 
-# Harness that runs INSIDE the child process. Reads a JSON payload file (argv[1]):
+# Harness that runs INSIDE the child process. Reads a PYTHON LITERAL payload
+# file (argv[1]) and writes one literal line to stdout:
 #   {"code": "<python>", "inputs": [[arg1, arg2], ...], "entry_name": "optional"}
-# Writes one JSON line to stdout:
-#   {"ok": true, "results": [...]}   or   {"ok": false, "error": "..."}
-_HARNESS = r'''
-import json, re, sys
+#   -> {"ok": True, "results": [...]}   or   {"ok": False, "error": "..."}
+# Literals, not JSON: JSON has no int dict keys, no tuples and no sets, so a
+# problem keyed by year arrived with '2019' where it wrote 2019. See
+# main/pyvalue.py - the encoder below is prepended from there.
+from main import pyvalue
+from main.pyvalue import SOURCE as _PYVALUE_SRC, dumps as _dumps, loads as _loads
+
+_HARNESS = _PYVALUE_SRC + r'''
+import ast as _ast, json, re, sys
 try:
     import resource
 except ImportError:
@@ -54,7 +60,7 @@ def resolve_entry(ns, entry_name, helpers=()):
     return funcs[-1] if funcs else None
 
 def main():
-    payload = json.load(open(sys.argv[1]))
+    payload = _ast.literal_eval(open(sys.argv[1]).read())
     if resource:
         try:
             resource.setrlimit(resource.RLIMIT_CPU, (5, 5))
@@ -72,18 +78,18 @@ def main():
     try:
         exec(compile(payload["code"], "<solution>", "exec"), ns)
     except Exception as e:
-        print(json.dumps({"ok": False, "error": "exec: " + repr(e)})); return
+        print(mt_lit({"ok": False, "error": "exec: " + repr(e)})); return
     helpers = set(re.findall(r"self\.(\w+)\s*\(", payload["code"]))
     fn = resolve_entry(ns, payload.get("entry_name"), helpers)
     if fn is None:
-        print(json.dumps({"ok": False, "error": "no entry point found"})); return
+        print(mt_lit({"ok": False, "error": "no entry point found"})); return
     results = []
     for args in payload["inputs"]:
         try:
             results.append(fn(*args))
         except Exception as e:
             results.append({"__error__": repr(e)})
-    print(json.dumps({"ok": True, "results": results}, default=str))
+    print(mt_lit({"ok": True, "results": results}))
 
 main()
 '''
@@ -96,8 +102,8 @@ def run_solution(code: str, inputs: list, entry_name: str | None = None,
     {"ok": False, "error": "..."}. A result is the return value, or
     {"__error__": "..."} if that call raised."""
     payload = {"code": code, "inputs": inputs, "entry_name": entry_name}
-    with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as pf:
-        json.dump(payload, pf)
+    with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as pf:
+        pf.write(_dumps(payload))
         payload_path = pf.name
     try:
         proc = subprocess.run(
@@ -111,7 +117,7 @@ def run_solution(code: str, inputs: list, entry_name: str | None = None,
     if proc.returncode != 0:
         return {"ok": False, "error": (proc.stderr or "nonzero exit").strip()[:300]}
     try:
-        return json.loads(proc.stdout.strip().splitlines()[-1])
+        return _loads(proc.stdout.strip().splitlines()[-1])
     except Exception:
         return {"ok": False, "error": "unparseable harness output: " + proc.stdout[:200]}
 
@@ -185,6 +191,46 @@ def _first_json_obj(text: str) -> dict | None:
                     return json.loads(text[start:i + 1])
                 except Exception:
                     return None
+    return None
+
+
+def _salvage_literal(src: str):
+    """A truncated literal list, cut back to its last COMPLETE element.
+
+    Generated input lists are long - `frequency` wants whole sentences - and a
+    reply that runs out of room comes back with the closing bracket missing, so
+    the whole batch is lost over the last item. Scanning to the last top-level
+    element that parses keeps the nine that arrived intact.
+
+    String-aware, because a bracket inside a quoted input is not nesting."""
+    src = (src or "").strip()
+    if not src.startswith("["):
+        return None
+    depth, quote, esc, ends = 0, "", False, []
+    for i, ch in enumerate(src):
+        if quote:
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == quote:
+                quote = ""
+            continue
+        if ch in "\"'":
+            quote = ch
+        elif ch in "[{(":
+            depth += 1
+        elif ch in "]})":
+            depth -= 1
+            if depth == 1:
+                ends.append(i)          # a top-level element just closed
+    for end in reversed(ends):
+        try:
+            got = pyvalue.loads(src[:end + 1] + "]")
+        except Exception:
+            continue
+        if isinstance(got, list) and got:
+            return got
     return None
 
 
@@ -418,11 +464,16 @@ def generate_test_inputs(problem: dict, n: int = 10) -> list[list]:
         f"If the problem says inputs are non-negative, never generate negatives.\n"
         f"Include edge cases (empty, single-element, minimal values) that still "
         f"respect the problem's constraints.\n"
-        f"Each input is a JSON array of the positional arguments in order.\n"
-        f"Use only JSON-serializable values (numbers, strings, booleans, arrays, objects).\n"
+        f"Each input is a list of the positional arguments in order, written "
+        f"as PYTHON LITERALS - not JSON. That means dictionary keys may be "
+        f"integers ({{2019: ...}}), tuples and sets are allowed, and it is "
+        f"True/False/None rather than true/false/null. Use the types the "
+        f"problem actually describes: a mapping keyed by YEAR is keyed by the "
+        f"integer 2019, never the string '2019'.\n"
         f"Keep values reasonable: integers within -1000000000..1000000000, "
         f"strings under 50 chars, arrays under 20 items. Never emit extremely large numbers.\n"
-        f'Return JSON only: {{"inputs": [[arg1, ...], ...]}}'
+        f'Return JSON only, with the inputs as one string of Python literal '
+        f'source: {{"inputs_src": "[[arg1, arg2], [arg1, arg2]]"}}'
         f"CRITICAL for correctness:\n"
         f"- Never generate inputs where multiple valid answers exist "
         f"(e.g. for Two Sum, never use arrays where more than one pair sums to target).\n"
@@ -432,11 +483,35 @@ def generate_test_inputs(problem: dict, n: int = 10) -> list[list]:
     )
     raw = ""
     for temp in (0.2, 0.5):
-        raw = chat(GEN_MODEL, "You generate test inputs as strict JSON. No prose.",
+        raw = chat(GEN_MODEL, "You generate test inputs as strict JSON whose "
+                              "inputs_src field is Python literal source. No prose.",
                    [{"role": "user", "content": prompt}], temperature=temp, fmt="json")
         data = _first_json_obj(raw) or {}
+        # PYTHON LITERALS, not JSON values. A dict keyed by an integer year
+        # cannot be expressed in JSON at all - the model can only write
+        # {"2019": ...} - so a problem like employee_update got inputs its own
+        # reference raised KeyError on, every time, and came back with zero
+        # usable tests. `inputs` is still accepted so nothing that worked
+        # before stops working.
+        raw_src = data.get("inputs_src")
+        got = []
+        if isinstance(raw_src, str) and raw_src.strip():
+            try:
+                parsed = pyvalue.loads(raw_src)
+                if isinstance(parsed, list):
+                    got = parsed
+            except Exception as e:
+                got = _salvage_literal(raw_src) or []
+                if got:
+                    print(f"  ⚠️  input-gen literal was truncated; salvaged "
+                          f"{len(got)} complete input(s)")
+                else:
+                    print(f"  ⚠️  input-gen literal unreadable "
+                          f"({type(e).__name__}); falling back to JSON form")
+        if not got:
+            got = data.get("inputs", []) or []
         inputs = [i if isinstance(i, list) else [i]
-                  for i in data.get("inputs", []) if i is not None]
+                  for i in got if i is not None]
         if inputs:
             return inputs
     print(f"  ⚠️  input-gen empty for {problem.get('slug','?')}; raw head: {raw[:160]!r}")

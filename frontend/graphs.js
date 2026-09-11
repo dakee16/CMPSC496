@@ -108,10 +108,30 @@ function gMetrics(graph){
 function gLayer(graph){
   const depth = {};
   graph.nodes.forEach(n => { depth[n.id] = 0; });
+
+  /* BACK EDGES, found structurally rather than by their label. The extractor
+     only writes "repeat" when it remembers to, and an unlabelled edge from a
+     loop BODY back to its loop makes the loop deeper than the body it
+     contains - so the loop is drawn below the thing it repeats, and the edge
+     feeding it spans the whole drawing. A depth-first walk marks any edge
+     pointing at a node already on the stack, which is exactly a back edge. */
+  const out = {};
+  graph.nodes.forEach(n => { out[n.id] = []; });
+  graph.edges.forEach(e => { if (out[e.src]) out[e.src].push(e); });
+  const back = new Set(), seen = new Set(), stack = new Set();
+  const walk = id => {
+    seen.add(id); stack.add(id);
+    for (const e of out[id] || []){
+      if (e.label === "repeat" || stack.has(e.dst)) back.add(e);
+      else if (!seen.has(e.dst)) walk(e.dst);
+    }
+    stack.delete(id);
+  };
+  graph.nodes.forEach(n => { if (!seen.has(n.id)) walk(n.id); });
   for (let i = 0; i < graph.nodes.length; i++){
     let changed = false;
     for (const e of graph.edges){
-      if (e.label === "repeat") continue;
+      if (back.has(e)) continue;
       if (!(e.src in depth) || !(e.dst in depth)) continue;
       if (depth[e.dst] < depth[e.src] + 1){ depth[e.dst] = depth[e.src] + 1; changed = true; }
     }
@@ -123,20 +143,34 @@ function gLayer(graph){
 function gPositions(graph, W, H){
   const depth = gLayer(graph), rows = {};
   graph.nodes.forEach(n => { (rows[depth[n.id]] = rows[depth[n.id]] || []).push(n.id); });
+
+  /* COMPACT THE ROWS. Depths come out of longest-path layering SPARSE - a node
+     whose only path in is long sits at depth 5 while nothing occupies 3 or 4 -
+     and this used the raw depth as the row index. That drew the gap as empty
+     space with an edge running down through it: the "line that goes on for
+     ages before anything appears".
+
+     The height was computed from the number of OCCUPIED rows at the same time,
+     so the canvas was also too short for what had just been laid out and the
+     drawing ran past its own viewBox. One cause, both symptoms. */
+  const used = Object.keys(rows).map(Number).sort((a, b) => a - b);
+  const rowOf = {};
+  used.forEach((d, i) => { rowOf[d] = i; });
+
   const widest = Math.max(1, ...Object.values(rows).map(r => r.length));
   const pos = {};
-  Object.keys(rows).forEach(d => {
+  used.forEach(d => {
     const row = rows[d];
     // Centre each row against the widest one so the drawing reads as a spine.
     const offset = ((widest - row.length) * (W + G_GAPX)) / 2;
     row.forEach((id, i) => {
       pos[id] = {x: G_PAD + offset + i * (W + G_GAPX),
-                 y: G_PAD + Number(d) * (H + G_GAPY)};
+                 y: G_PAD + rowOf[d] * (H + G_GAPY)};
     });
   });
   return {pos,
           w: G_PAD * 2 + widest * (W + G_GAPX) - G_GAPX,
-          h: G_PAD * 2 + Object.keys(rows).length * (H + G_GAPY) - G_GAPY};
+          h: G_PAD * 2 + used.length * (H + G_GAPY) - G_GAPY};
 }
 
 function gEdgePath(a, b, back, W, H){
@@ -250,6 +284,32 @@ function gAttachView(box, svg, layer, size){
   box.querySelector(".gzout").onclick = () => zoomCentre(1 / 1.2);
   box.querySelector(".gzfit").onclick = fit;
 
+  /* REAL FULLSCREEN, which the expand icon has always promised and never done.
+     It was wired to fit(), so pressing it on a graph too big to read just
+     recentred the same small box. Fit stays - it is genuinely useful - and
+     moves to its own control; this one now fills the screen, which is what a
+     student pressing it wants. */
+  const full = box.querySelector(".gzfull");
+  if (full){
+    full.onclick = () => {
+      const doc = document;
+      if (doc.fullscreenElement || doc.webkitFullscreenElement){
+        (doc.exitFullscreen || doc.webkitExitFullscreen).call(doc);
+      } else {
+        const go = box.requestFullscreen || box.webkitRequestFullscreen;
+        // No fullscreen API (older Safari in an iframe): fall back to filling
+        // the window with CSS, so the control still does something.
+        if (go) go.call(box).then(() => setTimeout(fit, 60)).catch(() => {
+          box.classList.toggle("gfake"); fit();
+        });
+        else { box.classList.toggle("gfake"); setTimeout(fit, 60); }
+      }
+    };
+    // Leaving fullscreen by Escape has to re-fit too, or the drawing comes
+    // back sized for a screen it is no longer on.
+    box.addEventListener("fullscreenchange", () => setTimeout(fit, 60));
+  }
+
   // The card can be revealed while still hidden (display:none has no
   // clientWidth), so fit now, again next frame, and again on any resize.
   fit();
@@ -352,6 +412,11 @@ function renderGraph(el, graph, emptyText, opts = {}){
            <button type="button" class="gzout" aria-label="Zoom out" title="Zoom out">&minus;</button>
            <button type="button" class="gzin" aria-label="Zoom in" title="Zoom in">+</button>
            <button type="button" class="gzfit" aria-label="Fit to view" title="Fit to view">
+             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                  stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"
+                  aria-hidden="true"><path d="M3 12h18M12 3v18"/></svg>
+           </button>
+           <button type="button" class="gzfull" aria-label="Fullscreen" title="Fullscreen">
              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                   stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"
                   aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
