@@ -2425,6 +2425,9 @@ def mark_solved(req: MarkSolvedRequest):
 from pathlib import Path
 
 from fastapi.staticfiles import StaticFiles
+from frontend.student_routes import student_progress_router
+
+app.include_router(student_progress_router(get_supabase, require_student))
 
 app.mount("/", StaticFiles(directory=Path(__file__).parent, html=True),
           name="frontend")

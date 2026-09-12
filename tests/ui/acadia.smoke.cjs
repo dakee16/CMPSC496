@@ -87,14 +87,23 @@ const server = http.createServer((req,res) => {
     assert.deepEqual(padding,['20px','20px']);
     await screenshot('acadia-problems-light');
     await page.locator('[data-slug="employee-update"]').click();
-    await page.locator('#workStep:not([hidden])').waitFor();
+    await page.waitForFunction(()=>!document.querySelector('#workStep').hidden);
     await page.waitForFunction(()=>document.querySelector('#prompt').textContent.length>20);
     assert.equal(await page.locator('#statement pre').count(),1);
     assert((await page.locator('#statement pre').textContent()).includes('\n>>> employee_update'));
     assert.equal(await page.locator('#statement code').count(),4); // 3 inline identifiers + example
     assert.equal(await page.locator('.studio-brief #stepper').count(),0);
     assert.equal(await page.locator('.studio-work #stepper').count(),1);
-    assert(await page.locator('.studio-brief').evaluate(el=>el.offsetWidth>=390));
+    assert(await page.locator('.studio-brief').evaluate(el=>el.offsetWidth>=800));
+    assert.equal(await page.locator('#stageRead').isVisible(),true);
+    assert.equal(await page.locator('#stageCode').isVisible(),false);
+    assert.equal(await page.locator('#chatcol').isVisible(),false);
+    await screenshot('acadia-question-read-light');
+    await page.getByRole('button',{name:'Switch to dark mode',exact:true}).click();
+    await screenshot('acadia-question-read-dark');
+    await page.getByRole('button',{name:'Switch to light mode',exact:true}).click();
+    await page.locator('#readContinue').click();
+    await page.locator('#stageCode').waitFor();
     assert.equal(await page.locator('#clog .bub.me pre').count(),1);
     await noOverflow('Desktop light');
     await page.evaluate(()=>editor.setValue('    previous_year = year - 1\n    previous_year_records = d[previous_year]\n    new_dict = {}'));
@@ -105,14 +114,18 @@ const server = http.createServer((req,res) => {
     const colors=await page.locator('.CodeMirror').evaluate(el=>({bg:getComputedStyle(el).backgroundColor,color:getComputedStyle(el).color}));
     assert.notEqual(colors.bg,colors.color);
     await page.getByRole('button',{name:'Focus editor',exact:true}).click();
-    assert.equal(await page.locator('.studio-brief').isVisible(),false);
+    assert.equal(await page.locator('.journey').isVisible(),false);
     assert((await page.evaluate(()=>editor.getValue())).includes('previous_year'));
     await page.keyboard.press('Escape');
-    assert.equal(await page.locator('.studio-brief').isVisible(),true);
+    assert.equal(await page.locator('.journey').isVisible(),true);
     // Submission still uses the existing endpoint; step navigation is display-only.
     await page.locator('#submit').click();
+    await page.locator('#reviewBox').waitFor();
+    assert.match(await page.locator('#backToNow').textContent(),/Continue to step 2/);
+    await page.locator('#backToNow').click();
     await page.waitForFunction(()=>document.querySelector('#stepCount').textContent==='Step 2 of 3');
     await page.evaluate(()=>editor.setValue('    draft = 1'));
+    await page.locator('#stepHistory>summary').click();
     await page.locator('#stepper button').first().click();
     assert.equal(await page.locator('#reviewBox').isVisible(),true);
     await page.locator('#backToNow').click();
@@ -122,13 +135,17 @@ const server = http.createServer((req,res) => {
     for(const width of [1440,1366,1024,950,768,390]){
       await page.setViewportSize({width,height:900});
       await noOverflow('Width '+width);
-      if(width<1440){
-        assert(await page.locator('#cform').evaluate(el=>el.inert));
-        await page.locator('#sheetTog').click();
-        assert.equal(await page.locator('#cform').evaluate(el=>el.inert),false);
-        await page.keyboard.press('Escape');
-        assert.equal(await page.locator('#sheetTog').getAttribute('aria-expanded'),'false');
-      }
+      assert(await page.locator('#cform').evaluate(el=>el.inert));
+      await page.locator('.code-resources [data-resource="tutor"]').click();
+      assert.equal(await page.locator('#cform').evaluate(el=>el.inert),false);
+      await noOverflow('Tutor panel at '+width);
+      await page.keyboard.press('Escape');
+      assert.equal(await page.locator('#resourceDrawer').isVisible(),false);
+      await page.locator('.code-resources [data-resource="problem"]').click();
+      assert.equal(await page.locator('#problemPaper').isVisible(),true);
+      await noOverflow('Problem reference at '+width);
+      await page.keyboard.press('Escape');
+      assert.equal(await page.evaluate(()=>editor.getValue()),'    draft = 1');
       if(width===1366||width===390) await screenshot('acadia-workspace-'+width);
     }
     // Unsafe HTML stays literal, and fences, nested blocks and hard-wrapped
@@ -146,15 +163,33 @@ const server = http.createServer((req,res) => {
     // A fresh problem remains gated; moving progress cannot disclose prompts.
     approved=false;
     await page.setViewportSize({width:1600,height:1000});
-    await page.reload();
+    await page.goto(base+'/student.html');
     assert.equal(await page.locator('html').getAttribute('data-theme'),'light');
     await page.locator('#assignments .rowitem').first().click();
     await page.locator('[data-slug="employee-update"]').click();
+    await page.locator('#readContinue:not([disabled])').waitFor();
+    assert.equal(await page.locator('#stageRead').isVisible(),true);
+    await page.locator('#readContinue').click();
+    await page.locator('#planChatHome #chatcol').waitFor();
+    await screenshot('acadia-plan-chat-light');
+    await page.locator('[data-plan-method="upload"]').click();
     await page.locator('#designPanel:not([hidden])').waitFor();
     assert.equal(await page.locator('#workStep').isVisible(),false);
     assert.equal(await page.locator('#editorWrap').isVisible(),false);
     assert(await page.locator('#submit').isDisabled());
     await screenshot('acadia-design-gate');
+    for(const width of [768,390]){
+      await page.setViewportSize({width,height:900});
+      await noOverflow('Upload plan at '+width);
+      await page.locator('[data-plan-method="chat"]').click();
+      await noOverflow('Chat plan at '+width);
+      await screenshot('acadia-plan-'+width);
+      await page.locator('#tabRead').click();
+      await noOverflow('Read at '+width);
+      await screenshot('acadia-read-'+width);
+      await page.locator('#readContinue').click();
+    }
+    await page.setViewportSize({width:1600,height:1000});
     role='teacher';
     for(const name of ['teacher','grades','playground']){
       await page.goto(base+'/'+name+'.html');
@@ -176,7 +211,7 @@ const server = http.createServer((req,res) => {
     await screenshot('acadia-login-dark');
     assert.deepEqual(errors,[],'Browser JavaScript errors');
     assert.deepEqual(unknown,[],'Unexpected API routes');
-    console.log('PASS: branding, fresh/saved themes, description/code formatting, design gate, step submission/review, focus, tutor drawer, seven widths and all UI pages.');
+    console.log('PASS: branding, fresh/saved themes, staged reading/planning/coding, description/code formatting, design gate, paced step submission/review, focus, reference drawer, seven widths and all UI pages.');
     console.log('Application requests were mocked; no backend/model/grading pipeline ran.');
   } finally {await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;}).finally(()=>server.close());

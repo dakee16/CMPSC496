@@ -31,7 +31,7 @@ const read = name => fs.readFileSync(path.join(root, name), 'utf8');
       listSelections:()=>selections,setSelections:value=>selections=value
     })};
     // One evaluation matches classic browser scripts' shared lexical scope.
-    window.eval(read('ui.js') + '\n' + read('graphs.js') + '\n' + read('student.js') +
+    window.eval(read('ui.js') + '\n' + read('graphs.js') + '\n' + read('workspace.js') + '\n' + read('student.js') +
       '\nwindow.acadiaEval = code => eval(code);');
     await new Promise(resolve=>setTimeout(resolve,20));
     assert.equal(doc.documentElement.dataset.theme,'light');
@@ -71,7 +71,7 @@ const read = name => fs.readFileSync(path.join(root, name), 'utf8');
     assert.equal(doc.querySelector('.studio-brief #stepper'),null);
     assert.equal(doc.querySelector('#workStep #stepCount').textContent,'Step 1 of 3');
     window.markUnlocked('Design accepted');
-    assert.equal(doc.querySelector('#designOK').nextElementSibling.id,'workStep');
+    assert.equal(doc.querySelector('#codeOrientation').textContent,'Design accepted');
     editorValue='    draft = n + 1';
     doc.querySelector('#focusWork').click();
     assert(doc.body.classList.contains('focus-workspace'));

@@ -2,7 +2,7 @@
   "name": "acadia-ui-checks",
   "private": true,
   "scripts": {
-    "test": "node acadia.dom.cjs",
+    "test": "node acadia.dom.cjs && node student-insights.dom.cjs && node workspace.dom.cjs",
     "test:browser": "node acadia.smoke.cjs"
   },
   "devDependencies": {
