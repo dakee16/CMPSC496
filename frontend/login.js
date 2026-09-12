@@ -77,7 +77,7 @@ el("swapBtn").addEventListener("click", () => {
 /* Already signed in? The cookie is the authority, so ask the server rather
    than trusting what sessionStorage remembers. */
 Session.check().then(me => {
-  if (me) location.replace(me.role === "teacher" ? "teacher.html" : "student.html");
+  if (me) location.replace(me.role === "teacher" ? "teacher.html" : "dashboard.html");
 });
 
 el("gate").addEventListener("submit", async e => {
@@ -100,7 +100,7 @@ el("gate").addEventListener("submit", async e => {
   try {
     const me = await Session.signIn(mode, el("u").value.trim(), el("p").value,
       {first_name: el("fn").value.trim(), last_name: el("ln").value.trim()});
-    location.href = me.role === "teacher" ? "teacher.html" : "student.html";
+    location.href = me.role === "teacher" ? "teacher.html" : "dashboard.html";
   } catch (ex) {
     setBusy(el("go"), false);
     serverErr(ex.message);

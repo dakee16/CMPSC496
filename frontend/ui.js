@@ -292,7 +292,7 @@ function mountHeader({active = "", wide = false, variant = "", crumbs = null} = 
   document.querySelectorAll('[data-app-shell]').forEach(el => el.remove());
   const s = Session.get();
   const role = variant || (s && s.role === "teacher" ? "instructor" : "student");
-  const roleHome = role === "instructor" ? "teacher.html" : "student.html";
+  const roleHome = role === "instructor" ? "teacher.html" : "dashboard.html";
   const roleLabel = role === "instructor" ? "Instructor" : "Student";
   const navItem = (label, href, icon, key, id = "") => `<a
     class="hbtn ${active === key || (!active && key === "Home") ? "on" : ""}"
@@ -305,9 +305,11 @@ function mountHeader({active = "", wide = false, variant = "", crumbs = null} = 
       + navItem("Assignments","teacher.html#list","book","Assignments")
       + navItem("Grades","grades.html","chart","Grades")
       + navItem("Playground","playground.html","lab","Playground")
-    : navItem("My assignments",roleHome,"book","Home","homeBtn");
+    : navItem("Dashboard",roleHome,"grid","Dashboard","homeBtn")
+      + navItem("My assignments","student.html","book","Assignments")
+      + navItem("My grades","student-grades.html","chart","Grades");
   const switcher = s && s.role === "teacher"
-    ? `<a class="viewas" href="${role === "instructor" ? "student.html" : "teacher.html"}"
+    ? `<a class="viewas" href="${role === "instructor" ? "dashboard.html" : "teacher.html"}"
         title="View as ${role === "instructor" ? "student" : "instructor"}"
         aria-label="View as ${role === "instructor" ? "student" : "instructor"}">
         ${uiIcon("switch",18)}<span>View as ${role === "instructor" ? "student" : "instructor"}</span></a>` : "";

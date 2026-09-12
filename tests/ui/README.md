@@ -33,6 +33,45 @@ focus mode, tutor drawer behavior, seven viewport widths, student/instructor/
 grades/playground/login pages, and light/dark modes. It captures screenshots
 when `UI_ARTIFACTS` is set. Screenshots require human visual review.
 
+`student-insights.dom.cjs` checks the three student navigation sections,
+dashboard metrics and activity, assignment links into the existing design gate,
+grade filters and step details, safe rendering of titles, theme switching, and
+empty/error/retry states. It uses synthetic records and does not verify layout.
+
+The private progress endpoint has focused Python tests. With the backend's
+dependencies and pytest installed, run from the repository root:
+
+```sh
+python -m pytest tests/test_student_progress.py -q
+```
+
+These tests exercise the real tally/percentage helpers and signed cookies with
+a fake database: student isolation, unpublished/unready work, repeated attempts,
+completion versus credit, missing step counts, local-day activity, paginated
+history, authentication, no-store responses, and database failures. They do not
+connect to Supabase or invoke grading, oracle execution, or model providers.
+
+## Student dashboard and grades
+
+- Dashboard is the student landing page. It shows completed problems, earned
+  step credit, assignment progress, seven days of practice, recent activity,
+  milestones, and links to the next unfinished problems.
+- My assignments retains the existing practice flow. Links from the dashboard
+  and grades open the chosen assignment/problem while preserving the design
+  approval gate. Unpublished assignments are hidden in all three sections.
+- My grades groups problems by assignment with search, status filters, sorting,
+  step-level results, and links back to practice. Completion and earned credit
+  are separate; unknown step counts display a dash, never a fabricated zero.
+- Both pages use the shared light/dark tokens and responsive layouts. The new
+  `/student/progress` read endpoint derives the account from the signed cookie,
+  returns no reference code or peer records, and disables response caching.
+
+Manual browser review for the new pages remains pending: check both themes at
+375, 768, 1024, and 1600 pixels; keyboard navigation and step expansion; long
+assignment/problem names; grade table scrolling on mobile; and dashboard links
+into an assignment and a problem. Also confirm against a development database
+that the student's recorded step credit matches the instructor's grade sheet.
+
 ## UI design decisions
 
 - ACADIA uses a reusable vector A mark, teal actions, sea-glass light surfaces,
@@ -58,4 +97,5 @@ DOM/contrast tests and JavaScript syntax checks were run in the editing
 environment. Chromium could not be installed there: its download timed out,
 and the system package manager was permission-blocked. Consequently, the
 browser suite and screenshot/visual review remain pending and must be run
-before merging. Live backend integration was intentionally not exercised.
+before merging. Both DOM suites and all eight focused progress endpoint tests
+pass. Live Supabase integration was not exercised.

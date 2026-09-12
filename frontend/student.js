@@ -1,5 +1,5 @@
 const S = requireSession("student");
-mountHeader({variant: "student", active: "Home", wide: true});
+mountHeader({variant: "student", active: "Assignments", wide: true});
 const $ = id => document.getElementById(id);
 
 let sessionId = null, chunks = [], idx = 0, accepted = [], editor = null, header = "";
@@ -580,6 +580,7 @@ let ASSIGNMENTS = [];          // enriched with slugs / solved / last
 let openAssign = null;         // the assignment currently open
 let PROBLEMS = [];             // its problems
 let pQuery = "", pFilter = "all", pSort = "alpha";
+let landingLinkHandled = false;
 
 const TOUCH_KEY = "mt.touched";
 /* RETIRED. "In progress" came from a note this browser kept, which survived a
@@ -632,7 +633,7 @@ async function loadAssignments(){
   OPENED = new Set(solved.opened || []);
   LAST_SLUG = solved.last_slug || null;
 
-  const list = (d.assignments || []).filter(a => a.ready > 0);
+  const list = (d.assignments || []).filter(a => a.ready > 0 && a.published !== false);
   if (!list.length){
     paintStudentStats([]);
     $("assignCard").innerHTML = `<div class="empty">
@@ -703,6 +704,21 @@ async function loadAssignments(){
 
   $("assignments").querySelectorAll(".rowitem").forEach(b =>
     b.onclick = () => openAssignment(ASSIGNMENTS.find(a => String(a.id) === b.dataset.id)));
+  if (!landingLinkHandled){
+    landingLinkHandled = true;
+    const params = new URLSearchParams(location.search);
+    const requested = params.get("assignment");
+    if (requested){
+      const assignment = ASSIGNMENTS.find(a => String(a.id) === requested);
+      if (assignment){
+        await openAssignment(assignment);
+        const slug = params.get("problem");
+        const problem = PROBLEMS.find(p => p.slug === slug);
+        if (problem) await start(problem);
+        else if (slug) toast("That problem is not available. Choose another from this assignment.", "warn");
+      } else toast("That assignment is not available right now.", "warn");
+    }
+  }
 }
 
 // Summaries use the assignment data already loaded for the cards.
@@ -721,6 +737,7 @@ function view(which){
 }
 
 function goAssignments(){
+  history.replaceState(null, "", location.pathname);
   dismissCoach(false);                    // see backToProblems
   document.title = "My assignments · ACADIA";
   setCrumbs([]);
@@ -731,6 +748,7 @@ function goAssignments(){
 
 async function openAssignment(a){
   if (!a) return;
+  history.replaceState(null, "", `${location.pathname}?assignment=${encodeURIComponent(a.id)}`);
   openAssign = a;
   pQuery = ""; pFilter = "all"; pSort = "alpha";
   $("pfilter").value = "";
@@ -923,6 +941,7 @@ function renderExamples(blob){
 
 async function start(p){
   if (!p) return;
+  if (openAssign) history.replaceState(null, "", `${location.pathname}?assignment=${encodeURIComponent(openAssign.id)}&problem=${encodeURIComponent(p.slug)}`);
   view("cSolve");
   const name = p.title || p.slug;
   document.title = `${name} · ACADIA`;
@@ -1447,6 +1466,7 @@ async function finish(res){
 /* Back to the problem list, with the list redrawn: a problem just solved has
    to show as solved, and the header summary has to move. */
 function backToProblems(){
+  if (openAssign) history.replaceState(null, "", `${location.pathname}?assignment=${encodeURIComponent(openAssign.id)}`);
   // Leaving is not reading it - the tip is anchored to a chat that is about to
   // go off screen, so it goes with it, but it has not been used up.
   dismissCoach(false);
