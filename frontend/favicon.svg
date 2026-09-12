@@ -1,1 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><rect width="48" height="48" rx="12" fill="#bc4724"/><path d="M15 12v28M15 25c0 6 3 8 6 8 5 0 8-4 8-9V12M29 25c0 5 1 8 5 8" fill="none" stroke="#fff4ee" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none">
+  <defs><linearGradient id="sea" x1="4" y1="0" x2="44" y2="48" gradientUnits="userSpaceOnUse"><stop stop-color="#159997"/><stop offset="1" stop-color="#07545f"/></linearGradient></defs>
+  <rect width="48" height="48" rx="14" fill="url(#sea)"/>
+  <path d="M10 35 21.5 12a2.8 2.8 0 0 1 5 0L38 35h-7l-7-14-7 14h-7Z" fill="#fff"/>
+  <path d="m19.5 34 4.5-8.5 4.5 8.5H19.5Z" fill="#8be4cb"/>
+</svg>

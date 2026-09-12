@@ -1,10 +1,10 @@
 <!DOCTYPE html><html lang="en"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<script>try{document.documentElement.dataset.theme=(localStorage.getItem("mt.theme")==="light"?"light":"dark")}catch(e){}</script>
-<title>Instructor overview · MicroTutor</title>
+<script>try{document.documentElement.dataset.theme=(localStorage.getItem("mt.theme")==="dark"?"dark":"light")}catch(e){document.documentElement.dataset.theme="light"}</script>
+<title>Instructor overview · ACADIA</title>
 
-<meta name="theme-color" content="#151619">
+<meta name="theme-color" content="#f3f7f7">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
@@ -18,7 +18,7 @@
 <main class="page">
   <div class="page-heading"><div><p class="eyebrow">Your teaching workspace</p><h1>Course overview</h1><p class="sub">Build better practice. See what’s ready, then help your students move forward.</p></div><button id="newAssignment"><span aria-hidden="true">＋</span> New assignment</button></div><div class="metrics" id="courseStats" aria-label="Assignment overview"><div class="metric"><span class="metric-icon" aria-hidden="true">▤</span><div><div class="metric-label">Assignments</div><div class="metric-value" data-metric="0">—</div></div></div><div class="metric"><span class="metric-icon" aria-hidden="true">↗</span><div><div class="metric-label">Published</div><div class="metric-value" data-metric="1">—</div></div></div><div class="metric"><span class="metric-icon" aria-hidden="true">✓</span><div><div class="metric-label">Problems ready</div><div class="metric-value" data-metric="2">—</div></div></div></div>
 
-  <div class="workspace-note"><span class="note-mark" aria-hidden="true">↗</span><div><strong>From solution to understanding.</strong><p>Upload your Python solutions. MicroTutor turns them into guided practice, with a tutor to support each student.</p></div><a href="grades.html">View student progress <span aria-hidden="true">→</span></a></div><div id="resumeNote"></div>
+  <div class="workspace-note"><span class="note-mark" aria-hidden="true">↗</span><div><strong>From solution to understanding.</strong><p>Upload your Python solutions. ACADIA turns them into guided practice, with a tutor to support each student.</p></div><a href="grades.html">View student progress <span aria-hidden="true">→</span></a></div><div id="resumeNote"></div>
 
   <div class="card" id="run" hidden="">
     <div class="runhead">
@@ -37,13 +37,13 @@
     <div class="rvBox" role="dialog" aria-modal="true" aria-labelledby="rvTitle">
       <h3 id="rvTitle">A few problems need a second opinion</h3>
       <p class="rvLead">
-        MicroTutor writes test cases for every problem, then checks them by
+        ACADIA writes test cases for every problem, then checks them by
         breaking your solution on purpose. If a test notices the break, the
         tests are doing their job.
       </p>
       <p class="rvLead">
         For the problems below, a few of those deliberate breaks slipped past.
-        That means one of two things, and MicroTutor cannot tell which on its
+        That means one of two things, and ACADIA cannot tell which on its
         own: either the break made no difference to the answer (harmless), or
         it did and a test case is missing. Until someone looks, these stay
         hidden from students.

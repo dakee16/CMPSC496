@@ -16,6 +16,7 @@ let openProblem = null, chatLog = [], chatBusy = false;
 let tutorReleased = false;
 // Non-null while the student is looking back at a step they already finished.
 let reviewIdx = null;
+let reviewDraft = null;
 
 /* Show or hide the coding half. The design panel and the editor are mutually
    exclusive: exactly one of them occupies the bottom of the code surface, so
@@ -25,7 +26,7 @@ function applyTutorGate(){
   const btn = $("submit");
   // The steps are part of the answer - see the markup. They appear with the
   // editor, never before it.
-  for (const id of ["planHead", "probProg", "planHint2", "stepper"]){
+  for (const id of ["workStep", "planHead", "probProg", "planHint2", "stepper"]){
     if ($(id)) $(id).hidden = !tutorReleased;
   }
   if ($("planLocked")) $("planLocked").hidden = tutorReleased;
@@ -46,7 +47,8 @@ function applyTutorGate(){
   }
   if (panel) panel.hidden = tutorReleased;
   const wasHidden = wrap && wrap.hidden;
-  if (wrap) wrap.hidden = !tutorReleased || reviewIdx !== null;
+  const complete = chunks.length > 0 && idx >= chunks.length;
+  if (wrap) wrap.hidden = !tutorReleased || reviewIdx !== null || complete;
   // CodeMirror measures itself when it is built, and it is now built inside a
   // wrapper the design gate keeps hidden - so it lays out at zero width and
   // comes back with no gutter, which is what put the frozen listing's "1" hard
@@ -116,7 +118,7 @@ function markUnlocked(text){
         stroke="currentColor" stroke-width="2.6" stroke-linecap="round"
         stroke-linejoin="round" aria-hidden="true"><path d="m4 12 5.5 5.5L20 7"/></svg>
       <span></span>`;
-    $("workCard").insertBefore(ok, $("stepCount"));
+    $("workCard").insertBefore(ok, $("workStep"));
   }
   ok.querySelector("span").textContent = text;
 }
@@ -712,13 +714,15 @@ function paintStudentStats(rows){
 
 function view(which){
   document.body.classList.toggle("in-studio", which === "cSolve");
+  setWorkspaceFocus(false);
+  setTutorOpen(false, false);
   ["cAssign","cProblem","cSolve"].forEach(id => $(id).hidden = id !== which);
   scrollTo({top: 0, behavior: "smooth"});
 }
 
 function goAssignments(){
   dismissCoach(false);                    // see backToProblems
-  document.title = "My assignments · MicroTutor";
+  document.title = "My assignments · ACADIA";
   setCrumbs([]);
   openAssign = null;
   view("cAssign");
@@ -734,7 +738,7 @@ async function openAssignment(a){
   $("pchips").querySelectorAll(".chip").forEach(c =>
     c.setAttribute("aria-pressed", String(c.dataset.f === "all")));
   $("assignName").textContent = a.name;
-  document.title = `${a.name} · MicroTutor`;
+  document.title = `${a.name} · ACADIA`;
   // A breadcrumb in the header, so getting back one level does not mean going
   // all the way Home.
   setCrumbs([{label: a.name}]);
@@ -887,26 +891,9 @@ $("pchips").addEventListener("click", e => {
   renderProblems();
 });
 
-/* Render a problem statement.
-
-   Docstrings arrive with the source's hard line-wraps intact, and pre-wrap was
-   preserving them - so a sentence broke wherever the author's editor had. Split
-   on blank lines into real paragraphs and collapse the single newlines inside
-   each, then lift any "Example:" paragraph out into Input/Output pairs. */
+/* Preserve source examples and indentation; prose alone gets reflowed. */
 function renderStatement(desc){
-  const box = $("statement");
-  box.innerHTML = "";
-  const text = (desc || "").trim();
-  if (!text) return;
-
-  for (const para of text.split(/\n\s*\n+/).map(s => s.trim()).filter(Boolean)){
-    const m = /^examples?\s*\d*\s*[:.]\s*([\s\S]+)$/i.exec(para);
-    const ex = m && renderExamples(m[1]);
-    if (ex){ box.appendChild(ex); continue; }
-    const el = document.createElement("p");
-    el.textContent = para.replace(/\s*\n\s*/g, " ");
-    box.appendChild(el);
-  }
+  renderLearningText($("statement"), desc, renderExamples);
 }
 
 /* "fn(args) -> result", one or more, comma / semicolon / newline separated.
@@ -919,6 +906,9 @@ function renderExamples(blob){
   let m;
   while ((m = re.exec(t))) pairs.push([m[1].trim(), m[2].trim()]);
   if (!pairs.length) return null;
+  // Preserve the full source when a nested expression or explanation cannot
+  // be completely parsed into input/output pairs.
+  if (t.replace(re, "").replace(/[;,]/g, "").trim()) return null;
 
   const wrap = document.createElement("div");
   wrap.className = "examples";
@@ -935,7 +925,7 @@ async function start(p){
   if (!p) return;
   view("cSolve");
   const name = p.title || p.slug;
-  document.title = `${name} · MicroTutor`;
+  document.title = `${name} · ACADIA`;
   $("probTitle").textContent = name;
   // Opening a problem is what makes it "in progress", and the SERVER records
   // that: /decompose_chunks opens an mt_sessions row, which /solved reads back
@@ -951,8 +941,11 @@ async function start(p){
   renderStatement(p.description);
   stepperLoading();
   $("stepCount").textContent = "";
+  $("prompt").textContent = "";
+  $("problemDetails").open = true;
   header = "";
   reviewIdx = null;
+  reviewDraft = null;
   $("ctx").style.maxHeight = "";          // a previous finish() may have opened it
   $("submit").style.display = ""; $("backP").style.display = "";
   $("msg").innerHTML = `<div class="banner info">Getting this problem ready…</div>`;
@@ -1134,7 +1127,7 @@ function ensureEditor(){
       "Shift-Ctrl-L": "findAndSelectAll",
     },
   });
-  editor.setSize(null, 168);
+  editor.setSize(null, 300);
   // The focus ring belongs to the WHOLE code surface, not to the lower half of
   // it - the frozen context and the editor are presented as one box, so a ring
   // around only the editable part would give that away as a lie.
@@ -1209,14 +1202,23 @@ function renderStepper(){
       ? ` type="button" data-i="${i}"`
       : (i === idx ? ` aria-current="step"` : "");
     return `<li><${el} class="steppill ${state}${reviewIdx === i ? " reviewing" : ""}"${attrs}
-        title="Step ${i + 1}: ${esc(c.prompt)}">
+        aria-label="Step ${i + 1} of ${chunks.length}${tag}: ${esc(c.prompt)}" title="${esc(c.prompt)}">
         <span class="n" aria-hidden="true">${mark}</span>
-        <span class="t">${esc(c.prompt)}</span>
+        <span class="t">Step ${i + 1}</span>
         <span class="sr-only">Step ${i + 1} of ${chunks.length}${tag}</span>
       </${el}></li>`;
   }).join("");
   $("stepper").querySelectorAll("button.steppill").forEach(b =>
     b.onclick = () => openReview(+b.dataset.i));
+
+  const selected = $("stepper").querySelector(".reviewing, .now");
+  if (selected) requestAnimationFrame(() => {
+    const row = $("stepper");
+    const item = selected.getBoundingClientRect();
+    const frame = row.getBoundingClientRect();
+    if (item.right > frame.right) row.scrollLeft += item.right - frame.right;
+    else if (item.left < frame.left) row.scrollLeft -= frame.left - item.left;
+  });
 
   const doneN = accepted.filter(Boolean).length;
   const pct = chunks.length ? Math.round(doneN / chunks.length * 100) : 0;
@@ -1240,6 +1242,9 @@ function setReviewMode(on){
 
 function openReview(i){
   if (!accepted[i]) return;
+  if (reviewIdx === null && editor){
+    reviewDraft = {value: editor.getValue(), selections: editor.listSelections()};
+  }
   reviewIdx = i;
   const c = chunks[i] || {};
   $("stepCount").innerHTML = `Step ${i + 1} of ${chunks.length}`
@@ -1259,6 +1264,11 @@ function leaveReview(){
   setReviewMode(false);
   render();
   applyTutorGate();
+  if (reviewDraft && editor){
+    editor.setValue(reviewDraft.value);
+    editor.setSelections(reviewDraft.selections);
+    reviewDraft = null;
+  }
 }
 
 function render(){
@@ -1443,7 +1453,7 @@ function backToProblems(){
   $("editorWrap").hidden = false;
   $("ctx").style.maxHeight = "";          // undo the finish() expansion
   if (openAssign){
-    document.title = `${openAssign.name} · MicroTutor`;
+    document.title = `${openAssign.name} · ACADIA`;
     setCrumbs([{label: openAssign.name}]);
   }
   renderProblems();
@@ -1465,9 +1475,9 @@ const SUGGESTIONS = ["Explain this problem simply",
 function bubble(who, text, when){
   const b = document.createElement("div");
   b.className = "bub " + who;
-  const body = document.createElement("span");
-  body.className = "btext";
-  body.textContent = text;
+  const body = document.createElement("div");
+  body.className = "btext learning-text";
+  renderLearningText(body, text);
   // Who and when. Faded until hover, but always in the accessibility tree, so
   // the log reads as a conversation rather than a wall of alternating text.
   const meta = document.createElement("span");
@@ -1720,7 +1730,7 @@ async function sendToTutor(text){
       chatLog.pop();                       // do not poison the next turn
       return;
     }
-    thinking.textContent = data.reply;
+    renderLearningText(thinking, data.reply);
     chatLog.push({role: "assistant", content: data.reply});
     // Planning only. Once the design is approved they are implementing a plan
     // that has already been walked and passed, and the server pins this false.
@@ -1809,14 +1819,42 @@ $("cinput").addEventListener("keydown", e => {
   }
 });
 
-/* The bottom sheet. Only meaningful under 1024px, where CSS docks the chat
-   column to the bottom edge; above that the class does nothing. */
-$("sheetTog").onclick = () => {
-  const open = $("chatcol").classList.toggle("open");
+/* Tutor drawer on smaller screens. Hidden content must also leave the tab
+   order; a translated-offscreen form is still focusable without inert. */
+const tutorDrawer = matchMedia("(max-width: 1439px)");
+function setTutorOpen(open, focus = true){
+  $("chatcol").classList.toggle("open", open);
   $("sheetTog").setAttribute("aria-expanded", String(open));
   $("sheetTog").setAttribute("aria-label", open ? "Close the tutor" : "Open the tutor");
-  if (open) $("cinput").focus();
-};
+  $("sheetTog").querySelector(".sheet-label").textContent = open ? "Close tutor" : "Open tutor";
+  const closed = tutorDrawer.matches && !open;
+  $("clog").inert = closed;
+  $("cform").inert = closed;
+  if (focus && open) $("cinput").focus();
+}
+$("sheetTog").onclick = () => setTutorOpen(!$("chatcol").classList.contains("open"));
+tutorDrawer.addEventListener("change", () => setTutorOpen(false, false));
+setTutorOpen(false, false);
+
+function setWorkspaceFocus(on){
+  document.body.classList.toggle("focus-workspace", on);
+  const button = $("focusWork");
+  button.setAttribute("aria-pressed", String(on));
+  button.setAttribute("aria-label", on ? "Exit focus view" : "Focus editor");
+  button.querySelector("span").textContent = on ? "Exit focus" : "Focus editor";
+  if (editor) requestAnimationFrame(() => { editor.refresh(); matchGutter(); });
+}
+$("focusWork").onclick = () => setWorkspaceFocus(!document.body.classList.contains("focus-workspace"));
+addEventListener("keydown", event => {
+  if (event.key !== "Escape") return;
+  if (tutorDrawer.matches && $("chatcol").classList.contains("open")){
+    setTutorOpen(false, false);
+    $("sheetTog").focus();
+  } else if (document.body.classList.contains("focus-workspace")){
+    setWorkspaceFocus(false);
+    $("focusWork").focus();
+  }
+});
 
 // The frozen gutter is measured off the live editor, so anything that can
 // change the editor's metrics has to trigger a re-measure: the mono webfont

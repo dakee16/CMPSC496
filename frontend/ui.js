@@ -1,5 +1,5 @@
 /* ============================================================
-   MicroTutor shared UI behaviour: session + app header
+   ACADIA shared UI behaviour: session + app header
    ------------------------------------------------------------
    Sign-in is username (PSU email) + password, and the thing that
    proves it is an HttpOnly cookie this file cannot read. What
@@ -47,19 +47,19 @@ function offDiskBanner(){
 }
 if (OFF_DISK) addEventListener("DOMContentLoaded", offDiskBanner);
 
-/* Theme: "dark" (default) or "light", per browser. Applied to <html
-   data-theme> so the light token overrides in ui.css take effect. Each page's
+/* Theme: "light" (default) or an explicitly saved "dark", per browser. Applied to <html
+   data-theme> so the palette in tokens.css takes effect. Each page's
    <head> sets this synchronously to avoid a flash on load; this is the setter
    the Settings dialog calls, plus a fallback apply for pages that miss the
    head snippet. */
 const Theme = {
   key: "mt.theme",
   get(){
-    try { return localStorage.getItem(this.key) === "light" ? "light" : "dark"; }
-    catch { return "dark"; }
+    try { return localStorage.getItem(this.key) === "dark" ? "dark" : "light"; }
+    catch { return "light"; }
   },
   set(t){
-    const v = t === "light" ? "light" : "dark";
+    const v = t === "dark" ? "dark" : "light";
     try { localStorage.setItem(this.key, v); } catch {}
     document.documentElement.dataset.theme = v;
     syncThemeControls(v);
@@ -254,7 +254,7 @@ const esc = s => String(s == null ? "" : s)
    names the current one, and `crumbs` adds a breadcrumb trail beside the nav.
 
    The page's own <title> is left alone. This used to overwrite it with
-   "MicroTutor" / "MicroTutor Portal", which meant no page could ever carry a
+   "ACADIA" / "ACADIA Portal", which meant no page could ever carry a
    descriptive tab title of its own. */
 // The options the page last mounted with, so the header can be redrawn once an
 // async session check fills in an account the first paint did not have.
@@ -316,8 +316,8 @@ function mountHeader({active = "", wide = false, variant = "", crumbs = null} = 
   shell.innerHTML = `
     <button class="nav-scrim" id="navScrim" aria-label="Close navigation" hidden></button>
     <aside class="sidebar" id="appSidebar" aria-label="${roleLabel} navigation">
-      <a class="wordmark" href="${roleHome}" aria-label="MicroTutor home">
-        <span class="brand-symbol" aria-hidden="true">μ</span><span class="brand-name">MicroTutor<span class="brand-caption">LEARNING STUDIO</span></span>
+      <a class="wordmark" href="${roleHome}" aria-label="ACADIA home">
+        <img class="brand-symbol" src="favicon.svg" width="40" height="40" alt="" aria-hidden="true"><span class="brand-name">ACADIA<span class="brand-caption">LEARNING STUDIO</span></span>
       </a>
       <div class="portal-label"><span class="portal-monogram">${roleLabel[0]}</span><span>${roleLabel} workspace</span></div>
       <div class="nav-label">WORKSPACE</div>
@@ -595,6 +595,94 @@ function skeletonRows(n = 3, widths = [78, 62, 88, 54, 70]){
       <span class="skel" style="width:34%;height:9px"></span></div>`;
   }
   return `<div role="status" aria-label="Loading">${out}</div>`;
+}
+
+/* Small, text-only renderer for assignment docstrings and tutor messages.
+   Never interpret source HTML: even code containing tags stays literal text.
+   Preserve fenced/indented Python and doctests; reflow only prose. */
+function renderLearningText(container, value, examples){
+  container.replaceChildren();
+  let lines = String(value || "").replace(/\r\n?/g, "\n")
+    .replace(/^\n+|\n+$/g, "").split("\n");
+  const nonempty = lines.filter(line => line.trim());
+  if (!nonempty.length) return;
+  const indent = Math.min(...nonempty.map(line => (line.match(/^ */) || [""])[0].length));
+  if (indent) lines = lines.map(line => line.slice(indent));
+  const inline = (node, text) => {
+    text.split(/(`[^`\n]+`)/g).forEach(part => {
+      if (part.startsWith("`") && part.endsWith("`") && part.length > 2){
+        const code = document.createElement("code");
+        code.textContent = part.slice(1, -1);
+        node.appendChild(code);
+      } else node.appendChild(document.createTextNode(part));
+    });
+  };
+  const codeBlock = (text, label) => {
+    const pre = document.createElement("pre");
+    pre.className = "code";
+    pre.tabIndex = 0;
+    pre.setAttribute("aria-label", label || "Code example");
+    const code = document.createElement("code");
+    code.textContent = text.replace(/\n+$/, "");
+    pre.appendChild(code);
+    container.appendChild(pre);
+  };
+  let paragraph = [];
+  const flush = () => {
+    if (!paragraph.length) return;
+    const text = paragraph.join(" ").trim();
+    const match = /^examples?\s*\d*\s*[:.]\s*([\s\S]+)$/i.exec(text);
+    const example = examples && match && examples(match[1]);
+    if (example) container.appendChild(example);
+    else {
+      const p = document.createElement("p");
+      inline(p, text);
+      container.appendChild(p);
+    }
+    paragraph = [];
+  };
+  const python = line => /^(?:(?:async\s+)?def\s+\w+\s*\(|class\s+\w+|(?:for|while|if|elif|else|try|except|with)\b.*:\s*$|return\s+\S|[A-Za-z_]\w*(?:\[[^\]]+\])?\s*=(?!=))/.test(line.trim());
+  for (let i = 0; i < lines.length;){
+    const line = lines[i];
+    const fence = /^\s*(`{3,}|~{3,})[^`~]*$/.exec(line);
+    if (fence){
+      flush();
+      const block = [];
+      const close = new RegExp("^\\s*" + fence[1][0] + "{" + fence[1].length + ",}\\s*$");
+      i++;
+      while (i < lines.length && !close.test(lines[i])) block.push(lines[i++]);
+      if (i < lines.length) i++;
+      codeBlock(block.join("\n"));
+      continue;
+    }
+    if (/^\s*>>>/.test(line) || python(line) || (/^( {4}|\t)\S/.test(line) && !paragraph.length)){
+      flush();
+      const block = [];
+      const doctest = /^\s*>>>/.test(line);
+      while (i < lines.length && lines[i].trim() && !/^\s*(`{3,}|~{3,})/.test(lines[i])) block.push(lines[i++]);
+      codeBlock(block.join("\n"), doctest ? "Python example and output" : "Code example");
+      continue;
+    }
+    const bullet = /^\s*(?:[-*]\s+|\d+[.)]\s+)(.+)/.exec(line);
+    if (bullet){
+      flush();
+      const ordered = /^\s*\d/.test(line);
+      const list = document.createElement(ordered ? "ol" : "ul");
+      if (ordered) list.start = parseInt(line, 10);
+      const pattern = ordered ? /^\s*\d+[.)]\s+(.+)/ : /^\s*[-*]\s+(.+)/;
+      let item;
+      while (i < lines.length && (item = pattern.exec(lines[i]))){
+        const li = document.createElement("li");
+        inline(li, item[1]); list.appendChild(li); i++;
+      }
+      container.appendChild(list);
+      continue;
+    }
+    if (!line.trim()) flush();
+    else paragraph.push(line.trim());
+    i++;
+  }
+  flush();
 }
 
 /* --- formatting --------------------------------------------------------

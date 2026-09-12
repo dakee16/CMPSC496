@@ -689,7 +689,7 @@ function findingsPanel(f, source){
 
   return `<div class="findings">
     <h4>The ${open.length === 1 ? "check" : open.length + " checks"} nothing could decide</h4>
-    <p class="fLead">To check the tests are any good, MicroTutor breaks your
+    <p class="fLead">To check the tests are any good, ACADIA breaks your
       solution on purpose, one line at a time, and sees whether a test notices.
       ${open.length === 1 ? "The change below" : "The changes below"} slipped
       past, and it cannot tell why. Nothing here is a suggestion to edit your
