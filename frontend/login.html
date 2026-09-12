@@ -1,119 +1,64 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
+<!DOCTYPE html><html lang="en"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script>try{document.documentElement.dataset.theme=(localStorage.getItem("mt.theme")==="light"?"light":"dark")}catch(e){}</script>
 <title>Sign in · MicroTutor</title>
-<!-- The literal is the value used before ui.js runs; Theme.set() then rewrites
-     it from the --bg token so it follows the chosen theme. -->
-<meta name="theme-color" content="#0b1120">
+
+<meta name="theme-color" content="#151619">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<!-- Same URL as ui.css's @import, so the faces start downloading in
-     parallel with the stylesheet instead of waiting for it to parse.
-     The @import stays the single source of truth; this is a head start. -->
-<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&amp;family=Space+Grotesk:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
 <link rel="stylesheet" href="tokens.css">
 <link rel="stylesheet" href="ui.css">
-<style>
-  /* Everything here is layout. The field, button, note and error styles all
-     come from ui.css, so this card cannot drift from the rest of the app. */
-  body{display:grid; place-items:center; padding:var(--s6)}
-  .gate{width:min(440px,100%)}
-
-  /* The wordmark is the SAME .wordmark element the floating header renders -
-     one implementation, so the first screen and every screen after it cannot
-     drift apart. This page only positions it. */
-  .markrow{display:flex; margin-bottom:var(--s6)}
-
-  /* One rhythm for the whole card: 24 between blocks, 16 between fields,
-     8 inside a field. The card ran tall with uneven gaps before. */
-  .gate .card{padding:var(--s6); margin:0}
-  .gate h1{font-size:26px; margin-bottom:var(--s2)}
-  .gate .sub{margin-bottom:var(--s6)}
-  .gate .field + .field{margin-top:var(--s4)}
-  /* First and last sit on one line: they are one fact, and stacking them makes
-     a four-field form out of a two-field one. */
-  .names{display:grid; grid-template-columns:1fr 1fr; gap:var(--s3)}
-  /* The card's rhythm comes from `.field + .field`, so the inner fields must
-     not also carry ui.css's own bottom margin - two rules stacking is what put
-     a wider gap under this row than under every other field. */
-  .names .field{margin-bottom:0}
-  .names .field + .field{margin-top:0}
-  .names + .field{margin-top:var(--s4)}
-  @media (max-width:380px){ .names{grid-template-columns:1fr} }
-  #go{width:100%; margin-top:var(--s6)}
-
-  .swap{margin-top:var(--s6); padding-top:var(--s4);
-        border-top:1px solid var(--glass-line);
-        font-size:12.5px; color:var(--text-muted); text-align:center}
-  .swap button{background:none; border:0; padding:0; font:inherit; cursor:pointer;
-    color:var(--accent-ink); font-weight:600; box-shadow:none; min-height:0}
-  .swap button:hover{text-decoration:underline; transform:none; box-shadow:none;
-    background:none}
-
-  .gate .note{margin-top:var(--s6)}
-  form{margin:0}
-</style>
+<link rel="stylesheet" href="login.css">
 </head>
 <body>
 
 <main class="gate">
   <div class="markrow">
-    <span class="wordmark"><span class="dot" aria-hidden="true"></span>MicroTutor</span>
+    <span class="wordmark"><span class="brand-symbol" aria-hidden="true">μ</span><span class="brand-name">MicroTutor<span class="brand-caption">LEARNING STUDIO</span></span></span>
+    <span data-theme-control=""></span>
   </div>
 
-  <div class="card">
+  <div class="auth-layout">
+    <aside class="auth-intro" aria-label="About MicroTutor"><div class="intro-top"><p class="eyebrow">THINK IT THROUGH. MAKE IT WORK.</p><h2>Small steps. <br><span>Stronger</span> <br>thinking.</h2><p class="intro-description">A little structure. The right questions.<br>A better way to learn to code.</p></div><div class="learning-path"><div><span>01</span><strong>Understand the problem</strong><p>Start with what matters.</p></div><div><span>02</span><strong>Design your approach</strong><p>Make a plan in your own words.</p></div><div><span>03</span><strong>Build your understanding</strong><p>Write, test, and learn with guidance.</p></div></div><div class="auth-caption"><span>BUILT FOR THE WAY YOU LEARN</span><span>CMPSC 496</span></div></aside>
+    <div class="auth-form"><p class="eyebrow">YOUR NEXT STEP STARTS HERE</p>
     <h1 id="title">Sign in</h1>
     <p class="sub" id="sub">Step by step programming practice, graded by running
       your code.</p>
 
-    <form id="gate" autocomplete="on" novalidate>
-      <!-- Registration only. Hidden on sign-in rather than living on a second
-           page, for the same reason the password field is reused: the two modes
-           differ by a couple of fields, not by a screen. -->
-      <div class="names" id="nameRow" hidden>
+    <form id="gate" autocomplete="on" novalidate="">
+
+      <div class="names" id="nameRow" hidden="">
         <div class="field">
           <label for="fn">First name</label>
-          <input id="fn" name="given-name" type="text" autocomplete="given-name"
-                 spellcheck="false" aria-describedby="fnErr">
+          <input id="fn" name="given-name" type="text" autocomplete="given-name" spellcheck="false" aria-describedby="fnErr">
           <p class="fielderr" id="fnErr" role="alert"></p>
         </div>
         <div class="field">
           <label for="ln">Last name</label>
-          <input id="ln" name="family-name" type="text" autocomplete="family-name"
-                 spellcheck="false" aria-describedby="lnErr">
+          <input id="ln" name="family-name" type="text" autocomplete="family-name" spellcheck="false" aria-describedby="lnErr">
           <p class="fielderr" id="lnErr" role="alert"></p>
         </div>
       </div>
 
       <div class="field">
         <label for="u">Penn State email</label>
-        <!-- autofocus: this is the first thing anyone does on this page, and
-             there is nothing else on it to focus instead. -->
-        <input id="u" name="username" type="email" inputmode="email"
-               autocomplete="username" placeholder="abc1234@psu.edu"
-               spellcheck="false" autofocus
-               aria-describedby="uErr" required>
-        <!-- Inline, under the field it is about. A single shared error line at
-             the bottom of a two-field form makes the reader work out which
-             field it meant. -->
+
+        <input id="u" name="username" type="email" inputmode="email" autocomplete="username" placeholder="abc1234@psu.edu" spellcheck="false" autofocus="" aria-describedby="uErr" required="">
+
         <p class="fielderr" id="uErr" role="alert"></p>
       </div>
 
       <div class="field">
         <label for="p">Password</label>
-        <input id="p" name="password" type="password"
-               autocomplete="current-password" aria-describedby="pErr pwHelp"
-               required>
+        <input id="p" name="password" type="password" autocomplete="current-password" aria-describedby="pErr pwHelp" required="">
         <p class="fielderr" id="pErr" role="alert"></p>
-        <p class="helptext" id="pwHelp" hidden>At least 8 characters.</p>
+        <p class="helptext" id="pwHelp" hidden="">At least 8 characters.</p>
       </div>
 
-      <!-- The SERVER's message: a bad password, a rate limit, an outage. Field
-           problems never reach here. assertive, not polite: it is blocking. -->
       <p class="fielderr" id="err" role="alert" aria-live="assertive"></p>
       <button type="submit" id="go">Sign in</button>
     </form>
@@ -123,127 +68,12 @@
       <button type="button" id="swapBtn">Create an account</button>
     </p>
 
-    <div class="note">
-      <strong>Instructors:</strong> sign in with the same form. Staff accounts
-      are marked as staff by us, so there is nothing to choose here - the site
-      sends you to the right place.
+    <div class="note"><span class="note-symbol" aria-hidden="true">↗</span><p><strong>One home for students and instructors.</strong><br>Your Penn State account takes you to your workspace.</p></div>
     </div>
   </div>
 </main>
 
 <script src="ui.js"></script>
-<script>
-/* Two modes on one form, because they differ by one field's meaning and one
-   URL. A separate register page would duplicate the whole card to change a
-   button label. */
-let mode = "login";
+<script src="login.js"></script>
 
-const el = id => document.getElementById(id);
-const serverErr = m => { el("err").textContent = m; };
-
-/* One rule, stated once, in the same words the server uses. main/auth.py
-   allows psu.edu only, so anything else is a round trip that can only fail. */
-const PSU = /^[^\s@]+@([a-z0-9-]+\.)*psu\.edu$/i;
-
-function fieldErr(id, msg){
-  const input = el(id), out = el(id + "Err");
-  out.textContent = msg || "";
-  input.setAttribute("aria-invalid", msg ? "true" : "false");
-  return !msg;
-}
-
-/* Says what is wrong AND how to fix it. "Invalid email" is neither. */
-function checkEmail(){
-  const v = el("u").value.trim();
-  if (!v) return fieldErr("u", "Enter your Penn State email address.");
-  return fieldErr("u", PSU.test(v)
-    ? "" : "Use your Penn State address, like abc1234@psu.edu.");
-}
-function checkName(id, what){
-  const v = el(id).value.trim();
-  return fieldErr(id, v ? "" : `Enter your ${what} name.`);
-}
-function checkPassword(){
-  const v = el("p").value;
-  if (!v) return fieldErr("p", "Enter your password.");
-  if (mode === "register" && v.length < 8)
-    return fieldErr("p", "Use at least 8 characters.");
-  return fieldErr("p", "");
-}
-
-/* Validate on the way OUT of a field, never on every keystroke: telling
-   someone their address is wrong while they are still typing it is noise. */
-el("u").addEventListener("blur", () => { if (el("u").value.trim()) checkEmail(); });
-el("p").addEventListener("blur", () => { if (el("p").value) checkPassword(); });
-// Clear a standing error as soon as they start fixing it.
-["u","p","fn","ln"].forEach(id => el(id).addEventListener("input", () => {
-  if (el(id + "Err").textContent) fieldErr(id, "");
-  serverErr("");
-}));
-
-function paint(){
-  const reg = mode === "register";
-  document.title = reg ? "Create an account · MicroTutor" : "Sign in · MicroTutor";
-  el("title").textContent = reg ? "Set up your account" : "Sign in";
-  el("sub").textContent = reg
-    ? "Use your Penn State email. Your work is saved against this account."
-    : "Step by step programming practice, graded by running your code.";
-  el("go").textContent = reg ? "Create account" : "Sign in";
-  el("p").setAttribute("autocomplete", reg ? "new-password" : "current-password");
-  el("pwHelp").hidden = !reg;
-  el("nameRow").hidden = !reg;
-  // Required only while they are shown, or sign-in would refuse to submit over
-  // two fields nobody can see.
-  ["fn","ln"].forEach(id => { el(id).required = reg; el(id).value = ""; });
-  el("swapText").textContent = reg ? "Already have an account?" : "New here?";
-  el("swapBtn").textContent = reg ? "Sign in" : "Create an account";
-  enable(el("go"));
-  serverErr("");
-  fieldErr("u", ""); fieldErr("p", "");
-  fieldErr("fn", ""); fieldErr("ln", "");
-}
-
-el("swapBtn").addEventListener("click", () => {
-  mode = mode === "login" ? "register" : "login";
-  paint();
-  el(mode === "register" ? "fn" : "u").focus();
-});
-
-/* Already signed in? The cookie is the authority, so ask the server rather
-   than trusting what sessionStorage remembers. */
-Session.check().then(me => {
-  if (me) location.replace(me.role === "teacher" ? "teacher.html" : "student.html");
-});
-
-el("gate").addEventListener("submit", async e => {
-  e.preventDefault();
-
-  /* Client-side checks are a COURTESY - they save a round trip on an obvious
-     typo. The server re-checks all of it; nothing here admits anyone. */
-  const reg = mode === "register";
-  const checks = [
-    ...(reg ? [["fn", checkName("fn", "first")], ["ln", checkName("ln", "last")]] : []),
-    ["u", checkEmail()], ["p", checkPassword()],
-  ];
-  const bad = checks.find(([, ok]) => !ok);
-  if (bad){
-    el(bad[0]).focus();
-    return;
-  }
-
-  setBusy(el("go"), true, mode === "register" ? "Creating…" : "Signing in…");
-  try {
-    const me = await Session.signIn(mode, el("u").value.trim(), el("p").value,
-      {first_name: el("fn").value.trim(), last_name: el("ln").value.trim()});
-    location.href = me.role === "teacher" ? "teacher.html" : "student.html";
-  } catch (ex) {
-    setBusy(el("go"), false);
-    serverErr(ex.message);
-    el("p").focus();
-  }
-});
-
-paint();
-</script>
-</body>
-</html>
+</body></html>

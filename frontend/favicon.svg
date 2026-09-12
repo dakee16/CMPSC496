@@ -1,7 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <!-- The wordmark's dot, on the page ground. Same mark at 16px as at 14pt.
-       Colours are literals because an SVG file cannot read tokens.css. -->
-  <rect width="32" height="32" rx="8" fill="#0b1120"/>
-  <circle cx="16" cy="16" r="6" fill="#818cf8"/>
-  <circle cx="16" cy="16" r="11" fill="none" stroke="#6366f1" stroke-opacity=".35" stroke-width="2"/>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><rect width="48" height="48" rx="12" fill="#bc4724"/><path d="M15 12v28M15 25c0 6 3 8 6 8 5 0 8-4 8-9V12M29 25c0 5 1 8 5 8" fill="none" stroke="#fff4ee" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>

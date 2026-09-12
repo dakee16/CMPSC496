@@ -1,0 +1,1104 @@
+const S = requireSession("teacher");
+mountHeader({variant: "instructor", active: "Home"});
+const $ = id => document.getElementById(id);
+let TEMPLATE = "";
+const MAX_UPLOAD = 2 * 1024 * 1024;   // a .py of assignments, not a data dump
+let chosen = null;
+let run = null;                        // {abort, started, timer} while preparing
+
+/* Width and aria-valuenow must never drift apart, so nothing sets one without
+   the other. A progressbar whose value never updates is worse than none: it
+   reports 0% for the whole run. */
+function setProgress(pct){
+  pct = Math.max(0, Math.min(100, Math.round(pct)));
+  $("barFill").style.width = pct + "%";
+  $("prog").setAttribute("aria-valuenow", String(pct));
+  $("prog").classList.toggle("done", pct === 100);
+}
+
+/* ---------- the format example ----------
+   Four lines beat the paragraph above them. Highlighted with the tiny
+   tokeniser in ui.js rather than by pulling CodeMirror into a page with no
+   editor on it. */
+const EXAMPLE = `# --- problem: digit-sum ---
+def digit_sum(n):
+    """Return the sum of the digits of a non-negative integer n.
+
+    Example: digit_sum(407) -> 11
+    """
+    return sum(int(c) for c in str(n))`;
+$("example").innerHTML = hlPython(EXAMPLE);
+
+fetch(`${API}/assignment_template`).then(r => r.json()).then(d => {
+  TEMPLATE = d.content;
+  $("tmpl").innerHTML = hlPython(d.content);
+}).catch(() => {
+  $("tmpl").innerHTML = `<span class="t-com"># could not reach the server</span>`;
+  disable($("dl"), "The template could not be downloaded from the server.");
+});
+
+$("dl").onclick = () => {
+  const b = new Blob([TEMPLATE], {type: "text/x-python"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(b); a.download = "assignment.py"; a.click();
+  URL.revokeObjectURL(a.href);
+};
+
+/* ---------- choosing a file ---------- */
+const drop = $("drop"), file = $("file");
+drop.onclick = () => file.click();
+drop.onkeydown = e => {
+  if (e.key === "Enter" || e.key === " ") { e.preventDefault(); file.click(); }
+};
+["dragenter","dragover"].forEach(ev => drop.addEventListener(ev, e => {
+  e.preventDefault(); drop.classList.add("over");
+}));
+["dragleave","drop"].forEach(ev => drop.addEventListener(ev, e => {
+  e.preventDefault(); drop.classList.remove("over");
+}));
+drop.addEventListener("drop", e => {
+  if (e.dataTransfer.files.length) pick(e.dataTransfer.files[0]);
+});
+file.onchange = e => pick(e.target.files && e.target.files[0]);
+$("fclear").onclick = () => { clearPick(); drop.focus(); };
+
+function fileErr(msg){
+  $("fileErr").innerHTML = msg ? `<div class="banner bad">${esc(msg)}</div>` : "";
+}
+
+function clearPick(){
+  chosen = null;
+  file.value = "";
+  $("picked").hidden = true;
+  drop.hidden = false;
+  drop.classList.remove("bad");
+  disable($("go"), "Choose a .py file first.");
+}
+
+/* Reject the two things that are wrong before a byte leaves the browser: the
+   wrong kind of file, and one large enough that "prepare" would mean an hour
+   of paid model work started by accident. */
+function pick(f){
+  if (!f) return;
+  if (!/\.py$/i.test(f.name)){
+    drop.classList.add("bad");
+    return fileErr(`${f.name} is not a .py file. Export your solutions as a `
+      + `plain Python file and try again.`);
+  }
+  if (f.size > MAX_UPLOAD){
+    drop.classList.add("bad");
+    return fileErr(`${f.name} is ${fmtBytes(f.size)}. The limit is `
+      + `${fmtBytes(MAX_UPLOAD)} - that is far more Python than one assignment.`);
+  }
+  if (f.size === 0){
+    drop.classList.add("bad");
+    return fileErr(`${f.name} is empty.`);
+  }
+  chosen = f;
+  fileErr("");
+  drop.classList.remove("bad");
+  drop.hidden = true;
+  $("picked").hidden = false;
+  $("fname").textContent = f.name;
+  $("fname").title = f.name;
+  $("fsize").textContent = fmtBytes(f.size);
+  enable($("go"));
+}
+
+/* ---------- the preparation run ----------
+   The server streams NDJSON, one event per problem, so there is nothing to
+   poll: `read()` below IS the live status. `handle()` is the single place an
+   event turns into a row, which is where a finer-grained stage event would be
+   wired in if prepare_assignment_stream ever emits one. */
+
+const RUN_KEY = "mt.run";              // survives a reload; see resumeNote()
+
+function elapsed(ms){
+  const s = Math.floor(ms / 1000);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
+function startRun(name){
+  run = {abort: new AbortController(), started: Date.now(), rows: {},
+         starts: {}, total: 0, done: 0};
+  try { sessionStorage.setItem(RUN_KEY, JSON.stringify(
+    {name, at: Date.now()})); } catch {}
+  // A tab closed mid-run leaves half an assignment prepared, and there is no
+  // job to come back to. Say so before it happens.
+  addEventListener("beforeunload", warnIfRunning);
+  run.timer = setInterval(tickElapsed, 1000);
+}
+
+function warnIfRunning(e){
+  if (!run) return;
+  e.preventDefault();
+  e.returnValue = "";
+}
+
+function endRun(){
+  if (!run) return;
+  clearInterval(run.timer);
+  removeEventListener("beforeunload", warnIfRunning);
+  run = null;
+  try { sessionStorage.removeItem(RUN_KEY); } catch {}
+  $("cancel").hidden = true;
+  enable($("go"));
+}
+
+function tickElapsed(){
+  if (!run) return;
+  Object.keys(run.starts).forEach(slug => {
+    const li = run.rows[slug];
+    if (!li || li.dataset.settled === "1") return;
+    li.querySelector(".el").textContent = elapsed(Date.now() - run.starts[slug]);
+  });
+  $("runCount").textContent = run.total
+    ? `Preparing ${Math.min(run.done + 1, run.total)} of ${run.total} · `
+      + `${elapsed(Date.now() - run.started)} elapsed`
+    : `${elapsed(Date.now() - run.started)} elapsed`;
+}
+
+/* A run interrupted by a reload or a closed tab. Nothing is lost that was
+   already saved, but the rest never happened, and the instructor has no other
+   way to find that out. */
+function resumeNote(){
+  let prior = null;
+  try { prior = JSON.parse(sessionStorage.getItem(RUN_KEY) || "null"); } catch {}
+  if (!prior) return;
+  try { sessionStorage.removeItem(RUN_KEY); } catch {}
+  $("resumeNote").innerHTML = `<div class="banner warn" style="margin:0 0 18px">
+    <strong>${esc(prior.name || "A preparation run")}</strong> was interrupted
+    ${esc(relTime(prior.at))}. Problems that finished before then were saved and
+    are listed below; the rest were not started. Upload the same file again to
+    finish them.</div>`;
+}
+resumeNote();
+
+$("cancel").onclick = () => {
+  if (!run) return;
+  run.abort.abort();
+  $("runTitle").textContent = "Preparation cancelled";
+  $("summary").innerHTML = `<div class="banner warn">Cancelled. Problems that
+    had already finished are saved and appear below; the rest were not
+    started.</div>`;
+  endRun();
+  loadAssignments();
+};
+
+$("go").onclick = async () => {
+  if (!chosen) return;
+  const f = chosen;
+  disable($("go"), "A preparation run is already in progress.");
+  $("run").hidden = false;
+  $("cancel").hidden = false;
+  $("items").innerHTML = ""; $("summary").innerHTML = "";
+  setProgress(0);
+  $("runTitle").textContent = "Reading file";
+  $("runCount").textContent = "";
+  startRun(f.name);
+  $("run").scrollIntoView({behavior: "smooth", block: "nearest"});
+
+  const content = await f.text();
+  let resp;
+  try {
+    resp = await fetch(`${API}/teacher/assignments`, {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      signal: run.abort.signal,
+      // No teacher_name: the server records the signed-in instructor, so an
+      // assignment's owner is not whatever the browser claimed it was.
+      body: JSON.stringify({filename: f.name, content})
+    });
+  } catch (e) {
+    if (e.name === "AbortError") return;
+    return fail("Could not reach the server. Is the backend running?");
+  }
+  if (!resp.ok) {
+    return fail(await httpError(resp, "Upload failed."));
+  }
+
+  if (await consumeRun(resp)) return;
+  endRun();
+  loadAssignments();
+};
+
+/* NDJSON: one event per line, rendered the moment it lands, so a multi-minute
+   preparation shows progress instead of looking stuck. Shared by the upload and
+   by re-prepare - they produce the same events, so they get the same reader
+   rather than two that can drift apart. Returns true if it bailed out. */
+async function consumeRun(resp){
+  const reader = resp.body.getReader(), dec = new TextDecoder();
+  let buf = "";
+  try {
+    for (;;) {
+      const {value, done} = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, {stream: true});
+      const lines = buf.split("\n"); buf = lines.pop();
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        let ev; try { ev = JSON.parse(line); } catch { continue; }
+        handle(ev);
+      }
+    }
+  } catch (e) {
+    if (e.name !== "AbortError") fail("The connection dropped mid-run. "
+      + "Problems that had finished are saved.");
+    return true;
+  }
+  return false;
+}
+
+function fail(msg){
+  $("run").hidden = false;
+  $("runTitle").textContent = "Upload failed";
+  $("summary").innerHTML = `<div class="banner bad">${esc(msg)}</div>`;
+  endRun();
+  toast(msg, "bad");
+}
+
+/* The server's own message when it sent one, else something that NAMES the
+   failure.
+
+   Both callers used to do `(j.detail && j.detail.message) || "Upload failed."`
+   and throw the status away. That reads fine for the errors this app raises by
+   hand - those put a dict in `detail` - but FastAPI's own errors put a STRING
+   there ({"detail": "Not Found"}), so `.message` is undefined and every one of
+   them collapsed into the same generic sentence. A 404 from a server running a
+   build without the route and a 500 from one that crashed were indistinguish-
+   able in the UI. The status is the whole diagnosis; keep it. */
+async function httpError(resp, fallback){
+  let d = null;
+  try { d = await resp.json(); } catch {}
+  const m = d && d.detail && d.detail.message;
+  if (m) return m;
+  if (resp.status === 404)
+    return `${fallback} The server has no route for this (404) - it is almost `
+         + `certainly running an older build. Restart the backend.`;
+  if (resp.status === 401 || resp.status === 403)
+    return `${fallback} You are not signed in as an instructor (${resp.status}).`;
+  const body = (typeof (d && d.detail) === "string") ? ` ${d.detail}` : "";
+  return `${fallback} (HTTP ${resp.status})${body}`;
+}
+
+/* One event in, one row change out. The `preparing` event is the only signal
+   the server sends between "started this problem" and "finished this problem";
+   if prepare_assignment_stream grows a {"event":"stage"} message, this is the
+   one function that has to learn about it. */
+function handle(ev){
+  if (!run) return;
+  if (ev.event === "parsed") {
+    run.total = ev.n_problems;
+    run.assignmentId = ev.assignment_id;      // addresses this run's channels
+    $("runTitle").textContent = `${ev.name}`;
+    tickElapsed();
+    (ev.parse_errors || []).forEach(e =>
+      addRow(e.slug, "bad", e.slug, "Could not read this one. " + e.error));
+  } else if (ev.event === "preparing") {
+    run.total = ev.total;
+    addRow(ev.slug, "run", ev.title || ev.slug, "preparing");
+    setProgress((ev.index - 1) / ev.total * 100);
+    tickElapsed();
+  } else if (ev.event === "prepared") {
+    run.done = ev.index;
+    setProgress(ev.index / ev.total * 100);
+    if (ev.ready)            setRow(ev.slug, "ok", `Ready. ${ev.chunks} steps, ${ev.n_tests} tests.`);
+    // Held back, but not because the problem is wrong - the tests could not be
+    // signed off without a person. A different word and a different colour,
+    // because telling an instructor their problem failed when it may be
+    // perfectly fine sends them off editing something that needs no edit.
+    else if (ev.needs_review) setRow(ev.slug, "warn",
+      "Waiting on your review. The tests look close, but a few checks came back inconclusive.");
+    else                      setRow(ev.slug, "bad", ev.error || "could not be prepared");
+    tickElapsed();
+  } else if (ev.event === "done") {
+    setProgress(100);
+    $("runTitle").textContent = "Preparation finished";
+    $("runCount").textContent = `${ev.total} problem${ev.total === 1 ? "" : "s"} in `
+      + `${elapsed(Date.now() - run.started)}`;
+    const review = ev.review || [];
+    const cls = (ev.failed === 0 && !review.length) ? "ok"
+              : (ev.ready === 0 ? "bad" : "warn");
+    let msg = `${ev.ready} of ${ev.total} ready for students.`;
+    if (ev.failed) msg += ` ${ev.failed} need attention, and students will not see those.
+      Fix the problem statement and upload again, or split that problem into steps yourself.`;
+    if (review.length) msg += ` ${review.length} ${review.length === 1 ? "is" : "are"} `
+      + `waiting on your review.`;
+    $("summary").innerHTML = `<div class="banner ${cls}">${esc(msg)}</div>`;
+    toast(msg, cls);
+    endRun();
+    if (review.length) openReview(review);
+  }
+}
+
+function addRow(slug, state, title, why){
+  if (run.rows[slug]) return setRow(slug, state, why);
+  const li = document.createElement("li");
+  // The link stays after the problem finishes: a completed run replays its
+  // whole transcript, so this is also how a teacher reads back what happened
+  // to a problem that came out "needs work".
+  const watch = (state === "run" && run.assignmentId)
+    ? `<a class="watch" target="_blank" rel="noopener"
+         href="playground.html?watch=${encodeURIComponent(run.assignmentId)}&slug=${encodeURIComponent(slug)}"
+         title="Watch this problem being prepared, in a new tab">watch</a>`
+    : "";
+  li.innerHTML = `<span class="pill"></span>
+    <div class="body"><div class="nm"></div><div class="why"></div></div>
+    ${watch}<span class="el"></span>`;
+  $("items").appendChild(li);
+  run.rows[slug] = li;
+  run.starts[slug] = Date.now();
+  li.querySelector(".nm").textContent = title;
+  setRow(slug, state, why);
+}
+
+/* ---------- the end-of-run review prompt ---------- */
+
+function openReview(review){
+  // The range is the honest statement of what is known: the low end assumes
+  // every inconclusive check is a real gap, the high end assumes none is. The
+  // instructor is being asked to close that gap, so it is the one number worth
+  // showing - and it is shown as plain percentages with no vocabulary attached.
+  $("rvList").innerHTML = review.map(r => {
+    const lo = Math.round((r.kill_rate_lower || 0) * 100);
+    const hi = Math.round((r.kill_rate_upper || 0) * 100);
+    const n  = r.undetermined || 0;
+    return `<li>
+      <span class="nm">${esc(r.title || r.slug)}
+        <span class="sub">${n} check${n === 1 ? "" : "s"} inconclusive &middot;
+          between ${lo}% and ${hi}% of the deliberate breaks were caught</span>
+      </span>
+      <a href="playground.html?slug=${encodeURIComponent(r.slug)}">Open</a>
+    </li>`;
+  }).join("");
+  $("rvNow").textContent = review.length === 1
+    ? "Review it now" : "Review the first one";
+  $("rvNow").onclick = () => {
+    location.href = `playground.html?slug=${encodeURIComponent(review[0].slug)}`;
+  };
+  $("rvScrim").hidden = false;
+  $("rvLater").focus();
+}
+
+function closeReview(){ $("rvScrim").hidden = true; $("go").focus(); }
+$("rvLater").onclick = closeReview;
+$("rvScrim").addEventListener("click",
+  e => { if (e.target === $("rvScrim")) closeReview(); });
+addEventListener("keydown", e => {
+  if (e.key === "Escape" && !$("rvScrim").hidden) closeReview();
+});
+
+function setRow(slug, state, why){
+  const li = run && run.rows[slug];
+  if (!li) return;
+  const p = li.querySelector(".pill");
+  p.className = "pill " + (state === "ok" ? "ok" : state === "bad" ? "bad"
+                        : state === "warn" ? "warn" : "");
+  p.innerHTML = state === "ok" ? "ready"
+              : state === "bad" ? "needs work"
+              : state === "warn" ? "your review"
+              : '<span class="spin" aria-hidden="true"></span> working';
+  li.querySelector(".why").textContent = why || "";
+  if (state !== "run"){
+    li.dataset.settled = "1";
+    li.querySelector(".el").textContent = elapsed(Date.now() - run.starts[slug]);
+  }
+}
+
+/* ---------- the assignments table ---------- */
+
+function assignmentsTable(rows){
+  return `<table>
+    <thead><tr>
+      <th>Assignment</th><th>Ready</th><th class="colWhen">Created</th>
+      <th style="text-align:right">Actions</th>
+    </tr></thead>
+    <tbody>${rows.map(a => {
+      const cls = a.total && a.ready === a.total ? "ok" : a.ready ? "warn" : "bad";
+      const blocked = (a.total || 0) - (a.ready || 0);
+      return `<tr data-id="${esc(a.id)}">
+        <td><div class="assignment-name"><span class="file-icon" aria-hidden="true">.py</span><span>${esc(a.name)}<small>${a.published === false ? "Draft · Hidden from students" : "Published to students"}</small></span></div></td>
+        <td><button class="pill ${cls}" data-act="breakdown"
+              aria-expanded="false"
+              title="${blocked ? `${blocked} problem${blocked === 1 ? "" : "s"} `
+                + `did not pass preparation. Open for the reason.`
+                : "Every problem is ready. Open for the list."}"
+              >${a.ready} / ${a.total} &#9662;</button></td>
+        <td class="colWhen">${esc(fmtWhen(a.created_at))}<br>
+            <span class="hint" style="margin:0">${esc(relTime(a.created_at))}</span></td>
+        <td><div class="acts">
+          <button class="ghost" data-act="breakdown">View problems</button>
+          <select class="ghost" data-act="reprep"
+              aria-label="Re-prepare ${esc(a.name)}">
+            <option value="">Re-prepare&hellip;</option>
+            <option value="all">Every problem</option>
+            <option value="blocked"${blocked ? "" : " disabled"}
+              >${blocked ? `Only the ${blocked} not ready` : "Nothing is blocked"}</option>
+          </select>
+          <button class="ghost" data-act="pub">${a.published === false
+            ? "Publish" : "Unpublish"}</button>
+        </div></td>
+      </tr>`;
+    }).join("")}</tbody></table>`;
+}
+
+function emptyAssignments(){
+  return `<div class="empty">
+    <span class="eicon" aria-hidden="true">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M4 4h9l3 3h4v13H4z"/><path d="M12 11v6M9 14h6"/></svg></span>
+    <p>No assignments yet.</p>
+    <p class="esub">Upload a <code>.py</code> file of solved problems above, or
+      <button class="ghost" id="openFmt" style="min-height:0; padding:4px 10px;
+        font-size:12px">see the format first</button>.</p>
+  </div>`;
+}
+
+async function loadAssignments(){
+  paintCourseStats(null);
+  $("listBody").innerHTML = skeletonRows(2);
+  let d;
+  try {
+    d = await (await fetch(`${API}/assignments`)).json();
+  } catch {
+    $("listBody").innerHTML = `<div class="banner bad">Could not reach the server.
+      <button class="retry" type="button">Try again</button></div>`;
+    $("listBody").querySelector(".retry").onclick = loadAssignments;
+    return;
+  }
+  const rows = d.assignments || [];
+  paintCourseStats(rows);
+  if (!rows.length){
+    $("listBody").innerHTML = emptyAssignments();
+    $("openFmt").onclick = () => {
+      openUpload();
+      $("fmt").open = true;
+      $("fmt").scrollIntoView({behavior: "smooth", block: "center"});
+    };
+    return;
+  }
+  $("listBody").innerHTML = assignmentsTable(rows);
+  $("listBody").querySelectorAll("[data-act]").forEach(b => {
+    const tr = b.closest("tr");
+    const a = rows.find(x => String(x.id) === tr.dataset.id);
+    if (b.dataset.act === "breakdown") b.onclick = () => toggleBreakdown(tr, a);
+    if (b.dataset.act === "reprep")    b.onchange = () => {
+      const scope = b.value; b.value = "";
+      if (scope) reprepare(a, scope);
+    };
+    if (b.dataset.act === "pub")       b.onclick = () => togglePublished(a, b);
+  });
+}
+
+/* The ready badge, made to explain itself. "16 / 17" on its own is a dead end:
+   the instructor can see one problem did not make it and has no way to find
+   out which or why. The teacher-only route carries prepare_error per problem,
+   which is exactly the missing answer. */
+async function toggleBreakdown(tr, a){
+  const open = tr.nextElementSibling && tr.nextElementSibling.classList.contains("breakdown");
+  tr.querySelectorAll('[data-act="breakdown"]').forEach(b =>
+    b.setAttribute("aria-expanded", String(!open)));
+  if (open){
+    // Collapsing the row is the other way out of an open fix panel, so it has
+    // to refresh the stale counts too - otherwise a problem fixed here keeps
+    // showing as blocked in the badge above until the page is reloaded.
+    const host = tr.nextElementSibling.querySelector(".fixHost");
+    tr.nextElementSibling.remove();
+    if (host && host.dataset.changed === "1") loadAssignments();
+    return;
+  }
+
+  const row = document.createElement("tr");
+  row.className = "breakdown";
+  row.innerHTML = `<td colspan="4"><div class="bdWrap">${skeletonRows(2)}</div></td>`;
+  tr.after(row);
+  const wrap = row.querySelector(".bdWrap");
+
+  let d;
+  try {
+    const r = await fetch(`${API}/teacher/assignments/${a.id}/problems`);
+    if (!r.ok) throw new Error();
+    d = await r.json();
+  } catch {
+    wrap.innerHTML = `<div class="banner bad" style="margin:0">Could not load the
+      problems for this assignment.
+      <button class="retry" type="button">Try again</button></div>`;
+    wrap.querySelector(".retry").onclick = () => { row.remove(); toggleBreakdown(tr, a); };
+    return;
+  }
+
+  const probs = (d.problems || []).slice().sort(
+    (x, y) => (x.ready === y.ready) ? String(x.title || x.slug)
+        .localeCompare(String(y.title || y.slug)) : (x.ready ? 1 : -1));
+  if (!probs.length){
+    wrap.innerHTML = `<p class="hint" style="margin:0">This assignment has no
+      problems recorded.</p>`;
+    return;
+  }
+  wrap.innerHTML = `<ul class="bdList">${probs.map(p => `
+    <li>
+      <span class="pill ${p.ready ? "ok" : "bad"}">${p.ready ? "ready" : "blocked"}</span>
+      <span class="bdName">${esc(p.title || p.slug)}</span>
+      <span class="bdWhy">${p.ready
+        ? "Prepared and visible to students."
+        : esc(p.prepare_error || "Preparation did not finish for this problem.")}</span>
+      ${p.ready ? "" : `<button class="ghost bdFix" type="button"
+        data-slug="${esc(p.slug)}">Open and fix</button>`}
+    </li>`).join("")}</ul>
+    <div class="fixHost"></div>
+    ${d.failed ? `<p class="hint" style="margin:12px 0 0">Open a blocked problem
+      to correct its text here and prepare just that one again. Re-uploading the
+      whole <code>.py</code> file still works and only rewrites what changed.</p>`
+      : ""}`;
+
+  const host = wrap.querySelector(".fixHost");
+  wrap.querySelectorAll(".bdFix").forEach(b =>
+    b.onclick = () => openFix(host, a, b.dataset.slug,
+                             probs.find(p => p.slug === b.dataset.slug)));
+}
+
+/* ---------- fix one blocked problem, in place ----------
+   A problem that failed preparation used to be a dead end on this page: the
+   reason was shown, and the only way to act on it was to edit the .py file and
+   re-upload the whole assignment, re-preparing every problem beside it. This
+   opens THAT problem's own text, says what it still has to pass, and prepares
+   just it. */
+
+const CK_MARK = {ok: "&#10003;", fail: "&times;", pending: "&middot;"};
+
+function ckList(items){
+  return `<ul class="ckList">${(items || []).map(c => `
+    <li class="${c.state}">
+      <span class="ckMark" aria-hidden="true">${CK_MARK[c.state] || ""}</span>
+      <span class="ckLabel">${esc(c.label)}
+        <span class="sr-only">- ${c.state === "ok" ? "passed"
+          : c.state === "fail" ? "failed" : "not reached yet"}</span>
+        ${c.error ? `<span class="ckWhy">${esc(c.error)}</span>` : ""}</span>
+    </li>`).join("")}</ul>`;
+}
+
+/* ---------- what actually happened to this problem ---------- */
+
+// The stages the pipeline walks, in order, named the way an instructor would
+// describe them rather than the way the code does.
+const STORY_STAGE = {
+  start:          "Reading your solution",
+  entry:          "Working out which function to test",
+  oracle_gen:     "Writing test cases from your solution",
+  oracle_verify:  "Checking those test cases are strong enough",
+  decomposition:  "Splitting the problem into steps",
+  necessity:      "Checking every step does real work",
+  finished:       "Ready for students",
+};
+
+// What a probe finding MEANS, and what to do about it. This is the payload of
+// the whole review flow: the three findings need opposite responses, and an
+// instructor who is not told which one happened cannot act.
+const STORY_PROBE = {
+  never_reached: ["never reached",
+    "No test case ever runs this line, so changing it changes nothing. That is "
+    + "a gap in the tests rather than a problem with your solution - an example "
+    + "that reaches this line would settle it."],
+  no_infection: ["no visible effect",
+    "The line runs, but changing it never altered the decision it makes. More "
+    + "test cases of the same kind will not separate them."],
+  propagation: ["effect swallowed",
+    "Changing the line really does alter what it decides, but the difference "
+    + "never reaches the answer. Separating them needs a differently shaped "
+    + "test, not more of the same."],
+  unknown: ["could not tell",
+    "The check itself could not run, so nothing was learned either way."],
+};
+
+// The checks that decided this problem's verdict, straight from the stored
+// result. This is the answer to "which line was the problem?" - and it has to
+// come from the verdict rather than the run's narration, because a re-run whose
+// verdict is cached skips validation and narrates nothing at all.
+// What an undecided check COULD mean. All four are genuinely possible; the
+// probe - when the verdict was recorded with one - says which the evidence
+// points at. Without it they are listed unnarrowed rather than guessed between.
+function couldMean(c){
+  const P = c.probe;
+  const opts = [
+    ["no_infection",
+     "The change makes no real difference.",
+     "The line runs, but changing it never alters what the function ends up "
+     + "returning - like tidying something up that nobody outside can see. "
+     + "If so, your tests are fine as they are and there is nothing to fix."],
+    ["never_reached",
+     "No test ever runs that line.",
+     "If nothing reaches it, changing it cannot possibly matter. That is a gap "
+     + "in the test cases rather than a problem with your solution - an example "
+     + "that reaches this line would settle it."],
+    ["propagation",
+     "The change does alter a decision, but the difference gets swallowed.",
+     "It changes what the line decides, and then something later throws that "
+     + "difference away before it reaches the answer. Separating the two needs "
+     + "a differently shaped test, not more of the same."],
+    [null,
+     "It is a real bug and no test happens to expose it.",
+     "The change breaks something genuine, but none of the 36 test cases - your "
+     + "own examples or the generated ones - uses the kind of input that would "
+     + "show it. If so, a test case is missing."],
+  ];
+  const known = P && opts.some(o => o[0] === P);
+  const items = opts.map(([key, head, body]) => {
+    const on = known && key === P;
+    // The last option is never ruled OUT by a probe: "the line never behaved
+    // differently across this suite" is evidence, not proof, and a 37th test
+    // could still separate them. Everything else the probe contradicts is
+    // dimmed rather than deleted, so the reasoning stays visible.
+    const off = known && !on && key !== null;
+    return `<li class="${on ? "cmOn" : off ? "cmOff" : ""}">
+      <b>${esc(head)}</b>${on ? ` <span class="cmTag">what the evidence shows</span>` : ""}
+      <span>${esc(body)}</span></li>`;
+  }).join("");
+
+  const seen = (P && c.reached != null)
+    ? `<p class="cmSeen">Watched from the inside: that line ran
+       <b>${c.reached}</b> time${c.reached === 1 ? "" : "s"} across the tests and
+       the change altered what it decided <b>${c.differed}</b> time${
+       c.differed === 1 ? "" : "s"}.</p>` : "";
+
+  return `<div class="cm">
+    <h5>What this could mean</h5>
+    <ul class="cmList">${items}</ul>${seen}</div>`;
+}
+
+function findingsPanel(f, source){
+  if (!f || !f.checks || !f.checks.length) return "";
+  const pct = x => Math.round((x || 0) * 100) + "%";
+  const src = (source || "").split("\n");
+  const open = f.checks.filter(c => !c.settled);
+  if (!open.length && f.status !== "needs_review") return "";
+
+  const rows = open.map(c => {
+    const text = (c.line && src[c.line - 1] !== undefined)
+      ? src[c.line - 1].trim() : "";
+    return `<li>
+      <div class="fRow">
+        <span class="fWhat">We tried ${esc(c.phrasing || c.what || "changing this")}
+          &mdash; every test still passed.</span>
+        ${c.line ? `<button type="button" class="fJump" data-line="${c.line}"
+            >line ${c.line} &rarr;</button>` : ""}
+      </div>
+      ${text ? `<pre class="fCode">${esc(text)}</pre>` : ""}
+      ${couldMean(c)}
+    </li>`;
+  }).join("");
+
+  return `<div class="findings">
+    <h4>The ${open.length === 1 ? "check" : open.length + " checks"} nothing could decide</h4>
+    <p class="fLead">To check the tests are any good, MicroTutor breaks your
+      solution on purpose, one line at a time, and sees whether a test notices.
+      ${open.length === 1 ? "The change below" : "The changes below"} slipped
+      past, and it cannot tell why. Nothing here is a suggestion to edit your
+      code &mdash; it is a report of what was tried.</p>
+    <ul class="fList">${rows}</ul>
+    <p class="fFoot">Caught ${f.checks.length - open.length} of ${f.checks.length}
+      &middot; between ${pct(f.lower)} and ${pct(f.upper)} &middot; ${f.n_tests} test cases.
+      If you look at ${open.length === 1 ? "that line" : "those lines"} and it
+      cannot change what the function returns, the tests are fine as they are.</p>
+    ${f.status === "needs_review" ? `<div class="fAct">
+      <button type="button" id="fAccept">Publish anyway</button>
+      <span class="fActWhy">Use this when you have read
+        ${open.length === 1 ? "the line" : "those lines"} above and it cannot
+        change the answer. Your name is recorded against the decision, and the
+        problem still has to split into steps before students see it.</span>
+    </div>` : ""}
+  </div>`;
+}
+
+function wireJumps(host){
+  const ta = host.querySelector("#fixSrc");
+  host.querySelectorAll(".fJump").forEach(b => b.onclick = () => {
+    const n = parseInt(b.dataset.line, 10);
+    const lines = ta.value.split("\n");
+    const start = lines.slice(0, n - 1).join("\n").length + (n > 1 ? 1 : 0);
+    ta.focus();
+    ta.setSelectionRange(start, start + (lines[n - 1] || "").length);
+    // Rough scroll: put the target line near the top of the visible box.
+    const lh = parseFloat(getComputedStyle(ta).lineHeight) || 18;
+    ta.scrollTop = Math.max(0, (n - 3) * lh);
+  });
+}
+
+async function acceptFindings(host, assignment, slug){
+  const btn = host.querySelector("#fAccept");
+  const msg = host.querySelector("#fixMsg");
+  if (!btn) return;
+  if (btn.dataset.armed !== "1"){
+    // Two presses, because this overrules a safety gate. The second press is
+    // the decision; the first only says what the decision is.
+    btn.dataset.armed = "1";
+    btn.textContent = "Yes - publish it";
+    btn.classList.add("danger");
+    msg.innerHTML = `<div class="banner warn">This marks the inconclusive
+      check${(host.querySelectorAll(".fList li").length === 1) ? "" : "s"} above as
+      harmless, on your judgement, and records your name against that. Press
+      again to confirm.</div>`;
+    return;
+  }
+  setBusy(btn, true);
+  let d;
+  try {
+    const r = await fetch(`${API}/teacher/problems/accept`, {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({assignment_id: assignment.id, slug})
+    });
+    d = await r.json().catch(() => ({}));
+    if (!r.ok){
+      setBusy(btn, false);
+      msg.innerHTML = `<div class="banner bad">${esc(
+        (d.detail && d.detail.message) || "The server refused this.")}</div>`;
+      return;
+    }
+  } catch {
+    setBusy(btn, false);
+    msg.innerHTML = `<div class="banner bad">Could not reach the server.</div>`;
+    return;
+  }
+  setBusy(btn, false);
+  host.dataset.changed = "1";
+  const note = d.ready
+    ? `<div class="banner ok">Published. ${d.chunks} step${d.chunks === 1 ? "" : "s"},
+       ${d.n_tests} test${d.n_tests === 1 ? "" : "s"} - students can see this now.
+       Recorded as accepted by ${esc(d.accepted_by || "you")}.</div>`
+    : `<div class="banner bad pre">Accepted, but it still could not be prepared:
+       ${esc(d.error || "unknown")}</div>`;
+  if (d.ready) toast(`“${slug}” published on your review.`, "ok");
+  host.dataset.slug = "";
+  await openFix(host, assignment, slug);
+  const m2 = host.querySelector("#fixMsg");
+  if (m2) m2.innerHTML = note;
+}
+
+function runStory(tape){
+  if (!tape || !tape.events) return "";
+  const ev = tape.events, out = tape.outcome || {};
+  const pct = x => Math.round((x || 0) * 100) + "%";
+
+  // Stages, in the order they were reached, with the one that stopped it marked.
+  const blocked = ev.find(e => e.type === "blocked");
+  const stages = ev.filter(e => e.type === "stage" && STORY_STAGE[e.name])
+    .map(e => e.name);
+  const seen = [...new Set(stages)];
+  const rows = seen.map((name, i) => {
+    const last = i === seen.length - 1;
+    const bad = last && blocked;
+    return `<li class="${bad ? "fail" : "ok"}"><span class="ckMark"
+      >${bad ? "!" : "✓"}</span><span class="ckLabel">${esc(STORY_STAGE[name])}</span></li>`;
+  }).join("");
+
+  // The undetermined checks, with the finding for each.
+  const probes = ev.filter(e => e.type === "probe_result");
+  const probeRows = probes.map(p => {
+    const [word, why] = STORY_PROBE[p.verdict]
+      || [String(p.verdict || "?"), p.detail || ""];
+    return `<li><b>${esc(p.label || "a check")}</b>
+      <span class="sWord">${esc(word)}</span>
+      <div class="sWhy">${esc(why)}</div></li>`;
+  }).join("");
+
+  let verdict = "";
+  if (out.needs_review){
+    verdict = `<div class="banner warn" style="margin:0 0 var(--s3)">
+      <b>This one needs your judgement, not necessarily a fix.</b><br>
+      Between ${pct(out.kill_rate_lower)} and ${pct(out.kill_rate_upper)} of the
+      deliberate errors were caught. ${out.undetermined || 0}
+      check${out.undetermined === 1 ? "" : "s"} could not be decided either way,
+      and the answer genuinely depends on ${out.undetermined === 1 ? "it" : "them"}.
+      Until someone looks, this stays hidden from students.</div>`;
+  } else if (blocked){
+    verdict = `<div class="banner bad" style="margin:0 0 var(--s3)">
+      <b>Stopped at: ${esc(STORY_STAGE[blocked.at] || blocked.at || "preparation")}.</b>
+      ${esc(out.error || blocked.error || "")}</div>`;
+  }
+
+  const trunc = ev.some(e => e.type === "transcript_truncated")
+    ? `<p class="hint" style="margin:var(--s3) 0 0">This run was long; the
+       middle of it was not kept. The setup and the outcome are complete.</p>` : "";
+
+  return `<details class="story" open>
+    <summary>What happened when this was prepared</summary>
+    <div class="storyBody">
+      ${verdict}
+      <div class="storyCols">
+        <div>
+          <h4>How far it got</h4>
+          <ul class="ckList">${rows || "<li class='pending'><span class='ckMark'>·</span><span class='ckLabel'>No stages recorded.</span></li>"}</ul>
+        </div>
+        ${probeRows ? `<div>
+          <h4>The checks nothing could decide</h4>
+          <ul class="sList">${probeRows}</ul>
+        </div>` : ""}
+      </div>
+      ${trunc}
+    </div>
+  </details>`;
+}
+
+async function openFix(host, assignment, slug, prob){
+  if (!host) return;
+  // One panel at a time: two open editors on one screen invite editing the
+  // wrong problem's text and pressing retry on it.
+  if (host.dataset.slug === slug){ closeFix(host); return; }
+  host.dataset.slug = slug;
+  host.innerHTML = `<div class="fixPanel">${skeletonRows(2)}</div>`;
+
+  let d, tape = null;
+  try {
+    const r = await fetch(
+      `${API}/teacher/problems/${encodeURIComponent(slug)}/source`
+      + `?assignment_id=${encodeURIComponent(assignment.id)}`);
+    if (!r.ok) throw new Error();
+    d = await r.json();
+    // The saved run, if this problem has one. Fetched in the same breath as the
+    // source because the panel is useless without it: "here is your code, try
+    // again" tells an instructor nothing about WHY it did not pass. A 404 is
+    // ordinary - problems that passed keep no transcript.
+    try {
+      const t = await fetch(
+        `${API}/teacher/problems/${encodeURIComponent(assignment.id)}`
+        + `/${encodeURIComponent(slug)}/transcript`);
+      if (t.ok) tape = await t.json();
+    } catch { /* no transcript is not an error */ }
+  } catch {
+    host.innerHTML = `<div class="fixPanel"><div class="banner bad"
+      style="margin:0">Could not load this problem's text.
+      <button class="retry" type="button">Try again</button></div></div>`;
+    host.querySelector(".retry").onclick = () => {
+      host.dataset.slug = ""; openFix(host, assignment, slug, prob);
+    };
+    return;
+  }
+
+  host.innerHTML = `<div class="fixPanel">
+    <div class="fixHead">
+      <h3>${esc(d.title || slug)}</h3>
+      <span class="pill ${d.ready ? "ok" : "bad"}" id="fixPill"
+        >${d.ready ? "ready" : "blocked"}</span>
+      <button class="ghost fixX" type="button" id="fixClose">Close</button>
+    </div>
+    ${runStory(tape)}
+    ${findingsPanel(d.findings, d.source)}
+    <div class="fixGrid">
+      <div>
+        <label for="fixSrc" class="hint" style="display:block; margin:0 0 7px">
+          This problem's Python. The docstring is the statement students see;
+          the body is your solution.</label>
+        <textarea id="fixSrc" spellcheck="false"
+          aria-describedby="fixCkTitle"></textarea>
+      </div>
+      <div class="fixSide">
+        <h4 id="fixCkTitle">What it has to pass</h4>
+        <div id="fixCk">${ckList(d.checklist)}</div>
+      </div>
+    </div>
+    <div class="fixActs">
+      <button id="fixGo" type="button">Save and retry</button>
+      <span class="hint" style="margin:0; flex:1; min-width:220px">
+        Preparing one problem takes about a minute - it writes fresh test cases
+        and re-splits it into steps.</span>
+    </div>
+    <div id="fixMsg"></div>
+  </div>`;
+
+  const src = host.querySelector("#fixSrc");
+  // .value, never innerHTML: this is Python, and </textarea> or an ampersand in
+  // a docstring would otherwise break out of the element or come back mangled.
+  src.value = d.source || "";
+  if (!d.source){
+    host.querySelector("#fixMsg").innerHTML = `<div class="banner warn">No text
+      was stored for this problem - it predates this panel. Paste its function
+      from your <code>.py</code> file and retry.</div>`;
+  }
+
+  host.querySelector("#fixClose").onclick = () => closeFix(host);
+  host.querySelector("#fixGo").onclick = () => retryFix(host, assignment, slug);
+  wireJumps(host);
+  const acc = host.querySelector("#fAccept");
+  if (acc) acc.onclick = () => acceptFindings(host, assignment, slug);
+  src.focus();
+  host.scrollIntoView({behavior: "smooth", block: "nearest"});
+}
+
+function closeFix(host){
+  const changed = host.dataset.changed === "1";
+  host.dataset.slug = "";
+  host.dataset.changed = "";
+  host.innerHTML = "";
+  // Refresh the counts HERE and not the moment a retry succeeds:
+  // loadAssignments() rebuilds the whole table, which would tear this panel out
+  // from under the instructor along with the result they just asked for.
+  if (changed) loadAssignments();
+}
+
+async function retryFix(host, assignment, slug){
+  const btn = host.querySelector("#fixGo");
+  const src = host.querySelector("#fixSrc");
+  const msg = host.querySelector("#fixMsg");
+  if (!src.value.trim()){
+    msg.innerHTML = `<div class="banner bad">There is nothing to prepare -
+      the editor is empty.</div>`;
+    return src.focus();
+  }
+  setBusy(btn, true, "Preparing…");
+  msg.innerHTML = `<div class="banner info">Preparing this problem. Writing test
+    cases, checking they are strong enough, and splitting it into steps.</div>`;
+
+  let d;
+  try {
+    const r = await fetch(`${API}/teacher/problems/retry`, {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({assignment_id: assignment.id, slug,
+                            source: src.value})
+    });
+    d = await r.json().catch(() => ({}));
+    if (!r.ok){
+      setBusy(btn, false);
+      msg.innerHTML = `<div class="banner bad">${esc(
+        (d.detail && d.detail.message) || "The server refused this retry.")}</div>`;
+      return;
+    }
+  } catch {
+    setBusy(btn, false);
+    msg.innerHTML = `<div class="banner bad">Could not reach the server. Your
+      edits are still in the box - try again.</div>`;
+    return;
+  }
+  setBusy(btn, false);
+
+  // The checklist is redrawn from the run that just happened, so a fix that
+  // cleared two gates and stalled on a third SHOWS that, rather than repeating
+  // the failure the teacher already read.
+  host.querySelector("#fixCk").innerHTML = ckList(d.checklist);
+  const pill = host.querySelector("#fixPill");
+  pill.className = "pill " + (d.ready ? "ok" : "bad");
+  pill.textContent = d.ready ? "ready" : "blocked";
+
+  if (d.ready){
+    host.dataset.changed = "1";          // the table's counts are now stale
+    msg.innerHTML = `<div class="banner ok">Prepared. ${d.chunks} step${
+      d.chunks === 1 ? "" : "s"}, ${d.n_tests} test${d.n_tests === 1 ? "" : "s"}
+      - students can see this problem now.</div>`;
+    toast(`“${slug}” is ready for students.`, "ok");
+  } else {
+    msg.innerHTML = `<div class="banner bad pre">${esc(
+      d.error || "It still could not be prepared.")}</div>`;
+  }
+
+  // Redraw from the server. The run story and the per-check findings were both
+  // rendered from the PREVIOUS attempt, and a stale "stopped at: tests" banner
+  // sitting above a checklist that has moved past it is how this panel spent a
+  // whole session telling an instructor the wrong thing.
+  const note = msg.innerHTML;
+  host.dataset.slug = "";
+  await openFix(host, assignment, slug);
+  const m2 = host.querySelector("#fixMsg");
+  if (m2) m2.innerHTML = note;
+}
+
+/* Re-preparing runs the whole assignment again from what is already stored.
+   It used to send the instructor to the drop zone to find the .py file, because
+   the server keeps the parsed problems rather than the file - but those rows
+   carry the solution AND the class context, which is everything preparation
+   needs. Asking for the file again made the instructor solve a problem the
+   server no longer had. */
+async function reprepare(a, scope){
+  const only = scope === "blocked";
+  if (run){ toast("A preparation run is already in progress.", "warn"); return; }
+  if (!confirm(
+      (only ? `Prepare the problems in "${a.name}" that are not ready again?\n\n`
+            : `Prepare "${a.name}" again?\n\n`)
+      + (only ? `Problems already marked ready are left alone. ` : ``)
+      + `Every problem it runs is split into steps again, and the splits it has `
+      + `now are discarded. Test cases already checked are reused, so this is `
+      + `faster than the first upload.\n\n`
+      + `Students keep seeing the current version until it finishes.`)) return;
+
+  disable($("go"), "A preparation run is already in progress.");
+  $("run").hidden = false;
+  $("cancel").hidden = false;
+  $("items").innerHTML = ""; $("summary").innerHTML = "";
+  setProgress(0);
+  $("runTitle").textContent = only ? "Preparing what is not ready"
+                                  : "Preparing again";
+  $("runCount").textContent = "";
+  startRun(a.name);
+  $("run").scrollIntoView({behavior: "smooth", block: "nearest"});
+
+  let resp;
+  try {
+    resp = await fetch(
+      `${API}/teacher/assignments/${encodeURIComponent(a.id)}/reprepare`
+      + `?scope=${encodeURIComponent(scope)}`,
+      {method: "POST", signal: run.abort.signal});
+  } catch (e) {
+    if (e.name === "AbortError") return;
+    return fail("Could not reach the server. Is the backend running?");
+  }
+  if (!resp.ok){
+    return fail(await httpError(resp, "Could not start."));
+  }
+  if (await consumeRun(resp)) return;
+  endRun();
+  loadAssignments();
+}
+
+/* Hide or show a whole assignment. NOT the same as un-preparing it: every
+   verdict, split and cached test survives, so it is one click back. That is
+   what makes it usable as an emergency stop rather than a last resort. */
+async function togglePublished(a, btn){
+  const hiding = a.published !== false;
+  if (hiding && !confirm(
+      `Hide "${a.name}" from students?\n\n`
+      + `They stop seeing its problems immediately. Nothing is deleted - `
+      + `publishing again is one click and needs no preparation.`)) return;
+  disable(btn);
+  let d = {};
+  try {
+    const r = await fetch(
+      `${API}/teacher/assignments/${encodeURIComponent(a.id)}/published`,
+      {method: "POST", headers: {"Content-Type": "application/json"},
+       body: JSON.stringify({published: !hiding})});
+    d = await r.json().catch(() => ({}));
+    if (!r.ok){
+      enable(btn);
+      toast((d.detail && d.detail.message) || "Could not change visibility.", "bad");
+      return;
+    }
+  } catch {
+    enable(btn);
+    toast("Could not reach the server.", "bad");
+    return;
+  }
+  toast(hiding ? `"${a.name}" is hidden from students.`
+               : `"${a.name}" is visible to students again.`,
+        hiding ? "warn" : "ok");
+  loadAssignments();
+}
+
+clearPick();
+loadAssignments();
+
+// The creation drawer changes presentation only; the existing upload handler
+// still validates the file and runs preparation.
+function openUpload(){
+  if (!$("uploadDrawer").open) $("uploadDrawer").showModal();
+}
+$("newAssignment").addEventListener("click", openUpload);
+$("closeUpload").addEventListener("click", () => $("uploadDrawer").close());
+$("uploadDrawer").addEventListener("click", e => {
+  if (e.target !== $("uploadDrawer")) return;
+  const box = e.target.getBoundingClientRect();
+  if (e.clientX < box.left || e.clientX > box.right || e.clientY < box.top || e.clientY > box.bottom) e.target.close();
+});
+$("go").addEventListener("click", () => {
+  if (run) $("uploadDrawer").close();
+});
+function paintCourseStats(rows){
+  const values = rows ? [rows.length, rows.filter(a => a.published !== false).length,
+    rows.reduce((n,a) => n + (a.ready || 0), 0)] : ["—", "—", "—"];
+  $("courseStats").querySelectorAll("[data-metric]").forEach((el,i) => el.textContent = values[i]);
+}
