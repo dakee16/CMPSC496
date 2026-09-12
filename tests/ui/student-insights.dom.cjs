@@ -113,7 +113,7 @@ const fixture={
     };
     study.scrollTo=()=>{};
     study.CodeMirror={fromTextArea:()=>({setOption:()=>{},setSize:()=>{},on:()=>{},refresh:()=>{},focus:()=>{},setCursor:()=>{},getGutterElement:()=>({offsetWidth:32}),setValue:()=>{},getValue:()=>''})};
-    study.eval(read('ui.js')+'\n'+read('graphs.js')+'\n'+read('student.js'));
+    study.eval(read('ui.js')+'\n'+read('graphs.js')+'\n'+read('workspace.js')+'\n'+read('student.js'));
     await wait();
     assert.equal(opened,1);
     assert.equal(study.document.querySelector('#probTitle').textContent,'Employee Update');

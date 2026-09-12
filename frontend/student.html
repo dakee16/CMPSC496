@@ -20,6 +20,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/search/searchcursor.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/keymap/sublime.min.js"></script>
 <link rel="stylesheet" href="student.css">
+<link rel="stylesheet" href="workspace.css">
 </head>
 <body>
 <main class="page wide" id="page">
@@ -75,53 +76,37 @@
     </div>
   </section>
 
-  <section id="cSolve" hidden="">
+  <section id="cSolve" class="guided-workspace" hidden>
     <div class="studio-heading">
       <div class="studio-title"><p class="eyebrow" id="crumb2">Problem</p><h1 id="probTitle"></h1></div>
-      <span class="heading-tag"><span class="status-dot"></span> Python learning studio</span>
-    </div>
-    <div class="studio-grid">
-      <div class="card problem-card studio-brief">
-        <details id="problemDetails" open>
-          <summary class="pane-title"><span class="pane-number">01</span><h2>The problem</h2><span class="brief-toggle" aria-hidden="true">⌄</span></summary>
-          <div class="statement learning-text" id="statement"></div>
-        </details>
+      <div class="question-actions">
+        <button class="ghost" id="backP" type="button">← All problems</button>
+        <details class="workspace-options" id="workspaceOptions"><summary aria-label="Problem options">•••</summary><div><button class="ghost danger" id="restartBtn" type="button">Start this problem over</button></div></details>
       </div>
-      <div class="card studio-work" id="workCard">
-        <div class="pane-title"><span class="pane-number">02</span><h2>Your workspace</h2>
-          <button class="ghost focus-work" type="button" id="focusWork" aria-pressed="false" aria-label="Focus editor" title="Give the editor more space">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/></svg><span>Focus editor</span>
-          </button>
-        </div>
-        <div class="planLocked" id="planLocked"><strong>First, make a plan</strong><p>Talk it through with your tutor or upload a design below to unlock the editor.</p></div>
-        <section class="work-step" id="workStep" aria-label="Coding progress" hidden>
-          <div class="planhead" id="planHead" hidden><h2>Your progress</h2><span class="pill" id="stepTotal">…</span></div>
-          <div class="probprog" id="probProg" hidden>
-            <div class="bar" id="probBar" role="progressbar" aria-label="Steps complete" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i></i></div>
-            <span class="lab" id="probBarLab"></span>
-          </div>
-          <p class="sr-only" id="planHint2" hidden>Choose a completed step to review your answer.</p>
-          <ol class="stepper" id="stepper" aria-label="Problem steps" aria-describedby="planHint2" hidden></ol>
-          <p class="stepcount" id="stepCount" aria-live="polite"></p>
-          <p class="prompt" id="prompt"></p>
-        </section>
-
-          <div id="msg" role="status" aria-live="polite"></div>
-          <p class="attempts" id="attempts" role="status" aria-live="polite"></p>
-
-          <div class="codestack" id="codestack">
-            <div class="ctx" id="ctx" role="group" tabindex="0" aria-label="Your function so far">
-              <div class="ctxGutter" id="ctxGutter" aria-hidden="true"></div>
-              <pre class="ctxCode" id="ctxCode"></pre>
-            </div>
-
-            <div class="editorWrap" id="editorWrap">
-
-              <label class="sr-only" for="code">Your code for this step</label>
-              <textarea id="code"></textarea>
-            </div>
-
-            <div class="designPanel" id="designPanel" hidden="">
+    </div>
+    <nav class="journey" aria-label="Your path through this problem">
+      <div role="tablist" aria-label="Problem stages">
+        <button id="tabRead" type="button" role="tab" aria-controls="stageRead" aria-selected="true" data-stage="read"><span class="journey-number" aria-hidden="true">1</span><span>Read<small>Understand the question</small></span><span class="journey-state sr-only"></span></button>
+        <button id="tabPlan" type="button" role="tab" aria-controls="stagePlan" aria-selected="false" tabindex="-1" data-stage="plan"><span class="journey-number" aria-hidden="true">2</span><span>Plan<small>Work out your approach</small></span><span class="journey-state sr-only"></span></button>
+        <button id="tabCode" type="button" role="tab" aria-controls="stageCode" aria-selected="false" aria-disabled="true" tabindex="-1" data-stage="code"><span class="journey-number" aria-hidden="true">3</span><span>Code<small>One step at a time</small></span><span class="journey-state sr-only">Requires an approved plan</span></button>
+        <button id="tabReflect" type="button" role="tab" aria-controls="stageReflect" aria-selected="false" aria-disabled="true" tabindex="-1" data-stage="reflect"><span class="journey-number" aria-hidden="true">4</span><span>Reflect<small>See what you’ve learned</small></span><span class="journey-state sr-only">Available after completion</span></button>
+      </div>
+    </nav>
+    <div id="workspaceNotice" class="workspace-notice" role="status" aria-live="polite"></div>
+    <div id="workspaceStatus" class="workspace-status" role="status" aria-live="polite"></div>
+    <section id="stageRead" class="journey-panel reading-stage" role="tabpanel" aria-labelledby="tabRead" tabindex="-1">
+      <div class="stage-intro"><p class="eyebrow">FIRST, GET YOUR BEARINGS</p><h2>Take a moment with the problem.</h2><p>Read the question and its examples. Think about what goes in, and what should come back out.</p></div>
+      <div id="problemHome"><article class="card problem-card studio-brief" id="problemPaper"><details id="problemDetails" open><summary class="pane-title"><h2>The question</h2><span class="brief-toggle" aria-hidden="true">⌄</span></summary><div class="problem-signature" id="signatureBox" hidden><span>Function to implement</span><pre id="readSignature"></pre></div><div class="statement learning-text" id="statement"></div></details></article></div>
+      <div class="stage-next"><div><strong id="readNextTitle">A plan comes before the code.</strong><p id="readNextHint">You’ll work through your approach next. No code needed yet.</p></div><button id="readContinue" type="button">Continue to Plan <span aria-hidden="true">→</span></button></div>
+      <button class="text-action" type="button" data-resource="tutor">Need the question explained? Ask your tutor</button>
+    </section>
+    <section id="stagePlan" class="journey-panel planning-stage" role="tabpanel" aria-labelledby="tabPlan" tabindex="-1" hidden>
+      <div class="stage-intro"><p class="eyebrow">THINK IT THROUGH</p><h2>How will you approach this?</h2><p id="planStageHint">Choose how you’d like to make your plan. You can switch methods at any time.</p></div>
+      <div id="planApproved" class="plan-approved" hidden><span class="approval-mark" aria-hidden="true">✓</span><div><strong>Your plan is approved.</strong><p>Ready when you are. Your next stage is coding, one step at a time.</p></div><button id="planContinue" type="button">Continue to Code →</button></div>
+      <div id="planMethods">
+        <div class="planning-methods" role="group" aria-label="How to make your plan"><button type="button" data-plan-method="chat" aria-pressed="true"><span aria-hidden="true">↗</span><strong>Talk it through</strong><small>Build a plan with your tutor</small></button><button type="button" data-plan-method="upload" aria-pressed="false"><span aria-hidden="true">↑</span><strong>Upload a plan</strong><small>Bring a diagram or written approach</small></button></div>
+        <div id="planChatPanel"><div id="planChatHome"></div><div class="plan-submit-row" id="planSubmitRow"><div><strong>Happy with your approach?</strong><p id="planSubmitHint">Describe your steps in the chat to build a plan.</p></div><button id="planSubmitBtn" type="button">Submit plan for review</button></div></div>
+        <div id="planUploadPanel" hidden><div class="designPanel" id="designPanel" hidden="">
 
               <span class="gateIcon">
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
@@ -129,8 +114,8 @@
                   <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
                 </svg>
               </span>
-              <h3>Good code starts with a plan.</h3>
-              <p>Share a diagram, flowchart, or written plan. When your approach is approved, this space becomes your code editor.</p>
+              <h3>Bring your own plan</h3>
+              <p>Upload a diagram, flowchart, or written plan. We’ll review your approach before you begin coding.</p>
 
               <input type="file" id="designFile" class="sr-only" tabindex="-1" accept="image/png,image/jpeg,application/pdf">
               <div class="drop" id="designDrop" tabindex="0" role="button" aria-label="Choose or drop your design file">
@@ -151,14 +136,7 @@
                 <button id="designBtn">Submit design</button>
               </div>
 
-              <div class="orRow" id="planSubmitRow" hidden="">
-                <span class="orLine"><span>or</span></span>
-                <button class="ghost" id="planSubmitBtn">
-                  Submit the plan from my chat
-                </button>
-                <p class="orNote">Judged exactly like an uploaded diagram —
-                  it is your plan either way.</p>
-              </div>
+
 
               <details>
                 <summary>See an example</summary>
@@ -171,8 +149,64 @@
                 </ul>
               </details>
 
-              <div id="designMsg" role="status" aria-live="polite"></div>
+
+            </div></div>
+      </div>
+      <div id="planFeedback"><div id="designMsg" role="status" aria-live="polite"></div></div>
+      <details id="planPreview" class="plan-preview"><summary><span>Preview your plan</span><span id="planPreviewStatus" role="status" aria-live="polite">Your ideas will appear here</span></summary><div id="planHome"><div class="card graphCard" id="planCard" hidden="">
+      <div class="chead" style="border:0; padding:0 0 10px">
+        <h2>Your plan so far</h2>
+
+        <span class="pill" style="margin-left:auto" id="planSource">built from your chat</span>
+        <span class="pill ok" id="planLock" hidden="">locked in — approved</span>
+      </div>
+      <p class="hint" style="margin:-2px 0 12px" id="planHint">
+        This grows as you describe your approach. If a step is missing here,
+        it was missing from what you said.
+      </p>
+      <div id="planLive"></div>
+    </div></div></details>
+      <div class="stage-quiet-actions"><button class="text-action" type="button" data-stage="read">← Read the question again</button><button class="text-action" type="button" data-resource="tutor">Ask your tutor</button></div>
+    </section>
+    <section id="stageCode" class="journey-panel coding-stage" role="tabpanel" aria-labelledby="tabCode" tabindex="-1" hidden>
+      <div class="code-orientation"><p><span class="status-dot" aria-hidden="true"></span><span id="codeOrientation">Your plan is ready. Let’s put it into practice.</span></p><button class="text-action" type="button" data-stage="plan">View planning stage</button></div>
+      <div class="card studio-work" id="workCard">
+        <div class="pane-title code-toolbar"><h2>Your code <span class="language-label">PYTHON</span></h2><div class="code-resources"><button class="ghost" type="button" data-resource="problem">Problem</button><button class="ghost" type="button" data-resource="plan">Your plan</button><button class="ghost" type="button" data-resource="tutor">Ask tutor</button></div>
+          <button class="ghost focus-work" type="button" id="focusWork" aria-pressed="false" aria-label="Focus editor" title="Give the editor more space">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/></svg><span>Focus editor</span>
+          </button>
+        </div>
+
+        <section class="work-step" id="workStep" aria-label="Coding progress" hidden>
+          <details class="step-history" id="stepHistory"><summary>View all steps</summary>
+          <div class="planhead" id="planHead" hidden><h2>Your progress</h2><span class="pill" id="stepTotal">…</span></div>
+          <div class="probprog" id="probProg" hidden>
+            <div class="bar" id="probBar" role="progressbar" aria-label="Steps complete" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i></i></div>
+            <span class="lab" id="probBarLab"></span>
+          </div>
+          <p class="sr-only" id="planHint2" hidden>Choose a completed step to review your answer.</p>
+          <ol class="stepper" id="stepper" aria-label="Problem steps" aria-describedby="planHint2" hidden></ol>
+          </details>
+          <p class="stepcount" id="stepCount" aria-live="polite"></p>
+          <p class="prompt" id="prompt"></p>
+        </section>
+
+          <div id="msg" role="status" aria-live="polite"></div>
+          <p class="attempts" id="attempts" role="status" aria-live="polite"></p>
+
+          <div class="codestack" id="codestack">
+            <div class="ctx" id="ctx" role="group" tabindex="0" aria-label="Your function so far">
+              <div class="ctxGutter" id="ctxGutter" aria-hidden="true"></div>
+              <pre class="ctxCode" id="ctxCode"></pre>
             </div>
+
+            <div class="editorWrap" id="editorWrap">
+
+              <label class="sr-only" for="code">Your code for this step</label>
+              <textarea id="code"></textarea>
+            </div>
+
+
           </div>
 
           <div class="reviewBox" id="reviewBox" hidden="">
@@ -182,21 +216,35 @@
 
           <div class="row" style="margin-top:13px" id="workControls">
             <button id="submit">Submit step</button>
-            <button class="ghost" id="backP">All problems</button>
+            <span class="work-tip">Build your solution one step at a time.</span>
 
-            <button class="ghost danger" id="restartBtn" style="margin-left:auto">Start over</button>
+            <button class="ghost" id="finishReview" type="button" hidden>Review your work →</button>
           </div>
           <div class="row" style="margin-top:13px" id="reviewControls" hidden="">
             <button id="backToNow">Back to the current step</button>
           </div>
 
-        </div><div class="chatcol" id="chatcol">
+        </div>
+    </section>
+    <section id="stageReflect" class="journey-panel reflection-stage" role="tabpanel" aria-labelledby="tabReflect" tabindex="-1" hidden>
+      <div class="reflection-hero"><span class="reflection-mark" aria-hidden="true">✓</span><p class="eyebrow">PAUSE. LOOK BACK. TAKE IT FORWARD.</p><h2 id="reflectTitle">You worked through it.</h2><p id="reflectSummary"></p><div class="reflection-actions"><button id="reflectionNext" type="button">Choose another problem →</button><a class="ghost" id="reflectionGrades" href="student-grades.html">See my grades</a><button class="ghost" type="button" data-stage="code">Review your code</button></div></div>
+      <details class="reflection-code" id="reflectionCodeDetails"><summary>Your completed function</summary><pre class="code" id="reflectionCode"></pre></details>
+      <div class="reflection-graph-heading"><h3>From your plan to your code</h3><p>Explore how your approach became a working solution.</p></div><div id="comparisonStatus" role="status"></div>
+      <div class="card graphCard" id="dualCard" hidden="">
+      <div class="chead" style="border:0; padding:0 0 10px">
+        <h2>Your plan vs. your code</h2>
+        <span class="pill" style="margin-left:auto">side by side</span>
+      </div>
+      <div id="dualWrap"></div>
+    </div>
+    </section>
+    <div id="chatParking" hidden><div class="chatcol" id="chatcol">
         <div class="card chat">
           <div class="chead pane-title">
-            <span class="pane-number">03</span>
+
             <h2 id="tutorName">Your tutor</h2>
             <span class="pill mode" id="tutorMode" title="The tutor explains and asks questions. It will not write your code or hand you an answer.">Here to guide</span>
-            <button class="sheetTog" id="sheetTog" aria-expanded="false" aria-controls="clog cform" aria-label="Open the tutor">
+            <button class="sheetTog" id="sheetTog" aria-expanded="false" aria-controls="resourceDrawer" aria-label="Open the tutor">
               <span class="sheet-label">Open tutor</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 15 6-6 6 6"></path></svg>
             </button>
           </div>
@@ -213,30 +261,16 @@
           </form>
         </div>
       </div></div>
-
-    <div class="card graphCard" id="planCard" hidden="">
-      <div class="chead" style="border:0; padding:0 0 10px">
-        <h2>Your plan so far</h2>
-
-        <span class="pill" style="margin-left:auto" id="planSource">built from your chat</span>
-        <span class="pill ok" id="planLock" hidden="">locked in — approved</span>
-      </div>
-      <p class="hint" style="margin:-2px 0 12px" id="planHint">
-        This grows as you describe your approach. If a step is missing here,
-        it was missing from what you said.
-      </p>
-      <div id="planLive"></div>
-    </div>
-
-    <div class="card graphCard" id="dualCard" hidden="">
-      <div class="chead" style="border:0; padding:0 0 10px">
-        <h2>Your plan vs. your code</h2>
-        <span class="pill" style="margin-left:auto">side by side</span>
-      </div>
-      <div id="dualWrap"></div>
-    </div>
   </section>
 </main>
+
+<div class="resource-overlay" id="resourceDrawer" hidden>
+  <div class="resource-panel" role="dialog" aria-modal="true" aria-labelledby="resourceTitle" tabindex="-1">
+    <div class="resource-header"><div><p class="eyebrow">HERE WHEN YOU NEED IT</p><h2 id="resourceTitle">The problem</h2></div><button class="ghost" id="closeResource" type="button" aria-label="Close reference panel">×</button></div>
+    <div class="resource-tabs" role="group" aria-label="Reference panel"><button type="button" data-resource="problem" aria-pressed="true">Problem</button><button type="button" data-resource="plan" aria-pressed="false">Your plan</button><button type="button" data-resource="tutor" aria-pressed="false">Tutor</button></div>
+    <div class="resource-body" id="resourceBody"></div>
+  </div>
+</div>
 
 <div class="modalWrap" id="restartModal" hidden="">
   <div class="modalCard" role="dialog" aria-modal="true" aria-labelledby="restartTitle" aria-describedby="restartBody">
@@ -254,6 +288,7 @@
 </div>
 <script src="ui.js"></script>
 <script src="graphs.js"></script>
+<script src="workspace.js"></script>
 <script src="student.js"></script>
 
 </body></html>

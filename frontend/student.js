@@ -17,6 +17,7 @@ let tutorReleased = false;
 // Non-null while the student is looking back at a step they already finished.
 let reviewIdx = null;
 let reviewDraft = null;
+let stepPromptsPending = false;
 
 /* Show or hide the coding half. The design panel and the editor are mutually
    exclusive: exactly one of them occupies the bottom of the code surface, so
@@ -33,6 +34,7 @@ function applyTutorGate(){
   if (btn){
     if (!tutorReleased) disable(btn, "Submit your design first - the editor "
       + "unlocks once the tutor accepts it.");
+    else if (stepPromptsPending) disable(btn, "Loading the instructions for your steps…");
     else if (btn.dataset.busy === "1") disable(btn, "Grading your last answer…");
     else enable(btn);
   }
@@ -41,7 +43,7 @@ function applyTutorGate(){
   // "nocursor" also blocks focus. Before the editor exists, fall back to the
   // textarea.
   if (editor){
-    editor.setOption("readOnly", tutorReleased ? false : "nocursor");
+    editor.setOption("readOnly", tutorReleased && !stepPromptsPending ? false : "nocursor");
   } else if (code){
     code.disabled = !tutorReleased;
   }
@@ -56,10 +58,10 @@ function applyTutorGate(){
   if (editor && wasHidden && wrap && !wrap.hidden){
     requestAnimationFrame(() => { editor.refresh(); matchGutter(); });
   }
+  workspaceSync();
 }
 
-/* The unlock is an EVENT, not a silent swap: the editor wipes in from the top
-   and a confirmation stays on screen for the rest of the problem. */
+/* Approval is explicit, but the student chooses when to continue to Code. */
 function openGate(){
   tutorReleased = true;
   applyTutorGate();
@@ -73,15 +75,7 @@ function openGate(){
   freezePlan();
   loadSteps();          // the prompts were withheld until this moment
   toast("Design accepted - the editor is unlocked.", "ok");
-  if (editor){
-    // The editor has been sized to a hidden box until now. Re-seat the step's
-    // indent and re-measure the gutter against a laid-out element.
-    requestAnimationFrame(() => {
-      editor.refresh();
-      matchGutter();
-      editor.focus();
-    });
-  }
+  workspaceSync();
 }
 
 /* Fetch the step prompts, which the server withholds until the design is
@@ -89,38 +83,35 @@ function openGate(){
    right indents, and nothing that gives the answer away. */
 async function loadSteps(){
   if (!sessionId) return;
+  const sid = sessionId;
+  stepPromptsPending = true;
+  applyTutorGate();
   try {
     const r = await fetch(`${API}/session_steps/${encodeURIComponent(sessionId)}`);
-    if (!r.ok) return;                    // stay locked rather than guess
+    if (sessionId !== sid) return;
+    if (!r.ok) throw new Error("Steps unavailable");
     const d = await r.json();
-    if (d.chunks && d.chunks.length){
+    if (sessionId !== sid) return;
+    if (d.chunks && d.chunks.length && d.chunks.every(c => c.prompt)){
       chunks = d.chunks;
+      stepPromptsPending = false;
+      $("msg").replaceChildren();
       render();
-    }
+      applyTutorGate();
+    } else throw new Error("Steps unavailable");
   } catch (e) {
-    /* the editor is open either way; the steps arrive on the next load */
+    if (sessionId !== sid) return;
+    show("warn", "Your plan is approved, but the coding instructions could not be loaded.");
+    const retry = document.createElement("button");
+    retry.type = "button"; retry.className = "ghost"; retry.textContent = "Retry loading steps";
+    retry.onclick = loadSteps;
+    $("msg").append(retry);
   }
 }
 
-/* The standing "editor is unlocked" bar.
-
-   A bar, not a toast, and not show(): a toast is gone in seconds and show()
-   writes into #msg, which the next grading verdict overwrites. Reopening a
-   problem you had already unlocked showed nothing at all about that, so the
-   editor being open looked like luck. It stays on screen for the problem. */
+/* A quiet orientation line replaces the repeated full-width unlock banner. */
 function markUnlocked(text){
-  let ok = $("designOK");
-  if (!ok){
-    ok = document.createElement("div");
-    ok.id = "designOK";
-    ok.className = "designOK";
-    ok.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none"
-        stroke="currentColor" stroke-width="2.6" stroke-linecap="round"
-        stroke-linejoin="round" aria-hidden="true"><path d="m4 12 5.5 5.5L20 7"/></svg>
-      <span></span>`;
-    $("workCard").insertBefore(ok, $("workStep"));
-  }
-  ok.querySelector("span").textContent = text;
+  $("codeOrientation").textContent = text;
 }
 
 /* Fix the plan where it stands and say so on the card, so a student who keeps
@@ -164,19 +155,8 @@ let planFrozen = false;
 // nudge happens ONCE, when the plan first has something in it.
 let planNudged = false;
 
-/* Draw the plan graph, flashing whatever is new since the last draw.
-
-   The card does not YANK the page to itself on every change - it is visible
-   from the moment a problem opens (showing its empty state), and later changes
-   announce themselves with a highlight plus a "Plan updated" pill on the chat
-   panel, which is where the student is actually looking.
-
-   The FIRST time it has anything in it is different, and is the one moment the
-   page moves on its own. A student who has just described their approach has no
-   reason to believe anything was drawn from it, and the pill alone was being
-   missed: it appears on the far side of the screen from the sentence they just
-   typed. So the first plan gets a short nudge downwards - enough to bring the
-   top of the drawing into view, not so much that the chat leaves it. */
+/* Keep the preview current. New nodes can highlight when the student opens
+   it, but no background update scrolls the page or changes the active stage. */
 function paintPlan(graph){
   const ids = (graph && graph.nodes || []).map(n => n.id);
   const fresh = ids.filter(id => !planSeen.has(id));
@@ -191,33 +171,14 @@ function paintPlan(graph){
   nudgeToPlan();
 }
 
-/* The one-time nudge. Deliberately NOT scrollIntoView: that centres the card
-   and pushes the chat off screen, which is the behaviour the pill replaced. A
-   fixed, modest scroll keeps both in frame and stays out of the way of a
-   student who is already scrolling themselves. */
+/* Announce the first available preview in the same place as later updates. */
 function nudgeToPlan(){
-  const card = $("planCard");
-  if (!card || card.hidden) return;
-  const top = card.getBoundingClientRect().top;
-  const want = window.innerHeight * 0.55;      // bring its top into the lower half
-  if (top <= want) return;                     // already visible enough
-  scrollBy({top: Math.min(top - want, 260), behavior: "smooth"});
+  showPlanPing(); // Announce the preview without moving the student's page.
 }
 
-/* "Plan updated", on the chat panel, because the graph is a full page-width
-   card below the fold and nobody watches two places at once. */
+/* A quiet live status accompanies the collapsed preview. */
 function showPlanPing(){
-  if ($("planPing")) return;
-  const b = document.createElement("button");
-  b.type = "button";
-  b.id = "planPing";
-  b.className = "planPing";
-  b.textContent = "Plan updated ↓";
-  b.onclick = () => {
-    b.remove();
-    $("planCard").scrollIntoView({behavior: "smooth", block: "center"});
-  };
-  $("tutorMode").after(b);
+  $("planPreviewStatus").textContent = "Updated from your thinking";
 }
 
 /* Queue a redraw and hand back a promise for when the queue is empty.
@@ -262,19 +223,18 @@ async function showDualGraphs(sid){
       method: "POST", headers: {"Content-Type": "application/json"},
       body: JSON.stringify({session_id: sid, plan: planGraph})
     });
-    if (!r.ok) return;
+    if (sid !== sessionId) return;
+    if (!r.ok) throw new Error("Comparison unavailable");
     const payload = await r.json();
     $("dualCard").hidden = false;
     renderDual($("dualWrap"), payload);
-    // The standalone "Your plan so far" card is now a second, smaller copy of
-    // the graph sitting directly above one that shows the same thing beside the
-    // code. Retire it: it was there to grow WITH the conversation, and the
-    // conversation is over. openProblem() unhides it again for the next problem.
-    $("planCard").hidden = true;
+    // The original plan remains available in Plan and the reference panel.
+    // The comparison belongs to Reflect, which the student opens themselves.
+    $("planCard").hidden = false;
     const ping = $("planPing"); if (ping) ping.remove();
-    $("dualCard").scrollIntoView({behavior: "smooth", block: "start"});
+    comparisonReady();
   } catch (e) {
-    /* the comparison is a bonus, never the reason a finished session breaks */
+    if (sid === sessionId) comparisonUnavailable();
   }
 }
 
@@ -437,13 +397,18 @@ async function submitPlanGraph(){
   }
 }
 
-/* The button only exists when there is something to send. Called from every
-   place the plan can change, so it never sits there promising to submit an
-   empty drawing. */
+/* Keep the next action discoverable, with a reason until a plan exists. */
 function syncPlanSubmit(){
   const row = $("planSubmitRow");
   if (!row) return;
-  row.hidden = tutorReleased || !(planGraph && (planGraph.nodes || []).length);
+  row.hidden = tutorReleased;
+  const ready = !!(planGraph && (planGraph.nodes || []).length);
+  $("planSubmitHint").textContent = ready ? "Preview the plan below, then send it for review." : "Describe your steps in the chat to build a plan.";
+  const button = $("planSubmitBtn");
+  if (button.dataset.busy !== "1"){
+    if (workspaceReadyState && ready && !tutorReleased) enable(button);
+    else disable(button, "Describe your approach in the chat first.");
+  }
 }
 
 /* ---------- starting a problem over ---------- */
@@ -729,6 +694,7 @@ function paintStudentStats(rows){
 }
 
 function view(which){
+  if (which !== "cSolve") {closeResource(false); workspaceEpoch++;}
   document.body.classList.toggle("in-studio", which === "cSolve");
   setWorkspaceFocus(false);
   setTutorOpen(false, false);
@@ -970,6 +936,7 @@ async function start(p){
   $("msg").innerHTML = `<div class="banner info">Getting this problem ready…</div>`;
   $("attempts").textContent = "";
   accepted = []; idx = 0;
+  chunks = []; sessionId = null; stepPromptsPending = false;
   openProblem = p;
   tutorReleased = false;
   designLog = [];
@@ -987,8 +954,9 @@ async function start(p){
   const ping = $("planPing"); if (ping) ping.remove();
   clearDesign();
   designMsg("", "");
-  // The plan card is visible from the start, showing its empty state. A card
-  // that appears out of nowhere three replies in is a card nobody notices.
+  resetWorkspace();
+  const opening = workspaceEpoch;
+  // Keep one preview instance in the Plan stage, initially collapsed.
   $("planCard").hidden = false;
   $("dualCard").hidden = true;
   // NOT resetChat() and NOT paintPlan(null) yet: both assert this is a fresh
@@ -1008,10 +976,12 @@ async function start(p){
       body: JSON.stringify({slug: p.slug, title: p.title,
                             description: p.description})
     });
-  } catch { return failStart("Could not reach the server."); }
+  } catch { if (opening === workspaceEpoch) return failStart("Could not reach the server."); else return; }
+  if (opening !== workspaceEpoch) return;
   if (!r.ok) return failStart("This problem could not be started. Try another one.");
 
   const d = await r.json();
+  if (opening !== workspaceEpoch) return;
   sessionId = d.session_id; chunks = d.chunks || []; header = d.header || "";
   $("msg").innerHTML = "";
   ensureEditor();
@@ -1021,9 +991,11 @@ async function start(p){
   // empty plan. Skipped when history was restored (it painted both already) and
   // when the student has already moved to another problem.
   if (!await restoreHistory(p)){
+    if (opening !== workspaceEpoch) return;
     resetChat(p.title || p.slug);
     paintPlan(null);
   }
+  if (opening === workspaceEpoch) readyWorkspace();
 }
 
 /* Put back what this student already did on this problem.
@@ -1044,12 +1016,15 @@ async function start(p){
    student has moved on mid-fetch, because whatever they moved to owns those
    panels now. False means "nothing here, start clean". */
 async function restoreHistory(p){
+  const opening = workspaceEpoch;
   let h;
   try {
     const r = await fetch(`${API}/history/${encodeURIComponent(p.slug)}`);
+    if (opening !== workspaceEpoch) return true;
     if (!r.ok) { setRestoring(false); return false; }
     h = await r.json();
-  } catch { setRestoring(false); return false; }   // a cold archive is fine
+  } catch { if (opening !== workspaceEpoch) return true; setRestoring(false); return false; }
+  if (opening !== workspaceEpoch) return true;
   if (openProblem !== p) return true;              // they moved on; hands off
   if (!h || !h.found) { setRestoring(false); return false; }   // nothing recorded
 
@@ -1102,7 +1077,8 @@ async function restoreHistory(p){
     $("dualCard").hidden = false;
     renderDual($("dualWrap"), {plan: h.plan, code: h.code,
                                comparison: h.comparison});
-    $("planCard").hidden = true;
+    $("planCard").hidden = false;
+    comparisonReady(true);
   }
 
   // BOTH panels must be resolved before returning true, or the caller leaves
@@ -1129,6 +1105,7 @@ function failStart(msg){
   paintPlan(null);
   setRestoring(false);
   show("bad", msg);
+  failedWorkspace(msg);
 }
 
 function ensureEditor(){
@@ -1275,6 +1252,8 @@ function openReview(i){
   renderStepper();
   $("msg").innerHTML = "";
   $("attempts").textContent = "";
+  $("stepHistory").open = false;
+  $("backToNow").textContent = idx < chunks.length ? "Back to the current step" : "Back to your completed code";
   $("backToNow").focus();
 }
 
@@ -1288,6 +1267,14 @@ function leaveReview(){
     editor.setSelections(reviewDraft.selections);
     reviewDraft = null;
   }
+}
+
+/* Keep a successful answer visible until the student elects to move on.
+   The server has advanced; this is the existing read-only review view. */
+function pauseAfterStep(completedIndex){
+  render(); // Prepare an empty draft for the next step, then preserve it.
+  openReview(completedIndex);
+  $("backToNow").textContent = `Continue to step ${idx + 1} →`;
 }
 
 function render(){
@@ -1323,7 +1310,7 @@ function render(){
     // read during renderContext() above was the PREVIOUS one. Re-measure on the
     // next frame, when the new gutter is on screen.
     requestAnimationFrame(matchGutter);
-    if (tutorReleased) editor.focus();   // never pull focus into a locked editor
+    if (tutorReleased && workspaceStage === "code" && !resourceKind) editor.focus();
   }
 }
 
@@ -1394,20 +1381,21 @@ $("submit").onclick = async () => {
   if (res.verdict === "correct") {
     // Store it the way the server did, not the way it was typed.
     accepted[idx] = {code: alignToStep(code, (chunks[idx] || {}).indent), how: "own"};
+    const completedIndex = idx;
     idx = res.index;
     if (res.completed) return finish(res);
-    render();
+    pauseAfterStep(completedIndex);
     show("ok", res.reason);
     return;
   }
 
   if (typeof res.revealed_reference === "string") {
     accepted[idx] = {code: res.revealed_reference, how: "revealed"};
+    const completedIndex = idx;
     idx = res.index;
     if (res.completed) return finish(res);
-    render();
-    show("warn", res.reason + "\n\nHere is this step so you can keep going:",
-         `<pre class="code" style="margin-top:11px">${esc(res.revealed_reference)}</pre>`);
+    pauseAfterStep(completedIndex);
+    show("warn", res.reason + "\n\nReview the shown answer below, then continue when you’re ready.");
     return;
   }
   // A wrong answer now comes with the case that caught it, folded away. Closed
@@ -1433,6 +1421,7 @@ function failingCaseHTML(text){
 }
 
 async function finish(res){
+  const sid = sessionId, problem = openProblem;
   render();
   $("prompt").textContent = "";
   $("editorWrap").hidden = true;
@@ -1445,22 +1434,23 @@ async function finish(res){
        res.solved_independently
          ? "Solved. Every step on your own, nice work."
          : "Problem complete. Some steps used the shown answer, so this is recorded as solved with help.");
+  completeWorkspace(res);
   try {
     await fetch(`${API}/mark_solved`, {
       method: "POST", headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({session_id: sessionId})
+      body: JSON.stringify({session_id: sid})
     });
     // Record it locally too, so going back one screen shows it as done
     // without a round trip to re-read /solved. Which set matters: the server
     // is about to report the same split back, and disagreeing with it for one
     // screen is how a problem reads "Solved" until the next reload.
-    if (openProblem){
-      (res.solved_independently ? SOLVED : ASSISTED).add(openProblem.slug);
+    if (problem){
+      (res.solved_independently ? SOLVED : ASSISTED).add(problem.slug);
     }
   } catch {}
   // Both graphs, now that there is a finished function to draw the second one
   // from. Awaited last so a slow render never delays the "solved" message.
-  await showDualGraphs(sessionId);
+  if (sid === sessionId) await showDualGraphs(sid);
 }
 
 /* Back to the problem list, with the list redrawn: a problem just solved has
@@ -1672,6 +1662,8 @@ function setRestoring(on){
     if (!el) continue;
     if (on) disable(el, "Loading your earlier work on this problem…");
     else if (id === "submit") applyTutorGate();      // owns its own state
+    else if (id === "designBtn" && !designFileRef) disable(el, "Choose a PNG, JPEG or PDF first.");
+    else if (id === "planSubmitBtn") syncPlanSubmit();
     else enable(el);
   }
   // The drop zone is a <div role="button">, and `disabled` means nothing on a
@@ -1703,12 +1695,11 @@ function historyLoading(){
 function resetChat(title){
   $("clog").innerHTML = "";
   chatLog = [];
-  bubble("bot", `We are on ${title}. Ask me to explain it, or tell me how you `
-               + `are thinking of approaching it - I will not give you the `
-               + `answer. When your plan is ready, submit a design (PNG, JPEG, `
-               + `or PDF) to unlock the editor.`);
+  bubble("bot", `Let’s think through ${title}. What should the function receive, `
+               + `and what should it return? Tell me your approach in your own words. `
+               + `When you’re ready, submit your plan for review in the Plan stage.`);
   showChips();
-  showChatCoach();
+  // The stage introduction now provides the guidance once given by a popup.
 }
 
 async function sendToTutor(text){
@@ -1777,7 +1768,7 @@ async function sendToTutor(text){
     chatLog.pop();
   } finally {
     chatBusy = false;
-    $("cinput").focus();
+    if (resourceKind === "tutor" || (workspaceStage === "plan" && planMethod === "chat" && !tutorReleased)) $("cinput").focus();
   }
 }
 
@@ -1839,22 +1830,13 @@ $("cinput").addEventListener("keydown", e => {
   }
 });
 
-/* Tutor drawer on smaller screens. Hidden content must also leave the tab
-   order; a translated-offscreen form is still focusable without inert. */
-const tutorDrawer = matchMedia("(max-width: 1439px)");
+/* The same conversation is inline during planning and on demand elsewhere. */
 function setTutorOpen(open, focus = true){
-  $("chatcol").classList.toggle("open", open);
-  $("sheetTog").setAttribute("aria-expanded", String(open));
-  $("sheetTog").setAttribute("aria-label", open ? "Close the tutor" : "Open the tutor");
-  $("sheetTog").querySelector(".sheet-label").textContent = open ? "Close tutor" : "Open tutor";
-  const closed = tutorDrawer.matches && !open;
-  $("clog").inert = closed;
-  $("cform").inert = closed;
-  if (focus && open) $("cinput").focus();
+  if (open) openResource("tutor");
+  else if (resourceKind === "tutor") closeResource(focus);
+  placeWorkspaceChat();
 }
 $("sheetTog").onclick = () => setTutorOpen(!$("chatcol").classList.contains("open"));
-tutorDrawer.addEventListener("change", () => setTutorOpen(false, false));
-setTutorOpen(false, false);
 
 function setWorkspaceFocus(on){
   document.body.classList.toggle("focus-workspace", on);
@@ -1867,9 +1849,8 @@ function setWorkspaceFocus(on){
 $("focusWork").onclick = () => setWorkspaceFocus(!document.body.classList.contains("focus-workspace"));
 addEventListener("keydown", event => {
   if (event.key !== "Escape") return;
-  if (tutorDrawer.matches && $("chatcol").classList.contains("open")){
-    setTutorOpen(false, false);
-    $("sheetTog").focus();
+  if (resourceKind){
+    closeResource();
   } else if (document.body.classList.contains("focus-workspace")){
     setWorkspaceFocus(false);
     $("focusWork").focus();
@@ -1885,4 +1866,5 @@ if (document.fonts && document.fonts.ready) document.fonts.ready.then(matchGutte
 
 clearDesign();
 clearLegacyTouch();
+initWorkspace();
 loadAssignments();

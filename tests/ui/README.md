@@ -38,6 +38,14 @@ dashboard metrics and activity, assignment links into the existing design gate,
 grade filters and step details, safe rendering of titles, theme switching, and
 empty/error/retry states. It uses synthetic records and does not verify layout.
 
+`workspace.dom.cjs` exercises the staged question workflow using the actual
+frontend scripts and synthetic API responses: reading first, locked stages,
+keyboard navigation, both planning methods, rejection and approval, preserving
+unsent chat/code and selected files, moving the same conversation into the
+reference panel, focus restoration, step feedback and deliberate continuation,
+grading failures, completion, comparison retry, restart, initialization failure,
+and historical work. No browser layout or real editor measurement is asserted.
+
 The private progress endpoint has focused Python tests. With the backend's
 dependencies and pytest installed, run from the repository root:
 
@@ -72,22 +80,54 @@ assignment/problem names; grade table scrolling on mobile; and dashboard links
 into an assignment and a problem. Also confirm against a development database
 that the student's recorded step credit matches the instructor's grade sheet.
 
-## UI design decisions
+## Guided question workspace
+
+The question opens in a reading stage with a wide statement and one next action.
+Students can return to earlier stages without losing their current editor draft,
+chat, selected file, or step review. Stage navigation does not make API calls.
+
+| Stage | Main task | Available on demand |
+| --- | --- | --- |
+| Read | Understand the question and examples, then continue | Tutor explanation |
+| Plan | Talk through an approach or upload a PNG/JPEG/PDF; submit for approval | Plan preview, question, tutor |
+| Code | Read one instruction, write code, and inspect the result before continuing | All steps, earlier answers, question, approved plan, tutor, focus mode |
+| Reflect | Review completion and the plan/code comparison | Completed function, recorded grades, another problem |
+
+Code unlocks only after the existing server approval. Reflect opens after
+completion or when a historical comparison exists; historical work is explicitly
+labeled. Approval and completion offer a continuation action rather than moving
+the student automatically. After a passing step, the existing read-only review
+view displays their answer until they continue; the grading session has already
+advanced, and the next editor draft remains separate.
+
+The reference panel shares the original problem, plan, and chat DOM, preserving
+their state. It supports Escape, focus trapping and restoration, and an inert
+background. Plan updates and comparison responses no longer scroll the page.
+Restart remains in the question options menu with its confirmation dialog.
+Assignment downloads stay available in the problem list.
+
+Check the new stages in a real browser at desktop, tablet, and phone widths,
+including 200% zoom, long questions, both themes, the mobile keyboard, graph
+zoom/fullscreen, and the reference panel. The browser suite now captures reading
+and planning views and checks staged coding and the reference panel; its actual
+execution and screenshot review remain pending in an environment with Chromium.
+
+## Shared UI design decisions
 
 - ACADIA uses a reusable vector A mark, teal actions, sea-glass light surfaces,
   and ink/mint dark surfaces. The editor follows the selected theme.
 - Light is the default; an existing saved dark preference is respected.
   Legacy session/storage keys remain unchanged to avoid losing sign-in state.
 - Solving collapses desktop navigation to a labeled, tooltip-backed icon rail.
-  At 1440px and above, problem/editor/tutor share the screen. Below that, the
-  tutor becomes a keyboard-accessible drawer, leaving more width for the work.
-- The problem statement is collapsible and independently scrollable. Code and
+  One learning stage occupies the main canvas, with help available on demand.
+- The problem statement is collapsible and uses the page's natural scroll. Code and
   doctests retain whitespace and scroll horizontally instead of wrapping into
   illegible paragraphs. All source content is inserted as text, never raw HTML.
-- Sticky progress and the current instruction sit directly above the editor.
+- The current step and instruction sit directly above the editor. The full
+  step list is available through View all steps.
   Completed steps remain reviewable; reviewing does not discard an unsent draft.
-- Focus mode expands the work area without resetting editor contents. Escape
-  exits focus mode or closes the tutor drawer.
+- Focus mode hides the question heading and stage rail while expanding the work
+  area without resetting editor contents. Escape exits focus or the reference panel.
 - The handback/download area uses equal vertical padding and a single outlined
   surface instead of competing borders and inconsistent margins.
 
@@ -97,5 +137,6 @@ DOM/contrast tests and JavaScript syntax checks were run in the editing
 environment. Chromium could not be installed there: its download timed out,
 and the system package manager was permission-blocked. Consequently, the
 browser suite and screenshot/visual review remain pending and must be run
-before merging. Both DOM suites and all eight focused progress endpoint tests
-pass. Live Supabase integration was not exercised.
+before merging. All three DOM suites pass. All eight focused progress endpoint
+tests passed for the dashboard change; this workspace update does not change
+backend files. Live Supabase integration was not exercised.
