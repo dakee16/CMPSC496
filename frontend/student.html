@@ -1,10 +1,10 @@
 <!DOCTYPE html><html lang="en"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<script>try{document.documentElement.dataset.theme=(localStorage.getItem("mt.theme")==="light"?"light":"dark")}catch(e){}</script>
-<title>My assignments · MicroTutor</title>
+<script>try{document.documentElement.dataset.theme=(localStorage.getItem("mt.theme")==="dark"?"dark":"light")}catch(e){document.documentElement.dataset.theme="light"}</script>
+<title>My assignments · ACADIA</title>
 
-<meta name="theme-color" content="#151619">
+<meta name="theme-color" content="#f3f7f7">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
@@ -76,28 +76,35 @@
   </section>
 
   <section id="cSolve" hidden="">
-    <div class="studio-heading"><div class="studio-title"><p class="eyebrow" id="crumb2">Problem</p><h1 id="probTitle"></h1></div><span class="heading-tag">Python workspace <span class="mono">.py</span></span></div><div class="studio-grid"><div class="card problem-card studio-brief"><div class="pane-title"><span class="pane-number">01</span><h2>The problem</h2></div>
-          <div class="statement" id="statement"></div>
-
-          <div class="planhead" id="planHead" hidden="">
-            <h2>Your plan</h2>
-            <span class="pill" id="stepTotal">…</span>
-          </div>
-          <div class="planLocked" id="planLocked">
-            <h2>Your plan</h2>
-            <p>Start by explaining your approach to the tutor. Your steps appear here once your design is accepted.</p>
-          </div>
-
-          <div class="probprog" id="probProg" hidden="">
+    <div class="studio-heading">
+      <div class="studio-title"><p class="eyebrow" id="crumb2">Problem</p><h1 id="probTitle"></h1></div>
+      <span class="heading-tag"><span class="status-dot"></span> Python learning studio</span>
+    </div>
+    <div class="studio-grid">
+      <div class="card problem-card studio-brief">
+        <details id="problemDetails" open>
+          <summary class="pane-title"><span class="pane-number">01</span><h2>The problem</h2><span class="brief-toggle" aria-hidden="true">⌄</span></summary>
+          <div class="statement learning-text" id="statement"></div>
+        </details>
+      </div>
+      <div class="card studio-work" id="workCard">
+        <div class="pane-title"><span class="pane-number">02</span><h2>Your workspace</h2>
+          <button class="ghost focus-work" type="button" id="focusWork" aria-pressed="false" aria-label="Focus editor" title="Give the editor more space">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/></svg><span>Focus editor</span>
+          </button>
+        </div>
+        <div class="planLocked" id="planLocked"><strong>First, make a plan</strong><p>Talk it through with your tutor or upload a design below to unlock the editor.</p></div>
+        <section class="work-step" id="workStep" aria-label="Coding progress" hidden>
+          <div class="planhead" id="planHead" hidden><h2>Your progress</h2><span class="pill" id="stepTotal">…</span></div>
+          <div class="probprog" id="probProg" hidden>
             <div class="bar" id="probBar" role="progressbar" aria-label="Steps complete" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i></i></div>
             <span class="lab" id="probBarLab"></span>
           </div>
-          <p class="hint" id="planHint2" style="margin-bottom:10px" hidden="">Work through
-             these in order. Finished steps stay clickable if you want to look back.</p>
-          <ol class="stepper" id="stepper" hidden=""></ol>
-        </div><div class="card studio-work" id="workCard"><div class="pane-title"><span class="pane-number">02</span><h2>Your workspace</h2><span class="pane-language">PYTHON</span></div>
-          <p class="stepcount" id="stepCount"></p>
+          <p class="sr-only" id="planHint2" hidden>Choose a completed step to review your answer.</p>
+          <ol class="stepper" id="stepper" aria-label="Problem steps" aria-describedby="planHint2" hidden></ol>
+          <p class="stepcount" id="stepCount" aria-live="polite"></p>
           <p class="prompt" id="prompt"></p>
+        </section>
 
           <div id="msg" role="status" aria-live="polite"></div>
           <p class="attempts" id="attempts" role="status" aria-live="polite"></p>
@@ -189,8 +196,8 @@
             <span class="pane-number">03</span>
             <h2 id="tutorName">Your tutor</h2>
             <span class="pill mode" id="tutorMode" title="The tutor explains and asks questions. It will not write your code or hand you an answer.">Here to guide</span>
-            <button class="sheetTog" id="sheetTog" aria-expanded="false" aria-controls="chatcol" aria-label="Open the tutor">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 15 6-6 6 6"></path></svg>
+            <button class="sheetTog" id="sheetTog" aria-expanded="false" aria-controls="clog cform" aria-label="Open the tutor">
+              <span class="sheet-label">Open tutor</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 15 6-6 6 6"></path></svg>
             </button>
           </div>
 

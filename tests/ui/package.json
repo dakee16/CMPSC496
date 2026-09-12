@@ -1,0 +1,12 @@
+{
+  "name": "acadia-ui-checks",
+  "private": true,
+  "scripts": {
+    "test": "node acadia.dom.cjs",
+    "test:browser": "node acadia.smoke.cjs"
+  },
+  "devDependencies": {
+    "happy-dom": "20.14.5",
+    "playwright": "1.62.1"
+  }
+}

@@ -48,7 +48,7 @@ el("p").addEventListener("blur", () => { if (el("p").value) checkPassword(); });
 
 function paint(){
   const reg = mode === "register";
-  document.title = reg ? "Create an account · MicroTutor" : "Sign in · MicroTutor";
+  document.title = reg ? "Create an account · ACADIA" : "Sign in · ACADIA";
   el("title").textContent = reg ? "Set up your account" : "Sign in";
   el("sub").textContent = reg
     ? "Use your Penn State email. Your work is saved against this account."
