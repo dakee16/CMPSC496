@@ -120,7 +120,7 @@ const read = name => fs.readFileSync(path.join(root, name), 'utf8');
     for(const name of fs.readdirSync(root).filter(name=>/\.(js|html)$/.test(name))){
       assert(!read(name).includes('MicroTutor'),name+' still contains the old UI name');
     }
-    console.log('PASS: DOM behavior, source-safe formatting, themes, design gate, step review/draft preservation, focus, drawer accessibility, IDs, and 26 contrast pairs.');
+    console.log('PASS: DOM behavior, source-safe formatting, themes, design gate, step review/draft preservation, focus, tutor visibility/accessibility, IDs, and 26 contrast pairs.');
     console.log('Layout, real CodeMirror, and screenshot checks require acadia.smoke.cjs in Chromium.');
   } finally {await window.happyDOM.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});

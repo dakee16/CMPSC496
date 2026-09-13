@@ -3,7 +3,8 @@
 let workspaceStage = "read", planMethod = "chat";
 let workspaceReadyState = false, workspaceComplete = false, workspaceComparison = false;
 let workspaceEpoch = 0;
-let resourceKind = null, resourceReturnFocus = null, resourceInert = [];
+let resourceKind = null, resourceReturnFocus = null;
+let workspaceTutorVisible = true;
 const stageNames = {read:"Read", plan:"Plan", code:"Code", reflect:"Reflect"};
 
 function stageAvailable(stage){
@@ -28,24 +29,39 @@ function workspaceSync(){
   $("readNextHint").textContent = tutorReleased ? "You can revisit your thinking or work through the coding steps." : "You’ll work through your approach next. No code needed yet.";
   $("planApproved").hidden = !tutorReleased;
   $("planMethods").hidden = tutorReleased;
-  $("planStageHint").textContent = tutorReleased ? "Your approved approach stays here whenever you need to look back." : "Choose how you’d like to make your plan. You can switch methods at any time.";
+  $("planStageHint").textContent = tutorReleased ? "Your approved approach stays here whenever you need to look back." : "Talk through your steps with the tutor, or upload a plan you’ve already made.";
   $("finishReview").hidden = !workspaceComplete;
   $("planPreviewStatus").textContent = planGraph?.nodes?.length ? (tutorReleased ? "Approved approach" : "Updated from your thinking") : "Your ideas will appear here";
+  $("planEmpty").hidden = !!planGraph?.nodes?.length;
+  $("tutorContext").textContent = workspaceStage === "code" ? (workspaceComplete ? "Reviewing your solution" : "Working on your code") : {read:"Reading the question",plan:"Working through your approach",reflect:"Reflecting on your solution"}[workspaceStage];
+  $("backToWork").textContent = workspaceStage === "code" ? "Back to code ↑" : "Back to work ↑";
   syncPlanSubmit();
   placeWorkspaceChat();
 }
 
 function placeWorkspaceChat(){
-  const inline = workspaceStage === "plan" && planMethod === "chat" && !tutorReleased;
-  const chat = $("chatcol");
-  const target = resourceKind === "tutor" ? $("resourceBody") : inline ? $("planChatHome") : $("chatParking");
-  if (chat.parentElement !== target) target.append(chat);
-  const visible = resourceKind === "tutor" || inline;
-  $("clog").inert = !visible;
-  $("cform").inert = !visible;
-  chat.classList.toggle("open", visible);
-  $("sheetTog").setAttribute("aria-expanded", String(visible));
-  $("sheetTog").setAttribute("aria-label", visible ? "Close the tutor" : "Open the tutor");
+  // The chat never moves or replaces the work surface, including during coding.
+  $("tutorDock").hidden = !workspaceTutorVisible;
+  $("studyDivider").hidden = !workspaceTutorVisible;
+  $("studyLayout").classList.toggle("tutor-hidden", !workspaceTutorVisible);
+  $("clog").inert = !workspaceTutorVisible;
+  $("cform").inert = !workspaceTutorVisible;
+  $("chatcol").classList.toggle("open", workspaceTutorVisible);
+  for (const id of ["sheetTog", "showTutor"]) $(id).setAttribute("aria-expanded", String(workspaceTutorVisible));
+  $("showTutor").textContent = workspaceTutorVisible ? "Hide tutor" : "Show tutor";
+}
+
+function toggleWorkspaceTutor(open, focus = true){
+  workspaceTutorVisible = open;
+  placeWorkspaceChat();
+  if (editor) requestAnimationFrame(() => {editor.refresh(); matchGutter();});
+  if (focus && open){
+    if (matchMedia("(max-width:1000px)").matches) $("tutorDock").scrollIntoView({block:"start", behavior:"instant"});
+    $("cinput").focus({preventScroll:!matchMedia("(max-width:1000px)").matches});
+  } else if (focus){
+    const trigger = document.body.classList.contains("focus-workspace") ? document.querySelector('.code-resources [data-resource="tutor"]') : $("showTutor");
+    trigger.focus();
+  }
 }
 
 function chooseWorkspaceStage(stage, focus = true){
@@ -82,31 +98,31 @@ function choosePlanMethod(method){
 function returnWorkspaceResources(){
   $("problemHome").append($("problemPaper"));
   $("planHome").append($("planCard"));
-  placeWorkspaceChat();
+  $("resourceBody").replaceChildren();
+  for (const button of document.querySelectorAll('[data-resource="problem"], [data-resource="plan"]')) button.setAttribute("aria-expanded", "false");
 }
 
 function openResource(kind){
   if (!["problem", "plan", "tutor"].includes(kind)) return;
-  if (!resourceKind && kind === "tutor" && workspaceStage === "plan" && planMethod === "chat" && !tutorReleased){
-    $("cinput").focus();
+  if (kind === "tutor"){
+    toggleWorkspaceTutor(true);
     return;
   }
-  if (!resourceKind){
-    resourceReturnFocus = document.activeElement;
-    resourceInert = [...document.body.children].filter(el => el !== $("resourceDrawer")).map(el => [el, el.inert]);
-    resourceInert.forEach(([el]) => {el.inert = true;});
-  }
+  if (resourceKind === kind){closeResource(); return;}
+  if (!$("resourceDrawer").contains(document.activeElement)) resourceReturnFocus = document.activeElement;
   resourceKind = null;
   returnWorkspaceResources();
   resourceKind = kind;
   $("resourceDrawer").hidden = false;
-  document.body.classList.add("resource-open");
-  $("resourceTitle").textContent = {problem:"The question", plan:"Your plan", tutor:"Your tutor"}[kind];
+  $("resourceTitle").textContent = kind === "problem" ? "Question reference" : "Your plan";
   $("resourceBody").dataset.resource = kind;
-  for (const b of document.querySelectorAll('.resource-tabs [data-resource]')) b.setAttribute("aria-pressed", String(b.dataset.resource === kind));
+  for (const button of document.querySelectorAll(`[data-resource="${kind}"]`)) button.setAttribute("aria-expanded", "true");
   if (kind === "problem") {$("problemDetails").open = true; $("resourceBody").append($("problemPaper"));}
-  if (kind === "plan") {$("planCard").hidden = false; $("resourceBody").append($("planCard"));}
-  placeWorkspaceChat();
+  if (kind === "plan"){
+    if (planGraph?.nodes?.length){$("planCard").hidden = false; $("resourceBody").append($("planCard"));}
+    else {const empty = document.createElement("p"); empty.className = "reference-empty"; empty.textContent = "Describe your approach to the tutor to start building your plan."; $("resourceBody").append(empty);}
+  }
+  $("resourceBody").scrollTop = 0;
   $("closeResource").focus();
 }
 
@@ -115,9 +131,6 @@ function closeResource(restoreFocus = true){
   resourceKind = null;
   returnWorkspaceResources();
   $("resourceDrawer").hidden = true;
-  document.body.classList.remove("resource-open");
-  resourceInert.forEach(([el, inert]) => {el.inert = inert;});
-  resourceInert = [];
   if (restoreFocus && resourceReturnFocus?.isConnected) resourceReturnFocus.focus();
   resourceReturnFocus = null;
 }
@@ -129,9 +142,10 @@ function resetWorkspace(){
   workspaceComplete = false;
   workspaceComparison = false;
   workspaceStage = "read";
+  workspaceTutorVisible = true;
   choosePlanMethod("chat");
   $("stepHistory").open = false;
-  $("planPreview").open = false;
+  $("planPreview").open = true;
   $("reflectionCodeDetails").open = false;
   $("reflectionCodeDetails").hidden = false;
   $("workspaceStatus").textContent = "Preparing your workspace. You can read the question while it loads.";
@@ -201,7 +215,14 @@ function initWorkspace(){
   $("finishReview").onclick = () => chooseWorkspaceStage("reflect");
   $("reflectionNext").onclick = backToProblems;
   $("closeResource").onclick = () => closeResource();
-  $("resourceDrawer").onclick = event => {if (event.target === $("resourceDrawer")) closeResource();};
+  $("showTutor").onclick = () => toggleWorkspaceTutor(!workspaceTutorVisible);
+  $("backToWork").onclick = () => {
+    const panel = $("stage" + stageNames[workspaceStage]);
+    panel.scrollIntoView({block:"start", behavior:"instant"});
+    if (workspaceStage === "code" && editor && tutorReleased && reviewIdx === null && !workspaceComplete) editor.focus();
+    else panel.focus({preventScroll:true});
+  };
+  initTutorResize();
   document.querySelector('.journey [role="tablist"]').addEventListener("keydown", event => {
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
     event.preventDefault();
@@ -213,11 +234,48 @@ function initWorkspace(){
   });
   $("resourceDrawer").addEventListener("keydown", event => {
     if (event.key === "Escape") {event.preventDefault(); event.stopPropagation(); closeResource(); return;}
-    if (event.key !== "Tab") return;
-    const elements = [...$("resourceDrawer").querySelectorAll('button, a[href], textarea, input, select, summary, [tabindex="0"]')].filter(el => !el.disabled && !el.closest('[hidden], [inert]') && getComputedStyle(el).display !== "none");
-    const first = elements[0], last = elements[elements.length - 1];
-    if (event.shiftKey && document.activeElement === first) {event.preventDefault();last?.focus();}
-    else if (!event.shiftKey && document.activeElement === last) {event.preventDefault();first?.focus();}
   });
   resetWorkspace();
+}
+
+function initTutorResize(){
+  const divider = $("studyDivider"), layout = $("studyLayout");
+  let origin = null;
+  const width = () => Math.round($("tutorDock").getBoundingClientRect().width);
+  const maxWidth = () => Math.max(300, Math.min(480, layout.clientWidth - 508));
+  const syncSize = () => {
+    if (!workspaceTutorVisible || matchMedia("(max-width:1000px)").matches || !layout.clientWidth) return;
+    if (width() > maxWidth()){resize(width()); return;}
+    divider.setAttribute("aria-valuenow", String(width()));
+    divider.setAttribute("aria-valuemax", String(maxWidth()));
+  };
+  const resize = next => {
+    const size = Math.max(300, Math.min(maxWidth(), next));
+    layout.style.setProperty("--tutor-width", `${size}px`);
+    divider.setAttribute("aria-valuenow", String(size));
+    divider.setAttribute("aria-valuemax", String(maxWidth()));
+    if (editor) {editor.refresh(); matchGutter();}
+  };
+  divider.addEventListener("pointerdown", event => {
+    if (event.button !== 0) return;
+    origin = {x:event.clientX, width:width()};
+    divider.setPointerCapture(event.pointerId);
+    layout.classList.add("resizing");
+    divider.focus();
+  });
+  divider.addEventListener("pointermove", event => {if (origin) resize(origin.width + origin.x - event.clientX);});
+  const stop = () => {origin = null; layout.classList.remove("resizing");};
+  divider.addEventListener("pointerup", stop);
+  divider.addEventListener("pointercancel", stop);
+  divider.addEventListener("lostpointercapture", stop);
+  divider.addEventListener("keydown", event => {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    resize(event.key === "Home" ? 300 : event.key === "End" ? maxWidth() : width() + (event.key === "ArrowLeft" ? 20 : -20));
+  });
+  addEventListener("resize", () => {
+    if (workspaceTutorVisible && !matchMedia("(max-width:1000px)").matches && layout.style.getPropertyValue("--tutor-width")) resize(width());
+    syncSize();
+  });
+  if (typeof ResizeObserver !== "undefined") new ResizeObserver(syncSize).observe(layout);
 }

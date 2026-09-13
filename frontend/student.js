@@ -403,6 +403,8 @@ function syncPlanSubmit(){
   if (!row) return;
   row.hidden = tutorReleased;
   const ready = !!(planGraph && (planGraph.nodes || []).length);
+  $("planEmpty").hidden = ready;
+  if (resourceKind !== "plan") $("planCard").hidden = !ready;
   $("planSubmitHint").textContent = ready ? "Preview the plan below, then send it for review." : "Describe your steps in the chat to build a plan.";
   const button = $("planSubmitBtn");
   if (button.dataset.busy !== "1"){
@@ -956,8 +958,8 @@ async function start(p){
   designMsg("", "");
   resetWorkspace();
   const opening = workspaceEpoch;
-  // Keep one preview instance in the Plan stage, initially collapsed.
-  $("planCard").hidden = false;
+  // The plan preview stays beside the conversation as the student's ideas grow.
+  $("planCard").hidden = true;
   $("dualCard").hidden = true;
   // NOT resetChat() and NOT paintPlan(null) yet: both assert this is a fresh
   // start, and we do not know that until /history answers. See historyLoading.
@@ -1768,7 +1770,8 @@ async function sendToTutor(text){
     chatLog.pop();
   } finally {
     chatBusy = false;
-    if (resourceKind === "tutor" || (workspaceStage === "plan" && planMethod === "chat" && !tutorReleased)) $("cinput").focus();
+    // Do not steal focus if the student started coding while the tutor replied.
+    if (workspaceTutorVisible && $("cform").contains(document.activeElement)) $("cinput").focus({preventScroll:true});
   }
 }
 
@@ -1830,11 +1833,9 @@ $("cinput").addEventListener("keydown", e => {
   }
 });
 
-/* The same conversation is inline during planning and on demand elsewhere. */
+/* The same conversation stays beside every learning stage. */
 function setTutorOpen(open, focus = true){
-  if (open) openResource("tutor");
-  else if (resourceKind === "tutor") closeResource(focus);
-  placeWorkspaceChat();
+  toggleWorkspaceTutor(open, focus);
 }
 $("sheetTog").onclick = () => setTutorOpen(!$("chatcol").classList.contains("open"));
 

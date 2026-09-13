@@ -97,7 +97,7 @@ const server = http.createServer((req,res) => {
     assert(await page.locator('.studio-brief').evaluate(el=>el.offsetWidth>=800));
     assert.equal(await page.locator('#stageRead').isVisible(),true);
     assert.equal(await page.locator('#stageCode').isVisible(),false);
-    assert.equal(await page.locator('#chatcol').isVisible(),false);
+    assert.equal(await page.locator('#chatcol').isVisible(),true);
     await screenshot('acadia-question-read-light');
     await page.getByRole('button',{name:'Switch to dark mode',exact:true}).click();
     await screenshot('acadia-question-read-dark');
@@ -115,6 +115,7 @@ const server = http.createServer((req,res) => {
     assert.notEqual(colors.bg,colors.color);
     await page.getByRole('button',{name:'Focus editor',exact:true}).click();
     assert.equal(await page.locator('.journey').isVisible(),false);
+    assert.equal(await page.locator('#chatcol').isVisible(),true);
     assert((await page.evaluate(()=>editor.getValue())).includes('previous_year'));
     await page.keyboard.press('Escape');
     assert.equal(await page.locator('.journey').isVisible(),true);
@@ -135,14 +136,24 @@ const server = http.createServer((req,res) => {
     for(const width of [1440,1366,1024,950,768,390]){
       await page.setViewportSize({width,height:900});
       await noOverflow('Width '+width);
-      assert(await page.locator('#cform').evaluate(el=>el.inert));
-      await page.locator('.code-resources [data-resource="tutor"]').click();
+      assert.equal(await page.locator('#tutorDock').isVisible(),true);
+      assert.equal(await page.locator('#editorWrap').isVisible(),true);
       assert.equal(await page.locator('#cform').evaluate(el=>el.inert),false);
-      await noOverflow('Tutor panel at '+width);
-      await page.keyboard.press('Escape');
-      assert.equal(await page.locator('#resourceDrawer').isVisible(),false);
+      const panels = await page.evaluate(()=>{
+        const a=document.querySelector('#workCard').getBoundingClientRect(),b=document.querySelector('#tutorDock').getBoundingClientRect();
+        return {workRight:a.right,workBottom:a.bottom,tutorLeft:b.left,tutorTop:b.top};
+      });
+      assert(width>1000 ? panels.workRight<=panels.tutorLeft : panels.workBottom<=panels.tutorTop, 'Tutor and code must not overlap at '+width);
+      await page.locator('#sheetTog').click();
+      assert.equal(await page.locator('#cform').evaluate(el=>el.inert),true);
+      await page.locator('#showTutor').click();
+      assert.equal(await page.locator('#cform').evaluate(el=>el.inert),false);
       await page.locator('.code-resources [data-resource="problem"]').click();
       assert.equal(await page.locator('#problemPaper').isVisible(),true);
+      assert.equal(await page.locator('#page').evaluate(el=>el.inert),false);
+      assert.equal(await page.locator('#editorWrap').isVisible(),true);
+      assert.equal(await page.locator('#tutorDock').isVisible(),true);
+      assert(await page.locator('#resourceBody').evaluate(el=>el.offsetHeight<=260));
       await noOverflow('Problem reference at '+width);
       await page.keyboard.press('Escape');
       assert.equal(await page.evaluate(()=>editor.getValue()),'    draft = 1');
@@ -170,7 +181,7 @@ const server = http.createServer((req,res) => {
     await page.locator('#readContinue:not([disabled])').waitFor();
     assert.equal(await page.locator('#stageRead').isVisible(),true);
     await page.locator('#readContinue').click();
-    await page.locator('#planChatHome #chatcol').waitFor();
+    await page.locator('#tutorDock #chatcol').waitFor();
     await screenshot('acadia-plan-chat-light');
     await page.locator('[data-plan-method="upload"]').click();
     await page.locator('#designPanel:not([hidden])').waitFor();
@@ -197,6 +208,13 @@ const server = http.createServer((req,res) => {
       assert.match(await page.title(),/ACADIA/);
       assert(!(await page.locator('body').innerText()).includes('MicroTutor'));
       await noOverflow(name);
+      if(name==='teacher'){
+        const metricGap=await page.locator('.metric').first().evaluate(el=>{
+          const icon=el.querySelector('.metric-icon').getBoundingClientRect(), label=el.querySelector('.metric-label').getBoundingClientRect();
+          return label.left-icon.right;
+        });
+        assert(metricGap>=12 && metricGap<=20,'Metric icon and label must stay grouped');
+      }
       await screenshot('acadia-'+name+'-light');
       await page.getByRole('button',{name:'Switch to dark mode',exact:true}).click();
       await noOverflow(name+' dark');
@@ -204,6 +222,8 @@ const server = http.createServer((req,res) => {
     }
     loggedIn=false;
     await page.goto(base+'/login.html');
+    const note=await page.locator('.auth-note').evaluate(el=>{const s=getComputedStyle(el);return {left:s.paddingLeft,right:s.paddingRight,border:s.borderLeftWidth,bg:s.backgroundColor};});
+    assert.deepEqual(note,{left:'0px',right:'0px',border:'0px',bg:'rgba(0, 0, 0, 0)'});
     await screenshot('acadia-login-light');
     await page.getByRole('button',{name:'Switch to dark mode',exact:true}).click();
     await page.reload();
@@ -211,7 +231,7 @@ const server = http.createServer((req,res) => {
     await screenshot('acadia-login-dark');
     assert.deepEqual(errors,[],'Browser JavaScript errors');
     assert.deepEqual(unknown,[],'Unexpected API routes');
-    console.log('PASS: branding, fresh/saved themes, staged reading/planning/coding, description/code formatting, design gate, paced step submission/review, focus, reference drawer, seven widths and all UI pages.');
+    console.log('PASS: branding, themes, reading/planning/coding, formatting, design gate, paced step review, persistent tutor, non-overlapping panels, inline references, metric alignment, compact sign-in note, seven widths and all UI pages.');
     console.log('Application requests were mocked; no backend/model/grading pipeline ran.');
   } finally {await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;}).finally(()=>server.close());
