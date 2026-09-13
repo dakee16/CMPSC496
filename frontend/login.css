@@ -32,8 +32,8 @@ body{background:var(--surface)}
 .swap{margin:25px 0 36px;font-size:14px;text-align:center;color:var(--text-muted)}
 .swap button{display:inline;padding:0;min-height:0;background:none;border:0;color:var(--accent-ink);font-weight:600;font-size:14px;border-radius:0;box-shadow:none}
 .swap button:hover{text-decoration:underline;text-underline-offset:4px}
-.note{display:flex;gap:13px;padding-top:28px;border-top:1px solid var(--border);font-size:12px;line-height:1.8;color:var(--text-subtle)}
-.note p{margin:0}.note strong{color:var(--text-muted);font-weight:500}
+.auth-note{display:flex;align-items:flex-start;gap:12px;padding:24px 0 0;border-top:1px solid var(--border);font-size:12px;line-height:1.8;color:var(--text-subtle)}
+.auth-note p{margin:0;min-width:0}.auth-note strong{display:inline-block;margin-bottom:4px;color:var(--text-muted);font-weight:500}
 .note-symbol{display:grid;place-items:center;flex:none;width:32px;height:32px;background:var(--surface-raised);border:1px solid var(--border);border-radius:7px;font-size:18px}
 @media(min-width:1600px){.auth-intro{padding-left:8vw;padding-right:8vw}.markrow{padding-left:8vw}.auth-form{max-width:550px}}
 @media(max-width:900px){.auth-intro{padding-left:36px;padding-right:36px}.auth-intro h2{font-size:3.6rem}.markrow{padding:0 36px}.auth-form{padding:0 28px}.auth-caption{flex-wrap:wrap;gap:10px}.auth-intro .eyebrow{font-size:10px}.auth-form h1{font-size:2.2rem}}

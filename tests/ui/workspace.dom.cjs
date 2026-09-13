@@ -1,4 +1,4 @@
-/* Staged learning flow with the real UI scripts and synthetic API responses.
+/* Shared learning workspace with the real UI scripts and synthetic responses.
    No live database, model, oracle or code execution. Happy DOM cannot test layout. */
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -23,7 +23,8 @@ const graph = {nodes:[{id:'n0',kind:'start',label:'Read records'},{id:'n1',kind:
     window.scrollTo = () => {};
     window.CodeMirror = {fromTextArea:() => {
       editorCreations++;
-      return {setOption:(k,v)=>options[k]=v,setSize:()=>{},on:()=>{},refresh:()=>{},focus:()=>focusCalls++,setCursor:()=>{},getGutterElement:()=>({offsetWidth:32}),getValue:()=>value,setValue:v=>value=v,listSelections:()=>selections,setSelections:v=>selections=v};
+      const input = doc.createElement('textarea'); input.id='qaEditorInput'; doc.querySelector('#editorWrap').append(input);
+      return {setOption:(k,v)=>options[k]=v,setSize:()=>{},on:()=>{},refresh:()=>{},focus:()=>{focusCalls++;input.focus();},setCursor:()=>{},getGutterElement:()=>({offsetWidth:32}),getValue:()=>value,setValue:v=>value=v,listSelections:()=>selections,setSelections:v=>selections=v};
     }};
     window.fetch = async (url, init={}) => {
       const route = new URL(url,'http://localhost').pathname;
@@ -55,7 +56,9 @@ const graph = {nodes:[{id:'n0',kind:'start',label:'Read records'},{id:'n1',kind:
     assert.deepEqual(visibleStage(),['stageRead']);
     assert(doc.querySelector('#statement pre').textContent.includes('update(records)'));
     assert.equal(doc.querySelector('#readSignature').textContent,'def employee_update(records):');
-    assert.equal(doc.querySelector('#chatcol').parentElement.id,'chatParking');
+    assert.equal(doc.querySelector('#chatcol').parentElement.id,'tutorDock');
+    assert.equal(doc.querySelector('#tutorDock').hidden,false,'Tutor is available from the question opening');
+    assert.equal(doc.querySelector('#cform').inert,false);
     assert.equal(doc.querySelector('#tabCode').getAttribute('aria-disabled'),'true');
     doc.querySelector('#tabCode').click();
     assert.deepEqual(visibleStage(),['stageRead']);
@@ -66,9 +69,10 @@ const graph = {nodes:[{id:'n0',kind:'start',label:'Read records'},{id:'n1',kind:
     assert.equal(doc.activeElement.id,'tabPlan');
     doc.querySelector('#readContinue').click();
     assert.deepEqual(visibleStage(),['stagePlan']);
-    assert.equal(doc.querySelector('#chatcol').parentElement.id,'planChatHome');
+    assert.equal(doc.querySelector('#chatcol').parentElement.id,'tutorDock');
     assert.equal(doc.querySelector('#planSubmitBtn').disabled,true);
-    assert.equal(doc.querySelector('#planPreview').open,false);
+    assert.equal(doc.querySelector('#planPreview').open,true);
+    assert.equal(doc.querySelector('#planEmpty').hidden,false);
     doc.querySelector('#cinput').value='My unsent thinking';
     window.choosePlanMethod('upload');
     window.pickDesign(new window.File(['diagram'],'plan.pdf',{type:'application/pdf'}));
@@ -81,6 +85,7 @@ const graph = {nodes:[{id:'n0',kind:'start',label:'Read records'},{id:'n1',kind:
     await window.inspect('planQueue');
     assert(doc.querySelector('#fork'),'The tutor’s alternative-approach choices remain available');
     assert.equal(doc.querySelector('#planSubmitBtn').disabled,false);
+    assert.equal(doc.querySelector('#planEmpty').hidden,true);
     await window.submitPlanGraph();
     assert.equal(doc.querySelector('#tabCode').getAttribute('aria-disabled'),'true');
     assert(doc.querySelector('#designMsg').textContent.includes('preserve'));
@@ -92,28 +97,58 @@ const graph = {nodes:[{id:'n0',kind:'start',label:'Read records'},{id:'n1',kind:
     doc.querySelector('#planContinue').click();
     assert.deepEqual(visibleStage(),['stageCode']);
     assert.equal(doc.querySelector('#stepCount').textContent,'Step 1 of 2');
+    assert.equal(doc.querySelector('#tutorDock').hidden,false,'Coding keeps the tutor beside the editor');
     value='    draft = records.copy()'; selections=[{anchor:{line:0,ch:7},head:{line:0,ch:12}}];
     const conversation=doc.querySelector('#clog');
     const trigger=doc.querySelector('.code-resources [data-resource="problem"]');
     trigger.focus();trigger.click();
     assert.equal(doc.querySelector('#resourceDrawer').hidden,false);
-    assert.equal(doc.querySelector('#page').inert,true);
+    assert.equal(doc.querySelector('#page').inert,false,'A reference never blocks code or chat');
+    assert.equal(doc.querySelector('#stageCode').hidden,false);
+    assert.equal(doc.querySelector('#cform').inert,false);
     assert.equal(doc.querySelector('#problemPaper').parentElement.id,'resourceBody');
     window.openResource('plan');
     assert.equal(doc.querySelector('#problemPaper').parentElement.id,'problemHome');
     window.openResource('tutor');
     assert.equal(doc.querySelector('#clog'),conversation,'One shared conversation across all stages');
+    assert.equal(doc.querySelector('#chatcol').parentElement.id,'tutorDock');
+    assert.equal(doc.querySelector('#resourceDrawer').hidden,false,'Asking the tutor leaves the reference open');
     assert.equal(doc.querySelector('#cform').inert,false);
     doc.querySelector('#closeResource').dispatchEvent(new window.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
     assert.equal(doc.querySelector('#resourceDrawer').hidden,true);
     assert.equal(doc.querySelector('#page').inert,false);
     assert.equal(doc.activeElement,trigger);
+    doc.querySelector('#showTutor').click();
+    assert.equal(doc.querySelector('#tutorDock').hidden,true);
+    assert.equal(doc.querySelector('#cform').inert,true);
+    window.openResource('tutor');
+    assert.equal(doc.querySelector('#tutorDock').hidden,false);
+    assert.equal(doc.querySelector('#clog'),conversation);
+    assert.equal(value,'    draft = records.copy()');
+    doc.querySelector('#cinput').focus();
+    const reply = window.sendToTutor('Why should I copy the record?');
+    doc.querySelector('#qaEditorInput').focus();
+    assert.equal(doc.activeElement.id,'qaEditorInput');
+    await reply;
+    assert.equal(doc.activeElement.id,'qaEditorInput','A tutor reply must not steal focus from coding');
+    assert.equal(doc.querySelector('#stageCode').hidden,false);
+    assert.equal(value,'    draft = records.copy()');
+    const layout=doc.querySelector('#studyLayout'), divider=doc.querySelector('#studyDivider');
+    Object.defineProperty(layout,'clientWidth',{configurable:true,value:1200});
+    doc.querySelector('#tutorDock').getBoundingClientRect=()=>({width:parseInt(layout.style.getPropertyValue('--tutor-width'))||360});
+    divider.focus();
+    for(const [key,expected] of [['ArrowLeft','380'],['End','480'],['ArrowLeft','480'],['Home','300'],['ArrowRight','300']]){
+      divider.dispatchEvent(new window.KeyboardEvent('keydown',{key,bubbles:true}));
+      assert.equal(divider.getAttribute('aria-valuenow'),expected);
+    }
+    assert.equal(value,'    draft = records.copy()','Resizing preserves editor contents');
     window.chooseWorkspaceStage('read'); window.chooseWorkspaceStage('plan'); window.chooseWorkspaceStage('code');
     assert.equal(value,'    draft = records.copy()');
     assert.equal(editorCreations,1);
     assert.equal(selections[0].head.ch,12);
     doc.querySelector('#focusWork').click();
     assert(doc.body.classList.contains('focus-workspace'));
+    assert.equal(doc.querySelector('#tutorDock').hidden,false,'Focus mode still supports asking questions');
     window.dispatchEvent(new window.KeyboardEvent('keydown',{key:'Escape'}));
     assert(!doc.body.classList.contains('focus-workspace'));
     await doc.querySelector('#submit').onclick();
@@ -174,7 +209,7 @@ const graph = {nodes:[{id:'n0',kind:'start',label:'Read records'},{id:'n1',kind:
     const ids=[...doc.querySelectorAll('[id]')].map(el=>el.id);
     assert.equal(new Set(ids).size,ids.length,'No duplicate IDs');
     assert(calls.some(c=>c.route==='/design_review')&&calls.some(c=>c.route==='/design_review/plan'));
-    console.log('PASS: Read → Plan → Code → Reflect; both planning methods; approval gates; draft/chat/file preservation; reference drawer and keyboard focus; paced step progression; grading errors; completion/comparison retry; restart; loading failures; restored work.');
+    console.log('PASS: Read → Plan → Code → Reflect; persistent tutor; inline references keep code/chat available; both planning methods; approval gates; draft/chat/file preservation; keyboard resizing; replies preserve editor focus; paced steps; grading errors; comparison retry; restart; loading failures; restored work.');
     console.log('DOM behavior only. Browser layout and real CodeMirror still require Chromium.');
   } finally {await window.happyDOM.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});
