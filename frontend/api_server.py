@@ -10,7 +10,6 @@ from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from typing import Optional
 import json
 from dotenv import load_dotenv
 import os
@@ -23,8 +22,7 @@ from supabase import create_client
 load_dotenv()
 
 from main import auth as auth_mod
-from main.run_phase1 import eval_step, parse_json, decompose_into_chunks, replan_from_prefix, get_chunk_decomposition
-from main.schemas import StepItem
+from main.run_phase1 import get_chunk_decomposition
 
 app = FastAPI(title="MicroTutor API", version="1.0")
 

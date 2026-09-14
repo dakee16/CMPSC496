@@ -21,7 +21,7 @@ from .ollama_client import GRADING_MODEL, chat
 from . import trace
 from .schemas import GradeResult
 from .context import build_program
-from .sessions import MAX_ATTEMPTS, accepted_prefix, problem_of
+from .sessions import accepted_prefix, problem_of
 
 MAX_ADAPT_TRIES = 2
 

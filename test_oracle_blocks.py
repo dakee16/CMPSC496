@@ -7,7 +7,7 @@ were all in reading a real class - name mangling, a decorator, a @property -
 and a hand-made fixture is exactly where they hid.
 """
 import ast
-import json
+import os
 import pathlib
 
 import pytest
@@ -18,12 +18,16 @@ from main.identity import get_resolved_entry
 from main.oracle_store import is_stale, oracle_features
 from tests.sandbox import _useless_block, run_solution
 
-HW3 = pathlib.Path(__file__).parent / "assignment_hw3.py"
+# Kept out of the repo (see main/handback.py). Missing means skip, not error.
+HW3 = pathlib.Path(os.environ.get("MICROTUTOR_HW3")
+                   or pathlib.Path(__file__).parent / "assignment_hw3.py")
 
 
 @pytest.fixture(scope="module")
 def problems():
-    parsed = parse_assignment_file(HW3.read_text(), "assignment_hw3.py")
+    if not HW3.exists():
+        pytest.skip(f"no assignment fixture at {HW3} (set MICROTUTOR_HW3)")
+    parsed = parse_assignment_file(HW3.read_text(), HW3.name)
     return {p["slug"]: p for p in parsed["problems"]}
 
 

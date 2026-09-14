@@ -15,7 +15,6 @@ deliberately narrow so a Docker/gVisor backend can replace the body of
 run_student_code() without touching callers.
 """
 import ast
-import json
 import os
 import shutil
 import subprocess

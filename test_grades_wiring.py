@@ -7,6 +7,7 @@ behind it looked exactly like an assignment nobody had started.
 """
 import ast
 import inspect
+import os
 import pathlib
 
 import pytest
@@ -15,12 +16,16 @@ from main.assignments import parse_assignment_file
 from main.identity import content_hash
 from main.sessions import CONTEXT_FIELDS, context_of
 
-HW3 = pathlib.Path(__file__).parent / "assignment_hw3.py"
+# Kept out of the repo (see main/handback.py). Missing means skip, not error.
+HW3 = pathlib.Path(os.environ.get("MICROTUTOR_HW3")
+                   or pathlib.Path(__file__).parent / "assignment_hw3.py")
 
 
 @pytest.fixture(scope="module")
 def problems():
-    parsed = parse_assignment_file(HW3.read_text(), "assignment_hw3.py")
+    if not HW3.exists():
+        pytest.skip(f"no assignment fixture at {HW3} (set MICROTUTOR_HW3)")
+    parsed = parse_assignment_file(HW3.read_text(), HW3.name)
     return {p["slug"]: p for p in parsed["problems"]}
 
 
@@ -105,9 +110,7 @@ def test_the_session_route_opens_the_spine_row():
 # ── a finished problem has to look finished ──────────────────────────────
 
 def _student_js():
-    html = (pathlib.Path(__file__).parent / "frontend" / "student.html").read_text()
-    import re
-    return re.findall(r"<script>(.*?)</script>", html, re.S)[-1]
+    return (pathlib.Path(__file__).parent / "frontend" / "student.js").read_text()
 
 
 def _api_src():

@@ -9,15 +9,13 @@ independent variable.
 import os
 import sys
 import time
-from datetime import datetime
 
 from dotenv import load_dotenv
 from supabase import create_client
 
 from main.run_phase1 import get_chunk_decomposition
 from tests.grader import grade_chunk
-from main.ollama_client import chat
-from .student_agent import get_student_answer, AGENTS
+from .student_agent import get_student_answer
 
 load_dotenv()
 SB = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_KEY"])
@@ -52,11 +50,6 @@ def run_agent_on_problem(problem: dict, chunks_result: dict, agent_level: str) -
     reveal reference on second failure. Returns summary stats for the poster."""
     slug = problem["slug"]
     chunks = chunks_result["chunks"]
-    chunks_serialized = [
-        {"step_id": c.step_id, "prompt": c.prompt, "expected_type": c.expected_type,
-         "reference": c.reference or ""}
-        for c in chunks
-    ]
 
     accepted_prefix = []
     stats = {"chunks_passed_a1": 0, "chunks_passed_a2": 0, "chunks_revealed": 0}
@@ -94,7 +87,7 @@ def run_agent_on_problem(problem: dict, chunks_result: dict, agent_level: str) -
             stats["chunks_revealed"] += 1
             # Log the reveal as a synthetic attempt 2 row with revealed=True
             # (already logged the actual attempt above; this marks the reveal event)
-            print(f"      🔓 Reference revealed")
+            print("      🔓 Reference revealed")
 
     return stats
 
@@ -143,7 +136,7 @@ def main():
         print('═'*70)
 
         if already_done(slug):
-            print(f"  ⏭️  Already processed - skipping.")
+            print("  ⏭️  Already processed - skipping.")
             skipped += 1
             continue
 
@@ -156,7 +149,7 @@ def main():
             continue
 
         if not chunks_result.get("chunks"):
-            print(f"  ⚠️  No chunks produced - skipping.")
+            print("  ⚠️  No chunks produced - skipping.")
             failed += 1
             continue
 

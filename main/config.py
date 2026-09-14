@@ -138,7 +138,6 @@ class Config:
 
 def load(env: dict | None = None) -> Config:
     """Build the config from the environment. Pure - no I/O beyond os.environ."""
-    e = env if env is not None else os.environ
     prev = None
     if env is not None:                    # allow injection for callers/tests
         prev, os.environ = os.environ, {**os.environ, **env}

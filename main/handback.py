@@ -24,7 +24,6 @@ the column the method's body sits at, and accepted chunk code is held at column
 0 (main/indent.py), exactly as build_program() expects. So `pop`'s answer lands
 under `def pop`, at the class's own depth, with nothing to line up by hand.
 """
-import ast
 from datetime import datetime, timezone
 
 

@@ -1,4 +1,3 @@
-import json
 import time
 import re
 import os
@@ -106,7 +105,7 @@ def main():
         )
 
         if not solution:
-            print(f"  ⚠️  Empty solution - skipping.")
+            print("  ⚠️  Empty solution - skipping.")
             continue
 
         # Save to Supabase

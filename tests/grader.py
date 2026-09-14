@@ -11,7 +11,6 @@ cheapest-and-most-certain first.
   (Tiers 3+4 - interface-adaptive retry and LLM judge - added next.)
 """
 import ast
-import re
 import textwrap
 
 from main.schemas import StepItem

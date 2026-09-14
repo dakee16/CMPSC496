@@ -13,7 +13,6 @@ import subprocess
 import sys
 import tempfile
 import re
-from datetime import datetime, timezone
 from main.ollama_client import chat, OPENAI_MODEL
 
 GEN_MODEL = OPENAI_MODEL   # system role: oracle test-input generation
@@ -625,11 +624,11 @@ def make_oracle_tests(problem: dict, n: int = 12) -> list[dict]:
 
 
 # Oracle data now lives under data/oracles/ and is owned by main.oracle_store.
-from main.oracle_store import (OracleUnusableError, cache_path,  # noqa: E402
+from main.oracle_store import (OracleUnusableError, cache_path,  # noqa: E402,F401  (re-export)
                                entry_tests as _entry_tests,
                                is_validated as _is_validated,
                                load_cache as _load_cache_impl,
-                               load_strong_cached_oracle,
+                               load_strong_cached_oracle,  # noqa: F401  (re-export)
                                save_cache as _save_cache_impl,
                                verdict_entry)
 _CACHE_PATH = cache_path()
@@ -811,57 +810,3 @@ if __name__ == "__main__":
         print("\noracle tests (LLM inputs + ground-truth expected):")
         for t in make_oracle_tests(prob, n=8):
             print("  ", t)
-
-class OracleUnusableError(RuntimeError):
-    """No STRONG cached oracle for this problem, so it cannot be graded.
-
-    Carries `reason_code` so callers can distinguish missing / unvalidated /
-    weak / malformed without parsing the message."""
-
-    def __init__(self, message: str, reason_code: str):
-        super().__init__(message)
-        self.reason_code = reason_code
-
-
-def load_strong_cached_oracle(problem: dict) -> list[dict]:
-    """READ-ONLY oracle access for the answer-checking path.
-
-    get_oracle_tests() is the WRITE path: on a miss it generates tests, runs
-    mutation testing and can block for minutes. That is correct for warm-up and
-    fatal for grading - a student pressing Submit must never trigger it, and a
-    weak or absent oracle must never be silently accepted as a basis for a
-    verdict. This function only ever reads the cache.
-
-    Returns the tests when the content-hash entry exists and is strong.
-    Raises OracleUnusableError otherwise. Never generates, never validates,
-    never writes."""
-    from main.identity import content_hash
-
-    entry = _load_cache().get(content_hash(problem))
-    slug = problem.get("slug") or problem.get("title") or "<unnamed problem>"
-
-    if entry is None:
-        raise OracleUnusableError(
-            f"No cached oracle for '{slug}'. It must be validated "
-            f"(python -m main.warmup) before it can be graded.", "oracle_missing")
-    if isinstance(entry, list):
-        # Pre-migration slug-keyed entry: tests but no verdict.
-        raise OracleUnusableError(
-            f"'{slug}' has a legacy cache entry with no verdict.", "oracle_unvalidated")
-    if not isinstance(entry, dict) or "strong" not in entry:
-        raise OracleUnusableError(
-            f"'{slug}' has no validation verdict.", "oracle_unvalidated")
-    if not entry["strong"]:
-        raise OracleUnusableError(
-            f"'{slug}' has an oracle that did not clear mutation testing.",
-            "oracle_weak")
-
-    tests = entry.get("final_tests")
-    if not isinstance(tests, list) or not tests:
-        raise OracleUnusableError(
-            f"'{slug}' is marked strong but stores no tests.", "oracle_malformed")
-    for t in tests:
-        if not (isinstance(t, dict) and "input" in t and "expected" in t):
-            raise OracleUnusableError(
-                f"'{slug}' has a malformed cached test.", "oracle_malformed")
-    return tests

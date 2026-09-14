@@ -95,11 +95,12 @@ All three DOM suites pass for this change, including 26 contrast pairs.
 JavaScript syntax and patch whitespace were checked. Backend files are unchanged;
 the eight focused progress tests passed for the preceding dashboard change.
 
-**Browser execution and screenshot review remain pending.** The connected
-browser's security policy blocks this environment's preview URLs. No visual
-verification is claimed. Keep the PR in draft until the browser suite and a
-visual pass are completed in an environment that can access the preview.
+`acadia.smoke.cjs` has since been run in Chromium and passes, with screenshots
+captured. A visual pass covered the workspace and question screens in light and
+dark at 1600px and the workspace at 390px; the frozen listing's gutter was
+measured against CodeMirror's and both sets of digits right-align at the same
+pixel, with the code columns flush.
 
-Before merging, review desktop, tablet, and phone layouts in both themes,
-including 200% zoom, long descriptions and code, narrow-screen keyboard use,
-pointer resizing, graph zoom/fullscreen, and tutor/code visibility together.
+Still reviewed by eye only when someone looks: tablet widths, 200% zoom,
+long descriptions and code, narrow-screen keyboard use, pointer resizing, and
+graph zoom/fullscreen.

@@ -118,7 +118,6 @@ def json_safe(value) -> bool:
 
 
 if __name__ == "__main__":
-    import json as _json
     import math
 
     # Every shape JSON loses. These are the reason the module exists.

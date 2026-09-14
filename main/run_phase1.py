@@ -2,7 +2,6 @@ import json
 import os
 import random
 import re
-import textwrap
 from dotenv import load_dotenv
 from pydantic import ValidationError
 from supabase import create_client
@@ -174,11 +173,6 @@ def check_indentation(answer: str, context: str) -> str | None:
 
     actual = len(first_line) - len(first_line.lstrip())
     expected = expected_indent(context)
-
-    stripped = first_line.strip()
-    is_header = any(stripped.startswith(kw) for kw in
-                    ('def ', 'class ', 'for ', 'while ', 'if ', 'else:',
-                     'elif ', 'try:', 'except', 'finally:', 'with '))
 
     if actual != expected:
         return (
@@ -361,9 +355,9 @@ def decompose_into_chunks(problem: dict, max_tries: int = 5) -> dict:
              ) if _body.strip() else ""
 
     # `serveable` is the last decomposition that cleared assembly AND necessity.
-    # It differs from `best` (the last one seen at all) because only this one is
-    # safe to fall back on - see the prompt gate below.
-    feedback, best, last_reason, serveable = "", None, "", None
+    # It is the ONLY thing safe to fall back on - anything that failed a gate is
+    # ungated content and is dropped, not remembered. See the prompt gate below.
+    feedback, last_reason, serveable = "", "", None
     for attempt in range(1, max_tries + 1):
         user_msg = (
             f"PROBLEM:\n{text}\n\n"
@@ -443,18 +437,15 @@ def decompose_into_chunks(problem: dict, max_tries: int = 5) -> dict:
                 if pg["status"] == "pass":
                     return {"header": header, "chunks": chunks}
                 serveable = {"header": header, "chunks": chunks}
-                best = serveable
                 last_reason = pg["summary"].splitlines()[0]
                 feedback = ("Assembled body:\n" + code + "\n\n" + pg["summary"] +
                             "\n\nThe reference code above PASSED every check - "
                             "keep it exactly as it is and change only the "
                             "wording of the prompts.")
                 continue
-            best = {"header": header, "chunks": chunks}
             last_reason = nec["summary"].splitlines()[0]
             feedback = "Assembled body:\n" + code + "\n\n" + nec["summary"]
             continue
-        best = {"header": header, "chunks": chunks}
         last_reason = f"assembly gate {report['status']} - {report['detail']}"
         fails = report.get("failures", [])[:3]
         feedback = ("Assembled body:\n" + code + "\n\nFailing tests:\n" +
