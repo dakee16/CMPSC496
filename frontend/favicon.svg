@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none">
-  <defs><linearGradient id="sea" x1="4" y1="0" x2="44" y2="48" gradientUnits="userSpaceOnUse"><stop stop-color="#159997"/><stop offset="1" stop-color="#07545f"/></linearGradient></defs>
+  <defs><linearGradient id="sea" x1="4" y1="0" x2="44" y2="48" gradientUnits="userSpaceOnUse"><stop stop-color="#f2765e"/><stop offset="1" stop-color="#315b8c"/></linearGradient></defs>
   <rect width="48" height="48" rx="14" fill="url(#sea)"/>
-  <path d="M10 35 21.5 12a2.8 2.8 0 0 1 5 0L38 35h-7l-7-14-7 14h-7Z" fill="#fff"/>
-  <path d="m19.5 34 4.5-8.5 4.5 8.5H19.5Z" fill="#8be4cb"/>
+  <path d="M10 35 21.5 12a2.8 2.8 0 0 1 5 0L38 35h-7l-7-14-7 14h-7Z" fill="#f5ebdd"/>
+  <path d="m19.5 34 4.5-8.5 4.5 8.5H19.5Z" fill="#f2765e"/>
 </svg>

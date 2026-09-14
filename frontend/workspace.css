@@ -33,13 +33,12 @@
 .problem-signature{padding:24px 36px 0}
 .problem-signature>span{display:block;font-size:10px;color:var(--text-subtle);margin-bottom:10px}
 .problem-signature>pre{font:13px/1.8 var(--font-mono);color:var(--code-text);background:var(--code-bg);border:1px solid var(--code-line);border-radius:9px;padding:16px 18px;margin:0;white-space:pre;overflow:auto}
-.stage-next{display:flex;align-items:center;justify-content:space-between;gap:24px;padding:28px 0 18px}
-.stage-next strong{font-size:14px;font-weight:600}
-.stage-next p{font-size:12px;color:var(--text-subtle);margin:6px 0 0;line-height:1.7}
-.stage-next>button{min-height:46px;padding:12px 20px;flex:none;font-size:13px;gap:12px}
+.question-slot{margin:0 0 24px}
+.stage-turn{margin:0 0 18px}
+.stage-turn h3{font-size:15px;font-weight:600;letter-spacing:-.01em;margin:0}
+.stage-turn p{font-size:13px;line-height:1.75;color:var(--text-muted);margin:6px 0 0;max-width:68ch}
 .text-action{background:transparent;border:0;box-shadow:none;color:var(--accent-ink);font-size:12px;font-weight:500;min-height:40px;padding:8px 0}
 .text-action:hover{background:transparent;text-decoration:underline;box-shadow:none;transform:none}
-.planning-stage{max-width:850px;margin:auto}
 .planning-methods{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px}
 .planning-methods button{position:relative;display:grid;grid-template-columns:32px 1fr;column-gap:12px;text-align:left;background:var(--surface);color:var(--text);border:1px solid var(--border);padding:18px 20px;box-shadow:none;border-radius:12px}
 .planning-methods button[aria-pressed=true]{border-color:var(--accent);background:var(--accent-tint);box-shadow:inset 0 0 0 1px var(--accent)}
@@ -59,24 +58,20 @@
 .guided-workspace .designPanel details{max-width:none;font-size:12px;line-height:1.8}
 .guided-workspace #designMsg:not(:empty){margin:20px 0}
 .plan-preview{border:1px solid var(--border);background:var(--surface);border-radius:12px;margin-top:8px;overflow:hidden}
-.plan-preview>summary{display:flex;align-items:center;justify-content:space-between;gap:20px;min-height:58px;padding:16px 22px;cursor:pointer;list-style:none;font-size:13px;font-weight:500}
-.plan-preview>summary::-webkit-details-marker{display:none}
-.plan-preview>summary::before{content:"+";font-size:18px;color:var(--accent-ink)}
-.plan-preview[open]>summary::before{content:"−"}
-.plan-preview>summary>span:first-child{flex:1}
+.plan-preview-head{display:flex;align-items:center;justify-content:space-between;gap:20px;min-height:58px;padding:16px 22px;font-size:13px;font-weight:500;border-bottom:1px solid var(--border)}
+.plan-preview-head>span:first-child{flex:1}
 #planPreviewStatus{font-size:11px;color:var(--text-subtle);font-weight:400}
 .guided-workspace #planCard,.resource-body #planCard{border:0;box-shadow:none;margin:0;padding:24px;background:var(--surface);border-radius:0}
 .guided-workspace #planCard .chead,.resource-body #planCard .chead{min-height:0;flex-wrap:wrap}
 .guided-workspace #planCard h2,.resource-body #planCard h2{font-size:14px}
 .guided-workspace #planHint,.resource-body #planHint{font-size:12px;line-height:1.8}
 .guided-workspace #planLive .gview{max-height:420px}
-.stage-quiet-actions{display:flex;justify-content:space-between;gap:20px;padding-top:14px}
 .plan-approved{display:flex;align-items:center;gap:18px;padding:24px;margin:0 0 24px;border:1px solid var(--success-line);background:var(--success-bg);border-radius:14px}
 .approval-mark{display:grid;place-items:center;flex:none;width:36px;height:36px;border:1px solid var(--success-line);border-radius:50%;color:var(--success);font-size:20px}
 .plan-approved strong{font-size:14px;color:var(--text)}
 .plan-approved p{font-size:12px;line-height:1.7;color:var(--text-muted);margin:6px 0 0}
 .plan-approved>button{flex:none;margin-left:auto;font-size:12px;min-height:44px}
-.code-orientation{display:flex;align-items:center;justify-content:space-between;gap:24px;margin:-12px 0 16px}
+.code-orientation{display:flex;align-items:center;justify-content:space-between;gap:24px;margin:0 0 16px}
 .code-orientation>p{display:flex;align-items:center;gap:9px;font-size:12px;color:var(--text-subtle);margin:0;line-height:1.7}
 .code-orientation .status-dot{background:var(--success);box-shadow:none;flex:none}
 .guided-workspace .studio-work{padding:0;margin:0;border:1px solid var(--border);border-radius:14px;min-width:0;box-shadow:var(--shadow-1)}
@@ -159,7 +154,7 @@ body.in-studio .page{max-width:1560px;padding:calc(var(--header-height) + 28px) 
 .stage-intro h2{font-size:clamp(1.2rem,1.7vw,1.5rem);line-height:1.35;margin:0 0 8px;letter-spacing:-.025em}
 .stage-intro>p:last-child{font-size:13px;line-height:1.75}
 .workspace-notice,.workspace-status{margin:0 0 20px;padding:12px 16px}
-.reading-stage,.planning-stage{max-width:none;margin:0}
+.reading-stage{max-width:none;margin:0}
 .guided-workspace .studio-brief{border-radius:12px;box-shadow:none}
 .guided-workspace .studio-brief .pane-title{padding:16px 24px}
 .guided-workspace .studio-brief .statement{padding:24px;font-size:15px;line-height:1.85}
@@ -169,9 +164,10 @@ body.in-studio .page{max-width:1560px;padding:calc(var(--header-height) + 28px) 
 .problem-signature{padding:20px 24px 0}
 .problem-signature>span{font-size:11px;margin-bottom:8px}
 .problem-signature>pre{padding:12px 16px}
-.stage-next{padding:24px 0 12px}
-.stage-next strong{font-size:13px}
-.stage-next>button{min-height:44px;padding:11px 16px;font-size:12px}
+.question-slot{margin-bottom:20px}
+#codeQuestion{margin-bottom:12px}
+#codeQuestion .studio-brief .statement{max-height:300px;overflow:auto;overscroll-behavior:contain}
+.focus-workspace #codeQuestion{display:none}
 .planning-methods{gap:10px}
 .planning-methods button{grid-template-columns:24px 1fr;padding:12px 16px;border-radius:9px;column-gap:10px}
 .planning-methods button[aria-pressed=true]{box-shadow:none}
@@ -185,7 +181,7 @@ body.in-studio .page{max-width:1560px;padding:calc(var(--header-height) + 28px) 
 .guided-workspace .designPanel .drop{padding:28px 20px}
 .guided-workspace #designMsg:not(:empty){margin:0 0 20px;max-width:none}
 .plan-preview{margin:0}
-.plan-preview>summary{padding:14px 20px;gap:12px;min-height:52px}
+.plan-preview-head{padding:14px 20px;gap:12px;min-height:52px}
 .plan-empty{margin:0;padding:4px 20px 24px;color:var(--text-subtle);font-size:13px;line-height:1.8;max-width:64ch}
 .guided-workspace #planCard{padding:20px}
 .guided-workspace #planLive .gview{max-height:360px}
@@ -272,12 +268,12 @@ body.in-studio .page{max-width:1560px;padding:calc(var(--header-height) + 28px) 
  .question-actions{width:100%;gap:8px}.question-actions #backP{margin-left:auto;padding:8px}
  .journey{margin-bottom:20px}.journey>[role=tablist]{justify-content:space-between;gap:4px}
  .journey button{font-size:12px;gap:6px;padding:10px 2px 12px}.journey-number{width:22px;height:22px;font-size:10px}
- .stage-intro{margin-bottom:16px}.stage-next{align-items:stretch;flex-direction:column;gap:16px;padding-top:20px}.stage-next>button{width:100%}
+ .stage-intro{margin-bottom:16px}.question-slot{margin-bottom:16px}.stage-turn{margin-bottom:14px}
  .guided-workspace .studio-brief .pane-title{padding:16px 20px}.guided-workspace .studio-brief .statement{padding:20px}
  .problem-signature{padding:20px 20px 0}.guided-workspace .learning-text pre,.problem-signature>pre{padding:14px;font-size:12px}
  .planning-methods button{padding:12px;display:flex;flex-direction:column;gap:4px;align-items:flex-start}
  .planning-methods button>span{display:none}.planning-methods small{font-size:10px;margin:0}
- .plan-submit-row{flex-direction:column;align-items:stretch;gap:14px}.plan-preview>summary{padding:14px 16px;gap:10px}#planPreviewStatus{display:none}
+ .plan-submit-row{flex-direction:column;align-items:stretch;gap:14px}.plan-preview-head{padding:14px 16px;gap:10px}#planPreviewStatus{display:none}
  .guided-workspace .designPanel{padding:24px 20px}.plan-approved{padding:16px;gap:12px}.plan-approved>button{width:100%}
  .guided-workspace .code-toolbar{padding:10px 14px;flex-wrap:wrap}.code-toolbar h2{flex:1}.guided-workspace .focus-work{order:2}
  .code-resources{order:3;flex-basis:100%;margin:0;border-top:1px solid var(--border);padding-top:6px;justify-content:space-between}

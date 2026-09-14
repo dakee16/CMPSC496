@@ -2427,5 +2427,16 @@ from frontend.student_routes import student_progress_router
 
 app.include_router(student_progress_router(get_supabase, require_student))
 
-app.mount("/", StaticFiles(directory=Path(__file__).parent, html=True),
+# StaticFiles sends ETag/Last-Modified but no Cache-Control, which leaves the
+# browser free to guess a freshness lifetime - so a CSS or JS change ships and
+# students keep rendering the old one until they hard-reload. "no-cache" still
+# caches; it only forces the conditional request, so a 304 stays cheap.
+class RevalidatedFiles(StaticFiles):
+    def file_response(self, *args, **kwargs):
+        response = super().file_response(*args, **kwargs)
+        response.headers.setdefault("Cache-Control", "no-cache")
+        return response
+
+
+app.mount("/", RevalidatedFiles(directory=Path(__file__).parent, html=True),
           name="frontend")

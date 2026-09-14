@@ -66,12 +66,12 @@ const graph = {nodes:[{id:'n0',kind:'start',label:'Read records'},{id:'n1',kind:
     assert.equal(options.readOnly,'nocursor');
     doc.querySelector('#tabRead').focus();
     doc.querySelector('#tabRead').dispatchEvent(new window.KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));
-    assert.equal(doc.activeElement.id,'tabPlan');
-    doc.querySelector('#readContinue').click();
-    assert.deepEqual(visibleStage(),['stagePlan']);
+    assert.equal(doc.activeElement.id,'tabCode');
+    assert.deepEqual(visibleStage(),['stageRead'],'Reading and planning share one tab');
+    assert.equal(doc.querySelector('#problemPaper').parentElement.id,'readQuestion');
     assert.equal(doc.querySelector('#chatcol').parentElement.id,'tutorDock');
     assert.equal(doc.querySelector('#planSubmitBtn').disabled,true);
-    assert.equal(doc.querySelector('#planPreview').open,true);
+    assert.equal(doc.querySelector('#planPreview').tagName,'SECTION','The plan graph has no collapse control');
     assert.equal(doc.querySelector('#planEmpty').hidden,false);
     doc.querySelector('#cinput').value='My unsent thinking';
     window.choosePlanMethod('upload');
@@ -91,7 +91,7 @@ const graph = {nodes:[{id:'n0',kind:'start',label:'Read records'},{id:'n1',kind:
     assert(doc.querySelector('#designMsg').textContent.includes('preserve'));
     approved=true;
     await window.submitPlanGraph(); await tick();
-    assert.deepEqual(visibleStage(),['stagePlan'],'Approval must not force a stage change');
+    assert.deepEqual(visibleStage(),['stageRead'],'Approval must not force a stage change');
     assert.equal(doc.querySelector('#planApproved').hidden,false);
     assert.equal(doc.querySelector('#tabCode').getAttribute('aria-disabled'),'false');
     doc.querySelector('#planContinue').click();
@@ -100,15 +100,15 @@ const graph = {nodes:[{id:'n0',kind:'start',label:'Read records'},{id:'n1',kind:
     assert.equal(doc.querySelector('#tutorDock').hidden,false,'Coding keeps the tutor beside the editor');
     value='    draft = records.copy()'; selections=[{anchor:{line:0,ch:7},head:{line:0,ch:12}}];
     const conversation=doc.querySelector('#clog');
-    const trigger=doc.querySelector('.code-resources [data-resource="problem"]');
+    assert.equal(doc.querySelector('#problemPaper').parentElement.id,'codeQuestion','Coding keeps the question on top');
+    assert.equal(doc.querySelector('#problemDetails').open,false,'…minimised, and the student can reopen it');
+    const trigger=doc.querySelector('.code-resources [data-resource="plan"]');
     trigger.focus();trigger.click();
     assert.equal(doc.querySelector('#resourceDrawer').hidden,false);
     assert.equal(doc.querySelector('#page').inert,false,'A reference never blocks code or chat');
     assert.equal(doc.querySelector('#stageCode').hidden,false);
     assert.equal(doc.querySelector('#cform').inert,false);
-    assert.equal(doc.querySelector('#problemPaper').parentElement.id,'resourceBody');
-    window.openResource('plan');
-    assert.equal(doc.querySelector('#problemPaper').parentElement.id,'problemHome');
+    assert.equal(doc.querySelector('#planCard').parentElement.id,'resourceBody');
     window.openResource('tutor');
     assert.equal(doc.querySelector('#clog'),conversation,'One shared conversation across all stages');
     assert.equal(doc.querySelector('#chatcol').parentElement.id,'tutorDock');
@@ -142,7 +142,8 @@ const graph = {nodes:[{id:'n0',kind:'start',label:'Read records'},{id:'n1',kind:
       assert.equal(divider.getAttribute('aria-valuenow'),expected);
     }
     assert.equal(value,'    draft = records.copy()','Resizing preserves editor contents');
-    window.chooseWorkspaceStage('read'); window.chooseWorkspaceStage('plan'); window.chooseWorkspaceStage('code');
+    window.chooseWorkspaceStage('read'); window.chooseWorkspaceStage('code');
+    assert.equal(doc.querySelector('#problemPaper').parentElement.id,'codeQuestion','The question follows the open stage');
     assert.equal(value,'    draft = records.copy()');
     assert.equal(editorCreations,1);
     assert.equal(selections[0].head.ch,12);
@@ -177,7 +178,7 @@ const graph = {nodes:[{id:'n0',kind:'start',label:'Read records'},{id:'n1',kind:
 
     // Upload approval, unavailable step instructions, retry and a safe restart.
     approved=true;await window.start(problem);
-    window.chooseWorkspaceStage('plan');window.choosePlanMethod('upload');
+    window.chooseWorkspaceStage('read');window.choosePlanMethod('upload');
     window.pickDesign(new window.File(['diagram'],'plan.pdf',{type:'application/pdf'}));
     stepFailure=true;await window.uploadDesign();await tick();
     assert.equal(doc.querySelector('#planApproved').hidden,false);
@@ -196,9 +197,9 @@ const graph = {nodes:[{id:'n0',kind:'start',label:'Read records'},{id:'n1',kind:
     assert.equal(doc.querySelector('#designPick').hidden,true);
     openingFailure=true;await window.start(problem);
     assert(doc.querySelector('#workspaceStatus button'),'Failed initialization has a visible retry');
-    assert.equal(doc.querySelector('#readContinue').disabled,true);
+    assert.equal(doc.querySelector('#tabCode').getAttribute('aria-disabled'),'true');
     openingFailure=false;doc.querySelector('#workspaceStatus button').click();await tick();
-    assert.equal(doc.querySelector('#readContinue').disabled,false);
+    assert.equal(doc.querySelector('#workspaceStatus').textContent,'');
     history={found:true,design_approved:true,plan:graph,code:graph,comparison:{similarity:1},messages:[{role:'user',content:'Earlier work'}]};
     await window.start(problem);await tick();
     assert.deepEqual(visibleStage(),['stageRead']);
@@ -209,7 +210,7 @@ const graph = {nodes:[{id:'n0',kind:'start',label:'Read records'},{id:'n1',kind:
     const ids=[...doc.querySelectorAll('[id]')].map(el=>el.id);
     assert.equal(new Set(ids).size,ids.length,'No duplicate IDs');
     assert(calls.some(c=>c.route==='/design_review')&&calls.some(c=>c.route==='/design_review/plan'));
-    console.log('PASS: Read → Plan → Code → Reflect; persistent tutor; inline references keep code/chat available; both planning methods; approval gates; draft/chat/file preservation; keyboard resizing; replies preserve editor focus; paced steps; grading errors; comparison retry; restart; loading failures; restored work.');
+    console.log('PASS: Question+Plan → Code → Reflect; the question rides every stage; persistent tutor; inline references keep code/chat available; both planning methods; approval gates; draft/chat/file preservation; keyboard resizing; replies preserve editor focus; paced steps; grading errors; comparison retry; restart; loading failures; restored work.');
     console.log('DOM behavior only. Browser layout and real CodeMirror still require Chromium.');
   } finally {await window.happyDOM.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});

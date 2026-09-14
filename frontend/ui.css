@@ -19,7 +19,7 @@ button,a,input,select,textarea,summary{-webkit-tap-highlight-color:transparent}
 .sidebar{position:fixed;inset:0 auto 0 0;width:var(--sidebar-width);z-index:var(--z-popover);display:flex;flex-direction:column;background:var(--sidebar-bg);color:var(--sidebar-text);border-right:1px solid var(--sidebar-line);padding:28px 16px 16px}
 .wordmark{display:inline-flex;align-items:center;gap:10px;color:var(--text);font-family:var(--font-display);font-weight:600;letter-spacing:-.04em;font-size:1.25rem;line-height:1.2;text-decoration:none}
 .sidebar .wordmark{color:var(--brand-text);padding:0 9px}
-.brand-symbol{display:block;width:40px;height:40px;flex:none;border-radius:12px;box-shadow:0 3px 8px rgba(8,126,131,.14)}
+.brand-symbol{display:block;width:40px;height:40px;flex:none;border-radius:12px;box-shadow:0 3px 8px rgba(242,118,94,.20)}
 .brand-name{white-space:nowrap;font-size:1.125rem;font-weight:700;letter-spacing:.12em}
 .brand-caption{display:block;font:500 .6rem var(--font-sans);letter-spacing:.17em;color:var(--sidebar-muted);margin-top:7px}
 .portal-label{display:flex;align-items:center;gap:10px;margin:28px 4px;padding:11px 8px;border:1px solid var(--sidebar-line);border-radius:8px;color:var(--sidebar-text);font-size:.75rem;white-space:nowrap}

@@ -102,8 +102,11 @@ const server = http.createServer((req,res) => {
     await page.getByRole('button',{name:'Switch to dark mode',exact:true}).click();
     await screenshot('acadia-question-read-dark');
     await page.getByRole('button',{name:'Switch to light mode',exact:true}).click();
-    await page.locator('#readContinue').click();
+    await page.locator('#planContinue').click();
     await page.locator('#stageCode').waitFor();
+    assert.equal(await page.locator('#codeQuestion #problemPaper').isVisible(),true,
+      'Coding keeps the question on top of the editor');
+    assert.equal(await page.locator('#statement').isVisible(),false,'…minimised, so the editor keeps the height');
     assert.equal(await page.locator('#clog .bub.me pre').count(),1);
     await noOverflow('Desktop light');
     await page.evaluate(()=>editor.setValue('    previous_year = year - 1\n    previous_year_records = d[previous_year]\n    new_dict = {}'));
@@ -148,13 +151,18 @@ const server = http.createServer((req,res) => {
       assert.equal(await page.locator('#cform').evaluate(el=>el.inert),true);
       await page.locator('#showTutor').click();
       assert.equal(await page.locator('#cform').evaluate(el=>el.inert),false);
-      await page.locator('.code-resources [data-resource="problem"]').click();
-      assert.equal(await page.locator('#problemPaper').isVisible(),true);
+      assert.equal(await page.locator('#codeQuestion #problemPaper').isVisible(),true);
+      await page.locator('#codeQuestion #problemDetails summary').click();
+      assert.equal(await page.locator('#statement').isVisible(),true);
+      await noOverflow('Question open over the editor at '+width);
+      await page.locator('#codeQuestion #problemDetails summary').click();
+      assert.equal(await page.locator('#statement').isVisible(),false,'The question minimises again at '+width);
+      await page.locator('.code-resources [data-resource="plan"]').click();
       assert.equal(await page.locator('#page').evaluate(el=>el.inert),false);
       assert.equal(await page.locator('#editorWrap').isVisible(),true);
       assert.equal(await page.locator('#tutorDock').isVisible(),true);
       assert(await page.locator('#resourceBody').evaluate(el=>el.offsetHeight<=260));
-      await noOverflow('Problem reference at '+width);
+      await noOverflow('Plan reference at '+width);
       await page.keyboard.press('Escape');
       assert.equal(await page.evaluate(()=>editor.getValue()),'    draft = 1');
       if(width===1366||width===390) await screenshot('acadia-workspace-'+width);
@@ -178,9 +186,10 @@ const server = http.createServer((req,res) => {
     assert.equal(await page.locator('html').getAttribute('data-theme'),'light');
     await page.locator('#assignments .rowitem').first().click();
     await page.locator('[data-slug="employee-update"]').click();
-    await page.locator('#readContinue:not([disabled])').waitFor();
+    await page.locator('#signatureBox:not([hidden])').waitFor();
     assert.equal(await page.locator('#stageRead').isVisible(),true);
-    await page.locator('#readContinue').click();
+    assert.equal(await page.locator('#readQuestion #problemPaper').isVisible(),true,
+      'The question stays beside the planning conversation');
     await page.locator('#tutorDock #chatcol').waitFor();
     await screenshot('acadia-plan-chat-light');
     await page.locator('[data-plan-method="upload"]').click();
@@ -195,10 +204,8 @@ const server = http.createServer((req,res) => {
       await page.locator('[data-plan-method="chat"]').click();
       await noOverflow('Chat plan at '+width);
       await screenshot('acadia-plan-'+width);
-      await page.locator('#tabRead').click();
-      await noOverflow('Read at '+width);
-      await screenshot('acadia-read-'+width);
-      await page.locator('#readContinue').click();
+      assert.equal(await page.locator('#planPreview').isVisible(),true,
+        'The plan graph has no collapse control on this tab');
     }
     await page.setViewportSize({width:1600,height:1000});
     role='teacher';
