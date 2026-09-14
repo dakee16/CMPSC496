@@ -339,7 +339,6 @@ function mountHeader({active = "", wide = false, variant = "", crumbs = null} = 
             ${uiIcon("settings",17)}
           </button>
           <div class="menu" id="whoMenu" role="menu" hidden>
-            <button class="mi" id="miSettings" role="menuitem">Appearance &amp; account</button>
             <button class="mi mi-danger" id="miLogout" role="menuitem">Sign out</button>
           </div>
         </div>
@@ -372,8 +371,15 @@ function mountHeader({active = "", wide = false, variant = "", crumbs = null} = 
     const items=[...whoMenu.querySelectorAll('[role="menuitem"]')], current=items.indexOf(document.activeElement);
     items[e.key==='ArrowDown' ? (current+1)%items.length : (current<=0 ? items.length-1 : current-1)].focus();
   },{signal});
-  shell.querySelector('#miSettings').onclick=() => {closeMenu(); openSettings(s);};
-  shell.querySelector('#miLogout').onclick=async() => {await Session.signOut(); location.href='login.html';};
+  /* REPLACE, not href: location.href leaves the signed-in page in history, so
+     Back restored it from cache complete with the sidebar and the student's
+     name - which reads as "sign out did nothing" even though the cookie is
+     gone and every request behind it is 401ing. */
+  shell.querySelector('#miLogout').onclick=async() => {
+    closeMenu();
+    await Session.signOut();
+    location.replace('login.html');
+  };
   const navToggle=shell.querySelector('#navToggle'), scrim=shell.querySelector('#navScrim'), sidebar=shell.querySelector('#appSidebar');
   const closeNav=() => {document.body.classList.remove('nav-open');scrim.hidden=true;navToggle.setAttribute('aria-expanded','false');};
   navToggle.onclick=() => {
@@ -409,66 +415,6 @@ function mountHeader({active = "", wide = false, variant = "", crumbs = null} = 
   syncThemeControls(Theme.get());
   if(crumbs)setCrumbs(crumbs);
   return shell.querySelector('.hdr');
-}
-
-/* Settings dialog opened from the profile menu. Lazily built and reused.
-   Shows the signed-in account; preferences beyond the theme land here when
-   there is a second one worth storing. */
-function openSettings(s){
-  let ov = document.getElementById("mtSettings");
-  if (!ov){
-    ov = document.createElement("div");
-    ov.id = "mtSettings";
-    ov.className = "modal";
-    ov.hidden = true;
-    ov.innerHTML = `
-      <div class="modalCard" role="dialog" aria-modal="true" aria-labelledby="mtsTitle">
-        <div class="modalHead">
-          <h2 id="mtsTitle">Settings</h2>
-          <button class="modalX" id="mtsX" aria-label="Close settings">&times;</button>
-        </div>
-        <div class="modalBody" id="mtsBody"></div>
-      </div>`;
-    document.body.appendChild(ov);
-  }
-  const returnFocus = document.getElementById("whoBtn") || document.activeElement;
-  const previousOverflow = document.body.style.overflow;
-  const close = () => {
-    ov.hidden = true;
-    document.body.style.overflow = previousOverflow;
-    if (returnFocus && returnFocus.isConnected) returnFocus.focus();
-  };
-  ov.onclick = e => { if (e.target === ov) close(); };
-  ov.querySelector("#mtsX").onclick = close;
-  ov.onkeydown = e => {
-    if (e.key === "Escape") { e.preventDefault(); close(); }
-    if (e.key !== "Tab") return;
-    const controls = [...ov.querySelectorAll('button:not(:disabled)')];
-    const first = controls[0], last = controls[controls.length - 1];
-    if (e.shiftKey && document.activeElement === first) {
-      e.preventDefault(); last.focus();
-    } else if (!e.shiftKey && document.activeElement === last) {
-      e.preventDefault(); first.focus();
-    }
-  };
-  ov.querySelector("#mtsBody").innerHTML = `
-    <div class="setRow"><span>Account</span><b>${esc(s ? s.name : "guest")}</b></div>
-    <div class="setRow"><span>Portal</span><b>${s && s.role === "teacher" ? "Instructor" : "Student"}</b></div>
-    <div class="setRow"><span>Appearance</span>
-      <span class="seg" id="mtsTheme" role="group" aria-label="Color theme">
-        <button type="button" data-t="dark">Dark</button>
-        <button type="button" data-t="light">Light</button>
-      </span>
-    </div>
-    <p class="setNote">Your appearance preference is saved on this browser.
-      Contact your instructor if your account role needs to change.</p>`;
-  ov.querySelectorAll("[data-t]").forEach(b => {
-    b.onclick = () => Theme.set(b.dataset.t);
-  });
-  syncThemeControls(Theme.get());
-  ov.hidden = false;
-  document.body.style.overflow = "hidden";
-  ov.querySelector("#mtsX").focus();
 }
 
 /* Breadcrumb trail in the header, e.g. Home / Practice Set / Count Vowels.

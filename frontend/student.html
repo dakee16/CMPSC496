@@ -103,12 +103,23 @@
     <section id="stageRead" class="journey-panel reading-stage" role="tabpanel" aria-labelledby="tabRead" tabindex="-1">
       <div class="stage-intro"><h2>Start with the question.</h2><p>Read the examples and talk them through with your tutor. Your plan takes shape below as you do.</p></div>
       <div class="question-slot" id="readQuestion"><article class="card problem-card studio-brief" id="problemPaper"><details id="problemDetails" open><summary class="pane-title"><h2>The question</h2><span class="brief-toggle" aria-hidden="true">⌄</span></summary><div class="problem-signature" id="signatureBox" hidden><span>Function to implement</span><pre id="readSignature"></pre></div><div class="statement learning-text" id="statement"></div></details></article></div>
-      <div class="stage-turn"><h3>How will you approach this?</h3><p id="planStageHint">Talk through your steps with the tutor, or upload a plan you’ve already made.</p></div>
+      <section id="planPreview" class="plan-preview" aria-label="Your working plan"><div class="plan-preview-head"><span>Your working plan</span><span id="planPreviewStatus" role="status" aria-live="polite">Your ideas will appear here</span></div><p class="plan-empty" id="planEmpty">No plan yet. Describe your approach to the tutor to see your steps take shape here.</p><div id="planHome"><div class="card graphCard" id="planCard" hidden="">
+      <div class="chead" style="border:0; padding:0 0 10px">
+        <h2>Your plan so far</h2>
+
+        <span class="pill" style="margin-left:auto" id="planSource">built from your chat</span>
+        <span class="pill ok" id="planLock" hidden="">locked in — approved</span>
+      </div>
+      <p class="hint" style="margin:-2px 0 12px" id="planHint">
+        This grows as you describe your approach. If a step is missing here,
+        it was missing from what you said.
+      </p>
+      <div id="planLive"></div>
+    </div></div></section>
+      <div class="stage-turn"><h3>How will you approach this?</h3><p id="planStageHint">Upload the plan you’ve already made, or build one with your tutor.</p></div>
       <div id="planApproved" class="plan-approved" hidden><span class="approval-mark" aria-hidden="true">✓</span><div><strong>Your plan is approved.</strong><p>Ready when you are. Your next stage is coding, one step at a time.</p></div><button id="planContinue" type="button">Continue to Code →</button></div>
       <div id="planMethods">
-        <div class="planning-methods" role="group" aria-label="How to make your plan"><button type="button" data-plan-method="chat" aria-pressed="true"><span aria-hidden="true">↗</span><strong>Talk it through</strong><small>Build a plan with your tutor</small></button><button type="button" data-plan-method="upload" aria-pressed="false"><span aria-hidden="true">↑</span><strong>Upload a plan</strong><small>Bring a diagram or written approach</small></button></div>
-        <div id="planChatPanel"><div class="planning-guide"><p>Start with what goes in, what should come out, and the steps in between. Your plan below will grow from the conversation.</p><button class="text-action" type="button" data-resource="tutor">Talk to your tutor <span aria-hidden="true">↗</span></button></div><div class="plan-submit-row" id="planSubmitRow"><div><strong>Ready to try your approach?</strong><p id="planSubmitHint">Describe your steps in the chat to build a plan.</p></div><button id="planSubmitBtn" type="button">Submit plan for review</button></div></div>
-        <div id="planUploadPanel" hidden><div class="designPanel" id="designPanel" hidden="">
+        <div class="designPanel" id="designPanel" hidden="">
 
               <span class="gateIcon">
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
@@ -152,22 +163,14 @@
               </details>
 
 
-            </div></div>
+            </div>
+        <p class="plan-or"><span>or</span></p>
+        <div class="plan-submit-row" id="planSubmitRow">
+          <div><strong>Build it with your tutor</strong><p id="planSubmitHint">Describe your steps in the chat to build a plan.</p><button class="text-action" type="button" data-resource="tutor">Talk to your tutor <span aria-hidden="true">↗</span></button></div>
+          <button id="planSubmitBtn">Submit plan for review</button>
+        </div>
       </div>
       <div id="planFeedback"><div id="designMsg" role="status" aria-live="polite"></div></div>
-      <section id="planPreview" class="plan-preview" aria-label="Your working plan"><div class="plan-preview-head"><span>Your working plan</span><span id="planPreviewStatus" role="status" aria-live="polite">Your ideas will appear here</span></div><p class="plan-empty" id="planEmpty">No plan yet. Describe your approach to the tutor to see your steps take shape here.</p><div id="planHome"><div class="card graphCard" id="planCard" hidden="">
-      <div class="chead" style="border:0; padding:0 0 10px">
-        <h2>Your plan so far</h2>
-
-        <span class="pill" style="margin-left:auto" id="planSource">built from your chat</span>
-        <span class="pill ok" id="planLock" hidden="">locked in — approved</span>
-      </div>
-      <p class="hint" style="margin:-2px 0 12px" id="planHint">
-        This grows as you describe your approach. If a step is missing here,
-        it was missing from what you said.
-      </p>
-      <div id="planLive"></div>
-    </div></div></section>
     </section>
     <section id="stageCode" class="journey-panel coding-stage" role="tabpanel" aria-labelledby="tabCode" tabindex="-1" hidden>
       <div class="question-slot" id="codeQuestion"></div>

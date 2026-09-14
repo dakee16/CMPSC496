@@ -26,6 +26,17 @@ from main.run_phase1 import get_chunk_decomposition
 
 app = FastAPI(title="MicroTutor API", version="1.0")
 
+# Say the roster out loud at startup. A sign-in gate that is silently OFF is
+# the worst way for this to be wrong - it was, for exactly one afternoon,
+# because .env carried MICROTUTOR_ALLOWED_EMAILS twice and dotenv takes the
+# last one, so an empty line further down turned the whole thing off and
+# nothing said so. One line at startup is cheaper than finding that out from
+# someone who should not have been able to sign in.
+print(f"  🔐 sign-in roster: {len(auth_mod.ALLOWED_EMAILS)} address(es) - "
+      + (", ".join(sorted(auth_mod.ALLOWED_EMAILS)) if auth_mod.ALLOWED_EMAILS
+         else f"OPEN, anyone at {'/'.join(auth_mod.ALLOWED_DOMAINS)} may register "
+              "(set MICROTUTOR_ALLOWED_EMAILS to restrict)"))
+
 # Local http development cannot set Secure cookies; anything else must. Behind
 # the VPN is not an exception - the VPN carries every other student too, so a
 # session riding over plain http is readable by them, not by the internet.

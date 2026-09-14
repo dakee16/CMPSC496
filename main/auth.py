@@ -420,7 +420,10 @@ if __name__ == "__main__":
     assert not m.valid_username("attacker@psu.edu.evil.com")
 
     # ── the roster ──────────────────────────────────────────────────────
-    assert m.ALLOWED_EMAILS == frozenset(), "a roster leaked in from the env"
+    # Pinned, not read from the environment: this file is run directly on a
+    # machine whose .env carries the real roster, and asserting that env was
+    # empty made the self-check fail wherever the feature was actually in use.
+    m.ALLOWED_EMAILS = frozenset()
     assert m.is_allowed("anyone@psu.edu"), "no roster must admit the domain"
     m.ALLOWED_EMAILS = frozenset({"prof@psu.edu", "demo@gmail.com"})
     try:
