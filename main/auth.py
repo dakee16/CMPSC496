@@ -51,6 +51,20 @@ ALLOWED_DOMAINS = tuple(
     for d in os.environ.get("MICROTUTOR_ALLOWED_DOMAINS", "psu.edu").split(",")
     if d.strip())
 
+# The roster. Empty (the default) means "anyone at ALLOWED_DOMAINS", which is
+# how this ran before the list existed. Set it and it becomes the WHOLE rule:
+# membership here is the authority, so an address on the list works whatever
+# its domain - which is the point, since the people who need in for a demo or
+# a handoff are not all at psu.edu.
+#
+# ponytail: a comma-separated env var, read once at import. Move it to a
+# Supabase `allowed_emails` table if the roster starts changing mid-term -
+# is_allowed() is the only thing that would have to learn the query.
+ALLOWED_EMAILS = frozenset(
+    e.strip().lower()
+    for e in os.environ.get("MICROTUTOR_ALLOWED_EMAILS", "").split(",")
+    if e.strip())
+
 SESSION_SECRET = os.environ.get("MICROTUTOR_SESSION_SECRET", "").strip()
 SESSION_COOKIE = "microtutor_session"
 SESSION_HOURS = 12          # a class day; long enough to not re-login mid-lab
@@ -81,6 +95,12 @@ class AuthError(Exception):
         self.detail = detail
 
 
+class NotAuthorized(AuthError):
+    """The address is not on the roster. Separate from AuthError so the route
+    can answer 404 and the browser can send them to the not-authorized page,
+    rather than a 401 that reads as "you typed your password wrong"."""
+
+
 class RateLimited(AuthError):
     """Too many failed attempts. Separate from AuthError so the route can
     answer 429 with a Retry-After rather than a 401 that invites a retry."""
@@ -105,6 +125,15 @@ def normalize_username(username: str) -> str:
     runs on BOTH registration and login, which is what lets the lookup stay a
     plain equality test instead of a case-insensitive pattern match."""
     return (username or "").strip().lower()
+
+
+def is_allowed(username: str) -> bool:
+    """May this address have an account at all?
+
+    THE gate. Called on registration, on every sign-in, and on every request
+    with a cookie - the last of those is what makes removing someone from the
+    list take effect now rather than whenever their 12-hour session expires."""
+    return not ALLOWED_EMAILS or normalize_username(username) in ALLOWED_EMAILS
 
 
 def valid_username(username: str) -> bool:
@@ -248,7 +277,13 @@ def register_student(sb, username: str, password: str,
     instructor read their grade sheet as a class list rather than a column of
     PSU addresses. It is never used to decide anything - see full_name()."""
     username = normalize_username(username)
-    if not valid_username(username):
+    if not is_allowed(username):
+        raise NotAuthorized("This account is not authorized.",
+                            detail=f"not on the roster: {username!r}")
+    # Only when there is no roster. With one, the list has already said yes and
+    # re-testing the domain would refuse an address the instructor added on
+    # purpose.
+    if not ALLOWED_EMAILS and not valid_username(username):
         raise AuthError("Use your Penn State email address "
                         f"({', '.join('@' + d for d in ALLOWED_DOMAINS)}).",
                         detail=f"rejected username: {username!r}")
@@ -328,6 +363,12 @@ def authenticate(sb, username: str, password: str) -> Dict[str, Any]:
     signs a person in - a second route, an SSO fallback, a script - is behind
     it by construction rather than by remembering to add it."""
     username = normalize_username(username)
+    # Before the limiter and before the lookup: an address that is not on the
+    # roster has no account to throttle, and spending a bcrypt round on it only
+    # makes the rejection slower.
+    if not is_allowed(username):
+        raise NotAuthorized("This account is not authorized.",
+                            detail=f"not on the roster: {username!r}")
     wrong = AuthError("Incorrect username or password.")
     now = time.monotonic()
 
@@ -377,6 +418,18 @@ if __name__ == "__main__":
     # The checks that actually matter: lookalike domains must not pass.
     assert not m.valid_username("attacker@notpsu.edu"), "suffix confusion"
     assert not m.valid_username("attacker@psu.edu.evil.com")
+
+    # ── the roster ──────────────────────────────────────────────────────
+    assert m.ALLOWED_EMAILS == frozenset(), "a roster leaked in from the env"
+    assert m.is_allowed("anyone@psu.edu"), "no roster must admit the domain"
+    m.ALLOWED_EMAILS = frozenset({"prof@psu.edu", "demo@gmail.com"})
+    try:
+        assert m.is_allowed("  PROF@PSU.edu  "), "the roster is case-sensitive"
+        assert m.is_allowed("demo@gmail.com"), "the roster must beat the domain"
+        assert not m.is_allowed("student@psu.edu"), "a PSU address bypassed it"
+        assert not m.is_allowed(""), "an empty address was admitted"
+    finally:
+        m.ALLOWED_EMAILS = frozenset()
 
     h = m.hash_password("correct horse battery")
     assert m.verify_password("correct horse battery", h)
@@ -443,6 +496,17 @@ if __name__ == "__main__":
 
     sb = OneStudent()
     m._failures.clear()
+
+    # Off the roster is refused before the lookup, and without burning a
+    # failure - otherwise probing addresses would lock out the real owner.
+    m.ALLOWED_EMAILS = frozenset({"u@psu.edu"})
+    try:
+        m.authenticate(sb, "stranger@psu.edu", "right-password")
+        raise AssertionError("an address off the roster signed in")
+    except m.NotAuthorized:
+        assert not m._failures, "a roster refusal was counted as a failure"
+    finally:
+        m.ALLOWED_EMAILS = frozenset()
     for _ in range(m.FAIL_LIMIT):
         try:
             m.authenticate(sb, "u@psu.edu", "wrong")

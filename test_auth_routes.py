@@ -89,6 +89,9 @@ def client():
     # Module-level, so without this a test that burns failed logins leaks a
     # lockout into whichever test happens to run next.
     auth._failures.clear()
+    # Same reason: a roster left set by one test would refuse every account the
+    # next one registers, with a 404 nothing in that test is looking for.
+    auth.ALLOWED_EMAILS = frozenset()
     api_server.set_supabase(FakeSupabase())
     # TestClient keeps cookies between calls, or every assertion below would
     # pass for the wrong reason.
@@ -416,6 +419,71 @@ def test_a_successful_retry_publishes_the_problem(monkeypatch):
     assert saved and saved[-1]["ready"] is True, "the fix was not saved"
     assert not any(p["slug"] == "something-else" for p in sb.problems), \
         "the edited marker renamed the problem"
+
+
+def test_an_address_off_the_roster_gets_the_404_page():
+    """The roster is the whole rule once it is set: a psu.edu address that is
+    not on it is refused, and an address on it works even though it is not."""
+    c = client()
+    auth.ALLOWED_EMAILS = frozenset({"prof@psu.edu", "demo@gmail.com"})
+    try:
+        for who in ("student@psu.edu", "STUDENT@PSU.edu"):
+            r = register(c, who)
+            assert r.status_code == 404, f"{who} got an account"
+            assert r.json()["detail"]["reason_code"] == "not_authorized"
+            r = c.post("/login", json={"username": who, "password": PW})
+            assert r.status_code == 404, f"{who} signed in"
+            assert r.json()["detail"]["reason_code"] == "not_authorized"
+        # ...and no account was created for any of them.
+        assert api_server.get_supabase().students == []
+
+        # On the list and off the domain: the roster beats ALLOWED_DOMAINS, or
+        # an address added on purpose would still be refused.
+        assert register(c, "demo@gmail.com").status_code == 200
+        assert c.get("/auth/me").json()["username"] == "demo@gmail.com"
+    finally:
+        auth.ALLOWED_EMAILS = frozenset()
+
+
+def test_a_roster_refusal_does_not_burn_the_lockout_budget():
+    """Off-roster addresses have no account to throttle. Counting them would
+    let someone lock out an address by guessing at it before it is added."""
+    c = client()
+    auth.ALLOWED_EMAILS = frozenset({"prof@psu.edu"})
+    try:
+        for _ in range(auth.FAIL_LIMIT + 3):
+            assert c.post("/login", json={"username": "nope@psu.edu",
+                                          "password": "x"}).status_code == 404
+        assert auth._failures == {}
+    finally:
+        auth.ALLOWED_EMAILS = frozenset()
+
+
+def test_removing_someone_from_the_roster_kills_their_live_session():
+    """A cookie lasts twelve hours. A gate that only ran at sign-in would leave
+    a removed account working for the rest of the day."""
+    c = client()
+    register(c, "prof@psu.edu")
+    assert c.get("/auth/me").status_code == 200
+
+    auth.ALLOWED_EMAILS = frozenset({"someone-else@psu.edu"})
+    try:
+        # Reads as signed out - the browser bounces to sign-in, which is where
+        # it meets the 404 page.
+        assert c.get("/auth/me").status_code == 401
+        assert c.get("/solved").status_code == 401
+    finally:
+        auth.ALLOWED_EMAILS = frozenset()
+    assert c.get("/auth/me").status_code == 200, "the session did not come back"
+
+
+def test_the_not_authorized_page_is_served_as_a_404():
+    """A page that says 404 must answer 404 - it is reached by a redirect, not
+    by a failed request, so nothing else would set the status."""
+    c = client()
+    r = c.get("/not-authorized")
+    assert r.status_code == 404
+    assert "not authorized" in r.text.lower()
 
 
 def test_no_signing_key_refuses_to_issue_sessions():

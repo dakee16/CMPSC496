@@ -165,8 +165,12 @@ const Session = {
     const body = await r.json().catch(() => ({}));
     if (!r.ok){
       const d = body.detail;
-      throw new Error((d && d.message) || (typeof d === "string" && d)
-                      || "Sign-in failed. Try again.");
+      const err = new Error((d && d.message) || (typeof d === "string" && d)
+                            || "Sign-in failed. Try again.");
+      // The caller needs to tell "wrong password" from "not on the roster":
+      // one is a message beside the field, the other is a whole page.
+      err.reason = (d && d.reason_code) || "";
+      throw err;
     }
     return this.set(body);
   },

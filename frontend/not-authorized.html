@@ -1,0 +1,49 @@
+<!DOCTYPE html><html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script>try{document.documentElement.dataset.theme=(localStorage.getItem("mt.theme")==="dark"?"dark":"light")}catch(e){document.documentElement.dataset.theme="light"}</script>
+<title>404 · Not authorized · ACADIA</title>
+
+<meta name="theme-color" content="#f5ebdd">
+<meta name="robots" content="noindex">
+<link rel="icon" href="favicon.svg?v=3" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&amp;family=Space+Grotesk:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<link rel="stylesheet" href="tokens.css?v=3">
+<link rel="stylesheet" href="ui.css?v=3">
+<link rel="stylesheet" href="login.css?v=3">
+<style>
+/* The one layout login.css does not already have: a single centred column.
+   Everything else - type, colour, the card treatment - comes from the shared
+   sheets, so this page cannot drift away from the sign-in screen beside it. */
+.nope{min-height:100dvh;display:grid;place-items:center;padding:48px 24px}
+.nope-card{width:100%;max-width:520px;text-align:center}
+.nope-code{font:600 12px var(--font-mono);letter-spacing:.18em;color:var(--text-subtle);margin:0 0 18px}
+.nope-card h1{font-size:2.6rem;letter-spacing:-.045em;font-weight:500;margin:0 0 14px}
+.nope-card p{font-size:15px;line-height:1.8;color:var(--text-muted);margin:0 auto 14px;max-width:44ch}
+.nope-mark{display:grid;place-items:center;width:56px;height:56px;margin:0 auto 26px;border:1px solid var(--border);border-radius:14px;background:var(--surface-raised);font-size:24px}
+.nope-actions{margin-top:32px}
+.nope-actions a{display:inline-flex;align-items:center;min-height:44px;padding:10px 22px;font-size:.875rem;font-weight:600;border-radius:var(--r-sm);text-decoration:none;color:var(--on-accent);background:var(--accent);transition:var(--transition)}
+.nope-actions a:hover{background:var(--accent-hover)}
+</style>
+</head>
+<body>
+
+<main class="nope">
+  <div class="nope-card">
+    <div class="nope-mark" aria-hidden="true">⛔</div>
+    <p class="nope-code">404 · NOT AUTHORIZED</p>
+    <h1>You are not authorized</h1>
+    <p>This email address is not on the list for this course, so there is no
+      account here to sign in to.</p>
+    <p>If you think that is a mistake, ask your instructor to add your Penn
+      State address.</p>
+    <div class="nope-actions">
+      <a href="login.html">Back to sign in</a>
+    </div>
+  </div>
+</main>
+
+<script src="ui.js?v=3"></script>
+</body></html>

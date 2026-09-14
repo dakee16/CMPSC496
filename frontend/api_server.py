@@ -67,11 +67,20 @@ def set_supabase(client):
 # miss, which meant anyone could act as anyone by typing their name.
 
 def current_claims(request: Request | None) -> dict | None:
-    """Verified session claims, or None if signed out."""
-    from main.auth import SESSION_COOKIE, read_session
+    """Verified session claims, or None if signed out.
+
+    The roster is re-tested HERE and not only at sign-in. A cookie lasts twelve
+    hours, so a gate that ran only on /login would leave someone taken off the
+    list with a working session for the rest of the day - and this is the one
+    function every authenticated route reads identity from, so testing it here
+    covers all of them instead of each remembering to."""
+    from main.auth import SESSION_COOKIE, is_allowed, read_session
     if request is None:
         return None
-    return read_session(request.cookies.get(SESSION_COOKIE, ""))
+    claims = read_session(request.cookies.get(SESSION_COOKIE, ""))
+    if claims and not is_allowed(claims.get("username", "")):
+        return None                 # reads as signed out: bounced to sign-in,
+    return claims                   # which then answers with the 404 page
 
 
 def current_student(request: Request | None = None) -> str | None:
@@ -1807,6 +1816,13 @@ def register(req: RegisterRequest):
     try:
         row = auth_mod.register_student(get_supabase(), req.username, req.password,
                                         req.first_name, req.last_name)
+    except auth_mod.NotAuthorized as e:
+        # Before the AuthError clause - it subclasses it, so this order is what
+        # decides whether the roster is visible at all (same trap as
+        # RateLimited on /login below).
+        print(f"  ⚠️  registration refused: {e.detail}")
+        raise HTTPException(status_code=404, detail={
+            "reason_code": "not_authorized", "message": str(e)})
     except auth_mod.AuthError as e:
         if e.detail:
             print(f"  ⚠️  registration refused: {e.detail}")
@@ -1827,10 +1843,27 @@ def login(req: AuthRequest):
         raise HTTPException(status_code=429, detail={
             "reason_code": "too_many_attempts", "message": str(e)},
             headers={"Retry-After": str(e.retry_after)})
+    except auth_mod.NotAuthorized as e:
+        print(f"  ⚠️  sign-in refused: {e.detail}")
+        raise HTTPException(status_code=404, detail={
+            "reason_code": "not_authorized", "message": str(e)})
     except auth_mod.AuthError as e:
         raise HTTPException(status_code=401, detail={
             "reason_code": "bad_credentials", "message": str(e)})
     return _session_response(_account(row), row)
+
+
+@app.get("/not-authorized")
+@app.get("/not-authorized.html")
+def not_authorized_page():
+    """The page the browser is sent to when an address is off the roster.
+
+    A route rather than just a file in the static mount, so a page that says
+    404 is actually served as one. Declared above the mount, or "/" would
+    claim it first."""
+    from fastapi.responses import FileResponse
+    return FileResponse(os.path.join(os.path.dirname(__file__),
+                                     "not-authorized.html"), status_code=404)
 
 
 @app.post("/logout")

@@ -6,9 +6,12 @@ let mode = "login";
 const el = id => document.getElementById(id);
 const serverErr = m => { el("err").textContent = m; };
 
-/* One rule, stated once, in the same words the server uses. main/auth.py
-   allows psu.edu only, so anything else is a round trip that can only fail. */
-const PSU = /^[^\s@]+@([a-z0-9-]+\.)*psu\.edu$/i;
+/* Shape only. The rule about WHICH addresses may sign in lives in main/auth.py
+   and nowhere else - a roster there may deliberately include an address that is
+   not @psu.edu, and a psu.edu test here would refuse it before the server ever
+   saw it. A typo is still worth catching without a round trip; who is allowed
+   is not this file's call. */
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function fieldErr(id, msg){
   const input = el(id), out = el(id + "Err");
@@ -21,8 +24,8 @@ function fieldErr(id, msg){
 function checkEmail(){
   const v = el("u").value.trim();
   if (!v) return fieldErr("u", "Enter your Penn State email address.");
-  return fieldErr("u", PSU.test(v)
-    ? "" : "Use your Penn State address, like abc1234@psu.edu.");
+  return fieldErr("u", EMAIL.test(v)
+    ? "" : "That does not look like an email address.");
 }
 function checkName(id, what){
   const v = el(id).value.trim();
@@ -102,6 +105,8 @@ el("gate").addEventListener("submit", async e => {
       {first_name: el("fn").value.trim(), last_name: el("ln").value.trim()});
     location.href = me.role === "teacher" ? "teacher.html" : "dashboard.html";
   } catch (ex) {
+    // Not on the roster is not a form error - there is nothing to retype.
+    if (ex.reason === "not_authorized"){ location.href = "not-authorized"; return; }
     setBusy(el("go"), false);
     serverErr(ex.message);
     el("p").focus();
