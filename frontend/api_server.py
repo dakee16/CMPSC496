@@ -1846,8 +1846,22 @@ def auth_me(request: Request):
     that expired mid-lab bounces to sign-in instead of failing later on a
     write the student thought had been saved."""
     claims = require_student(request)
+    # The cookie's name is frozen at sign-in and a session lasts hours, so a
+    # name filled in or corrected afterwards stayed invisible until it expired
+    # - the greeting kept showing the address the account was created with.
+    # Read the row; fall back to the claim if the lookup fails, because a
+    # database hiccup must not look like a signed-out session.
+    name = claims["name"]
+    try:
+        rows = (get_supabase().table("students")
+                .select("username,first_name,last_name")
+                .eq("id", claims["sub"]).limit(1).execute().data or [])
+        if rows:
+            name = auth_mod.full_name(rows[0])
+    except Exception:
+        pass
     return {"student_id": claims["sub"], "username": claims["username"],
-            "name": claims["name"], "role": claims.get("role", "student")}
+            "name": name, "role": claims.get("role", "student")}
 
 
 @app.get("/solved")

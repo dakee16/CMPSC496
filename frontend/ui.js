@@ -294,6 +294,7 @@ function mountHeader({active = "", wide = false, variant = "", crumbs = null} = 
   const role = variant || (s && s.role === "teacher" ? "instructor" : "student");
   const roleHome = role === "instructor" ? "teacher.html" : "dashboard.html";
   const roleLabel = role === "instructor" ? "Instructor" : "Student";
+  const portalLabel = role === "instructor" ? "Instructor workspace" : "Coding workspace";
   const navItem = (label, href, icon, key, id = "") => `<a
     class="hbtn ${active === key || (!active && key === "Home") ? "on" : ""}"
     href="${href}" data-nav="${key}" ${id ? `id="${id}"` : ""}
@@ -321,7 +322,7 @@ function mountHeader({active = "", wide = false, variant = "", crumbs = null} = 
       <a class="wordmark" href="${roleHome}" aria-label="ACADIA home">
         <img class="brand-symbol" src="favicon.svg" width="40" height="40" alt="" aria-hidden="true"><span class="brand-name">ACADIA<span class="brand-caption">LEARNING STUDIO</span></span>
       </a>
-      <div class="portal-label"><span class="portal-monogram">${roleLabel[0]}</span><span>${roleLabel} workspace</span></div>
+      <div class="portal-label"><span class="portal-monogram">${portalLabel[0]}</span><span>${portalLabel}</span></div>
       <div class="nav-label">WORKSPACE</div>
       <nav class="hnav" aria-label="Main">${nav}</nav>
       <div class="sidebar-bottom">
@@ -342,7 +343,7 @@ function mountHeader({active = "", wide = false, variant = "", crumbs = null} = 
     </aside>
     <header class="hdr">
       <button class="icon-button mobile-nav-toggle" id="navToggle" aria-label="Open navigation" aria-expanded="false" aria-controls="appSidebar">${uiIcon("menu")}</button>
-      <div class="location-trail"><a class="portal-home" href="${roleHome}">${roleLabel} workspace</a><span class="crumbs" id="hcrumbs"></span></div>
+      <div class="location-trail"><span class="crumbs" id="hcrumbs"></span></div>
       <div class="header-tools"><span class="workspace-label">${active === "Playground" ? "Pipeline tools" : role === "instructor" ? "Course management" : "Python practice"}</span>${themeToggle()}</div>
     </header>`;
   document.body.classList.add("has-shell");
@@ -485,10 +486,9 @@ function setCrumbs(items){
     return s;
   };
   (items || []).forEach((it, i) => {
-    // A leading separator, because the trail continues from the Home button
-    // sitting immediately to its left. Repeating "Home" as the first crumb put
-    // the word on screen twice, 8px apart.
-    host.appendChild(sepEl());
+    // Separators only BETWEEN crumbs. The header no longer repeats the
+    // portal name to the left of the trail, so a leading "/" would dangle.
+    if (i) host.appendChild(sepEl());
     const last = i === items.length - 1;
     const b = document.createElement("button");
     b.type = "button";
