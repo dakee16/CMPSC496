@@ -48,7 +48,10 @@ const server = http.createServer((req,res) => {
   const errors=[];
   try {
     const context=await browser.newContext({viewport:{width:1600,height:1000},reducedMotion:'reduce'});
-    await context.addInitScript(()=>localStorage.setItem('mt.coach.tutor.v1','1'));
+    await context.addInitScript(()=>{
+      localStorage.setItem('mt.coach.tutor.v1','1');
+      for(const role of ['student','teacher'])localStorage.setItem('acadia.tutorial.v1:'+encodeURIComponent('ui-fixture:'+role),'{"status":"completed"}');
+    });
     await context.route(base+'/**', async route=>{
       const pathname=new URL(route.request().url()).pathname;
       if (/\.(html|css|js|svg)$/.test(pathname) || pathname==='/') return route.continue();
@@ -56,6 +59,7 @@ const server = http.createServer((req,res) => {
       let json={}; let status=200;
       if(pathname==='/auth/me'){json={name:'Alex Morgan',student_id:'ui-fixture',role};if(!loggedIn)status=401;}
       else if(pathname==='/assignments') json={assignments};
+      else if(pathname==='/student/progress')json={problems:problems.map(p=>({...p,assignment_id:'lab1'}))};
       else if(pathname==='/solved') json={slugs:['word-count'],opened:['employee-update'],last_slug:'employee-update'};
       else if(pathname==='/assignments/lab1/problems') json={problems};
       else if(pathname==='/decompose_chunks'){gradeIndex=0;json={session_id:'ui-only',header:'def employee_update(d, bonus, year):',chunks:chunks.map(c=>({...c,prompt:approved?c.prompt:''}))};}
@@ -192,7 +196,7 @@ const server = http.createServer((req,res) => {
       'The question stays beside the planning conversation');
     await page.locator('#tutorDock #chatcol').waitFor();
     await screenshot('acadia-plan-chat-light');
-    await page.locator('[data-plan-method="upload"]').click();
+    await page.locator('#planUpload>summary').click();
     await page.locator('#designPanel:not([hidden])').waitFor();
     assert.equal(await page.locator('#workStep').isVisible(),false);
     assert.equal(await page.locator('#editorWrap').isVisible(),false);
@@ -201,7 +205,7 @@ const server = http.createServer((req,res) => {
     for(const width of [768,390]){
       await page.setViewportSize({width,height:900});
       await noOverflow('Upload plan at '+width);
-      await page.locator('[data-plan-method="chat"]').click();
+      if(await page.locator('#planUpload').evaluate(el=>el.open))await page.locator('#planUpload>summary').click();
       await noOverflow('Chat plan at '+width);
       await screenshot('acadia-plan-'+width);
       assert.equal(await page.locator('#planPreview').isVisible(),true,
@@ -216,11 +220,11 @@ const server = http.createServer((req,res) => {
       assert(!(await page.locator('body').innerText()).includes('MicroTutor'));
       await noOverflow(name);
       if(name==='teacher'){
-        const metricGap=await page.locator('.metric').first().evaluate(el=>{
-          const icon=el.querySelector('.metric-icon').getBoundingClientRect(), label=el.querySelector('.metric-label').getBoundingClientRect();
-          return label.left-icon.right;
+        const alignment=await page.locator('.metric').first().evaluate(el=>{
+          const label=el.querySelector('.metric-label').getBoundingClientRect(),value=el.querySelector('.metric-value').getBoundingClientRect();
+          return {label:label.left,value:value.left};
         });
-        assert(metricGap>=12 && metricGap<=20,'Metric icon and label must stay grouped');
+        assert(Math.abs(alignment.label-alignment.value)<1,'Metric label and value share a left edge');
       }
       await screenshot('acadia-'+name+'-light');
       await page.getByRole('button',{name:'Switch to dark mode',exact:true}).click();

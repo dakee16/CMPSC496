@@ -2,8 +2,9 @@
   "name": "acadia-ui-checks",
   "private": true,
   "scripts": {
-    "test": "node acadia.dom.cjs && node student-insights.dom.cjs && node workspace.dom.cjs",
-    "test:browser": "node acadia.smoke.cjs"
+    "test": "node acadia.dom.cjs && node student-insights.dom.cjs && node workspace.dom.cjs && node navigation-cache.cjs && node tutorial.dom.cjs",
+    "test:browser": "node acadia.smoke.cjs",
+    "preview:fixtures": "node preview-fixtures.cjs"
   },
   "devDependencies": {
     "happy-dom": "20.14.5",

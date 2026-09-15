@@ -35,7 +35,7 @@ const fixture={
       const auth=String(url).includes('/auth/me');
       return new window.Response(JSON.stringify(auth?{name:'Alex Morgan',role:'student',student_id:'fixture'}:data),{status:!auth&&fail?503:200,headers:{'Content-Type':'application/json'}});
     };
-    window.eval(read('ui.js')+'\n'+read('student-insights.js'));
+    window.eval(read('ui.js')+'\n'+read('cache.js')+'\n'+read('student-insights.js'));
     await wait();
     return window;
   };
@@ -50,14 +50,14 @@ const fixture={
     const continueLink=new URL(doc.querySelector('.learning-hero .action-link').href);
     assert.equal(continueLink.searchParams.get('assignment'),'lab1');
     assert.equal(continueLink.searchParams.get('problem'),'employee-update');
-    assert.equal(doc.querySelector('.orbit-core strong').textContent,'25%');
+    assert.equal(doc.querySelector('.dash-metric strong').textContent,'1 / 4');
     assert(doc.querySelector('#insightsTitle').textContent.includes('Alex'));
     doc.querySelector('[data-theme-toggle]').click();
     assert.equal(doc.documentElement.dataset.theme,'dark');
-    fail=true;await dashboard.loadStudentProgress();
+    fail=true;await dashboard.loadStudentProgress(true);
     assert(doc.querySelector('#progressNotice').textContent.includes('last successful update'));
-    assert.equal(doc.querySelector('.orbit-core strong').textContent,'25%');
-    fail=false;await dashboard.loadStudentProgress();
+    assert.equal(doc.querySelector('.dash-metric strong').textContent,'1 / 4');
+    fail=false;await dashboard.loadStudentProgress(true);
     assert.equal(doc.querySelector('#progressNotice').textContent,'');
 
     const grades=await make('student-grades.html');const g=grades.document;
@@ -106,6 +106,7 @@ const fixture={
       if(p.includes('/auth/me'))body={name:'Alex',role:'student',student_id:'fixture'};
       else if(p==='/assignments')body={assignments:[{id:'lab1',name:'Dictionaries',ready:1,total:1},{id:'hidden',name:'Unpublished draft',ready:1,total:1,published:false}]};
       else if(p==='/solved')body={slugs:[]};
+      else if(p.startsWith('/student/progress'))body=fixture;
       else if(p==='/assignments/lab1/problems')body={problems:[{slug:'employee-update',title:'Employee Update',description:'A problem',ready:true}]};
       else if(p==='/decompose_chunks'){opened++;body={session_id:'fixture',header:'def solve():',chunks:[{prompt:'',indent:0}]};}
       else if(p.startsWith('/history/'))body={found:false};
@@ -113,7 +114,7 @@ const fixture={
     };
     study.scrollTo=()=>{};
     study.CodeMirror={fromTextArea:()=>({setOption:()=>{},setSize:()=>{},on:()=>{},refresh:()=>{},focus:()=>{},setCursor:()=>{},getGutterElement:()=>({offsetWidth:32}),setValue:()=>{},getValue:()=>''})};
-    study.eval(read('ui.js')+'\n'+read('graphs.js')+'\n'+read('workspace.js')+'\n'+read('student.js'));
+    study.eval(read('ui.js')+'\n'+read('cache.js')+'\n'+read('graphs.js')+'\n'+read('workspace.js')+'\n'+read('student.js'));
     await wait();
     assert.equal(opened,1);
     assert.equal(study.document.querySelector('#probTitle').textContent,'Employee Update');

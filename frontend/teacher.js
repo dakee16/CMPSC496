@@ -244,6 +244,10 @@ async function consumeRun(resp){
     if (e.name !== "AbortError") fail("The connection dropped mid-run. "
       + "Problems that had finished are saved.");
     return true;
+  } finally {
+    // Streaming writes finish after response headers. Invalidate again when
+    // preparation finishes (or disconnects), not only when the POST starts.
+    window.AcadiaCache?.invalidate();
   }
   return false;
 }

@@ -7,6 +7,7 @@ const $ = id => document.getElementById(id);
    the list every time is a small tax paid repeatedly. */
 const LAST = "mt.grades.assignment";
 let ROWS = [];
+let gradeRequest=0,visibleAssignment=null;
 
 function gradeCell(r){
   const pct = r.percent === null ? "" : `<span class="pct">${r.percent}%</span>`;
@@ -76,27 +77,28 @@ const BOOK = `<svg width="19" height="19" viewBox="0 0 24 24" fill="none"
   stroke-linejoin="round"><path d="M4 19.5V5a2 2 0 0 1 2-2h13v17H6a2 2 0 0 1-2-1.5z"/>
   <path d="M9 8.5l2 2 4-4"/></svg>`;
 
-async function loadGrades(){
+async function loadGrades(force=false){
   const id = $("pick").value;
   if (!id) return;
+  const request=++gradeRequest;
   try { localStorage.setItem(LAST, id); } catch {}
-  paintGradeStats(null);
-  $("body").innerHTML = skeletonRows(3);
-  $("tally").textContent = "";
+  if(visibleAssignment!==id){paintGradeStats(null);$("body").innerHTML=skeletonRows(3);$("tally").textContent="";}
+  $("body").setAttribute("aria-busy","true");
 
   let d;
   try {
     const res = await fetch(
-      `${API}/teacher/assignments/${encodeURIComponent(id)}/grades`);
+      `${API}/teacher/assignments/${encodeURIComponent(id)}/grades`,force===true?{cache:"reload"}:{});
     if (!res.ok) throw new Error(`server said ${res.status}`);
     d = await res.json();
+    if(request!==gradeRequest)return;
   } catch (e) {
+    if(request!==gradeRequest)return;
     $("body").innerHTML = `<div class="banner bad">Could not load grades.
       ${esc(e.message)} <button class="retry" type="button">Try again</button></div>`;
-    $("body").querySelector(".retry").onclick = loadGrades;
-    return;
-  }
-
+    $("body").querySelector(".retry").onclick=()=>loadGrades(true);return;
+  }finally{if(request===gradeRequest)$("body").setAttribute("aria-busy","false");}
+  visibleAssignment=id;
   ROWS = d.students || [];
   paintGradeStats(ROWS);
   $("tally").textContent =
@@ -151,6 +153,10 @@ async function loadAssignments(){
   loadGrades();
 }
 
+$("refreshGrades").onclick=()=>loadGrades(true);
+window.addEventListener("acadia:cache-update",event=>{
+  if(event.detail.url==="/teacher/assignments/"+encodeURIComponent($("pick").value)+"/grades")loadGrades();
+});
 loadAssignments();
 
 function paintGradeStats(rows){

@@ -187,8 +187,9 @@ function showPlanPing(){
    the tutor's reply. submitPlanGraph() awaits it, because there the graph stops
    being a drawing and becomes the thing that gets judged. */
 function refreshPlanGraph(){
-  planQueue = planQueue.then(drawPlanGraph, drawPlanGraph);
-  return planQueue;
+  const requested=workspaceEpoch;
+  const draw=()=>requested===workspaceEpoch?drawPlanGraph():undefined;
+  planQueue=planQueue.then(draw,draw);return planQueue;
 }
 
 async function drawPlanGraph(){
@@ -199,6 +200,8 @@ async function drawPlanGraph(){
   // student was approved on - and the later the conversation goes, the less it
   // is about the plan at all, so the redraw gets worse as it gets less welcome.
   if (planFrozen || !openProblem) return;
+  const drawing=workspaceEpoch;planUpdating=true;workspaceSync();
+  if(!planGraph?.nodes?.length)renderGraphLoading($("planLive"),"Building your working plan…");
   try {
     const r = await fetch(`${API}/plan_graph`, {
       method: "POST", headers: {"Content-Type": "application/json"},
@@ -206,14 +209,20 @@ async function drawPlanGraph(){
                             messages: chatLog.concat(designLog),
                             current: planGraph})
     });
-    if (!r.ok) return;
+    if (!r.ok) throw Error("Plan unavailable");
     const g = await r.json();
+    if(drawing!==workspaceEpoch||planFrozen)return;
     if (g && g.nodes && g.nodes.length){
       planGraph = g;
       paintPlan(g);
     }
-  } catch (e) {
-    /* keep the previous drawing */
+  } catch(e){
+    if(drawing===workspaceEpoch)$("planPreviewStatus").textContent="Could not update the plan. Your previous version is saved.";
+  } finally {
+    if(drawing===workspaceEpoch){
+      planUpdating=false;syncPlanSubmit();
+      if($("planPreviewStatus").textContent==="Updating your plan…")$("planPreviewStatus").textContent=planGraph?.nodes?.length?"Up to date":"Ready to build your plan";
+    }
   }
 }
 
@@ -369,7 +378,7 @@ async function submitPlanGraph(){
     await refreshPlanGraph();
     if (!planGraph || !(planGraph.nodes || []).length){
       return designMsg("warn", "There is no plan yet - describe your approach in "
-        + "the chat and it will appear below.");
+        + "the chat and it will appear in Your working plan.");
     }
     const r = await fetch(`${API}/design_review/plan`, {
       method: "POST", headers: {"Content-Type": "application/json"},
@@ -399,17 +408,21 @@ async function submitPlanGraph(){
 
 /* Keep the next action discoverable, with a reason until a plan exists. */
 function syncPlanSubmit(){
-  const row = $("planSubmitRow");
-  if (!row) return;
-  row.hidden = tutorReleased;
-  const ready = !!(planGraph && (planGraph.nodes || []).length);
-  $("planEmpty").hidden = ready;
-  if (resourceKind !== "plan") $("planCard").hidden = !ready;
-  $("planSubmitHint").textContent = ready ? "Preview the plan below, then send it for review." : "Describe your steps in the chat to build a plan.";
-  const button = $("planSubmitBtn");
-  if (button.dataset.busy !== "1"){
-    if (workspaceReadyState && ready && !tutorReleased) enable(button);
-    else disable(button, "Describe your approach in the chat first.");
+  const row=$("planSubmitRow");if(!row)return;
+  row.hidden=tutorReleased;
+  const ready=!!planGraph?.nodes?.length,busy=planLoading||planUpdating;
+  $("planEmpty").hidden=ready||busy||historyUnavailable;
+  if(resourceKind!=="plan")$("planCard").hidden=!(ready||busy||historyUnavailable);
+  $("planPreview").setAttribute("aria-busy",String(busy));
+  $("planLive").setAttribute("aria-busy",String(busy));
+  $("planSubmitHint").textContent=planLoading?"Restoring your earlier work…":ready?"Review your working plan, then submit it.":"Talk through your approach with the tutor, or upload a plan.";
+  $("openPlanUpload").hidden=tutorReleased;
+  if(workspaceReadyState&&!planLoading&&!historyUnavailable)enable($("openPlanUpload"));
+  else disable($("openPlanUpload"),"Wait for your earlier work to load.");
+  const button=$("planSubmitBtn");
+  if(button.dataset.busy!=="1"){
+    if(workspaceReadyState&&ready&&!tutorReleased&&!busy&&!historyUnavailable)enable(button);
+    else disable(button,busy?"Wait for your plan to finish loading.":"Build a plan with the tutor first, or upload your own plan.");
   }
 }
 
@@ -581,16 +594,16 @@ function listError(host, retry){
 }
 
 async function loadAssignments(){
-  paintStudentStats(null);
-  $("assignCard").innerHTML = skeletonRows(2);
-  let d, solved;
+  if(!ASSIGNMENTS.length){paintStudentStats(null);$("assignCard").innerHTML=skeletonRows(2);}
+  let d, solved, progress;
   try {
-    [d, solved] = await Promise.all([
-      fetch(`${API}/assignments`).then(r => r.json()),
+    [d, solved, progress] = await Promise.all([
+      fetch(`${API}/assignments`).then(r => {if(!r.ok)throw Error("Assignments unavailable");return r.json();}),
       // A student with no solves yet is a 200 with an empty list; a failure
       // here must not cost them the assignment list, so it degrades to "none".
       fetch(`${API}/solved`).then(r => r.ok ? r.json() : {slugs: []})
-                            .catch(() => ({slugs: []}))
+                            .catch(() => ({slugs: []})),
+      fetch(AcadiaCache.progressURL()).then(r=>r.ok?r.json():null).catch(()=>null)
     ]);
   } catch {
     return listError($("assignCard"), loadAssignments);
@@ -614,27 +627,15 @@ async function loadAssignments(){
     return;
   }
 
-  // One extra request per assignment, to learn which slugs it contains. With a
-  // handful of assignments that is cheaper than a new endpoint; if a course
-  // ever has fifty, /assignments should carry the slugs itself.
-  ASSIGNMENTS = await Promise.all(list.map(async a => {
-    let slugs = [], failed = false;
-    try {
-      const r = await fetch(`${API}/assignments/${a.id}/problems`);
-      if (!r.ok) throw new Error();
-      const j = await r.json();
-      a._problems = j.problems || [];
-      slugs = a._problems.map(p => p.slug);
-    } catch {
-      // The row still opens - openAssignment() retries the fetch. What it must
-      // NOT do is print "0 / 0 solved", which reads as "you have done nothing"
-      // when the truth is "we could not ask".
-      failed = true;
-    }
-    const solvedN = slugs.filter(isDone).length;
-    const last = LAST_SLUG && slugs.includes(LAST_SLUG) ? 1 : 0;
-    return {...a, slugs, solvedN, last, failed};
-  }));
+  // Reuse the dashboard's assignment membership; descriptions load on demand.
+  ASSIGNMENTS=list.map(a=>{
+    const membership=progress?.problems?.filter(p=>String(p.assignment_id)===String(a.id));
+    const slugs=(membership||[]).map(p=>p.slug);
+    const failed=!membership||(a.ready>0&&!slugs.length);
+    const solvedN=slugs.filter(isDone).length;
+    const last=LAST_SLUG&&slugs.includes(LAST_SLUG)?1:0;
+    return {...a,slugs,solvedN,last,failed};
+  });
 
   paintStudentStats(ASSIGNMENTS);
 
@@ -658,8 +659,6 @@ async function loadAssignments(){
         : "Every problem in this assignment is ready.";
       const resume = !a.failed && resumeId && resumeId.id === a.id;
       return `<li><button class="rowitem${resume ? " resume" : ""}" data-id="${esc(a.id)}">
-        <span class="assignment-top"><span class="assignment-glyph" aria-hidden="true">{ }</span>
-          <span class="assignment-kind">${resume ? "PICK UP WHERE YOU LEFT OFF" : "PYTHON PRACTICE"}</span></span>
         <span class="rmain"><span class="rname">${esc(a.name)}</span>
           <span class="rmeta" title="${esc(readyTip)}">${readyLab} to practice</span></span>
         <span class="assignment-bottom">
@@ -701,7 +700,7 @@ function view(which){
   setWorkspaceFocus(false);
   setTutorOpen(false, false);
   ["cAssign","cProblem","cSolve"].forEach(id => $(id).hidden = id !== which);
-  scrollTo({top: 0, behavior: "smooth"});
+  scrollTo({top: 0, behavior: "instant"});
 }
 
 function goAssignments(){
@@ -727,7 +726,7 @@ async function openAssignment(a){
   document.title = `${a.name} · ACADIA`;
   // A breadcrumb in the header, so getting back one level does not mean going
   // all the way Home.
-  setCrumbs([{label: a.name}]);
+  setCrumbs([{label:"Assignments",go:goAssignments},{label:a.name}]);
   view("cProblem");
 
   if (a._problems){ PROBLEMS = a._problems; return renderProblems(); }
@@ -922,6 +921,7 @@ async function start(p){
   const asg = openAssign ? openAssign.name : ($("assignName").textContent || "").trim();
   $("crumb2").textContent = asg ? `${asg}  ›  ${name}` : name;
   setCrumbs([
+    {label:"Assignments",go:goAssignments},
     ...(openAssign ? [{label: openAssign.name, go: backToProblems}] : []),
     {label: name}
   ]);
@@ -969,6 +969,8 @@ async function start(p){
 
   // No solution is sent. The server reads the reference from the
   // database, so the browser never holds it.
+  // Restore reads and session creation are independent; overlap the requests.
+  const savedWork=fetch(`${API}/history/${encodeURIComponent(p.slug)}`).catch(()=>null);
   let r;
   try {
     r = await fetch(`${API}/decompose_chunks`, {
@@ -992,7 +994,7 @@ async function start(p){
   // Nothing to put back, so this IS a fresh start - say hello and draw the
   // empty plan. Skipped when history was restored (it painted both already) and
   // when the student has already moved to another problem.
-  if (!await restoreHistory(p)){
+  if (!await restoreHistory(p,savedWork)){
     if (opening !== workspaceEpoch) return;
     resetChat(p.title || p.slug);
     paintPlan(null);
@@ -1017,15 +1019,35 @@ async function start(p){
    knows not to overwrite them with a fresh greeting - and true as well when the
    student has moved on mid-fetch, because whatever they moved to owns those
    panels now. False means "nothing here, start clean". */
-async function restoreHistory(p){
+async function restoreHistory(p,request){
   const opening = workspaceEpoch;
   let h;
   try {
-    const r = await fetch(`${API}/history/${encodeURIComponent(p.slug)}`);
-    if (opening !== workspaceEpoch) return true;
-    if (!r.ok) { setRestoring(false); return false; }
-    h = await r.json();
-  } catch { if (opening !== workspaceEpoch) return true; setRestoring(false); return false; }
+    const r=await (request||fetch(`${API}/history/${encodeURIComponent(p.slug)}`));
+    if(opening!==workspaceEpoch)return true;
+    if(!r||!r.ok)throw Error("History unavailable");
+    h=await r.json();
+  }catch{
+    if(opening!==workspaceEpoch)return true;
+    historyUnavailable=true;setRestoring(false);
+    for(const id of ["cinput","designBtn","designFile","planSubmitBtn","submit","openPlanUpload"])disable($(id),"Retry loading your earlier work first.");
+    $("cform").querySelector('button[type="submit"]').disabled=true;
+    $("designDrop").classList.add("inert");$("designDrop").setAttribute("aria-disabled","true");$("designDrop").tabIndex=-1;
+    $("clog").innerHTML='<div class="banner warn">Your earlier conversation could not be loaded. Retry to pick up your work safely.</div>';
+    $("planLive").innerHTML='<div class="graph-load-error" role="alert"><strong>Your saved plan could not be loaded.</strong><p>Your work has not been reset.</p><button id="retryHistory" type="button">Retry loading</button></div>';
+    $("planPreviewStatus").textContent="Could not load your saved plan";
+    $("workspaceStatus").textContent="Retry loading your earlier work to continue.";syncPlanSubmit();
+    $("retryHistory").onclick=async()=>{
+      if(opening!==workspaceEpoch)return;
+      historyUnavailable=false;historyLoading();
+      if(!await restoreHistory(p)){
+        if(opening!==workspaceEpoch)return;
+        resetChat(p.title||p.slug);paintPlan(null);
+      }
+      if(opening===workspaceEpoch)readyWorkspace();
+    };
+    return true;
+  }
   if (opening !== workspaceEpoch) return true;
   if (openProblem !== p) return true;              // they moved on; hands off
   if (!h || !h.found) { setRestoring(false); return false; }   // nothing recorded
@@ -1658,6 +1680,9 @@ function showChatCoach(){
    design submitted before we know whether this problem was already unlocked is
    a round of review nobody needed. */
 function setRestoring(on){
+  planLoading=!!on;
+  $("planPreviewStatus").textContent=on?"Loading your saved plan…":planGraph?.nodes?.length?"Saved plan restored":"Ready to build your plan";
+  $("cform").querySelector('button[type="submit"]').disabled=!!on;
   for (const id of ["cinput", "designBtn", "designFile", "planSubmitBtn",
                     "submit"]){
     const el = $(id);
@@ -1691,7 +1716,7 @@ function historyLoading(){
      </div>` + skeletonRows(3);
   chatLog = [];
   hideChips();
-  $("planLive").innerHTML = skeletonRows(2);
+  $("planCard").hidden=false;$("planEmpty").hidden=true;renderGraphLoading($("planLive"));syncPlanSubmit();
 }
 
 function resetChat(title){
@@ -1699,7 +1724,7 @@ function resetChat(title){
   chatLog = [];
   bubble("bot", `Let’s think through ${title}. What should the function receive, `
                + `and what should it return? Tell me your approach in your own words. `
-               + `When you’re ready, submit your plan for review in the Plan stage.`);
+               + `When you’re ready, use Submit plan for review beside your working plan.`);
   showChips();
   // The stage introduction now provides the guidance once given by a popup.
 }
@@ -1707,7 +1732,7 @@ function resetChat(title){
 async function sendToTutor(text){
   // They found the chat on their own, so the tip has done its job.
   dismissCoach(true);
-  if (chatBusy) return;
+  if (chatBusy || planLoading || historyUnavailable) return;
   if (!openProblem){
     bubble("bot", "Open a problem on the left first - I can only help with the one you are working on.");
     return;
@@ -1782,6 +1807,7 @@ function autogrow(el){
   el.style.height = Math.min(el.scrollHeight, 132) + "px";
 }
 function submitChat(){
+  if(chatBusy||planLoading||historyUnavailable)return;
   const el = $("cinput");
   const t = el.value.trim();
   if (!t) return;

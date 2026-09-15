@@ -31,7 +31,7 @@ const read = name => fs.readFileSync(path.join(root, name), 'utf8');
       listSelections:()=>selections,setSelections:value=>selections=value
     })};
     // One evaluation matches classic browser scripts' shared lexical scope.
-    window.eval(read('ui.js') + '\n' + read('graphs.js') + '\n' + read('workspace.js') + '\n' + read('student.js') +
+    window.eval(read('ui.js') + '\n' + read('cache.js') + '\n' + read('graphs.js') + '\n' + read('workspace.js') + '\n' + read('student.js') +
       '\nwindow.acadiaEval = code => eval(code);');
     await new Promise(resolve=>setTimeout(resolve,20));
     assert.equal(doc.documentElement.dataset.theme,'light');

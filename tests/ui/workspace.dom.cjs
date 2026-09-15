@@ -17,6 +17,7 @@ const graph = {nodes:[{id:'n0',kind:'start',label:'Read records'},{id:'n1',kind:
   const doc = window.document;
   let value = '', selections = [], editorCreations = 0, focusCalls = 0;
   const options = {}, calls = [];
+  let historyGate=null, historyFailure=false;
   let approved = false, stepFailure = false, comparisonFailure = false, openingFailure = false, verdict = 'incorrect', history = {found:false}, session = 0;
   try {
     doc.write(read('student.html').replace(/<script\b[^>]*>[\s\S]*?<\/script>/g,''));
@@ -33,8 +34,9 @@ const graph = {nodes:[{id:'n0',kind:'start',label:'Read records'},{id:'n1',kind:
       if(route==='/auth/me') data={name:'Alex',role:'student',student_id:'synthetic'};
       else if(route==='/assignments') data={assignments:[]};
       else if(route==='/solved') data={slugs:[]};
+      else if(route==='/student/progress') data={problems:[]};
       else if(route==='/decompose_chunks'){status=openingFailure?503:200;data={session_id:'s'+(++session),header:'def employee_update(records):',chunks:steps.map(s=>({...s,prompt:''}))};}
-      else if(route.startsWith('/history/')) data=history;
+      else if(route.startsWith('/history/')){if(historyGate)await historyGate;if(historyFailure)status=503;data=history;}
       else if(route.startsWith('/session_steps/')){status=stepFailure?503:200;data={chunks:steps};}
       else if(route==='/tutor_chat') data={reply:'What changes from one year to the next?',ready:true,offtrack:true};
       else if(route==='/plan_graph') data=graph;
@@ -49,7 +51,7 @@ const graph = {nodes:[{id:'n0',kind:'start',label:'Read records'},{id:'n1',kind:
       else throw new Error('Unexpected request: '+route);
       return new window.Response(JSON.stringify(data),{status,headers:{'Content-Type':'application/json'}});
     };
-    window.eval(['ui.js','graphs.js','workspace.js','student.js'].map(read).join('\n')+'\nwindow.inspect = code => eval(code);');
+    window.eval(['ui.js','cache.js','graphs.js','workspace.js','student.js'].map(read).join('\n')+'\nwindow.inspect = code => eval(code);');
     await tick();
     await window.start(problem);
     const visibleStage = () => [...doc.querySelectorAll('.journey-panel')].filter(el=>!el.hidden).map(el=>el.id);
@@ -74,13 +76,13 @@ const graph = {nodes:[{id:'n0',kind:'start',label:'Read records'},{id:'n1',kind:
     assert.equal(doc.querySelector('#planPreview').tagName,'SECTION','The plan graph has no collapse control');
     assert.equal(doc.querySelector('#planEmpty').hidden,false);
     doc.querySelector('#cinput').value='My unsent thinking';
-    window.choosePlanMethod('upload');
+    doc.querySelector('#planUpload').open=true;
     window.pickDesign(new window.File(['diagram'],'plan.pdf',{type:'application/pdf'}));
-    window.choosePlanMethod('chat');
+    doc.querySelector('#planUpload').open=false;
     assert.equal(doc.querySelector('#cinput').value,'My unsent thinking');
-    window.choosePlanMethod('upload');
+    doc.querySelector('#planUpload').open=true;
     assert.equal(doc.querySelector('#designName').textContent,'plan.pdf');
-    window.choosePlanMethod('chat');
+    doc.querySelector('#planUpload').open=false;
     await window.sendToTutor('I will copy the records and update the salaries.');
     await window.inspect('planQueue');
     assert(doc.querySelector('#fork'),'The tutor’s alternative-approach choices remain available');
@@ -178,7 +180,7 @@ const graph = {nodes:[{id:'n0',kind:'start',label:'Read records'},{id:'n1',kind:
 
     // Upload approval, unavailable step instructions, retry and a safe restart.
     approved=true;await window.start(problem);
-    window.chooseWorkspaceStage('read');window.choosePlanMethod('upload');
+    window.chooseWorkspaceStage('read');doc.querySelector('#planUpload').open=true;
     window.pickDesign(new window.File(['diagram'],'plan.pdf',{type:'application/pdf'}));
     stepFailure=true;await window.uploadDesign();await tick();
     assert.equal(doc.querySelector('#planApproved').hidden,false);
@@ -207,6 +209,24 @@ const graph = {nodes:[{id:'n0',kind:'start',label:'Read records'},{id:'n1',kind:
     assert(doc.querySelector('#reflectSummary').textContent.includes('previous attempt'));
     assert.equal(doc.querySelector('#reflectionCodeDetails').hidden,true,'Historical graphs cannot claim a new completed function');
     assert.equal(doc.querySelectorAll('#clog').length,1);
+    // Saved chat and graph share an explicit loading/error boundary.
+    let releaseHistory;
+    historyGate=new Promise(resolve=>releaseHistory=resolve);
+    const restoring=window.start(problem);await tick();
+    assert.equal(doc.querySelector('#planPreview').getAttribute('aria-busy'),'true');
+    assert.equal(doc.querySelector('#planEmpty').hidden,true);
+    assert.equal(doc.querySelector('#planCard').hidden,false);
+    assert(doc.querySelector('#planLive .graph-loading'));
+    assert.equal(doc.querySelector('#cform button[type="submit"]').disabled,true);
+    releaseHistory();historyGate=null;await restoring;
+    assert.equal(doc.querySelector('#planPreview').getAttribute('aria-busy'),'false');
+    assert(doc.querySelector('#planLive svg'));
+    historyFailure=true;await window.start(problem);
+    assert(doc.querySelector('#retryHistory'));
+    assert.equal(doc.querySelector('#cinput').disabled,true);
+    historyFailure=false;doc.querySelector('#retryHistory').click();await tick();
+    assert.equal(doc.querySelector('#retryHistory'),null);
+    assert.equal(doc.querySelector('#cinput').disabled,false);
     const ids=[...doc.querySelectorAll('[id]')].map(el=>el.id);
     assert.equal(new Set(ids).size,ids.length,'No duplicate IDs');
     assert(calls.some(c=>c.route==='/design_review')&&calls.some(c=>c.route==='/design_review/plan'));

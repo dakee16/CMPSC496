@@ -14,7 +14,6 @@
  * two lines and the box widens to fit the longest line in the graph.
  */
 
-const G_GAPX = 26, G_GAPY = 40;   // space between boxes
 const G_PAD = 18;                 // margin inside the drawing
 const G_LINE = 15;                // label line height
 const G_CHAR = 7.25;              // JetBrains Mono advance width at 12px
@@ -86,7 +85,7 @@ function gWrapLabel(label){
  * Uniform rather than per-node so the layered grid below stays simple and the
  * rows still line up. */
 function gMetrics(graph){
-  const lines = {};
+  const lines = Object.create(null);
   let widest = 0, tallest = 1;
   graph.nodes.forEach(n => {
     const ls = gWrapLabel(n.label);
@@ -101,95 +100,125 @@ function gMetrics(graph){
   return {lines, W, H};
 }
 
-/* Assign each node a row. Longest-path layering, with two guards against the
- * cycles a loop necessarily creates: edges labelled "repeat" are the back
- * edges and never deepen anything, and the relaxation is capped at one pass
- * per node so an unlabelled cycle terminates instead of hanging the page. */
-function gLayer(graph){
-  const depth = {};
-  graph.nodes.forEach(n => { depth[n.id] = 0; });
-
-  /* BACK EDGES, found structurally rather than by their label. The extractor
-     only writes "repeat" when it remembers to, and an unlabelled edge from a
-     loop BODY back to its loop makes the loop deeper than the body it
-     contains - so the loop is drawn below the thing it repeats, and the edge
-     feeding it spans the whole drawing. A depth-first walk marks any edge
-     pointing at a node already on the stack, which is exactly a back edge. */
-  const out = {};
-  graph.nodes.forEach(n => { out[n.id] = []; });
-  graph.edges.forEach(e => { if (out[e.src]) out[e.src].push(e); });
-  const back = new Set(), seen = new Set(), stack = new Set();
-  const walk = id => {
-    seen.add(id); stack.add(id);
-    for (const e of out[id] || []){
-      if (e.label === "repeat" || stack.has(e.dst)) back.add(e);
-      else if (!seen.has(e.dst)) walk(e.dst);
+/* Cycle detection is structural: "repeat" can also label a forward edge
+   into a loop body. Invisible rank constraints keep exits below loop bodies. */
+function gStructure(graph){
+  const ids=new Set(graph.nodes.map(n=>n.id));
+  const edges=(graph.edges||[]).filter(e=>ids.has(e.src)&&ids.has(e.dst));
+  const out=new Map(graph.nodes.map(n=>[n.id,[]]));
+  const incoming=new Map(graph.nodes.map(n=>[n.id,0]));
+  edges.forEach(e=>{out.get(e.src).push(e);incoming.set(e.dst,incoming.get(e.dst)+1);});
+  const priority=e=>/^(no|false|done|exit|else)$/i.test(e.label||"")?1:0;
+  out.forEach(list=>list.sort((a,b)=>priority(a)-priority(b)));
+  const seen=new Set(),stack=new Set(),back=new Set();
+  function visit(id){
+    seen.add(id);stack.add(id);
+    for(const e of out.get(id)){
+      if(stack.has(e.dst))back.add(e);
+      else if(!seen.has(e.dst))visit(e.dst);
     }
     stack.delete(id);
-  };
-  graph.nodes.forEach(n => { if (!seen.has(n.id)) walk(n.id); });
-  for (let i = 0; i < graph.nodes.length; i++){
-    let changed = false;
-    for (const e of graph.edges){
-      if (back.has(e)) continue;
-      if (!(e.src in depth) || !(e.dst in depth)) continue;
-      if (depth[e.dst] < depth[e.src] + 1){ depth[e.dst] = depth[e.src] + 1; changed = true; }
+  }
+  const roots=[...graph.nodes].sort((a,b)=>(a.kind==="start"?-2:incoming.get(a.id)===0?-1:0)-(b.kind==="start"?-2:incoming.get(b.id)===0?-1:0));
+  roots.forEach(n=>{if(!seen.has(n.id))visit(n.id);});
+  const forward=edges.filter(e=>!back.has(e)), ranking=[...forward];
+  const predecessors=new Map(graph.nodes.map(n=>[n.id,[]]));
+  edges.forEach(e=>predecessors.get(e.dst).push(e.src));
+  for(const header of graph.nodes.filter(n=>n.kind==="loop")){
+    const tails=edges.filter(e=>back.has(e)&&e.dst===header.id).map(e=>e.src);
+    if(!tails.length)continue;
+    const body=new Set([header.id]),todo=[...tails];
+    while(todo.length){
+      const id=todo.pop();if(body.has(id))continue;
+      body.add(id);todo.push(...predecessors.get(id));
     }
-    if (!changed) break;
+    const exits=forward.filter(e=>e.src===header.id&&!body.has(e.dst));
+    for(const exit of exits)for(const id of body){
+      if(id!==header.id&&!ranking.some(e=>e.src===id&&e.dst===exit.dst))ranking.push({src:id,dst:exit.dst});
+    }
   }
-  return depth;
+  const depth=Object.create(null),indegree=new Map(graph.nodes.map(n=>[n.id,0]));
+  const rankedOut=new Map(graph.nodes.map(n=>[n.id,[]]));
+  ranking.forEach(e=>{rankedOut.get(e.src).push(e);indegree.set(e.dst,indegree.get(e.dst)+1);});
+  graph.nodes.forEach(n=>{depth[n.id]=0;});
+  const queue=roots.filter(n=>!indegree.get(n.id)).map(n=>n.id);
+  for(let i=0;i<queue.length;i++)for(const e of rankedOut.get(queue[i])){
+    depth[e.dst]=Math.max(depth[e.dst],depth[e.src]+1);
+    indegree.set(e.dst,indegree.get(e.dst)-1);if(!indegree.get(e.dst))queue.push(e.dst);
+  }
+  return {depth,back,edges};
 }
-
-function gPositions(graph, W, H){
-  const depth = gLayer(graph), rows = {};
-  graph.nodes.forEach(n => { (rows[depth[n.id]] = rows[depth[n.id]] || []).push(n.id); });
-
-  /* COMPACT THE ROWS. Depths come out of longest-path layering SPARSE - a node
-     whose only path in is long sits at depth 5 while nothing occupies 3 or 4 -
-     and this used the raw depth as the row index. That drew the gap as empty
-     space with an edge running down through it: the "line that goes on for
-     ages before anything appears".
-
-     The height was computed from the number of OCCUPIED rows at the same time,
-     so the canvas was also too short for what had just been laid out and the
-     drawing ran past its own viewBox. One cause, both symptoms. */
-  const used = Object.keys(rows).map(Number).sort((a, b) => a - b);
-  const rowOf = {};
-  used.forEach((d, i) => { rowOf[d] = i; });
-
-  const widest = Math.max(1, ...Object.values(rows).map(r => r.length));
-  const pos = {};
-  used.forEach(d => {
-    const row = rows[d];
-    // Centre each row against the widest one so the drawing reads as a spine.
-    const offset = ((widest - row.length) * (W + G_GAPX)) / 2;
-    row.forEach((id, i) => {
-      pos[id] = {x: G_PAD + offset + i * (W + G_GAPX),
-                 y: G_PAD + rowOf[d] * (H + G_GAPY)};
-    });
+function gLayer(graph){return gStructure(graph).depth;}
+/* Distinct ports and gap tracks prevent shared line segments. Long forward
+   branches travel on the left; loop returns travel on the right. Channels can
+   be reused only by non-overlapping loops, keeping sequential loops compact. */
+function gLayout(graph,W,H){
+  const {depth,back,edges}=gStructure(graph),rows=[];
+  graph.nodes.forEach(n=>{(rows[depth[n.id]]||=[]).push(n.id);});
+  const rank=new Map();
+  rows.forEach(row=>{
+    const score=id=>{
+      const parents=edges.filter(e=>e.dst===id&&!back.has(e)).map(e=>rank.get(e.src)).filter(Number.isFinite);
+      return parents.length?parents.reduce((a,b)=>a+b,0)/parents.length:0;
+    };
+    row.sort((a,b)=>score(a)-score(b));row.forEach((id,i)=>rank.set(id,i));
   });
-  return {pos,
-          w: G_PAD * 2 + widest * (W + G_GAPX) - G_GAPX,
-          h: G_PAD * 2 + used.length * (H + G_GAPY) - G_GAPY};
-}
-
-function gEdgePath(a, b, back, W, H, side){
-  const x1 = a.x + W / 2, y1 = a.y + H, x2 = b.x + W / 2, y2 = b.y;
-  if (back){
-    // A back edge goes UP, in a channel to the right of the WHOLE grid.
-    //
-    // It used to turn at max(a.x, b.x) + W + 14 - just right of its own two
-    // endpoints - which is only clear of the drawing when those two happen to
-    // sit in the rightmost column. On any branching plan it was a lane running
-    // straight through the node beside them: the loop-back on a digit-sum plan
-    // climbed through `return total`, and its "repeat" label landed on top of
-    // that node's text. `side` now comes from the caller, which knows how wide
-    // the grid is and gives each back edge its own lane.
-    return `M ${a.x + W} ${a.y + H / 2} H ${side} V ${b.y + H / 2} H ${b.x + W}`;
+  const widest=Math.max(1,...rows.map(r=>r.length)),gridWidth=widest*(W+72)-72;
+  const gapTracks=new Map();
+  function track(gap){const n=gapTracks.get(gap)||0;gapTracks.set(gap,n+1);return {gap,n};}
+  const outgoing=new Map(graph.nodes.map(n=>[n.id,[]])),incoming=new Map(graph.nodes.map(n=>[n.id,[]]));
+  const routes=edges.map(edge=>{
+    const reverse=back.has(edge),outer=reverse||depth[edge.dst]!==depth[edge.src]+1;
+    const fromTrack=track(depth[edge.src]),toTrack=outer?track(depth[edge.dst]-1):fromTrack;
+    const route={edge,back:reverse,outer,fromTrack,toTrack};
+    outgoing.get(edge.src).push(route);incoming.get(edge.dst).push(route);return route;
+  });
+  const left=routes.filter(r=>r.outer&&!r.back),right=routes.filter(r=>r.back);
+  const laneWidth=list=>Math.max(76,...list.map(r=>Math.min(22,String(r.edge.label||"").length)*6.5+28));
+  const leftWidth=laneWidth(left),rightWidth=laneWidth(right);
+  function allocate(list){
+    const lanes=[];
+    list.sort((a,b)=>Math.abs(depth[a.edge.src]-depth[a.edge.dst])-Math.abs(depth[b.edge.src]-depth[b.edge.dst]));
+    for(const r of list){
+      const lo=Math.min(depth[r.edge.src],depth[r.edge.dst])-.5,hi=Math.max(depth[r.edge.src],depth[r.edge.dst])+.5;
+      let index=lanes.findIndex(lane=>lane.every(span=>hi<span[0]||lo>span[1]));
+      if(index<0){index=lanes.length;lanes.push([]);}
+      lanes[index].push([lo,hi]);r.laneIndex=index;
+    }
+    return lanes.length;
   }
-  const mid = (y1 + y2) / 2;
-  return `M ${x1} ${y1} V ${mid} H ${x2} V ${y2}`;
+  const leftCount=allocate(left),rightCount=allocate(right);
+  const gridX=G_PAD+(leftCount?leftCount*leftWidth+24:0);
+  const gapHeight=gap=>Math.max(68,(gapTracks.get(gap)||0)*24+28),y=[];
+  y[0]=G_PAD+(gapTracks.has(-1)?gapHeight(-1):0);
+  for(let row=1;row<rows.length;row++)y[row]=y[row-1]+H+gapHeight(row-1);
+  const pos=Object.create(null);
+  rows.forEach((row,d)=>row.forEach((id,i)=>{pos[id]={x:gridX+(gridWidth-row.length*(W+72)+72)/2+i*(W+72),y:y[d]};}));
+  right.forEach(r=>{r.lane=gridX+gridWidth+32+r.laneIndex*rightWidth;});
+  left.forEach(r=>{r.lane=gridX-32-r.laneIndex*leftWidth;});
+  const trackY=t=>(t.gap===-1?G_PAD:y[t.gap]+H)+18+t.n*24;
+  const portX=(id,list,r)=>pos[id].x+W*(list.indexOf(r)+1)/(list.length+1);
+  routes.forEach(r=>{
+    const {edge}=r,a=pos[edge.src],b=pos[edge.dst];
+    const sx=portX(edge.src,outgoing.get(edge.src),r),dx=portX(edge.dst,incoming.get(edge.dst),r);
+    const leave=trackY(r.fromTrack),enter=trackY(r.toTrack);
+    r.points=[[sx,a.y+H],[sx,leave]];
+    if(r.outer)r.points.push([r.lane,leave],[r.lane,enter],[dx,enter]);else r.points.push([dx,leave]);
+    r.points.push([dx,b.y]);
+    r.path=r.points.map(([x,y],i)=>(i?"L ":"M ")+x+" "+y).join(" ");
+    if(edge.label){
+      const label=String(edge.label),short=label.length>22?label.slice(0,21)+"…":label,width=short.length*6.5+14;
+      r.label={text:short,full:label,w:width,h:20,
+        x:r.outer?r.lane-width/2:(sx+dx)/2+(Math.abs(dx-sx)<width+18?12:-width/2),
+        y:r.outer?(leave+enter)/2-10:leave-10};
+    }
+  });
+  const nodeReach=gridX+gridWidth+(rightCount?32+(rightCount-1)*rightWidth+rightWidth/2:0)+G_PAD;
+  const w=Math.max(nodeReach,...routes.map(r=>r.label?r.label.x+r.label.w+G_PAD:0));
+  const h=y[rows.length-1]+H+(gapTracks.has(rows.length-1)?gapHeight(rows.length-1):0)+G_PAD;
+  return {pos,w,h,routes,depth,W,H};
 }
+function gPositions(graph,W,H){return gLayout(graph,W,H);}
 
 /* A key for the node colours. Each swatch repeats the bar shape used inside
  * the nodes rather than a plain dot, so the mapping is literal instead of
@@ -200,138 +229,57 @@ function gLegend(){
       (G_STYLE[k] || G_STYLE.step).stroke}"></span>${k}</li>`).join("") + `</ul>`;
 }
 
-/* ------------------------------------------------------------------
- * Pan / zoom viewport
- * ------------------------------------------------------------------
- * The card is a fixed height and the drawing is whatever size it needs to be,
- * so one of the two has to give. Fit-to-view on render, then wheel to zoom,
- * drag to pan, three buttons for anyone who would rather not, and arrow keys
- * for anyone who cannot.
- *
- * Everything runs on a transform on one <g>. Nothing re-lays-out, so a long
- * plan stays smooth and the SVG keeps its own coordinates.
- */
-function gAttachView(box, svg, layer, size){
-  const state = {k: 1, tx: 0, ty: 0};
-  const apply = () => layer.setAttribute("transform",
-    `translate(${state.tx} ${state.ty}) scale(${state.k})`);
-
-  const fit = () => {
-    const bw = box.clientWidth, bh = box.clientHeight;
-    if (!bw || !bh) return;
-    // Never blow a small graph up past life size - a three-node plan filling a
-    // 420px card looks like an error, not a diagram.
-    state.k = Math.min(bw / size.w, bh / size.h, 1);
-    state.tx = (bw - size.w * state.k) / 2;
-    state.ty = (bh - size.h * state.k) / 2;
-    apply();
-  };
-
-  // Zoom about a point, so whatever is under the cursor stays under it.
-  const zoomAt = (factor, px, py) => {
-    const k = Math.max(0.25, Math.min(3, state.k * factor));
-    const r = k / state.k;
-    state.tx = px - (px - state.tx) * r;
-    state.ty = py - (py - state.ty) * r;
-    state.k = k;
-    apply();
-  };
-  const zoomCentre = f => zoomAt(f, box.clientWidth / 2, box.clientHeight / 2);
-
-  /* A PLAIN wheel belongs to the page, never to this drawing.
-   *
-   * This used to preventDefault() every wheel event, and the plan card sits
-   * directly below the workspace - so scrolling down past it froze the
-   * document exactly there. The graph silently ate the gesture, the page
-   * stopped moving, and the student could not get back up to the editor or the
-   * submit button: the card read as a dead, static block.
-   *
-   * Ctrl/Cmd+wheel is the convention every map and diagram already uses, and
-   * the +/- buttons, the fit button and the keyboard shortcuts all still zoom
-   * with no modifier at all - so nothing is lost by giving the wheel back. */
-  svg.addEventListener("wheel", e => {
-    if (!e.ctrlKey && !e.metaKey) return;      // let the page scroll
-    e.preventDefault();
-    const r = box.getBoundingClientRect();
-    zoomAt(e.deltaY < 0 ? 1.12 : 1 / 1.12, e.clientX - r.left, e.clientY - r.top);
-  }, {passive: false});
-
-  let drag = null;
-  svg.addEventListener("pointerdown", e => {
-    drag = {x: e.clientX, y: e.clientY, tx: state.tx, ty: state.ty};
-    svg.setPointerCapture(e.pointerId);
-    box.classList.add("panning");
-  });
-  svg.addEventListener("pointermove", e => {
-    if (!drag) return;
-    state.tx = drag.tx + (e.clientX - drag.x);
-    state.ty = drag.ty + (e.clientY - drag.y);
-    apply();
-  });
-  const endDrag = () => { drag = null; box.classList.remove("panning"); };
-  svg.addEventListener("pointerup", endDrag);
-  svg.addEventListener("pointercancel", endDrag);
-
-  // A drawing that can only be reached with a mouse is a drawing half the
-  // class cannot read.
-  box.addEventListener("keydown", e => {
-    const step = e.shiftKey ? 80 : 28;
-    const moves = {ArrowLeft: [step, 0], ArrowRight: [-step, 0],
-                   ArrowUp: [0, step], ArrowDown: [0, -step]};
-    if (moves[e.key]){
-      e.preventDefault();
-      state.tx += moves[e.key][0]; state.ty += moves[e.key][1]; apply();
-    } else if (e.key === "+" || e.key === "="){ e.preventDefault(); zoomCentre(1.15); }
-    else if (e.key === "-"){ e.preventDefault(); zoomCentre(1 / 1.15); }
-    else if (e.key === "0"){ e.preventDefault(); fit(); }
-  });
-
-  box.querySelector(".gzin").onclick  = () => zoomCentre(1.2);
-  box.querySelector(".gzout").onclick = () => zoomCentre(1 / 1.2);
-  box.querySelector(".gzfit").onclick = fit;
-
-  /* REAL FULLSCREEN, which the expand icon has always promised and never done.
-     It was wired to fit(), so pressing it on a graph too big to read just
-     recentred the same small box. Fit stays - it is genuinely useful - and
-     moves to its own control; this one now fills the screen, which is what a
-     student pressing it wants. */
-  const full = box.querySelector(".gzfull");
-  if (full){
-    full.onclick = () => {
-      const doc = document;
-      if (doc.fullscreenElement || doc.webkitFullscreenElement){
-        (doc.exitFullscreen || doc.webkitExitFullscreen).call(doc);
-      } else {
-        const go = box.requestFullscreen || box.webkitRequestFullscreen;
-        // No fullscreen API (older Safari in an iframe): fall back to filling
-        // the window with CSS, so the control still does something.
-        if (go) go.call(box).then(() => setTimeout(fit, 60)).catch(() => {
-          box.classList.toggle("gfake"); fit();
-        });
-        else { box.classList.toggle("gfake"); setTimeout(fit, 60); }
-      }
-    };
-    // Leaving fullscreen by Escape has to re-fit too, or the drawing comes
-    // back sized for a screen it is no longer on.
-    box.addEventListener("fullscreenchange", () => setTimeout(fit, 60));
+/* Native scrolling keeps diagrams legible; fit and zoom are explicit controls. */
+function gAttachView(box,svg,layer,size){
+  const frame=box.closest(".graph-frame");
+  let scale=Math.max(.85,Math.min(1,(box.clientWidth||640)/size.w));
+  function setScale(next,centre=true){
+    const x=(box.scrollLeft+box.clientWidth/2)/scale,y=(box.scrollTop+box.clientHeight/2)/scale;
+    scale=Math.max(.15,Math.min(2.5,next));
+    svg.setAttribute("width",String(Math.ceil(size.w*scale)));svg.setAttribute("height",String(Math.ceil(size.h*scale)));
+    frame.querySelector(".gzlevel").textContent=Math.round(scale*100)+"%";
+    if(centre){box.scrollLeft=x*scale-box.clientWidth/2;box.scrollTop=y*scale-box.clientHeight/2;}
   }
-
-  // The card can be revealed while still hidden (display:none has no
-  // clientWidth), so fit now, again next frame, and again on any resize.
-  fit();
-  requestAnimationFrame(fit);
-  if (window.ResizeObserver) new ResizeObserver(fit).observe(box);
+  const fit=()=>{setScale(Math.min(1,box.clientWidth/size.w,box.clientHeight/size.h),false);box.scrollLeft=0;box.scrollTop=0;};
+  svg.setAttribute("viewBox","0 0 "+size.w+" "+size.h);setScale(scale,false);
+  const centreStart=()=>{if(box.clientWidth)box.scrollLeft=Math.max(0,(size.focusX||size.w/2)*scale-box.clientWidth/2);};
+  centreStart();requestAnimationFrame(centreStart);
+  frame.querySelector(".gzin").onclick=()=>setScale(scale*1.2);
+  frame.querySelector(".gzout").onclick=()=>setScale(scale/1.2);
+  frame.querySelector(".gzfit").onclick=fit;
+  frame.querySelector(".gzlevel").onclick=()=>setScale(1);
+  const full=frame.querySelector(".gzfull");
+  full.onclick=async()=>{
+    if(document.fullscreenElement===frame){await document.exitFullscreen();return;}
+    if(frame.classList.contains("gfake")){frame.classList.remove("gfake");full.textContent="Expand";box.focus();return;}
+    try{if(!frame.requestFullscreen)throw Error();await frame.requestFullscreen();}
+    catch{frame.classList.add("gfake");full.textContent="Close";}
+    box.focus();
+  };
+  frame.addEventListener("keydown",e=>{
+    if(e.key==="Escape"&&frame.classList.contains("gfake")){e.stopPropagation();frame.classList.remove("gfake");full.textContent="Expand";full.focus();}
+    else if(e.key==="+"||e.key==="="){e.preventDefault();setScale(scale*1.2);}
+    else if(e.key==="-"){e.preventDefault();setScale(scale/1.2);}
+    else if(e.key==="0"){e.preventDefault();fit();}
+  });
+  // Unmodified wheel and touch gestures use native scrolling, including at
+  // viewport boundaries. No global listeners or observers survive a redraw.
+  box.addEventListener("wheel",e=>{if(!e.ctrlKey&&!e.metaKey)return;e.preventDefault();setScale(scale*(e.deltaY<0?1.1:1/1.1));},{passive:false});
+  let drag=null;
+  svg.addEventListener("pointerdown",e=>{if(e.pointerType!=="mouse"||e.button!==0)return;drag={x:e.clientX,y:e.clientY,left:box.scrollLeft,top:box.scrollTop};svg.setPointerCapture(e.pointerId);box.classList.add("panning");});
+  svg.addEventListener("pointermove",e=>{if(drag){box.scrollLeft=drag.left+drag.x-e.clientX;box.scrollTop=drag.top+drag.y-e.clientY;}});
+  const stop=()=>{drag=null;box.classList.remove("panning");};
+  svg.addEventListener("pointerup",stop);svg.addEventListener("pointercancel",stop);
+}
+function renderGraphLoading(el,text="Loading your saved plan…"){
+  if(!el)return;
+  el.setAttribute("aria-busy","true");
+  el.innerHTML='<div class="graph-loading" role="status"><span class="spin" aria-hidden="true"></span><strong>'+gEsc(text)+'</strong><p>Your graph will appear here when it is ready.</p><div class="graph-loading-nodes" aria-hidden="true"><i class="skel"></i><span>↓</span><i class="skel"></i><span>↓</span><i class="skel"></i></div></div>';
 }
 
-/* Render one graph into `el`.
- *
- * opts:
- *   height  px for the viewport (default 420)
- *   flash   ids of nodes to highlight as newly added
- *   legend  render the colour key above the drawing
- */
 function renderGraph(el, graph, emptyText, opts = {}){
   if (!el) return;
+  el.setAttribute("aria-busy","false");
   if (!graph || !graph.nodes || !graph.nodes.length){
     // "Nothing captured yet" is itself information, and a lone Start node
     // floating in a large empty box is not.
@@ -347,7 +295,7 @@ function renderGraph(el, graph, emptyText, opts = {}){
   }
 
   const {lines, W, H} = gMetrics(graph);
-  const {pos, w, h} = gPositions(graph, W, H);
+  const {pos, w, h, routes} = gLayout(graph, W, H);
   const flash = new Set(opts.flash || []);
   // Each graph needs its OWN marker id: two graphs on one page (plan and code)
   // both defining id="ah" makes the second definition win for both.
@@ -361,45 +309,13 @@ function renderGraph(el, graph, emptyText, opts = {}){
     `orient="auto"><path d="M0,0 L0,8 L10,4 z" fill="var(--graph-line)"/></marker></defs>`
   ];
 
-  // Edge labels are collected and drawn AFTER the nodes. Painted in edge order
-  // they went UNDER any node the routing passes behind, and the one that lost
-  // most often was "repeat" on a loop-back - which, now that no edge is dashed,
-  // is the only word naming the most important edge in the drawing.
-  const elabels = [];
-  // Lanes for the back edges, right of every node. A second one is 14px
-  // further out so nested loops do not draw over each other.
-  const CHAN = w - G_PAD + 14;
-  let lane = 0;
-  // How far right the routing actually reaches. gPositions() sizes the canvas
-  // from the NODE grid alone, so a back edge - which runs in a channel outside
-  // the rightmost column - and its label were laid out past the edge of the
-  // drawing and clipped by fit-to-view.
-  let reach = w;
-
-  graph.edges.forEach(e => {
-    const a = pos[e.src], b = pos[e.dst];
-    if (!a || !b) return;                       // defensive: dangling edge
-    const back = e.label === "repeat" || b.y <= a.y;
-    const side = back ? CHAN + (lane++) * 14 : 0;
-    if (back) reach = Math.max(reach, side + G_PAD);
-    // EVERY edge is one solid line with one arrowhead. A back edge used to be
-    // dashed, which students read as "optional", "maybe", or "not really part
-    // of the plan" - none of which it is: it is the loop closing, the most
-    // load-bearing edge in the drawing. It routes around the outside so it
-    // never crosses the body of its own loop, and the arrow says which way it
-    // goes, which is what the dashes were being asked to say and could not.
-    parts.push(`<path d="${gEdgePath(a, b, back, W, H, side)}" fill="none" `
-             + `stroke="var(--graph-line)" stroke-width="1.5" `
-             + `stroke-linejoin="round" marker-end="url(#${uid})"/>`);
-    if (e.label){
-      const lx = back ? side + 6 : (a.x + b.x) / 2 + W / 2 + 6;
-      const ly = back ? (a.y + b.y) / 2 + H / 2 : (a.y + H + b.y) / 2;
-      if (back) reach = Math.max(reach, lx + e.label.length * 6.5 + G_PAD);
-      // paint-order lets the halo sit BEHIND the glyphs, so a label crossing an
-      // edge stays readable without a box that would clutter the drawing.
-      elabels.push(`<text x="${lx}" y="${ly}" font-size="10.5" font-weight="500" `
-                 + `fill="var(--graph-label)" stroke="var(--surface)" `
-                 + `stroke-width="3.5" paint-order="stroke">${gEsc(e.label)}</text>`);
+  const elabels=[];
+  routes.forEach(route=>{
+    parts.push('<path d="'+route.path+'" fill="none" stroke="var(--code-bg)" stroke-width="6" stroke-linejoin="round"/>');
+    parts.push('<path d="'+route.path+'" fill="none" stroke="var(--graph-line)" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#'+uid+')"/>');
+    if(route.label){
+      const l=route.label;
+      elabels.push('<g><title>'+gEsc(l.full)+'</title><rect x="'+l.x+'" y="'+l.y+'" width="'+l.w+'" height="'+l.h+'" rx="5" fill="var(--code-bg)" stroke="var(--border)"/><text x="'+(l.x+l.w/2)+'" y="'+(l.y+13.5)+'" text-anchor="middle" font-size="11" fill="var(--graph-label)">'+gEsc(l.text)+'</text></g>');
     }
   });
 
@@ -432,34 +348,19 @@ function renderGraph(el, graph, emptyText, opts = {}){
   });
   parts.push(...elabels);
 
-  const height = opts.height || 420;
-  el.innerHTML =
-    (opts.legend ? `<div class="graphMeta">${gLegend()}</div>` : "")
-    + `<div class="gview" style="height:${height}px" tabindex="0" role="group"
-            aria-label="Flowchart with ${graph.nodes.length} steps. Arrow keys pan, plus and minus zoom, 0 fits to view.">
-         <svg width="100%" height="100%" font-family="${G_FONT}" role="img"
-              aria-label="flowchart with ${graph.nodes.length} steps">
-           <g class="gzoom">${parts.join("")}</g>
-         </svg>
-         <div class="gctl">
-           <button type="button" class="gzout" aria-label="Zoom out" title="Zoom out">&minus;</button>
-           <button type="button" class="gzin" aria-label="Zoom in" title="Zoom in">+</button>
-           <button type="button" class="gzfit" aria-label="Fit to view" title="Fit to view">
-             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                  stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"
-                  aria-hidden="true"><path d="M3 12h18M12 3v18"/></svg>
-           </button>
-           <button type="button" class="gzfull" aria-label="Fullscreen" title="Fullscreen">
-             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                  stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"
-                  aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
-           </button>
-         </div>
-       </div>`;
+  const height=opts.height||420;
+  el.innerHTML=(opts.legend?'<div class="graphMeta">'+gLegend()+'</div>':'')
+    +'<div class="graph-frame"><div class="graph-toolbar"><span>Flowchart</span><div class="graph-tools">'
+    +'<button type="button" class="gzout ghost" aria-label="Zoom out">−</button><button type="button" class="gzlevel ghost" aria-label="Reset to actual size">100%</button><button type="button" class="gzin ghost" aria-label="Zoom in">+</button><button type="button" class="gzfit ghost">Fit</button><button type="button" class="gzfull ghost" aria-label="Expand flowchart">Expand</button></div></div>'
+    +'<div class="gview" style="height:'+height+'px" tabindex="0" role="region" aria-label="Scrollable flowchart. Arrow keys scroll; plus and minus zoom; 0 fits the graph."><svg font-family="'+G_FONT+'" role="img" aria-label="Flowchart with '+graph.nodes.length+' steps. A text version follows."><g class="gzoom">'+parts.join("")+'</g></svg></div><p class="graph-help">Scroll to explore · Fit shows the whole graph</p></div>'
+    +'<details class="graph-outline"><summary>Read as steps</summary><ol>'
+    +[...graph.nodes].sort((a,b)=>pos[a.id].y-pos[b.id].y||pos[a.id].x-pos[b.id].x).map(n=>'<li><strong>'+gEsc(n.label)+'</strong>'
+      +(graph.edges||[]).filter(e=>e.src===n.id).map(e=>{const target=graph.nodes.find(n=>n.id===e.dst);return target?'<span>'+(e.label?gEsc(e.label)+': ':'Next: ')+gEsc(target.label)+'</span>':'';}).join("")+'</li>').join("")
+    +'</ol></details>';
 
   const box = el.querySelector(".gview");
   gAttachView(box, box.querySelector("svg"), box.querySelector(".gzoom"),
-              {w: reach, h});
+              {w, h, focusX:pos[(graph.nodes.find(n=>n.kind==="start")||graph.nodes[0]).id].x+W/2});
 }
 
 /* Render the finished artifact: both graphs plus what differs between them.

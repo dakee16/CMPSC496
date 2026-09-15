@@ -116,24 +116,31 @@ const Session = {
     catch { return null; }
   },
   set(me){
-    sessionStorage.setItem(this.key, JSON.stringify(
-      {name: me.name, role: me.role, id: me.student_id}));
+    const previous=this.get();
+    if(previous&&(String(previous.id)!==String(me.student_id)||previous.role!==me.role))window.AcadiaCache?.clear();
+    try{sessionStorage.setItem(this.key,JSON.stringify({name:me.name,role:me.role,id:me.student_id}));}catch{}
     return me;
   },
-  clear(){ try { sessionStorage.removeItem(this.key); } catch {} },
+  verified:null, verifiedAt:0, checking:null,
+  clear(){
+    this.verified=null;this.verifiedAt=0;window.AcadiaCache?.clear();
+    try{sessionStorage.removeItem(this.key);}catch{}
+  },
 
   /* Ask the SERVER who we are. Returns the account or null. This is the only
      honest answer: the cookie can expire mid-lab, and a page that trusted
      sessionStorage would keep drawing a signed-in header while every save
      silently 401'd. */
   async check(){
-    try {
-      const r = await fetch(`${API}/auth/me`, {credentials: "include"});
-      if (!r.ok) { this.clear(); return null; }
-      return this.set(await r.json());
-    } catch {
-      return null;              // server unreachable is not "signed out"
-    }
+    if(this.checking)return this.checking;
+    this.checking=(async()=>{
+      try{
+        const r=await fetch(`${API}/auth/me`,{credentials:"include"});
+        if(!r.ok){this.clear();return null;}
+        const me=this.set(await r.json());this.verified=me;this.verifiedAt=Date.now();return me;
+      }catch{return null;}
+    })();
+    try{return await this.checking;}finally{this.checking=null;}
   },
 
   /* `mode` is "login" or "register". Throws an Error whose message is meant
@@ -178,6 +185,7 @@ const Session = {
   async signOut(){
     try { await fetch(`${API}/logout`, {method: "POST", credentials: "include"}); }
     catch {}                    // the cookie expires on its own regardless
+    window.AcadiaCache?.invalidate();
     this.clear();
   },
 };
@@ -330,6 +338,7 @@ function mountHeader({active = "", wide = false, variant = "", crumbs = null} = 
       <div class="nav-label">WORKSPACE</div>
       <nav class="hnav" aria-label="Main">${nav}</nav>
       <div class="sidebar-bottom">
+        <button class="hbtn sidebar-settings" type="button" data-open-settings aria-label="Settings" title="Settings">${uiIcon("settings")}<span class="htext">Settings</span></button>
         ${switcher}
         <div class="account" id="acct">
           <button class="who" id="whoBtn" type="button" aria-label="Account menu"
@@ -339,6 +348,7 @@ function mountHeader({active = "", wide = false, variant = "", crumbs = null} = 
             ${uiIcon("settings",17)}
           </button>
           <div class="menu" id="whoMenu" role="menu" hidden>
+            <button class="mi" type="button" data-open-settings role="menuitem">Settings</button>
             <button class="mi mi-danger" id="miLogout" role="menuitem">Sign out</button>
           </div>
         </div>

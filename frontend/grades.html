@@ -10,13 +10,14 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
 
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&amp;family=Space+Grotesk:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
-<link rel="stylesheet" href="tokens.css?v=3">
-<link rel="stylesheet" href="ui.css?v=3">
-<link rel="stylesheet" href="grades.css?v=3">
+<link rel="stylesheet" href="tokens.css?v=4">
+<link rel="stylesheet" href="ui.css?v=4">
+<link rel="stylesheet" href="grades.css?v=4">
+<link rel="stylesheet" href="refinements.css?v=4">
 </head>
 <body>
 <main class="page">
-  <div class="page-heading"><div><p class="eyebrow">Instructor workspace / Grades</p><h1>A clearer view of progress.</h1><p class="sub">See the work behind every grade, and where students stand.</p></div></div>
+  <div class="page-heading"><div><h1>Grades</h1><p class="sub">Student results and the work behind each grade.</p></div><button class="ghost" type="button" id="refreshGrades">Refresh</button></div>
 
   <div class="grade-picker">
 
@@ -27,7 +28,7 @@
       </div>
       <span class="tally" id="tally"></span>
     </div>
-  </div><div class="metrics" id="gradeStats" aria-label="Class progress"><div class="metric"><span class="metric-icon" aria-hidden="true">▤</span><div><div class="metric-label">Students</div><div class="metric-value" data-metric="0">—</div></div></div><div class="metric"><span class="metric-icon" aria-hidden="true">↗</span><div><div class="metric-label">Submitted</div><div class="metric-value" data-metric="1">—</div></div></div><div class="metric"><span class="metric-icon" aria-hidden="true">✓</span><div><div class="metric-label">Missing</div><div class="metric-value" data-metric="2">—</div></div></div></div>
+  </div><div class="metrics" id="gradeStats" aria-label="Class progress"><div class="metric"><div><div class="metric-label">Students</div><div class="metric-value" data-metric="0">—</div></div></div><div class="metric"><div><div class="metric-label">Submitted</div><div class="metric-value" data-metric="1">—</div></div></div><div class="metric"><div><div class="metric-label">Missing</div><div class="metric-value" data-metric="2">—</div></div></div></div>
 
   <div class="card grade-results">
     <h2>Student results</h2>
@@ -38,7 +39,9 @@
   </div>
 </main>
 
-<script src="ui.js?v=3"></script>
-<script src="grades.js?v=3"></script>
+<script src="ui.js?v=4"></script>
+<script src="cache.js?v=4"></script>
+<script src="onboarding.js?v=4"></script>
+<script src="grades.js?v=4"></script>
 
 </body></html>

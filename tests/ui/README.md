@@ -7,7 +7,7 @@ Requires Node 20.19+:
 
 ```sh
 cd tests/ui
-npm install
+npm ci
 npm test
 npx playwright install chromium
 UI_ARTIFACTS=./artifacts npm run test:browser
@@ -31,7 +31,18 @@ are saved when `UI_ARTIFACTS` is set and require visual review.
   during coding, references that leave code and chat interactive, focus
   restoration, keyboard resizing limits, replies that do not steal editor
   focus, paced step review, grading failures, completion/comparison retries,
-  restart, opening failures, and restored work.
+  restart, opening failures, restored work, graph loading while history is
+  pending, and retry after history fails without discarding drafts.
+- `navigation-cache.cjs`: account-scoped caching, concurrent request coalescing,
+  expiry and background refresh, explicit refresh, write/logout invalidation,
+  cross-tab account revalidation, stale HTTP/network errors, and in-flight
+  invalidation races. Pure graph tests check nested-loop ordering, separate
+  return lanes, orthogonal edges that avoid nodes, label bounds, reversed input
+  order, self-loops, diamonds, and prototype-safe node IDs.
+- `tutorial.dom.cjs`: first-visit invitation, dismissal, Settings replay, role
+  handling, safe return destinations, the complete factorial exercise, and
+  automatic exit. Asserts that tutorial requests are only GET `/auth/me`, with
+  no course-record writes.
 - `acadia.smoke.cjs`: the real CodeMirror editor in Chromium, both themes,
   reading/planning/coding, assignment handbacks, approval gating, step review,
   focus mode, tutor visibility, non-overlapping work/tutor panels, inline
@@ -64,8 +75,7 @@ Ask tutor and Back to code shortcuts. It never overlays the editor.
 
 | Stage | Main task | Supporting material |
 | --- | --- | --- |
-| Read | Question, signature, and examples | Tutor explanation; one continuation action |
-| Plan | Choose chat or PNG/JPEG/PDF upload; review and submit an approach | Live plan preview; inline question reference; the same tutor |
+| Question & plan | Read the question and examples; discuss or upload an approach; submit it for review | The same tutor; live graph; upload and submit controls beside the plan |
 | Code | Current step, editor, feedback, and deliberate continuation | Persistent tutor; inline question/plan; all steps; earlier answers; focus mode |
 | Reflect | Completion and plan/code comparison | Tutor; completed function; grades; another problem |
 
@@ -85,22 +95,44 @@ View all steps. Focus mode expands the work area while retaining tutor access.
 Restart remains in the problem options menu with confirmation. Assignment
 downloads remain in the problem list.
 
-The sign-in account note now has its own scoped style and a simple top divider.
-Overview metrics group each icon, label, and value together. Instructor heading,
-metrics, and information sections use consistent 24px spacing.
+Overview metrics align labels and values on one left edge. Assignment rows,
+next steps, and recent activity use compact layouts instead of nested oversized
+cards. Both portals share the same density rules, Settings, and light/graphite
+dark palettes.
+
+## Navigation cache and guided practice
+
+The frontend caches only an allowlist of GET results: progress, assignments,
+assignment problems, solved status, and instructor grades. Entries are private
+to a verified account and a browser tab, fresh for 45 seconds, and retained for
+up to five minutes while a background refresh runs. Successful writes and
+logout invalidate them; auth, chat, history, grading, and streaming responses
+are never cached. Manual Refresh bypasses cached data. Assignments reuse
+progress membership instead of requesting every problem list up front.
+
+Tutorial completion is remembered per account on the current browser, not
+across devices. The factorial exercise is isolated frontend practice; it never
+creates an assignment, tutor session, submission, or grade. Finishing closes
+the sample, and Settings always offers replay.
+
+For manual testing with synthetic student/instructor data:
+
+```sh
+npm run preview:fixtures
+```
+
+Open `http://localhost:8123/dashboard.html` for the student portal or
+`http://localhost:8124/teacher.html` for the instructor portal. These fixtures
+are not a backend integration or production preview.
 
 ## Verification status
 
-All three DOM suites pass for this change, including 26 contrast pairs.
-JavaScript syntax and patch whitespace were checked. Backend files are unchanged;
-the eight focused progress tests passed for the preceding dashboard change.
+All five Node/DOM suites pass for this change, including 26 contrast pairs.
+JavaScript syntax and patch whitespace were checked. Backend files are
+unchanged; backend integration tests were not run for this frontend change.
 
-`acadia.smoke.cjs` has since been run in Chromium and passes, with screenshots
-captured. A visual pass covered the workspace and question screens in light and
-dark at 1600px and the workspace at 390px; the frozen listing's gutter was
-measured against CodeMirror's and both sets of digits right-align at the same
-pixel, with the code columns flush.
-
-Still reviewed by eye only when someone looks: tablet widths, 200% zoom,
-long descriptions and code, narrow-screen keyboard use, pointer resizing, and
-graph zoom/fullscreen.
+The browser suite was updated but was not run for this revision: the available
+browser rejected the local fixture URL with `net::ERR_BLOCKED_BY_CLIENT`.
+Earlier browser results do not verify this revision. A real-browser pass is
+still needed for both themes and portals, responsive layout, 200% zoom, long
+content, keyboard navigation, pointer resizing, and graph zoom/fullscreen.

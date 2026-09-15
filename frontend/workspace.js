@@ -3,6 +3,7 @@
 let workspaceStage = "read";
 let workspaceReadyState = false, workspaceComplete = false, workspaceComparison = false;
 let workspaceEpoch = 0;
+let planLoading=false,planUpdating=false,historyUnavailable=false;
 let resourceKind = null, resourceReturnFocus = null;
 let workspaceTutorVisible = true;
 // Reading and planning are ONE stage: the question has to stay on screen while
@@ -34,10 +35,10 @@ function workspaceSync(){
   }
   $("planApproved").hidden = !tutorReleased;
   $("planMethods").hidden = tutorReleased;
-  $("planStageHint").textContent = tutorReleased ? "Your approved approach stays here whenever you need to look back." : "Upload the plan you’ve already made, or build one with your tutor.";
+  $("planStageHint").textContent = tutorReleased ? "Your approved approach stays here whenever you need to look back." : "Describe your approach to the tutor, or upload a plan you’ve made.";
   $("finishReview").hidden = !workspaceComplete;
-  $("planPreviewStatus").textContent = planGraph?.nodes?.length ? (tutorReleased ? "Approved approach" : "Updated from your thinking") : "Your ideas will appear here";
-  $("planEmpty").hidden = !!planGraph?.nodes?.length;
+  $("planPreviewStatus").textContent=historyUnavailable?"Could not load your saved plan":planLoading?"Loading your saved plan…":planUpdating?"Updating your plan…":planGraph?.nodes?.length?(tutorReleased?"Approved approach":"Up to date"):"Ready to build your plan";
+  $("planEmpty").hidden=planLoading||planUpdating||historyUnavailable||!!planGraph?.nodes?.length;
   $("tutorContext").textContent = workspaceStage === "code" ? (workspaceComplete ? "Reviewing your solution" : "Working on your code") : {read:"Working through the question",reflect:"Reflecting on your solution"}[workspaceStage];
   $("backToWork").textContent = workspaceStage === "code" ? "Back to code ↑" : "Back to work ↑";
   syncPlanSubmit();
@@ -132,6 +133,8 @@ function closeResource(restoreFocus = true){
 }
 
 function resetWorkspace(){
+  planLoading=false;planUpdating=false;historyUnavailable=false;
+  $("planUpload").open=false;
   workspaceEpoch++;
   closeResource(false);
   workspaceReadyState = false;
@@ -152,6 +155,7 @@ function resetWorkspace(){
 }
 
 function readyWorkspace(){
+  if(historyUnavailable)return;
   workspaceReadyState = true;
   $("readSignature").textContent = header;
   $("signatureBox").hidden = !header;
@@ -201,6 +205,14 @@ function comparisonUnavailable(){
 }
 
 function initWorkspace(){
+  $("jumpToPlan").onclick=()=>$("planPreview").scrollIntoView({block:"start",behavior:"smooth"});
+  $("openPlanUpload").onclick=()=>{
+    if(planLoading||historyUnavailable||!workspaceReadyState)return;
+    $("planUpload").open=true;$("designFile").click();
+  };
+  $("designFile").addEventListener("change",()=>{
+    if($("designFile").files.length){$("planUpload").open=true;$("planUpload").scrollIntoView({block:"nearest",behavior:"smooth"});}
+  });
   document.querySelectorAll('[data-stage]').forEach(button => button.addEventListener("click", () => chooseWorkspaceStage(button.dataset.stage)));
   document.querySelectorAll('[data-resource]').forEach(button => button.addEventListener("click", () => openResource(button.dataset.resource)));
   $("planContinue").onclick = () => chooseWorkspaceStage("code");
