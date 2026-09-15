@@ -694,7 +694,7 @@ async function loadAssignments(){
 // Summaries use the assignment data already loaded for the cards.
 function paintStudentStats(rows){
   const values = rows ? [rows.length, rows.reduce((n,a) => n + (a.ready || 0), 0),
-    rows.some(a => a.failed) ? "—" : rows.reduce((n,a) => n + (a.solvedN || 0), 0)] : ["—", "—", "—"];
+    rows.some(a => a.failed) ? "-" : rows.reduce((n,a) => n + (a.solvedN || 0), 0)] : ["-", "-", "-"];
   $("studentStats").querySelectorAll("[data-metric]").forEach((el,i) => el.textContent = values[i]);
 }
 

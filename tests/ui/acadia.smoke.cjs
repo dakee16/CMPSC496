@@ -27,7 +27,7 @@ const problems = [
   {slug:'word-count',title:'Word Count',description:'Count each word.',ready:true},
   {slug:'inventory',title:'Inventory',description:'Update the inventory.',ready:true}
 ];
-const assignments = [{id:'lab1', name:'LAB1 – Dictionaries',ready:3,total:3,created_at:'2026-09-08T12:00:00Z'}];
+const assignments = [{id:'lab1', name:'LAB1 - Dictionaries',ready:3,total:3,created_at:'2026-09-08T12:00:00Z'}];
 const seen = [];
 const unknown = [];
 let approved = true;

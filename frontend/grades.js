@@ -161,6 +161,6 @@ loadAssignments();
 
 function paintGradeStats(rows){
   const values = rows ? [rows.length, rows.filter(r => r.submitted).length,
-    rows.filter(r => !r.submitted).length] : ["—", "—", "—"];
+    rows.filter(r => !r.submitted).length] : ["-", "-", "-"];
   $("gradeStats").querySelectorAll("[data-metric]").forEach((el,i) => el.textContent = values[i]);
 }

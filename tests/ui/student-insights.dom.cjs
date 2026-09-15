@@ -33,9 +33,10 @@ const fixture={
     window.document.write(read(file).replace(/<script\b[^>]*>[\s\S]*?<\/script>/g,''));
     window.fetch=async url=>{
       const auth=String(url).includes('/auth/me');
-      return new window.Response(JSON.stringify(auth?{name:'Alex Morgan',role:'student',student_id:'fixture'}:data),{status:!auth&&fail?503:200,headers:{'Content-Type':'application/json'}});
+      return new window.Response(JSON.stringify(auth?{name:'Alex Morgan',first_name:'Alex',last_name:'Morgan',role:'student',student_id:'fixture'}:data),{status:!auth&&fail?503:200,headers:{'Content-Type':'application/json'}});
     };
-    window.eval(read('ui.js')+'\n'+read('cache.js')+'\n'+read('student-insights.js'));
+    window.eval(read('ui.js')+'\n'+read('cache.js')+'\n'+read('student-insights.js')
+      +'\nwindow.acadiaEval = code => eval(code);');
     await wait();
     return window;
   };
@@ -52,8 +53,11 @@ const fixture={
     assert.equal(continueLink.searchParams.get('problem'),'employee-update');
     assert.equal(doc.querySelector('.dash-metric strong').textContent,'1 / 4');
     assert(doc.querySelector('#insightsTitle').textContent.includes('Alex'));
-    doc.querySelector('[data-theme-toggle]').click();
+    dashboard.acadiaEval('Theme.set("dark")');
     assert.equal(doc.documentElement.dataset.theme,'dark');
+    // Greeted by the stored first name, never by the address the account was
+    // created with.
+    assert.equal(doc.querySelector('#insightsTitle').textContent.split(', ')[1],'Alex.');
     fail=true;await dashboard.loadStudentProgress(true);
     assert(doc.querySelector('#progressNotice').textContent.includes('last successful update'));
     assert.equal(doc.querySelector('.dash-metric strong').textContent,'1 / 4');
@@ -72,7 +76,7 @@ const fixture={
     g.querySelector('#gradeAssignment').value='lab2';g.querySelector('#gradeAssignment').dispatchEvent(new grades.Event('change'));
     assert.equal(g.querySelectorAll('[data-grade-detail]').length,2);
     assert.equal(g.querySelector('.grade-total-number').textContent,'0%');
-    assert([...g.querySelectorAll('.grade-score')].some(el=>el.textContent==='—'),'Unknown denominator remains ungraded');
+    assert([...g.querySelectorAll('.grade-score')].some(el=>el.textContent==='-'),'Unknown denominator remains ungraded');
     g.querySelector('#gradeSearch').value='missing';g.querySelector('#gradeSearch').dispatchEvent(new grades.Event('input'));
     assert(g.querySelector('#gradeResults').textContent.includes('No problems match'));
     g.querySelector('#clearGradeFilters').click();
@@ -89,7 +93,7 @@ const fixture={
     empty.activity=empty.activity.map(d=>({...d,submissions:0,passed:0,active:false}));
     const blank=await make('student-grades.html',empty);
     assert(blank.document.querySelector('#gradeResults').textContent.includes('No grades yet'));
-    assert.equal(blank.document.querySelector('.grade-total-number').textContent,'—');
+    assert.equal(blank.document.querySelector('.grade-total-number').textContent,'-');
     fail=true;const unavailable=await make('dashboard.html');
     assert(unavailable.document.querySelector('#retryProgress'));
     assert.equal(unavailable.document.querySelector('.dash-metric'),null,'Unavailable is not zero progress');

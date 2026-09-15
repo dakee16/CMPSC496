@@ -118,7 +118,10 @@ const Session = {
   set(me){
     const previous=this.get();
     if(previous&&(String(previous.id)!==String(me.student_id)||previous.role!==me.role))window.AcadiaCache?.clear();
-    try{sessionStorage.setItem(this.key,JSON.stringify({name:me.name,role:me.role,id:me.student_id}));}catch{}
+    // `first` as well as the display name: a greeting wants one word, and
+    // splitting the display name on a space guesses wrong the moment someone
+    // has no name stored and it is standing in with their address.
+    try{sessionStorage.setItem(this.key,JSON.stringify({name:me.name,first:me.first_name||"",role:me.role,id:me.student_id}));}catch{}
     return me;
   },
   verified:null, verifiedAt:0, checking:null,
@@ -286,6 +289,7 @@ function uiIcon(name, size = 20){
     switch:'<path d="M4 7h16m-4-4 4 4-4 4M20 17H4m4-4-4 4 4 4"/>',
     settings:'<path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="3"/><circle cx="15" cy="17" r="3"/>',
     chevron:'<path d="m9 5 7 7-7 7"/>',
+    caret:'<path d="m6 15 6-6 6 6"/>',
     menu:'<path d="M4 6h16M4 12h16M4 18h16"/>',
     close:'<path d="m6 6 12 12M6 18 18 6"/>',
     arrow:'<path d="M5 12h14m-6-6 6 6-6 6"/>',
@@ -338,14 +342,13 @@ function mountHeader({active = "", wide = false, variant = "", crumbs = null} = 
       <div class="nav-label">WORKSPACE</div>
       <nav class="hnav" aria-label="Main">${nav}</nav>
       <div class="sidebar-bottom">
-        <button class="hbtn sidebar-settings" type="button" data-open-settings aria-label="Settings" title="Settings">${uiIcon("settings")}<span class="htext">Settings</span></button>
         ${switcher}
         <div class="account" id="acct">
           <button class="who" id="whoBtn" type="button" aria-label="Account menu"
             aria-haspopup="menu" aria-controls="whoMenu" aria-expanded="false">
             <span class="avatar">${esc(initials(s && s.name))}</span>
             <span class="account-copy"><span class="nm">${esc(s ? s.name : "Your account")}</span><span class="account-role">${roleLabel}</span></span>
-            ${uiIcon("settings",17)}
+            ${uiIcon("caret",16)}
           </button>
           <div class="menu" id="whoMenu" role="menu" hidden>
             <button class="mi" type="button" data-open-settings role="menuitem">Settings</button>
@@ -357,7 +360,6 @@ function mountHeader({active = "", wide = false, variant = "", crumbs = null} = 
     <header class="hdr">
       <button class="icon-button mobile-nav-toggle" id="navToggle" aria-label="Open navigation" aria-expanded="false" aria-controls="appSidebar">${uiIcon("menu")}</button>
       <div class="location-trail"><span class="crumbs" id="hcrumbs"></span></div>
-      <div class="header-tools"><span class="workspace-label">${active === "Playground" ? "Pipeline tools" : role === "instructor" ? "Course management" : "Python practice"}</span>${themeToggle()}</div>
     </header>`;
   document.body.classList.add("has-shell");
   document.body.dataset.portal = role;
@@ -423,7 +425,7 @@ function mountHeader({active = "", wide = false, variant = "", crumbs = null} = 
   };
   addEventListener('hashchange',updateNav,{signal}); updateNav();
   syncThemeControls(Theme.get());
-  if(crumbs)setCrumbs(crumbs);
+  setCrumbs(crumbs);
   return shell.querySelector('.hdr');
 }
 
@@ -438,6 +440,10 @@ function setCrumbs(items){
   const host = document.getElementById("hcrumbs");
   if (!host) return;
   host.innerHTML = "";
+  if (!items || !items.length){
+    const here = document.querySelector(".hnav .hbtn.on .htext");
+    items = here ? [{label: here.textContent}] : [];
+  }
   const sepEl = () => {
     const s = document.createElement("span");
     s.className = "sep";

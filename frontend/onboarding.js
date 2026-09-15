@@ -32,10 +32,63 @@
     el.addEventListener("click",e=>{if(e.target!==el)return;const r=el.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)el.close();});
     el.showModal();return el;
   }
-  function openSettings(){
-    const el=dialog("acadiaSettings","settingsTitle",'<div class="dialog-heading"><h2 id="settingsTitle">Settings</h2><button type="button" class="ghost" data-close-dialog aria-label="Close settings">×</button></div><section class="settings-section"><h3>Appearance</h3><p>Choose the theme that feels comfortable to you.</p><div id="mtsTheme" class="settings-theme" role="group" aria-label="Color theme"><button type="button" class="ghost" data-t="light">Light</button><button type="button" class="ghost" data-t="dark">Dark</button></div></section><section class="settings-section"><h3>Guided practice</h3><p>Learn the question, plan, code and reflection workflow with a short factorial example.</p><button id="retakeTutorial" type="button">Retake tutorial</button><p class="settings-note">Tutorial completion is remembered for your account on this browser. Practice never affects your course grades.</p></section>');
+  /* Settings. The section headings say what each control is for, so the
+     sentence under each one was restating its own title; only the note about
+     what the tutorial remembers survives, because nothing else says it. */
+  function settingsMarkup(me){
+    const value = v => esc(v || "");
+    return '<div class="dialog-heading"><h2 id="settingsTitle">Settings</h2>'
+      + '<button type="button" class="ghost" data-close-dialog aria-label="Close settings">×</button></div>'
+      + '<section class="settings-section"><h3>Your name</h3>'
+      + '<form id="nameForm" class="settings-name" novalidate>'
+      + '<label>First name<input id="firstName" name="first_name" type="text" maxlength="60" autocomplete="given-name" value="' + value(me && me.first_name) + '"></label>'
+      + '<label>Last name<input id="lastName" name="last_name" type="text" maxlength="60" autocomplete="family-name" value="' + value(me && me.last_name) + '"></label>'
+      + '<button id="saveName" type="submit">Save name</button></form>'
+      + '<p class="settings-note" id="nameMsg" role="status" aria-live="polite">This is the name your instructor sees on your work.</p></section>'
+      + '<section class="settings-section"><h3>Appearance</h3>'
+      + '<div id="mtsTheme" class="settings-theme" role="group" aria-label="Color theme">'
+      + '<button type="button" class="ghost" data-t="light">Light</button>'
+      + '<button type="button" class="ghost" data-t="dark">Dark</button></div></section>'
+      + '<section class="settings-section"><h3>Guided practice</h3>'
+      + '<button id="retakeTutorial" type="button">Retake tutorial</button>'
+      + '<p class="settings-note">Tutorial completion is remembered for your account on this browser. Practice never affects your course grades.</p></section>';
+  }
+  async function saveName(el){
+    const msg=el.querySelector("#nameMsg"),save=el.querySelector("#saveName");
+    const first=el.querySelector("#firstName").value.trim(),
+          last=el.querySelector("#lastName").value.trim();
+    if(!first||!last){msg.textContent="Enter your first and last name.";return;}
+    setBusy(save,true,"Saving…");
+    try{
+      const r=await fetch(`${API}/auth/name`,{method:"POST",
+        headers:{"Content-Type":"application/json"},credentials:"include",
+        body:JSON.stringify({first_name:first,last_name:last})});
+      const body=await r.json().catch(()=>({}));
+      if(!r.ok)throw new Error(body?.detail?.message||"Could not save your name.");
+      // Redraw rather than reload: the account chip and the greeting both read
+      // the session copy, and leaving it stale is how a saved name looks like
+      // it did not save.
+      account=Session.set(body);Session.verified=body;
+      if(typeof remountHeader==="function")remountHeader();
+      document.dispatchEvent(new CustomEvent("acadia:name-changed",{detail:body}));
+      msg.textContent="Saved.";
+    }catch(e){msg.textContent=e.message;}
+    finally{setBusy(save,false);}
+  }
+  async function openSettings(){
+    const me=account||Session.get();
+    const el=dialog("acadiaSettings","settingsTitle",settingsMarkup(me));
     el.querySelectorAll("[data-t]").forEach(b=>b.onclick=()=>Theme.set(b.dataset.t));
     syncThemeControls(Theme.get());el.querySelector("#retakeTutorial").onclick=start;
+    el.querySelector("#nameForm").addEventListener("submit",e=>{e.preventDefault();saveName(el);});
+    // The cached copy may predate a name set in another tab, so fill the fields
+    // from the server once it answers - but never over something being typed.
+    const fresh=Session.verified||await Session.check();
+    if(!fresh||!el.isConnected)return;
+    account=fresh;
+    const f=el.querySelector("#firstName"),l=el.querySelector("#lastName");
+    if(document.activeElement!==f&&!f.value)f.value=fresh.first_name||"";
+    if(document.activeElement!==l&&!l.value)l.value=fresh.last_name||"";
   }
   async function init(){
     account=Session.verified||await Session.check();

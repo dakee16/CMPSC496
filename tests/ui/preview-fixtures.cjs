@@ -3,10 +3,11 @@
 const http=require("node:http"),fs=require("node:fs"),path=require("node:path");
 const graph=require("./graph-fixture.cjs");
 const frontend=path.resolve(__dirname,"../../frontend"),counts={};
-const assignments=[{id:"lab1",name:"LAB1 – Dictionaries",ready:3,total:3,published:true,created_at:"2026-09-10T12:00:00Z"},{id:"hw3",name:"HW3 – Stacks and Calculators",ready:11,total:12,published:true,created_at:"2026-09-08T12:00:00Z"}];
+let name={first:"Alex",last:"Morgan"};   // editable from Settings, like the real account
+const assignments=[{id:"lab1",name:"LAB1 - Dictionaries",ready:3,total:3,published:true,created_at:"2026-09-10T12:00:00Z"},{id:"hw3",name:"HW3 - Stacks and Calculators",ready:11,total:12,published:true,created_at:"2026-09-08T12:00:00Z"}];
 const problem={slug:"invert",title:"Invert",assignment_id:"lab1",description:"Swap the keys and the values of d, keeping only the unambiguous ones.\n\nA value that appears exactly once becomes a key in the result, paired with the key it came from. Leave repeated values out of the result.\n\n>>> invert({'one': 1, 'two': 2, 'three': 3})\n{1: 'one', 2: 'two', 3: 'three'}\n>>> invert({'one': 1, 'uno': 1, 'three': 3})\n{3: 'three'}\n>>> invert({})\n{}",ready:true,status:"progress",solved:1,total:3,percent:33,steps:[{number:1,status:"passed",attempts:1},{number:2,status:"needs_work",attempts:2},{number:3,status:"not_started",attempts:0}],last_activity:new Date().toISOString()};
 const workingFile=`"""
-LAB1 \u2013 Dictionaries
+LAB1 - Dictionaries
 
 Working copy for: Alex Morgan
 Generated:    2026-09-15 12:00 UTC
@@ -58,12 +59,21 @@ function serve(role,port){
   if(p==="/__requests")return send(counts);
   if(!/\.(html|js|css|svg)$/.test(p)&&p!=="/"){
     counts[role+" "+p]=(counts[role+" "+p]||0)+1;
-    if(p==="/auth/me")return send({name:"Alex Morgan",student_id:"visual-"+role,role});
+    if(p==="/auth/me")return send({name:name.first+" "+name.last,first_name:name.first,last_name:name.last,student_id:"visual-"+role,role});
+    if(p==="/auth/name"){
+      let raw="";req.on("data",c=>raw+=c);
+      return req.on("end",()=>{
+        const sent=JSON.parse(raw||"{}");
+        name={first:(sent.first_name||"").trim(),last:(sent.last_name||"").trim()};
+        send({name:name.first+" "+name.last,first_name:name.first,last_name:name.last,
+              student_id:"visual-"+role,role});
+      });
+    }
     if(p==="/assignments")return send({assignments});
     if(p==="/student/progress")return setTimeout(()=>send(progress()),250);
     if(p==="/solved")return send({slugs:["is-empty"],opened:["invert","length"],last_slug:"invert"});
     if(/^\/assignments\/[^/]+\/problems$/.test(p))return send({problems:problems.filter(x=>x.assignment_id===p.split("/")[2])});
-    if(/^\/assignments\/[^/]+\/file$/.test(p))return send({filename:"lab1.py",assignment:"LAB1 \u2013 Dictionaries",text:workingFile,written:["invert"],remaining:["count-values","is-empty"]});
+    if(/^\/assignments\/[^/]+\/file$/.test(p))return send({filename:"lab1.py",assignment:"LAB1 - Dictionaries",text:workingFile,written:["invert"],remaining:["count-values","is-empty"]});
     // A RESUMED session: step 1 already answered, so the page should open on
     // step 2 with the student's own line in the frozen listing.
     if(p==="/decompose_chunks")return send({session_id:"visual",header:"def invert(d):",chunks:[{prompt:"",indent:0},{prompt:"",indent:0},{prompt:"",indent:0}],index:1,resumed:true,accepted:[{code:"counts = {}",how:"own"}]});

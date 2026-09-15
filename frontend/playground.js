@@ -79,7 +79,7 @@ function renderList(filter){
                 : (p.prepare_error ? "dot-bad" : "dot-none");
       const tags = [];
       if (stale)
-        tags.push(`<span class="tag warn" title="The blocker below was cleared by a later run. The problems row still says it failed until you re-prepare.">fixed &mdash; re-prepare</span>`);
+        tags.push(`<span class="tag warn" title="The blocker below was cleared by a later run. The problems row still says it failed until you re-prepare.">fixed - re-prepare</span>`);
       else if (!p.ready && p.stage)
         tags.push(`<span class="tag bad">${esc(STAGE_WORDS[p.stage] || p.stage)}</span>`);
       if (p.oracle === "strong")
@@ -153,7 +153,7 @@ async function openProblem(slug){
     ? `<b>This blocker is out of date.</b> The row still records
        &ldquo;${esc(d.prepare_error)}&rdquo; from its last preparation, but a
        later run has since cleared it${d.oracle && d.oracle.strong
-         ? ` &mdash; the oracle is now STRONG at
+         ? ` - the oracle is now STRONG at
              ${Math.round(d.oracle.kill_rate_direct * 100)}%` : ""}.
        Re-prepare it from the <a href="teacher.html#list">Assignments</a> page
        to make it available to students.`

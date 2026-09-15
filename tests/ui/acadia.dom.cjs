@@ -36,10 +36,18 @@ const read = name => fs.readFileSync(path.join(root, name), 'utf8');
     await new Promise(resolve=>setTimeout(resolve,20));
     assert.equal(doc.documentElement.dataset.theme,'light');
     assert.equal(doc.querySelector('.brand-name').firstChild.textContent,'ACADIA');
-    doc.querySelector('[data-theme-toggle]').click();
+    // Appearance lives in Settings now (tutorial.dom.cjs clicks it there); the
+    // header must not carry a second switch, and the sidebar must not carry a
+    // second cog beside the account.
+    assert.equal(doc.querySelectorAll('.hdr [data-theme-toggle]').length,0,'no duplicate theme switch');
+    assert.equal(doc.querySelectorAll('[data-open-settings]').length,1,'one way into Settings');
+    assert.equal(doc.querySelectorAll('.sidebar-bottom > *').length,1,'the account block is all that sits below the nav');
+    assert(doc.querySelector('#whoMenu [data-open-settings]'),'Settings lives in the account menu');
+    assert(doc.querySelector('#whoMenu #miLogout'),'Sign out is reachable from the account');
+    window.acadiaEval('Theme.set("dark")');
     assert.equal(doc.documentElement.dataset.theme,'dark');
     assert.equal(window.localStorage.getItem('mt.theme'),'dark');
-    doc.querySelector('[data-theme-toggle]').click();
+    window.acadiaEval('Theme.set("light")');
     assert.equal(doc.documentElement.dataset.theme,'light');
 
     window.renderStatement('Read `value` and preserve the input.\nThis is one paragraph.\n\n>>> data = {"a": [1, 2]}\n>>> solve(data)\n{"a": [2, 3]}\n\nAfter the example.');

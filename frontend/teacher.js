@@ -682,7 +682,7 @@ function findingsPanel(f, source){
     return `<li>
       <div class="fRow">
         <span class="fWhat">We tried ${esc(c.phrasing || c.what || "changing this")}
-          &mdash; every test still passed.</span>
+          - every test still passed.</span>
         ${c.line ? `<button type="button" class="fJump" data-line="${c.line}"
             >line ${c.line} &rarr;</button>` : ""}
       </div>
@@ -697,7 +697,7 @@ function findingsPanel(f, source){
       solution on purpose, one line at a time, and sees whether a test notices.
       ${open.length === 1 ? "The change below" : "The changes below"} slipped
       past, and it cannot tell why. Nothing here is a suggestion to edit your
-      code &mdash; it is a report of what was tried.</p>
+      code; it is a report of what was tried.</p>
     <ul class="fList">${rows}</ul>
     <p class="fFoot">Caught ${f.checks.length - open.length} of ${f.checks.length}
       &middot; between ${pct(f.lower)} and ${pct(f.upper)} &middot; ${f.n_tests} test cases.
@@ -1103,6 +1103,6 @@ $("go").addEventListener("click", () => {
 });
 function paintCourseStats(rows){
   const values = rows ? [rows.length, rows.filter(a => a.published !== false).length,
-    rows.reduce((n,a) => n + (a.ready || 0), 0)] : ["—", "—", "—"];
+    rows.reduce((n,a) => n + (a.ready || 0), 0)] : ["-", "-", "-"];
   $("courseStats").querySelectorAll("[data-metric]").forEach((el,i) => el.textContent = values[i]);
 }

@@ -206,6 +206,14 @@ class RegisterRequest(AuthRequest):
     first_name: str = ""
     last_name: str = ""
 
+class NameRequest(BaseModel, extra="forbid"):
+    """Both halves, and nothing else. `extra="forbid"` is what stops a body
+    that also carries `role` or `student_id` from being read by a later edit
+    that trusts the model."""
+    first_name: str = ""
+    last_name: str = ""
+
+
 class TutorChatRequest(BaseModel, extra="forbid"):
     """The tutor is given the problem SLUG, never a solution. The server looks
     up only the public fields; the reference solution never enters this path."""
@@ -490,6 +498,7 @@ def grade_chunk_route(req: ChunkRequest, request: Request):
     from main.grading import align_submission, grade_submission
     from main.sessions import MAX_ATTEMPTS, SessionError, load_session
 
+    require_student(request)
     try:
         session = load_session(req.session_id)
     except SessionError as e:
@@ -998,8 +1007,9 @@ def playground_live(req: LiveRunRequest, request: Request):
 
 
 @app.get("/problems")
-def list_problems(limit: int = 100, difficulty: str = None):
+def list_problems(request: Request, limit: int = 100, difficulty: str = None):
     """List problems from Supabase with optional difficulty filter."""
+    require_student(request)
     try:
         query = get_supabase().table("problems").select(
             "id, slug, title, difficulty, topic_tags"
@@ -1072,8 +1082,9 @@ def _group_columns(problem: dict) -> dict:
 
 
 @app.get("/problems/{slug}")
-def get_problem(slug: str):
+def get_problem(slug: str, request: Request):
     """Fetch a single problem by slug. PUBLIC fields only - never the solution."""
+    require_student(request)
     try:
         res = get_supabase().table("problems").select(
             _PUBLIC_PROBLEM_COLS).eq("slug", slug).single().execute()
@@ -1413,8 +1424,9 @@ def set_assignment_published(assignment_id: str, req: PublishToggleRequest,
 
 
 @app.get("/assignments")
-def list_assignments():
+def list_assignments(request: Request):
     """Assignments with a ready-count. Safe for students AND teachers."""
+    require_student(request)
     sb = get_supabase()
     rows = sb.table("assignments").select(
         "id, name, teacher_name, created_at, published").order(
@@ -1843,6 +1855,8 @@ def _session_response(body: dict, student: dict) -> JSONResponse:
 def _account(student: dict) -> dict:
     return {"student_id": student["id"], "username": student["username"],
             "name": auth_mod.full_name(student),
+            "first_name": student.get("first_name") or "",
+            "last_name": student.get("last_name") or "",
             "role": student.get("role") or "student"}
 
 
@@ -1922,17 +1936,42 @@ def auth_me(request: Request):
     # - the greeting kept showing the address the account was created with.
     # Read the row; fall back to the claim if the lookup fails, because a
     # database hiccup must not look like a signed-out session.
-    name = claims["name"]
+    name, first, last = claims["name"], "", ""
     try:
         rows = (get_supabase().table("students")
                 .select("username,first_name,last_name")
                 .eq("id", claims["sub"]).limit(1).execute().data or [])
         if rows:
             name = auth_mod.full_name(rows[0])
+            first = rows[0].get("first_name") or ""
+            last = rows[0].get("last_name") or ""
     except Exception:
         pass
     return {"student_id": claims["sub"], "username": claims["username"],
-            "name": name, "role": claims.get("role", "student")}
+            "name": name, "first_name": first, "last_name": last,
+            "role": claims.get("role", "student")}
+
+
+@app.post("/auth/name")
+def auth_set_name(req: NameRequest, request: Request):
+    """Change the signed-in student's own name.
+
+    WHICH account is renamed comes from the cookie, never from the body: a
+    student_id parameter here would let anyone rename anyone. The cookie's own
+    copy of the name is left stale on purpose - /auth/me re-reads the row, so
+    the header updates now instead of when the session expires."""
+    claims = require_student(request)
+    try:
+        row = auth_mod.update_name(get_supabase(), claims["sub"],
+                                   req.first_name, req.last_name)
+    except auth_mod.AuthError as e:
+        if e.detail:
+            print(f"  ⚠️  name change refused: {e.detail}")
+        raise HTTPException(status_code=400, detail={
+            "reason_code": "name_refused", "message": str(e)})
+    return _account({**row, "id": claims["sub"],
+                     "username": row.get("username") or claims["username"],
+                     "role": claims.get("role", "student")})
 
 
 @app.get("/solved")
@@ -2124,6 +2163,7 @@ def tutor_chat(req: TutorChatRequest, request: Request):
     already see."""
     from main.tutor import MAX_TURNS, reply
 
+    require_student(request)
     if len(req.messages) > MAX_TURNS * 2:
         raise HTTPException(status_code=400, detail={
             "reason_code": "conversation_too_long",
@@ -2215,6 +2255,7 @@ def plan_graph_route(req: PlanGraphRequest, request: Request):
     handle mid-conversation."""
     from main.graphs import plan_graph
 
+    require_student(request)
     row = get_supabase().table("problems").select(
         "slug, title, description").eq("slug", req.slug).execute().data
     if not row:
@@ -2255,6 +2296,7 @@ def graphs_route(req: GraphsRequest, request: Request):
     from main.graphs import build_both
     from main.sessions import session_snapshot
 
+    require_student(request)
     session = session_snapshot(req.session_id)
     if session is None:
         raise HTTPException(status_code=404, detail={
@@ -2296,6 +2338,7 @@ async def design_review(request: Request,
     message above."""
     from main.design_review import DesignRejected, review_design
 
+    require_student(request)
     row = get_supabase().table("problems").select(
         "slug, title, description").eq("slug", slug).execute().data
     if not row:
@@ -2515,6 +2558,7 @@ def design_review_plan(req: PlanSubmitRequest, request: Request):
     of as a photo, which also means no vision call."""
     from main.design_review import DesignRejected, review_plan_graph
 
+    require_student(request)
     row = get_supabase().table("problems").select(
         "slug, title, description").eq("slug", req.slug).execute().data
     if not row:
@@ -2557,12 +2601,13 @@ def design_review_plan(req: PlanSubmitRequest, request: Request):
 
 
 @app.post("/mark_solved")
-def mark_solved(req: MarkSolvedRequest):
+def mark_solved(req: MarkSolvedRequest, request: Request):
     """Derive the solve from a completed session. The old {student_id, slug}
     form let a browser mark any problem solved for any student, including
     incomplete or assisted work."""
     from main.sessions import session_snapshot
 
+    require_student(request)
     snap = session_snapshot(req.session_id)
     if snap is None:
         raise HTTPException(status_code=404, detail={

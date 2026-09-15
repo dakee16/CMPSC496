@@ -27,6 +27,7 @@ class FakeTable:
         self.rows = rows
         self._filters = []
         self._pending = None
+        self._update = None
 
     def select(self, *_a, **_k):
         return self
@@ -36,6 +37,15 @@ class FakeTable:
         return self
 
     def limit(self, _n):
+        return self
+
+    # `.not_.is_(col, "null")` on the builder. Not a filter the fake needs to
+    # honour - the rows it is handed are already the ones a test set up.
+    @property
+    def not_(self):
+        return self
+
+    def is_(self, *_a, **_k):
         return self
 
     def order(self, *_a, **_k):
@@ -49,7 +59,19 @@ class FakeTable:
         self._pending = data
         return self
 
+    def update(self, data):
+        self._update = data
+        return self
+
     def execute(self):
+        if self._update is not None:
+            patch, self._update = self._update, None
+            hits = [r for r in self.rows
+                    if all(r.get(c) == v for c, v in self._filters)]
+            self._filters = []
+            for r in hits:
+                r.update(patch)
+            return type("R", (), {"data": hits})()
         if self._pending is not None:
             row = dict(self._pending)
             # The unique index on username, which is what makes a duplicate
@@ -511,3 +533,71 @@ def test_reprepare_blocked_skips_an_assignment_that_is_all_ready():
     # An assignment with no rows at all is still the other error, not this one.
     assert c.post("/teacher/assignments/nope/reprepare?scope=blocked"
                   ).status_code == 404
+
+
+def test_a_student_can_rename_their_own_account_and_only_their_own():
+    """The name is the one thing about the account a student may change, and
+    WHICH account is read from the cookie - a student_id in the body would let
+    anyone rename anyone."""
+    c = client()
+    register(c, "abc123@psu.edu", first_name="Anne", last_name="Boyd")
+    assert c.get("/auth/me").json()["first_name"] == "Anne"
+
+    r = c.post("/auth/name", json={"first_name": "  Anne  Marie ",
+                                   "last_name": "Boyd-Clark"})
+    assert r.status_code == 200, r.text
+    assert r.json()["name"] == "Anne Marie Boyd-Clark"
+    # Re-read from the row, not from the cookie: the cookie still carries the
+    # name the session was signed with, and a session lasts hours.
+    me = c.get("/auth/me").json()
+    assert me["name"] == "Anne Marie Boyd-Clark"
+    assert (me["first_name"], me["last_name"]) == ("Anne Marie", "Boyd-Clark")
+
+    # Half a name is not a name, in either direction.
+    for body in ({"first_name": "", "last_name": "Boyd"},
+                 {"first_name": "Anne", "last_name": "   "}):
+        assert c.post("/auth/name", json=body).status_code == 400
+    assert c.get("/auth/me").json()["name"] == "Anne Marie Boyd-Clark"
+
+    # Nothing else in the body is honoured: `role` is not a column this writes.
+    assert c.post("/auth/name", json={"first_name": "A", "last_name": "B",
+                                      "role": "teacher"}).status_code == 422
+    assert c.get("/auth/me").json()["role"] == "student"
+
+
+def test_signed_out_callers_cannot_reach_the_work_routes():
+    """The roster gate only decides who may SIGN IN, so it protects nothing on
+    a route that never asks for a session. These are the ones that cost money
+    or hand back course content, and each used to answer anybody."""
+    c = client()
+    routes = [("get", "/problems", None),
+              ("get", "/problems/anything", None),
+              ("get", "/assignments", None),
+              ("post", "/tutor_chat", {"slug": "x", "messages": []}),
+              ("post", "/plan_graph", {"slug": "x", "messages": []}),
+              ("post", "/graphs", {"session_id": "x"}),
+              ("post", "/grade_chunk", {"session_id": "x", "submission_id": "s",
+                                        "student_code": ""}),
+              ("post", "/mark_solved", {"session_id": "x"}),
+              ("post", "/design_review/plan", {"slug": "x", "graph": {}})]
+    for method, path, body in routes:
+        r = getattr(c, method)(path) if body is None else getattr(c, method)(path, json=body)
+        assert r.status_code == 401, f"{path} answered {r.status_code} signed out"
+        assert r.json()["detail"]["reason_code"] == "not_signed_in", path
+
+
+def test_a_live_session_off_the_roster_cannot_reach_the_work_routes():
+    """Same routes, but signed in as someone the roster has since dropped.
+    current_claims() is what turns that cookie back into "signed out", and
+    these routes only inherit it by going through require_student."""
+    c = client()
+    register(c, "abc123@psu.edu")
+    assert c.get("/assignments").status_code != 401
+    auth.ALLOWED_EMAILS = frozenset({"someone-else@psu.edu"})
+    try:
+        assert c.get("/assignments").status_code == 401
+        assert c.get("/problems").status_code == 401
+        assert c.post("/tutor_chat",
+                      json={"slug": "x", "messages": []}).status_code == 401
+    finally:
+        auth.ALLOWED_EMAILS = frozenset()

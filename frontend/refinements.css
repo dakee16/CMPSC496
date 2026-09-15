@@ -5,8 +5,7 @@ body{line-height:1.55}.page{max-width:1440px}
 .page-heading h1{font-size:clamp(1.65rem,2.5vw,2.2rem);line-height:1.2;letter-spacing:-.035em}
 .page-heading .sub{font-size:14px;line-height:1.6;margin-top:10px;max-width:68ch}
 .eyebrow{letter-spacing:.09em}.card{border-radius:12px;box-shadow:none}
-.sidebar-settings{width:100%;text-align:left;background:transparent;border:0;box-shadow:none;margin:0 0 10px}
-.sidebar-settings:hover{box-shadow:none;transform:none}.sidebar-bottom{padding-top:20px}
+.sidebar-bottom{padding-top:20px}
 .hdr .workspace-label{font-family:var(--font-sans);font-size:12px;letter-spacing:0}
 .crumb{max-width:46ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .metric-value,.dash-metric strong,.grade-total-number{font-variant-numeric:tabular-nums}
@@ -82,12 +81,14 @@ body{line-height:1.55}.page{max-width:1440px}
 .plan-action-buttons button{font-size:12px;min-height:40px;padding:9px 13px}.plan-action-buttons #planSubmitBtn{margin-left:auto}
 .plan-upload{margin:0 20px 16px;font-size:12px;color:var(--text-muted)}
 .plan-upload>summary{width:fit-content;padding:6px 0;cursor:pointer}
-.guided-workspace .plan-upload .designPanel{padding:18px 0 0;text-align:left;border-radius:0;background:transparent}
-.guided-workspace .plan-upload .designPanel h3{font-size:14px;margin-bottom:8px}
-.guided-workspace .plan-upload .designPanel>p{max-width:65ch;font-size:12px;line-height:1.65;margin-bottom:14px}
-.guided-workspace .plan-upload .designPanel .drop{padding:20px;text-align:center;border-radius:8px}
+.guided-workspace .plan-upload .designPanel{padding:16px 0 4px;text-align:left;border:0;border-radius:0;background:transparent}
+.guided-workspace .plan-upload .designPanel h3{font-size:14px;margin:0 0 6px}
+.guided-workspace .plan-upload .designPanel>p{margin:0 0 14px;max-width:65ch;font-size:12px;line-height:1.65}
+.guided-workspace .plan-upload .designPanel .drop{margin:0;max-width:none;padding:20px;text-align:center;border-radius:8px}
 .guided-workspace .plan-upload .designPanel>.row{justify-content:flex-start!important;margin-top:12px!important}
-.plan-upload .designPanel details{margin:12px 0 0;font-size:12px}.plan-upload .designPanel .dpick{justify-content:flex-start}
+.plan-upload .designPanel details{max-width:none;margin:14px 0 0;font-size:12px}
+.plan-upload .designPanel details ul{margin:8px 0 0;padding-left:18px}
+.plan-upload .designPanel .dpick{justify-items:start;justify-content:flex-start;margin-top:12px}
 .plan-preview #planFeedback{margin:0 20px}.plan-preview .plan-approved{margin:0 20px 16px;padding:16px}
 .plan-preview #planCard{margin:0;padding:0 16px 16px;border:0;background:transparent}
 .plan-preview #planCard>.chead,.plan-preview #planCard>#planHint{display:none}
@@ -131,6 +132,11 @@ body{line-height:1.55}.page{max-width:1440px}
 .dialog-heading>button{min-width:36px;min-height:36px;padding:0;font-size:24px}
 .settings-section{padding-top:22px;margin-top:22px;border-top:1px solid var(--border)}.settings-section h3{font-size:15px;margin:0 0 8px}
 .settings-section p{font-size:13px;color:var(--text-muted);line-height:1.65;margin:0 0 14px}
+.settings-name{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:end}
+.settings-name label{display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--text-muted)}
+.settings-name input{width:100%;min-height:40px;padding:9px 11px;font:inherit;font-size:13px;color:var(--text);background:var(--surface-raised);border:1px solid var(--border);border-radius:8px}
+.settings-name input:focus-visible{outline:2px solid var(--accent-ink);outline-offset:1px}
+.settings-name button{grid-column:1 / -1;justify-self:start;min-height:40px}
 .settings-theme{display:flex;gap:8px}.settings-theme button{min-width:86px}
 .settings-theme button.on{background:var(--accent-tint-strong);border-color:var(--accent-line);color:var(--accent-ink)}
 .settings-note,.acadia-dialog .settings-note{font-size:11px;color:var(--text-subtle);line-height:1.65;margin:14px 0 0}

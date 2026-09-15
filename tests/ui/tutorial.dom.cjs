@@ -10,7 +10,18 @@ const tick=()=>new Promise(r=>setTimeout(r,30));
     windows.push(w);w.scrollTo=()=>{};
     if(previous)for(const k of Object.keys(previous.localStorage))w.localStorage.setItem(k,previous.localStorage.getItem(k));
     w.document.write(read(page.split("?")[0]).replace(/<script\b[^>]*>[\s\S]*?<\/script>/g,""));
-    w.fetch=async(url,init={})=>{calls.push({url:String(url),method:init.method||"GET"});return new w.Response(JSON.stringify({name:"Practice User",student_id:"practice-"+role,role}),{status:200});};
+    const account={name:"Practice User",first_name:"Practice",last_name:"User",
+                   student_id:"practice-"+role,role};
+    w.fetch=async(url,init={})=>{
+      calls.push({url:String(url),method:init.method||"GET"});
+      // /auth/name answers with the renamed account, exactly as the route does.
+      if(String(url).endsWith("/auth/name")){
+        const sent=JSON.parse(init.body||"{}");
+        Object.assign(account,{first_name:sent.first_name,last_name:sent.last_name,
+                               name:`${sent.first_name} ${sent.last_name}`});
+      }
+      return new w.Response(JSON.stringify(account),{status:200});
+    };
     w.eval(["ui.js","cache.js","onboarding.js",...(page.startsWith("tutorial")?["graphs.js","tutorial.js"]:[])].map(read).join("\n"));
     if(!page.startsWith("tutorial"))w.eval('requireSession();mountHeader();');
     await tick();return w;
@@ -21,9 +32,40 @@ const tick=()=>new Promise(r=>setTimeout(r,30));
     d.querySelector("#skipTutorial").click();
     const returning=await make("dashboard.html","student",landing);
     assert(!returning.document.querySelector("#acadiaWelcome"),"Remember first visit");
-    returning.document.querySelector(".sidebar-settings").click();
-    assert(returning.document.querySelector("#acadiaSettings").open);
-    assert(returning.document.querySelector("#retakeTutorial"),"Retake remains available");
+    returning.document.querySelector("#whoBtn").click();
+    returning.document.querySelector('#whoMenu [data-open-settings]').click();
+    const settings=returning.document.querySelector("#acadiaSettings");
+    assert(settings.open);
+    assert(settings.querySelector("#retakeTutorial"),"Retake remains available");
+    // Each section is its own heading plus its control. The only prose left is
+    // the note about what the tutorial remembers, which nothing else says.
+    assert.equal(settings.querySelectorAll("p:not(.settings-note)").length,0,
+      "settings sections carry no restated descriptions");
+
+    // The name is editable, prefilled from the account, and what gets saved is
+    // what the header redraws with - a saved name that leaves a stale chip
+    // behind reads as a save that did not happen.
+    assert.equal(settings.querySelector("#firstName").value,"Practice");
+    assert.equal(settings.querySelector("#lastName").value,"User");
+    settings.querySelector("#firstName").value="Ada";
+    settings.querySelector("#lastName").value="Lovelace";
+    settings.querySelector("#nameForm").dispatchEvent(
+      new returning.Event("submit",{bubbles:true,cancelable:true}));
+    await tick();
+    assert(calls.some(c=>c.url.endsWith("/auth/name")&&c.method==="POST"),"name is saved server-side");
+    assert.equal(returning.document.querySelector(".who .nm").textContent,"Ada Lovelace");
+    assert.equal(JSON.parse(returning.sessionStorage.getItem("microtutor.session")).first,"Ada");
+    assert.equal(settings.querySelector("#nameMsg").textContent,"Saved.");
+
+    // Sign out: one item, and it actually calls the route and leaves the page.
+    const menu=returning.document.querySelector("#whoMenu");
+    assert.deepEqual([...menu.querySelectorAll("[role=menuitem]")].map(b=>b.textContent),
+      ["Settings","Sign out"],"the account menu is the one place both live");
+    returning.document.querySelector("#whoBtn").click();
+    returning.document.querySelector("#miLogout").click();
+    await tick();
+    assert(calls.some(c=>c.url.endsWith("/logout")&&c.method==="POST"),"sign out calls /logout");
+    assert.equal(returning.sessionStorage.getItem("microtutor.session"),null,"session copy is cleared");
     const w=await make("tutorial.html?return=student.html"),doc=w.document;
     const next=()=>doc.querySelector("#tutorialNext").click();
     const radio=(name,value)=>doc.querySelector('input[name="'+name+'"][value="'+value+'"]').click();
@@ -59,7 +101,12 @@ const tick=()=>new Promise(r=>setTimeout(r,30));
     const teacher=await make("tutorial.html","teacher");
     assert.equal(teacher.document.body.dataset.portal,"instructor");
     assert.equal(teacher.AcadiaOnboarding.destination("grades.html"),"grades.html");
-    assert(calls.every(c=>c.method==="GET"&&c.url.includes("/auth/me")),"Tutorial never creates a real session or grade");
+    // The only writes in this whole file are the two ACCOUNT ones asserted
+    // above. Anything else reaching the server would be the tutorial touching
+    // a real session, submission or grade, which is the thing it must not do.
+    const account=c=>c.url.endsWith("/auth/name")||c.url.endsWith("/logout");
+    assert(calls.every(c=>account(c)||(c.method==="GET"&&c.url.includes("/auth/me"))),
+      "Tutorial never creates a real session or grade");
     console.log("PASS: first-visit detection, account/browser memory, Settings replay, the four product-tour gates (plan lock, workable plan, never revealed, work is saved), automatic exit, role-aware navigation, and zero course writes.");
   }finally{for(const w of windows)await w.happyDOM.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

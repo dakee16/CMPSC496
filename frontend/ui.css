@@ -1,4 +1,4 @@
-/* ACADIA Studio — shared interface. Theme values live in tokens.css. */
+/* ACADIA Studio - shared interface. Theme values live in tokens.css. */
 *{box-sizing:border-box}
 html{scroll-behavior:smooth;scroll-padding-top:100px}
 [hidden]{display:none!important}
@@ -55,8 +55,6 @@ button.who:hover{background:none;color:var(--brand-text);box-shadow:none}
 .crumbs .sep{color:var(--text-subtle);padding:0 4px;font-size:.75rem}
 .crumbs .crumb{display:block;min-width:0;max-width:280px;min-height:0;padding:4px;color:var(--text-muted);font-size:.8125rem;background:none;box-shadow:none;border:0;white-space:nowrap;text-overflow:ellipsis;overflow:hidden;font-weight:500}
 .crumbs .crumb:hover{background:var(--surface-raised);box-shadow:none}
-.header-tools{display:flex;align-items:center;gap:18px;flex:none}
-.workspace-label{font:400 .6875rem var(--font-mono);color:var(--text-subtle)}
 .theme-toggle,.icon-button{display:inline-flex;justify-content:center;align-items:center;width:38px;height:38px;min-height:38px;padding:0;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text-muted);box-shadow:none}
 .theme-toggle:hover:not(:disabled),.icon-button:hover:not(:disabled){background:var(--surface-raised);color:var(--text);box-shadow:none}
 .theme-toggle .sun-icon,:root[data-theme="dark"] .theme-toggle .moon-icon{display:none}
@@ -254,7 +252,6 @@ pre.code .t-fn{color:var(--code-yellow)}
   .page{padding-left:28px;padding-right:28px}
 }
 @media (max-width:1000px){
-  .workspace-label{display:none}
   .hdr{padding:0 24px}
   .crumbs .crumb:not([aria-current="page"]),.crumbs .sep:not(:last-of-type){display:none}
   .rows.two{grid-template-columns:minmax(0,1fr)}
@@ -264,7 +261,6 @@ pre.code .t-fn{color:var(--code-yellow)}
   body.has-shell{padding-left:0}
   .hdr{left:0;padding:0 16px;gap:12px}
   .location-trail{flex:1}
-  .header-tools{gap:0}
   .mobile-nav-toggle{display:inline-flex;flex:none}
   .sidebar{transform:translateX(-100%);visibility:hidden;transition:transform .2s ease,visibility .2s}
   .nav-open .sidebar{transform:none;visibility:visible}

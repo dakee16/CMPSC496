@@ -8,7 +8,7 @@ let progressData = null;
 let loadingProgress = false;
 const gradeFilters = {assignment: new URLSearchParams(location.search).get("assignment") || "all", search: "", status: "all", sort: "title"};
 const statusNames = {solved:"Solved independently",helped:"Completed with help",progress:"In progress",todo:"Not started",passed:"Passed",shown:"Shown answer",needs_work:"Keep practicing",not_started:"Not attempted",not_graded:"Not graded yet"};
-const scoreText = value => value === null || value === undefined ? "—" : `${value}%`;
+const scoreText = value => value === null || value === undefined ? "-" : `${value}%`;
 const workLink = (assignment, slug) => `student.html?assignment=${encodeURIComponent(assignment)}${slug ? `&problem=${encodeURIComponent(slug)}` : ""}`;
 const gradeLink = assignment => `student-grades.html?assignment=${encodeURIComponent(assignment)}`;
 const statusHTML = state => `<span class="grade-status ${Object.hasOwn(statusNames,state) ? state : "todo"}">${esc(statusNames[state] || "Not started")}</span>`;
@@ -23,16 +23,28 @@ function metricHTML(icon, label, value, note){
   return `<div class="card dash-metric"><p>${esc(label)}</p><strong>${esc(value)}</strong><small>${esc(note)}</small></div>`;
 }
 
+/* The stored first name, NOT the first word of the display name: with no name
+   on the account that display name is standing in with the local part of their
+   address, and greeting someone by their user id is worse than greeting them
+   by nothing. They can set a real one in Settings. */
+function drawGreeting(){
+  const host = insightEl("insightsTitle");
+  if (!host) return;
+  const account = Session.get();
+  const name = account && (account.first || "").trim();
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+  host.textContent = name ? `${greeting}, ${name}.` : `${greeting}.`;
+}
+document.addEventListener("acadia:name-changed", drawGreeting);
+
 function renderDashboard(data){
   const s = data.summary;
   const assignments = new Map(data.assignments.map(a=>[String(a.id),a]));
   const problems = new Map(data.problems.map(p=>[p.slug,p]));
   const next = data.next_up.map(slug=>problems.get(slug)).filter(Boolean);
   const first = next[0];
-  const account = Session.get();
-  const name = account && account.name ? account.name.trim().split(/\s+/)[0] : "";
-  const greeting = new Date().getHours()<12 ? "Good morning" : new Date().getHours()<18 ? "Good afternoon" : "Good evening";
-  insightEl("insightsTitle").textContent = name ? `${greeting}, ${name}.` : "Make room for progress.";
+  drawGreeting();
   const peak = Math.max(1,...data.activity.map(d=>d.submissions));
   const heroTitle = first ? first.title : s.problems ? "Look at how far you've come." : "Your next chapter starts here.";
   const heroSub=first?assignments.get(String(first.assignment_id))?.name||"Your assignment":s.problems?"Every available problem is complete. Revisit an assignment or review your grades.":"Your instructor's published assignments will appear here when they're ready.";
@@ -73,7 +85,7 @@ function renderDashboard(data){
           ${data.recent.length ? `<ol class="activity-list">${data.recent.map(e=>{const label=e.kind==="passed"?`Passed step ${e.step}`:e.kind==="completed"?"Completed a problem":e.kind==="practiced"?`Practiced step ${e.step}`:"Opened a problem";return `<li class="activity-item ${e.kind}"><span class="activity-icon" aria-hidden="true">${e.kind==="passed"||e.kind==="completed"?"✓":"↗"}</span><div class="activity-copy"><a href="${workLink(e.assignment_id,e.slug)}">${esc(e.title)}</a><p>${esc(label)}</p></div><time datetime="${esc(e.at)}" title="${esc(activityTime(e.at))}">${esc(relTime(e.at))}</time></li>`;}).join("")}</ol>` : `<div class="insight-empty">Your first practice session starts the story. Your recent work will appear here.</div>`}
         </section>
         <section class="card"><div class="insight-section-title"><h2>Milestones</h2></div><div class="milestone-list">
-          ${[[s.independent>0,"First independent solve",s.independent>0?"You solved a problem with your own code.":"Solve your first problem independently."],[s.active_days>=3,"A steady rhythm",s.active_days>=3?"You practiced on three days this week.":"Practice on three days in a week."],[s.completed_assignments>0,"One chapter complete",s.completed_assignments>0?"You finished an entire assignment.":"Complete every problem in an assignment."]].map(([earned,title,note])=>`<div class="milestone ${earned?"earned":""}"><span aria-hidden="true">${earned?"✓":"○"}</span><div><strong>${esc(title)}<span class="sr-only">${earned?" — achieved":" — not yet achieved"}</span></strong><small>${esc(note)}</small></div></div>`).join("")}
+          ${[[s.independent>0,"First independent solve",s.independent>0?"You solved a problem with your own code.":"Solve your first problem independently."],[s.active_days>=3,"A steady rhythm",s.active_days>=3?"You practiced on three days this week.":"Practice on three days in a week."],[s.completed_assignments>0,"One chapter complete",s.completed_assignments>0?"You finished an entire assignment.":"Complete every problem in an assignment."]].map(([earned,title,note])=>`<div class="milestone ${earned?"earned":""}"><span aria-hidden="true">${earned?"✓":"○"}</span><div><strong>${esc(title)}<span class="sr-only">${earned?": achieved":": not yet achieved"}</span></strong><small>${esc(note)}</small></div></div>`).join("")}
         </div></section>
       </div>
     </div>`;
@@ -95,7 +107,7 @@ function renderGrades(data){
     <div class="grades-top" id="gradeOverview"></div>
     <div class="grades-count"><span id="gradeResultCount" role="status" aria-live="polite"></span><button class="ghost" id="clearGradeFilters" type="button">Reset filters</button></div>
     <div id="gradeResults"></div>
-    <p class="credit-explainer">Grades reflect independently passed steps across your recorded attempts. Shown answers and unfinished steps earn no credit. Problem completion is tracked separately. “—” means a step count is not available yet; it is not a zero grade.</p>`;
+    <p class="credit-explainer">Grades reflect independently passed steps across your recorded attempts. Shown answers and unfinished steps earn no credit. Problem completion is tracked separately. A dash in place of a step count means it is not available yet; it is not a zero grade.</p>`;
   for(const [key,id] of [["assignment","gradeAssignment"],["search","gradeSearch"],["status","gradeStatus"],["sort","gradeSort"]]){
     const input=insightEl(id);input.value=gradeFilters[key];
     input.addEventListener(key==="search"?"input":"change",()=>{
@@ -122,7 +134,7 @@ function renderGrades(data){
 function renderGradeResults(){
   const s=selectedSummary();
   const assignment=gradeFilters.assignment==="all"?null:progressData.assignments.find(a=>String(a.id)===gradeFilters.assignment);
-  insightEl("gradeOverview").innerHTML=`<section class="card grade-total"><p class="eyebrow">${assignment?"ASSIGNMENT GRADE":"OVERALL STEP CREDIT"}</p><div class="grade-total-number">${scoreText(s.percent)}</div><p>${s.earned} of ${s.total} available steps passed</p>${barHTML(s.percent,"Earned step credit")}</section><section class="card grade-summary"><h2>${assignment?esc(assignment.name):"A clear view of your work."}</h2><p>You earn credit when your own code passes a step. Keep practicing at your pace—your passing work stays in your record.${s.ungraded_problems?` ${s.ungraded_problems} problem${s.ungraded_problems===1?" is":"s are"} awaiting a step count.`:""}</p><div class="grade-breakdown"><div><strong>${s.earned}</strong><span>Steps passed</span></div><div><strong>${s.shown}</strong><span>Answers shown</span></div><div><strong>${s.remaining}</strong><span>Steps remaining</span></div></div></section>`;
+  insightEl("gradeOverview").innerHTML=`<section class="card grade-total"><p class="eyebrow">${assignment?"ASSIGNMENT GRADE":"OVERALL STEP CREDIT"}</p><div class="grade-total-number">${scoreText(s.percent)}</div><p>${s.earned} of ${s.total} available steps passed</p>${barHTML(s.percent,"Earned step credit")}</section><section class="card grade-summary"><h2>${assignment?esc(assignment.name):"A clear view of your work."}</h2><p>You earn credit when your own code passes a step. Keep practicing at your pace. Your passing work stays in your record.${s.ungraded_problems?` ${s.ungraded_problems} problem${s.ungraded_problems===1?" is":"s are"} awaiting a step count.`:""}</p><div class="grade-breakdown"><div><strong>${s.earned}</strong><span>Steps passed</span></div><div><strong>${s.shown}</strong><span>Answers shown</span></div><div><strong>${s.remaining}</strong><span>Steps remaining</span></div></div></section>`;
   let rows=progressData.problems.filter(p=>(gradeFilters.assignment==="all"||String(p.assignment_id)===gradeFilters.assignment)&&(gradeFilters.status==="all"||p.status===gradeFilters.status)&&`${p.title} ${p.group||""}`.toLowerCase().includes(gradeFilters.search.trim().toLowerCase()));
   rows.sort((a,b)=>gradeFilters.sort==="lowest"?(a.percent??101)-(b.percent??101)||a.title.localeCompare(b.title):gradeFilters.sort==="recent"?(b.last_activity||"").localeCompare(a.last_activity||""):a.title.localeCompare(b.title));
   insightEl("gradeResultCount").textContent=`${rows.length} problem${rows.length===1?"":"s"} · Select “View steps” for the breakdown`;
@@ -133,7 +145,7 @@ function renderGradeResults(){
   let index=0;
   insightEl("gradeResults").innerHTML=progressData.assignments.map(a=>{
     const group=rows.filter(p=>String(p.assignment_id)===String(a.id));if(!group.length)return "";
-    return `<section class="card grade-group"><div class="grade-group-header"><div><h2>${esc(a.name)}</h2><p>${a.completed} of ${a.problems} problems complete · ${scoreText(a.percent)} step credit</p></div><a href="${workLink(a.id)}">Open assignment ${uiIcon("arrow",13)}</a></div><div class="grade-table-wrap" role="region" aria-label="${esc(a.name)} grades" tabindex="0"><table class="grade-table"><thead><tr><th scope="col">Problem</th><th scope="col">Status</th><th scope="col">Step credit</th><th scope="col">Grade</th><th scope="col"><span class="sr-only">Details</span></th></tr></thead>${group.map(p=>{const id=`gradeDetail${index++}`;return `<tbody><tr><td><div class="grade-problem-name">${esc(p.title)}</div><div class="grade-problem-meta">${p.last_activity?`Last activity ${esc(activityTime(p.last_activity))}`:"Ready to begin"}</div></td><td>${statusHTML(p.status)}</td><td class="grade-credit">${p.solved} / ${p.total||"—"}</td><td class="grade-score">${scoreText(p.percent)}</td><td><button class="ghost grade-details-toggle" type="button" data-grade-detail aria-expanded="false" aria-controls="${id}" aria-label="View steps for ${esc(p.title)}">View steps</button></td></tr><tr id="${id}" hidden><td class="grade-detail-cell" colspan="5"><div class="grade-detail-inner"><div>${p.steps.length?`<ol class="step-results">${p.steps.map(step=>`<li class="step-result"><strong>Step ${step.number}</strong>${statusHTML(step.status)}<small>${step.attempts} graded attempt${step.attempts===1?"":"s"}</small></li>`).join("")}</ol>`:'<p class="week-note">This problem does not have a recorded step count yet.</p>'}</div><a class="action-link" href="${workLink(p.assignment_id,p.slug)}">${p.status==="solved"||p.status==="helped"?"Practice again":p.status==="progress"?"Continue problem":"Start problem"}${uiIcon("arrow",14)}</a></div></td></tr></tbody>`;}).join("")}</table></div></section>`;
+    return `<section class="card grade-group"><div class="grade-group-header"><div><h2>${esc(a.name)}</h2><p>${a.completed} of ${a.problems} problems complete · ${scoreText(a.percent)} step credit</p></div><a href="${workLink(a.id)}">Open assignment ${uiIcon("arrow",13)}</a></div><div class="grade-table-wrap" role="region" aria-label="${esc(a.name)} grades" tabindex="0"><table class="grade-table"><thead><tr><th scope="col">Problem</th><th scope="col">Status</th><th scope="col">Step credit</th><th scope="col">Grade</th><th scope="col"><span class="sr-only">Details</span></th></tr></thead>${group.map(p=>{const id=`gradeDetail${index++}`;return `<tbody><tr><td><div class="grade-problem-name">${esc(p.title)}</div><div class="grade-problem-meta">${p.last_activity?`Last activity ${esc(activityTime(p.last_activity))}`:"Ready to begin"}</div></td><td>${statusHTML(p.status)}</td><td class="grade-credit">${p.solved} / ${p.total||"-"}</td><td class="grade-score">${scoreText(p.percent)}</td><td><button class="ghost grade-details-toggle" type="button" data-grade-detail aria-expanded="false" aria-controls="${id}" aria-label="View steps for ${esc(p.title)}">View steps</button></td></tr><tr id="${id}" hidden><td class="grade-detail-cell" colspan="5"><div class="grade-detail-inner"><div>${p.steps.length?`<ol class="step-results">${p.steps.map(step=>`<li class="step-result"><strong>Step ${step.number}</strong>${statusHTML(step.status)}<small>${step.attempts} graded attempt${step.attempts===1?"":"s"}</small></li>`).join("")}</ol>`:'<p class="week-note">This problem does not have a recorded step count yet.</p>'}</div><a class="action-link" href="${workLink(p.assignment_id,p.slug)}">${p.status==="solved"||p.status==="helped"?"Practice again":p.status==="progress"?"Continue problem":"Start problem"}${uiIcon("arrow",14)}</a></div></td></tr></tbody>`;}).join("")}</table></div></section>`;
   }).join("");
 }
 

@@ -198,6 +198,33 @@ def full_name(student: dict) -> str:
             or (student.get("username") or "").split("@")[0])
 
 
+def update_name(sb, student_id: str, first_name: str, last_name: str) -> Dict[str, Any]:
+    """Rename an existing account and return the updated row.
+
+    Same rule as registration, on purpose: both halves required, whitespace
+    collapsed, length bounded. A name set here ends up on a grade sheet and in
+    a transcript, so "" or a pasted paragraph must be refused in both places,
+    not just the one the student happened to use first.
+
+    Role and username are NOT touchable here - the update names the two
+    columns it writes, so a request carrying anything else changes nothing."""
+    first, last = clean_name(first_name), clean_name(last_name)
+    if not first or not last:
+        raise AuthError("Enter your first and last name.",
+                        detail=f"missing name for {student_id}")
+    try:
+        rows = sb.table("students").update(
+            {"first_name": first, "last_name": last}).eq(
+            "id", student_id).execute().data
+    except Exception as e:
+        raise AuthError("Could not save your name. Try again.",
+                        detail=f"name update failed: {e}") from e
+    if not rows:
+        raise AuthError("Could not save your name. Try again.",
+                        detail=f"name update matched no row for {student_id}")
+    return rows[0]
+
+
 # ── session cookie ───────────────────────────────────────────────────────
 # Signed with SESSION_SECRET, not encrypted: the payload is the student's own
 # id, name and role, which they already know. Signing is what matters - it
