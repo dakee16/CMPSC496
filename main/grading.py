@@ -150,16 +150,11 @@ def _bare_builtin_types(tree) -> set:
 
 
 def _render_case(problem: dict, test: dict, failure: dict) -> str:
-    """ONE failing case, written as the program that produced it.
+    """One failing case, written as the program that produced it.
 
     "Your solution runs but gives the wrong answer on at least one case" is a
     shrug: it tells a student they are wrong and nothing about where to look.
-    This renders the case as runnable lines they can trace by hand.
-
-    Deliberately ONE. The suite stays hidden - a student who could read all
-    fifteen tests would write code that satisfies the tests instead of the
-    problem, which is the failure mode oracle secrecy exists to prevent. One
-    counterexample is how a person debugs; fifteen is the answer key."""
+    This renders the case as runnable lines they can trace by hand."""
     from .context import is_method
 
     inp = (test or {}).get("input") or []
@@ -205,16 +200,50 @@ def _shown(v) -> str:
     return repr(v)
 
 
-def failing_case(problem: dict, tests: list, failures: list) -> str | None:
-    """The first failing case, rendered - or None when there is nothing to show."""
+# How many failing cases a student may see at once.
+#
+# It was ONE, on the argument that a student who could read the whole suite
+# would write code that satisfies the tests instead of the problem. That
+# argument is about the SUITE, not about the number one, and one case turned out
+# to be too few to debug from: told only that invert({'a':1,'b':1}) came back
+# wrong, a student cannot see whether their code keeps repeated values or drops
+# the wrong one of the pair - two cases distinguish those, one does not. Three
+# is enough to show the shape of a mistake and far short of an answer key, and
+# the suite stays hidden behind it either way.
+MAX_SHOWN_CASES = 3
+
+
+def failing_cases(problem: dict, tests: list, failures: list,
+                  limit: int = MAX_SHOWN_CASES) -> list[str]:
+    """Up to `limit` failing cases, each rendered for a human.
+
+    A case that cannot be rendered is SKIPPED rather than aborting the list: a
+    hint is never worth an error, and one awkward input must not cost the
+    student the two cases that would have told them something."""
+    out = []
     for f in failures or []:
+        if len(out) >= limit:
+            break
         i = f.get("index")
-        if isinstance(i, int) and 0 <= i < len(tests or []):
-            try:
-                return _render_case(problem, tests[i], f)
-            except Exception:
-                return None                    # a hint is never worth an error
-    return None
+        if not (isinstance(i, int) and 0 <= i < len(tests or [])):
+            continue
+        try:
+            out.append(_render_case(problem, tests[i], f))
+        except Exception:
+            continue
+    return out
+
+
+def _failed_total(res, shown: int) -> int:
+    """How many oracle cases the submission actually failed.
+
+    NOT len(shown): the sandbox reports at most five wrong-output failures
+    (main/execution.py), so the list is a sample and `total - passed` is the
+    count. Falls back to what was shown when the run reported no totals, which
+    is the only honest answer there - better to under-report than to claim a
+    number the run did not produce."""
+    missed = int(getattr(res, "total", 0) or 0) - int(getattr(res, "passed", 0) or 0)
+    return max(missed, shown)
 
 
 _SYNTAX_LINE = re.compile(r"\s*\(line (\d+)\)\s*$")
@@ -255,6 +284,70 @@ def _syntax_message(raw: str, problem: dict, prefix: str,
     where = f"line {n} of your answer"
     return (f"Your code doesn't parse: {base}, on {where}"
             + (f" - `{quoted}`." if quoted else "."))
+
+
+# Python's own wording for an indentation fault, translated into the edit the
+# student has to make. The raw message is accurate and useless to them:
+# "expected an indented block after 'for' statement on line 1" describes the
+# parser's state, not what to type.
+_INDENT_ADVICE = (
+    ("expected an indented block",
+     "The line above it opens a block, so the line under it has to sit further "
+     "in - that is what puts it inside."),
+    ("unexpected indent",
+     "It sits further in than the line above it, but nothing above it opens a "
+     "block."),
+    ("unindent does not match",
+     "It sits between two levels - it has to line up with one of the blocks "
+     "already open above it."),
+)
+
+
+def _indent_message(student_code: str) -> str | None:
+    """An indentation fault, named as one and pointed at the student's own line.
+
+    Kept apart from _syntax_message because it is the one parse error with a
+    mechanical fix, and because the generic wording actively misleads here: "your
+    code doesn't parse" sends a student hunting for a typo through code that is
+    spelled perfectly and merely lines up wrong.
+
+    ONLY THE INSIDE OF THE ANSWER IS EVER JUDGED. Which column the block as a
+    whole starts at is not the student's to get right - they were never told it,
+    and align_submission() has already re-seated the submission before this runs
+    (see main/indent.py) - so a fault here can only be lines disagreeing with
+    each other, and the last sentence says so rather than leaving them to wonder
+    whether the step wanted some depth they failed to guess.
+
+    Parsed inside a synthetic `def` for the same reason _parse_body is: a body
+    holding `return` does not parse on its own. Returns None for anything that
+    is not an indentation fault - an ordinary syntax error is _syntax_message's.
+    """
+    if not (student_code or "").strip():
+        return None          # a blank answer is blank_answer, not a bad indent
+    try:
+        ast.parse("def _w():\n" + _indent(student_code))
+    except IndentationError as e:
+        lines = (student_code or "").splitlines()
+        # Line 1 of the wrapper is the synthetic def, so their own numbering is
+        # one less. An unmappable number is dropped rather than guessed at.
+        n = (e.lineno or 0) - 1
+        on_line = 1 <= n <= len(lines)
+        quoted = lines[n - 1].strip() if on_line else ""
+        raw = (e.msg or "").lower()
+        head = ("Your indentation doesn't line up"
+                + (f" on line {n} of your answer" if on_line else "")
+                + (f" - `{quoted}`." if quoted else "."))
+        advice = next((a for k, a in _INDENT_ADVICE if k in raw), None)
+        return " ".join([
+            head,
+            advice or f"Python says: {e.msg}.",
+            "You don't have to match the step's own indentation - that is added "
+            "for you - but the lines inside your answer have to agree with each "
+            "other.",
+        ])
+    except SyntaxError:
+        return None
+    return None
 
 
 def _module_names(problem: dict) -> set:
@@ -596,6 +689,12 @@ def grade_submission(session: dict, student_code: str,
                    f"{probe.internal_error}.", "policy_violation",
                    execution_outcome="policy_violation")
     if (probe.internal_error or "").startswith("syntax:"):
+        # Indentation is asked FIRST. It is the one parse error with a
+        # mechanical fix, and "your code doesn't parse" is the wrong sentence
+        # for code whose only fault is which column it starts in.
+        indent_fault = _indent_message(student_code)
+        if indent_fault:
+            return _ok("incorrect", "syntax", indent_fault, "indentation_error")
         return _ok("incorrect", "syntax",
                    _syntax_message(probe.internal_error[7:].strip(),
                                    problem, prefix, student_code),
@@ -628,11 +727,12 @@ def grade_submission(session: dict, student_code: str,
                "runtime_error": "Your solution crashes while running.",
                "timeout": "Your solution took too long - it may loop forever.",
                "policy_violation": "That answer uses something not allowed here."}
+        shown = failing_cases(problem, tests, res.failures)
         return _ok("incorrect", "execution-final",
                    msg.get(res.outcome, "Your solution didn't pass."),
                    f"final_{res.outcome}", execution_outcome=res.outcome,
-                   failures=res.failures,
-                   failing_case=failing_case(problem, tests, res.failures))
+                   failures=res.failures, failing_cases=shown,
+                   failed_total=_failed_total(res, len(shown)))
 
     # ── NON-LAST - trusted reference tail ──
     ref_tail = "\n".join((chunks[j].get("reference") or "")
@@ -711,11 +811,13 @@ def _tier3(problem, session, chunk, header, prefix, student_code, upto,
         if cand.outcome == "wrong_output":
             # Calibrated tail + clean run + wrong answers => the student's step
             # is genuinely wrong. This is the only adapter path that convicts.
+            shown = failing_cases(problem, tests, cand.failures)
             return _ok("incorrect", "execution-adapted",
                        "Your step runs, but the finished solution gives the "
                        "wrong answer.", "adapted_wrong_output",
                        execution_outcome="wrong_output", failures=cand.failures,
-                       failing_case=failing_case(problem, tests, cand.failures))
+                       failing_cases=shown,
+                       failed_total=_failed_total(cand, len(shown)))
         if cand.outcome == "harness_error":
             return _system("harness_error", cand.internal_error)
         break     # crash/timeout: ownership ambiguous -> Tier 4
@@ -794,5 +896,58 @@ if __name__ == "__main__":
     assert _module_names({"slug": "x", "solution": "def f():\n    pass"}) is not None
     assert _scope_violation("node = Node(value)",
                             {"self", "value"} | _module_names(_mod)) is None
+
+    # ── indentation is named as indentation, not as a typo ───────────────
+    # Each of these used to come back "Your code doesn't parse: ...", which
+    # sends a student looking for a misspelling through correctly spelled code.
+    for code, needle in (
+            ("for x in nums:\ntotal += x", "has to sit further in"),
+            ("total = 0\n    total += 1", "nothing above it opens a block"),
+            ("if a:\n    b = 1\n  c = 2", "between two levels")):
+        said = _indent_message(code)
+        assert said and needle in said, (code, said)
+        assert "line" in said, said            # it must point AT a line
+        # ...and it must never imply the outer depth was theirs to get right:
+        # align_submission has already re-seated it.
+        assert "added for you" in said, said
+    # The whole block sitting at the wrong column is NOT a fault - main/indent.py
+    # re-seats it - and an ordinary syntax error belongs to _syntax_message.
+    assert _indent_message("        total = 0\n        total += 1") is None
+    assert _indent_message("return max(nums") is None
+    assert _indent_message("") is None
+
+    # ── failing cases: capped, counted honestly, and never fatal ─────────
+    # Rendering a case resolves the problem's entry point, and main/identity.py
+    # PERSISTS that resolution - so running this self-check would otherwise file
+    # two fixture problems in resolved_entries.json, which the repo tracks. A
+    # throwaway path keeps the check from editing the project it is checking.
+    import os
+    import tempfile
+
+    from main import identity as _identity
+    _identity._RESOLVED_PATH = os.path.join(tempfile.mkdtemp(), "resolved.json")
+
+    _p = {"slug": "t", "entry_hint": "f", "solution": "def f(n):\n    return n"}
+    _tests = [{"input": [i], "expected": i} for i in range(6)]
+    _fails = [{"index": i, "got": {"repr": "0", "type": "int"},
+               "expected": {"repr": str(i), "type": "int"}} for i in range(5)]
+    shown = failing_cases(_p, _tests, _fails)
+    assert len(shown) == MAX_SHOWN_CASES, shown
+    assert all("expected:" in c and "you gave:" in c for c in shown), shown
+    assert failing_cases(_p, _tests, _fails, limit=1) == shown[:1]
+    assert failing_cases(_p, _tests, []) == []
+    # An index the suite does not have is skipped, not raised on, and must not
+    # cost the student the cases that WOULD have told them something.
+    assert len(failing_cases(_p, _tests, [{"index": 99}] + _fails)) == MAX_SHOWN_CASES
+
+    # The count is the run's, never the length of the sample: execution.py caps
+    # what comes back, so "3 shown" must not be reported as "3 wrong".
+    class _R:
+        total, passed = 12, 5
+    assert _failed_total(_R(), 3) == 7
+    # ...and with no totals to read, what was shown is the only honest floor.
+    class _None:
+        total, passed = 0, 0
+    assert _failed_total(_None(), 3) == 3
 
     print("grading.py scope-gate self-check OK")

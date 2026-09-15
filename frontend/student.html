@@ -83,7 +83,7 @@
       <div class="question-actions">
         <button class="ghost tutor-toggle" id="showTutor" type="button" aria-controls="tutorDock" aria-expanded="true">Hide tutor</button>
         <button class="ghost" id="backP" type="button">← All problems</button>
-        <details class="workspace-options" id="workspaceOptions"><summary aria-label="Problem options">•••</summary><div><button class="ghost danger" id="restartBtn" type="button">Start this problem over</button></div></details>
+
       </div>
     </div>
     <nav class="journey" aria-label="Your path through this problem">
@@ -98,7 +98,7 @@
     <div class="study-layout" id="studyLayout">
     <div class="study-main" id="studyMain">
     <section class="workspace-reference" id="resourceDrawer" aria-labelledby="resourceTitle" hidden>
-      <div class="resource-header"><h2 id="resourceTitle">Your plan</h2><button class="ghost" id="closeResource" type="button" aria-label="Close reference">×</button></div>
+      <div class="resource-header"><h2 id="resourceTitle">Your plan</h2><div class="resource-actions"><button class="ghost" id="expandResource" type="button" hidden>Expand</button><button class="ghost" id="closeResource" type="button" aria-label="Close reference">×</button></div></div>
       <div class="resource-body" id="resourceBody" tabindex="0" aria-label="Reference content"></div>
     </section>
     <section id="stageRead" class="journey-panel reading-stage" role="tabpanel" aria-labelledby="tabRead" tabindex="-1">
@@ -213,7 +213,8 @@
 
           <div class="row" style="margin-top:13px" id="workControls">
             <button id="submit">Submit step</button>
-            <span class="work-tip">Build your solution one step at a time.</span>
+            <button class="ghost" type="button" id="fullFileBtn" data-resource="file" aria-controls="resourceDrawer" aria-expanded="false" title="The whole assignment file, with your answers in it">Full file</button>
+            <button class="ghost danger" type="button" id="restartBtn" title="Clear your chat, plan and steps and begin this problem again">Start over</button>
 
             <button class="ghost" id="finishReview" type="button" hidden>Review your work →</button>
           </div>

@@ -160,6 +160,107 @@ def create_session(problem: dict, decomposition: dict, content_hash: str,
             "total_chunks": len(chunks)}
 
 
+def find_resumable(student_id: str | None, content_hash: str,
+                   db_path: str | None = None) -> dict | None:
+    """This student's live session for this problem, or None.
+
+    WHY THIS EXISTS. Opening a problem used to issue a FRESH session every time,
+    so a student who answered two of three steps, closed the tab and came back
+    found an empty editor on step 1. The work was never lost - it is in the
+    session store and in mt_submissions - but nothing looked for it, and the
+    page could not replay it into a new session either, because answers a
+    session never graded are not that session's to claim.
+
+    So the fix is not to replay anything: it is to hand back the SAME session,
+    still holding its own accepted prefix and its own index. Nothing is claimed
+    because nothing moved.
+
+    Keyed on content_hash, not slug, for the same reason every other cache here
+    is: an edited problem is a different problem, and resuming into a session
+    whose chunks were decomposed from the old text would put a student back to
+    work on a question that no longer exists.
+
+    Newest first, and only ACTIVE and unexpired - a completed problem starts
+    over, which is what reopening one has always meant. Never raises: failing to
+    find a session to resume must fall through to making a new one, not error."""
+    if not student_id:
+        return None
+    try:
+        conn = _connect(db_path)
+    except Exception:
+        return None
+    try:
+        r = conn.execute(
+            "SELECT * FROM sessions WHERE student_id=? AND content_hash=?"
+            " AND state='active' AND expires_at > ? ORDER BY created_at DESC"
+            " LIMIT 1", (student_id, content_hash, _now())).fetchone()
+    except Exception:
+        return None
+    finally:
+        conn.close()
+    return _row_to_session(r) if r is not None else None
+
+
+def abandon_active(student_id: str | None, slug: str,
+                   db_path: str | None = None) -> int:
+    """Retire this student's live sessions for one problem. Returns how many.
+
+    THE OTHER HALF OF RESUME. Once opening a problem resumes the session instead
+    of issuing a new one, "Start this problem over" has to end that session or it
+    restarts nothing that matters: the chat and the plan go back to empty and the
+    student is handed their old accepted steps anyway, on step 3 of 3, with no
+    way back to step 1. Before resume existed this route had nothing to do here,
+    because the next open threw the session away by itself.
+
+    Keyed on SLUG rather than content_hash, deliberately. A problem edited since
+    the session was created hashes differently, and a student pressing restart
+    means this problem, all of it, whichever version they started under.
+
+    'abandoned' rather than a delete: mt_submissions still references these rows
+    and an instructor's transcript is built from them, so a student who went
+    round three times must stay visible as having gone round three times. Every
+    reader here already refuses anything that is not 'active' (load_session) or
+    not 'completed' (completed_answers), so the new state needs no migration and
+    changes no existing query."""
+    if not student_id or not slug:
+        return 0
+    try:
+        conn = _connect(db_path)
+    except Exception:
+        return 0
+    try:
+        cur = conn.execute(
+            "UPDATE sessions SET state='abandoned', updated_at=? WHERE"
+            " student_id=? AND slug=? AND state='active'",
+            (_now(), student_id, slug))
+        return cur.rowcount or 0
+    except Exception:
+        return 0
+    finally:
+        conn.close()
+
+
+def public_session(session: dict) -> dict:
+    """The resumable view of a session: what create_session returns, plus where
+    the student had got to.
+
+    `accepted` is their OWN code and nothing else - the same text the page has
+    been drawing in the frozen listing all along - so this adds no disclosure.
+    References stay behind public_chunks, as ever."""
+    return {"session_id": session["session_id"],
+            "decomposition_id": session["decomposition_id"],
+            "header": session["header"],
+            "chunks": public_chunks(session["chunks"]),
+            "total_chunks": len(session["chunks"]),
+            "index": session["index"],
+            "resumed": True,
+            "accepted": [{"code": a.get("code", ""),
+                          "how": ("revealed"
+                                  if a.get("provenance") == "revealed_reference"
+                                  else "own")}
+                         for a in session.get("accepted") or []]}
+
+
 def public_chunks(chunks: list[dict]) -> list[dict]:
     """Strip references. The ONLY shape that may cross to the browser.
 
@@ -497,3 +598,98 @@ def completed_answers(student_id: str, slugs: list[str],
                 a.get("provenance") == "revealed_reference" for a in accepted),
         }
     return out
+
+
+if __name__ == "__main__":
+    # Self-check for RESUME, against a real SQLite store in a temp directory.
+    #   python -m main.sessions
+    import tempfile
+    from types import SimpleNamespace as N
+
+    db = os.path.join(tempfile.mkdtemp(), "sessions.sqlite3")
+    prob = {"slug": "invert", "title": "Invert", "description": "d",
+            "solution": "def invert(d):\n    return {}"}
+    decomp = {"header": "def invert(d):",
+              "chunks": [N(step_id="Part 1", prompt="count the values",
+                           expected_type="code", reference="counts = {}"),
+                         N(step_id="Part 2", prompt="return the inversion",
+                           expected_type="code", reference="return {}")]}
+    HASH, WHO = "hash-invert", "student-1"
+
+    opened = create_session(prob, decomp, HASH, student_id=WHO, db_path=db)
+    sid = opened["session_id"]
+
+    # Nothing answered yet: resumable, and it resumes AT THE START.
+    live = find_resumable(WHO, HASH, db_path=db)
+    assert live is not None and live["session_id"] == sid
+    assert public_session(live)["index"] == 0
+    assert public_session(live)["accepted"] == []
+    assert public_session(live)["resumed"] is True
+
+    # ...and it must never leak a reference, resumed or not.
+    assert all("reference" not in c for c in public_session(live)["chunks"])
+
+    # Answer step 1, the way /grade_chunk does.
+    done, row = begin_submission(sid, "sub-1", db_path=db)
+    assert done is None
+    commit_outcome(sid, "sub-1", row["revision"], {"verdict": "correct"},
+                   accept_code="counts = {}", db_path=db)
+
+    # THE WHOLE POINT: reopening the problem finds that session, on step 2, with
+    # the student's own line already in it. This is what used to be thrown away.
+    back = public_session(find_resumable(WHO, HASH, db_path=db))
+    assert back["session_id"] == sid, "a NEW session would claim ungraded steps"
+    assert back["index"] == 1, back
+    assert back["accepted"] == [{"code": "counts = {}", "how": "own"}], back
+
+    # Someone else's session, and another problem's, are not this one.
+    assert find_resumable("student-2", HASH, db_path=db) is None
+    assert find_resumable(WHO, "hash-something-else", db_path=db) is None
+    # An anonymous caller has nothing to resume and must not be handed a session.
+    assert find_resumable(None, HASH, db_path=db) is None
+
+    # A revealed answer is labelled as one when it comes back, so the page
+    # cannot redraw it as the student's own work.
+    done, row = begin_submission(sid, "sub-2", db_path=db)
+    commit_outcome(sid, "sub-2", row["revision"], {"verdict": "correct"},
+                   accept_code="return {}", provenance="revealed_reference",
+                   db_path=db)
+
+    # That was the last chunk, so the session COMPLETED - and a finished problem
+    # starts over, which is what reopening one has always meant.
+    assert find_resumable(WHO, HASH, db_path=db) is None, \
+        "a completed problem must not resume into its own finished session"
+    finished = session_snapshot(sid, db_path=db)
+    assert finished["state"] == "completed"
+    assert public_session(finished)["accepted"][1]["how"] == "revealed"
+
+    # An EXPIRED session is not resumable either - the reference it was
+    # decomposed from may have moved on since.
+    stale = create_session(prob, decomp, HASH, student_id=WHO, db_path=db)
+    conn = _connect(db)
+    try:
+        conn.execute("UPDATE sessions SET expires_at=? WHERE session_id=?",
+                     ("2000-01-01T00:00:00+00:00", stale["session_id"]))
+    finally:
+        conn.close()
+    assert find_resumable(WHO, HASH, db_path=db) is None
+
+    # ── restart really restarts ───────────────────────────────────────────
+    # Resume made this route load-bearing: without it "start over" empties the
+    # chat and then hands the student their old steps back.
+    fresh = create_session(prob, decomp, HASH, student_id=WHO, db_path=db)
+    assert find_resumable(WHO, HASH, db_path=db)["session_id"] == fresh["session_id"]
+    # Two rows go: the live one and the expired-but-still-'active' one above.
+    # Retiring a session that has aged out is harmless and keeps the table
+    # honest about what is still in play.
+    assert abandon_active(WHO, "invert", db_path=db) == 2
+    assert find_resumable(WHO, HASH, db_path=db) is None, \
+        "start over left the old session resumable"
+    # The row survives - an instructor's transcript is built from these.
+    assert session_snapshot(fresh["session_id"], db_path=db)["state"] == "abandoned"
+    # Nobody else's work is touched, and a second press is a no-op.
+    assert abandon_active(WHO, "invert", db_path=db) == 0
+    assert abandon_active("student-2", "invert", db_path=db) == 0
+    assert abandon_active(None, "invert", db_path=db) == 0
+
+    print("sessions.py resume self-check OK")

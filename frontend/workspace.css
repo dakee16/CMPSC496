@@ -96,7 +96,18 @@
 .guided-workspace .ctx{max-height:220px;background:var(--code-bg)}
 .guided-workspace #workControls,.guided-workspace #reviewControls{padding:18px 24px!important;gap:16px!important;border-top:1px solid var(--border)}
 .guided-workspace #workControls button{min-height:44px}
-.work-tip{font-size:11px;color:var(--text-subtle);margin-left:auto}
+/* Where "Build your solution one step at a time" used to sit. That line was
+   static filler - it said the same thing on step 1 and step 9 - and the slot is
+   better spent on the one reference a student actually reaches for mid-step.
+   Sized by #workControls button above, so it matches Submit exactly; kept
+   .ghost so the primary action still reads as the primary one. */
+#fullFileBtn{margin-left:auto}
+/* Last, and quiet. It is the rarest thing in this row and the only destructive
+   one, so it reads as an escape hatch rather than a third action of equal
+   weight - but it IS in the row, because a stuck student should not have to
+   find it behind a ••• menu. The confirm dialog is still what protects it. */
+#restartBtn{font-weight:500;opacity:.75}
+#restartBtn:hover{opacity:1}
 .guided-workspace .studio-work>#msg:not(:empty),.guided-workspace .studio-work>.attempts:not(:empty){margin:20px 24px}
 .guided-workspace .reviewBox{margin:24px}
 .guided-workspace .reviewBox pre{max-height:450px;overflow:auto;font-size:14px;line-height:1.8}
@@ -226,7 +237,16 @@ body.in-studio .page{max-width:1560px;padding:calc(var(--header-height) + 28px) 
 .workspace-reference{border:1px solid var(--accent-line);background:var(--surface);border-radius:12px;overflow:hidden;margin:0 0 20px}
 .resource-header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:10px 16px;background:var(--accent-tint);border-bottom:1px solid var(--border)}
 .resource-header h2{font-size:13px;font-weight:600;color:var(--accent-ink);margin:0}
+.resource-actions{display:flex;align-items:center;gap:4px}
 .resource-header button{font-size:20px;min-width:32px;min-height:32px;padding:0;border-color:transparent;background:transparent}
+#expandResource{font-size:11px;font-weight:600;min-width:auto;padding:6px 10px;border:1px solid var(--border);color:var(--text-muted)}
+#expandResource:hover{color:var(--accent-ink);border-color:var(--border-strong)}
+/* Fullscreen, real or faked. The drawer normally sits inline above the work
+   card; both of these lift it out and let the file take the height it needs.
+   Mirrors the .gfake fallback graphs.js uses for the same reason. */
+.workspace-reference:fullscreen,.workspace-reference.rfake{display:flex;flex-direction:column;border-radius:0;border:0;margin:0;background:var(--surface)}
+.workspace-reference.rfake{position:fixed;inset:0;z-index:1000}
+.workspace-reference:fullscreen .resource-body,.workspace-reference.rfake .resource-body{flex:1;max-height:none!important}
 .resource-body{max-height:260px;min-height:0;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
 .guided-workspace .resource-body .studio-brief{border:0;border-radius:0;box-shadow:none}
 .resource-body .studio-brief .pane-title{display:none}
@@ -234,6 +254,17 @@ body.in-studio .page{max-width:1560px;padding:calc(var(--header-height) + 28px) 
 .guided-workspace .resource-body .studio-brief .statement{padding:20px;font-size:14px;line-height:1.8}
 .guided-workspace .resource-body #planCard .gview{max-height:220px}
 .reference-empty{font-size:13px;line-height:1.8;padding:20px;margin:0;color:var(--text-subtle)}
+/* The whole file is a long document, not a card. The 260px drawer that suits a
+   plan graph would show an assignment eight lines at a time, which is not
+   reading it - so this one resource gets the height a file needs. */
+.resource-body[data-resource="file"]{max-height:min(58vh,560px)}
+.fileview{padding:16px 18px 18px}
+.fileview-note{margin:0 0 10px;font-size:12.5px;line-height:1.7;color:var(--text-subtle)}
+.fileview-note strong{color:var(--text)}
+.fileview-note code{font-size:11.5px}
+/* Never wrap: indentation is the thing being read here, and a soft-wrapped
+   Python file loses exactly the structure the student came to look at. */
+.fileview-code{margin:0;max-height:none;white-space:pre;overflow-x:auto;tab-size:4;font-size:12.5px;line-height:1.65}
 .reflection-hero{text-align:left;padding:12px 0 24px}
 .reflection-mark{margin:0 0 20px;width:48px;height:48px;font-size:24px}
 .reflection-hero h2{font-size:clamp(1.5rem,2.5vw,2rem)}
@@ -242,7 +273,7 @@ body.in-studio .page{max-width:1560px;padding:calc(var(--header-height) + 28px) 
 @media(max-width:1200px){
  body.in-studio .page{padding-left:24px;padding-right:24px}
  .study-layout{grid-template-columns:minmax(0,1fr) 12px minmax(300px,var(--tutor-width,320px))}
- .language-label,.code-orientation>button,.work-tip{display:none}
+ .language-label,.code-orientation>button{display:none}
  .plan-submit-row{align-items:flex-start;flex-direction:column;gap:12px}
 }
 @media(max-width:1000px){

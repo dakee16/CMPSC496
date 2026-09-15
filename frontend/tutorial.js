@@ -1,93 +1,189 @@
-/* Temporary, interactive practice. No grading/tutor/session API calls. */
+/* A TOUR OF ACADIA, not a programming exercise.
+ *
+ * This used to be a factorial worksheet: pick the base case, order four steps,
+ * fill three dropdowns, say why `result = 1`. A student who finished it had
+ * practised factorial and still did not know that the editor is locked until a
+ * plan is reviewed, that the tutor will not answer a direct question, or that
+ * they can retry a step for ever. Those are the things this app does
+ * differently from every other site they have used, and they were in a
+ * sidebar.
+ *
+ * So every question here is about USING ACADIA, and each one is aimed at a
+ * belief a new student actually arrives with:
+ *   1. "I'll just start typing"        -> the plan gate
+ *   2. "I'll say I'll loop over it"    -> what a workable plan is
+ *   3. "it'll show me after 2 tries"   -> nothing is ever revealed
+ *   4. "I'd better not close the tab"  -> the session is saved
+ *
+ * No grading, tutor or session API is called from this page.
+ */
 (function(){
   "use strict";
   requireSession();
   const t=id=>document.getElementById(id);
-  let step=0,checked=false;
-  const answers={base:"",initial:"",limit:"",operation:"",reflection:""};
-  const plan=[{id:"return",label:"Return the result"},{id:"start",label:"Set result to 1"},{id:"loop",label:"For each number from 1 through n"},{id:"multiply",label:"Multiply result by that number"}];
-  const expected=["start","loop","multiply","return"];
-  const graph={nodes:[{id:"s",kind:"start",label:"Receive n"},{id:"a",kind:"step",label:"result = 1"},{id:"b",kind:"loop",label:"For number in 1 through n"},{id:"c",kind:"step",label:"result *= number"},{id:"d",kind:"return",label:"Return result"}],edges:[{src:"s",dst:"a"},{src:"a",dst:"b"},{src:"b",dst:"c",label:"next number"},{src:"c",dst:"b",label:"repeat"},{src:"b",dst:"d",label:"done"}]};
+  let step=0;
+  const answers={first:"",plan:"",wrong:"",saved:""};
+
+  // The same shape main/graphs.py emits, so the drawing on the plan step is the
+  // real artifact a student will see rather than a picture of one.
+  const graph={nodes:[{id:"s",kind:"start",label:"Take the dictionary"},
+    {id:"a",kind:"step",label:"Count how often each value appears"},
+    {id:"b",kind:"loop",label:"For each key and value"},
+    {id:"c",kind:"branch",label:"Does this value appear once?"},
+    {id:"d",kind:"step",label:"Add value → key to the result"},
+    {id:"e",kind:"return",label:"Return the result"}],
+    edges:[{src:"s",dst:"a"},{src:"a",dst:"b"},{src:"b",dst:"c",label:"next"},
+      {src:"c",dst:"d",label:"yes"},{src:"d",dst:"b",label:"repeat"},
+      {src:"c",dst:"b",label:"no"},{src:"b",dst:"e",label:"done"}]};
+
   const coaches=[
-    '<p>Start with the inputs and outputs. Factorial multiplies every whole number from 1 through <code>n</code>.</p><p>Try a small example before writing code. What would your function return for <code>n = 0</code>?</p><p>In an assignment, your tutor asks questions like these to help you find your approach.</p>',
-    '<p>A working plan explains your steps before you code. Put these four steps in order, then check the plan.</p><p>In assignments, describe your approach to the tutor or use <strong>Upload a plan</strong>. Submit it for review to unlock coding.</p><p>The loop arrow returns to its header. The <em>done</em> arrow leads to the return.</p>',
-    '<p>Translate one step of your plan into code at a time.</p><p><code>range(1, n + 1)</code> includes <code>n</code> because Python excludes the upper limit.</p><p>Use <strong>Check practice code</strong> to try 0, 1 and 5. Real assignments grade the steps you submit and give feedback alongside your editor.</p>',
-    '<p>You have read a question, built a plan and checked your code. Reflecting helps you carry what you learned into the next problem.</p><p>Open <strong>Assignments</strong> to start course work. <strong>My grades</strong> shows your recorded step credit.</p><p>Finish to remove this practice example. Retake it from <strong>Settings</strong> whenever you need it.</p>'
+    '<p>Most sites let you type code straight away. This one does not, and that is the whole idea.</p>'
+    +'<p>Every problem runs in three stages: <strong>Question &amp; plan</strong>, then <strong>Code</strong>, then <strong>Reflect</strong>. The editor stays locked until your plan has been looked at.</p>'
+    +'<p>It is not a hoop. A plan you can explain is one you can debug.</p>',
+
+    '<p>You build the plan by talking through your approach in the chat. As you explain it, the page draws it as a flowchart beside you.</p>'
+    +'<p>The tutor will push back with questions. It is not being difficult - it has not been shown a solution and genuinely cannot hand you one.</p>'
+    +'<p>Prefer paper? <strong>Upload a plan</strong> takes a photo or a PDF of a diagram instead.</p>',
+
+    '<p>Once your plan is accepted the editor unlocks and the problem arrives in <strong>steps</strong>. You answer one at a time.</p>'
+    +'<p>What you have already had accepted sits frozen above the editor, so you can always see the function taking shape.</p>'
+    +'<p>Indentation is handled for you - you never have to guess how far in a step should sit.</p>',
+
+    '<p>At the end you see your plan and your finished code side by side. The gap between them is usually where the interesting bug was.</p>'
+    +'<p><strong>My grades</strong> shows your recorded step credit. <strong>Full file</strong>, in the coding bar, shows the whole assignment file with your answers in it.</p>'
+    +'<p>That is everything. Open <strong>Assignments</strong> when you are ready.</p>'
   ];
-  function message(text,kind="info"){t("tutorialFeedback").className="tutorial-feedback "+kind;t("tutorialFeedback").textContent=text;}
-  function choice(label,id,values,selected){
-    return '<label class="tutorial-code-choice"><span>'+label+'</span><select id="'+id+'"><option value="">Choose…</option>'+values.map(v=>'<option value="'+esc(v)+'"'+(v===selected?' selected':'')+'>'+esc(v)+'</option>').join("")+'</select></label>';
+
+  function message(text,kind="info"){
+    t("tutorialFeedback").className="tutorial-feedback "+kind;
+    t("tutorialFeedback").textContent=text;
   }
-  function orderedPlan(){
-    t("practicePlan").innerHTML=plan.map((item,index)=>'<li><span class="plan-order">'+(index+1)+'</span><strong>'+esc(item.label)+'</strong><div>'
-      +'<button class="ghost" type="button" data-move="-1" data-index="'+index+'" aria-label="Move '+esc(item.label)+' up"'+(index===0?' disabled':'')+'>↑</button>'
-      +'<button class="ghost" type="button" data-move="1" data-index="'+index+'" aria-label="Move '+esc(item.label)+' down"'+(index===plan.length-1?' disabled':'')+'>↓</button></div></li>').join("");
-    t("practicePlan").querySelectorAll("[data-move]").forEach(button=>button.onclick=()=>{
-      const index=Number(button.dataset.index),next=index+Number(button.dataset.move);
-      [plan[index],plan[next]]=[plan[next],plan[index]];checked=false;t("practicePlanGraph").replaceChildren();
-      message("Step moved. Check the plan when the order looks right.");orderedPlan();
-      const controls=t("practicePlan").querySelectorAll('[data-index="'+next+'"]');
-      (Array.from(controls).find(b=>!b.disabled)||t("checkPlan")).focus();
+
+  /* One radio group. `name` doubles as the key in `answers`. */
+  function choices(name,legend,options){
+    return '<fieldset class="tutorial-choices"><legend>'+esc(legend)+'</legend>'
+      +options.map(([value,label])=>'<label><input type="radio" name="'+name+'" value="'
+        +esc(value)+'"'+(answers[name]===value?' checked':'')+'><span>'+label+'</span></label>').join("")
+      +'</fieldset>';
+  }
+
+  function wireChoices(root,name){
+    root.querySelectorAll('[name="'+name+'"]').forEach(el=>el.onchange=()=>{
+      answers[name]=el.value;message("");
+      // Seeing the flowchart IS the lesson on this step: a plan with enough in
+      // it draws something, and a thin one does not. Drawn on selection, not on
+      // Continue - Continue re-renders the page and would wipe it unseen.
+      if(name==="plan"){
+        const box=t("practicePlanGraph");
+        if(el.value==="full"){
+          renderGraph(box,graph,"",{height:300});
+          message("That is the flowchart the page would draw while you typed that.","success");
+        }else box.replaceChildren();
+      }
     });
   }
-  function codePreview(){
-    t("practiceCode").textContent="def factorial(n):\n    result = "+(answers.initial||"___")
-      +"\n    for number in range(1, "+(answers.limit||"___")+"):\n        result "+(answers.operation||"___")+" number\n    return result";
-  }
+
   function render(){
-    checked=false;message("");
-    t("tutorialBack").hidden=step===0;t("tutorialNext").textContent=step===3?"Finish tutorial →":"Continue →";
+    message("");
+    t("tutorialBack").hidden=step===0;
+    t("tutorialNext").textContent=step===3?"Finish tour →":"Continue →";
     t("tutorialPosition").textContent="Step "+(step+1)+" of 4";
     document.querySelectorAll("[data-tutorial-step]").forEach(el=>{
-      if(Number(el.dataset.tutorialStep)===step)el.setAttribute("aria-current","step");else el.removeAttribute("aria-current");
+      if(Number(el.dataset.tutorialStep)===step)el.setAttribute("aria-current","step");
+      else el.removeAttribute("aria-current");
       el.classList.toggle("complete",Number(el.dataset.tutorialStep)<step);
     });
-    t("tutorialCoach").innerHTML=coaches[step];const root=t("tutorialExercise");
+    t("tutorialCoach").innerHTML=coaches[step];
+    const root=t("tutorialExercise");
+
     if(step===0){
-      root.innerHTML='<p class="eyebrow">1 · UNDERSTAND THE QUESTION</p><h2 id="tutorialTitle">Write a factorial function.</h2><p>Given a non-negative integer <code>n</code>, return the product of the integers from 1 through <code>n</code>. For zero, return 1.</p><pre class="code">factorial(4) → 1 × 2 × 3 × 4 → 24\nfactorial(1) → 1\nfactorial(0) → ?</pre><fieldset class="tutorial-choices"><legend>What should factorial(0) return?</legend>'
-        +["0","1","An error"].map(v=>'<label><input type="radio" name="base" value="'+v+'"'+(answers.base===v?' checked':'')+'><span>'+v+'</span></label>').join("")+'</fieldset>';
-      root.querySelectorAll('[name="base"]').forEach(el=>el.onchange=()=>{answers.base=el.value;message("");});
+      root.innerHTML='<p class="eyebrow">1 · HOW A PROBLEM WORKS</p>'
+        +'<h2 id="tutorialTitle">Plan first, then code.</h2>'
+        +'<p>Opening a problem puts you on the first of three stages. You move through them in order, and the coding stage is locked until your plan has been reviewed.</p>'
+        +'<pre class="code">1  Question &amp; plan   read it, talk your approach through, submit the plan\n'
+        +'2  Code              the editor unlocks; answer the problem one step at a time\n'
+        +'3  Reflect           your plan and your code, side by side</pre>'
+        +choices("first","You have just opened a problem. What can you do first?",[
+          ["code","Start typing code in the editor"],
+          ["plan","Talk through how you would approach it"],
+          ["answer","Look at the worked solution"]]);
+      wireChoices(root,"first");
+
     }else if(step===1){
-      root.innerHTML='<p class="eyebrow">2 · BUILD YOUR PLAN</p><h2 id="tutorialTitle">What happens first?</h2><p>Use the arrows to put these steps in order. Then check your plan to see its flowchart.</p><ol id="practicePlan" class="practice-plan"></ol><button id="checkPlan" class="ghost" type="button">Check plan</button><div id="practicePlanGraph"></div>';
-      orderedPlan();t("checkPlan").onclick=()=>{
-        checked=plan.every((item,index)=>item.id===expected[index]);
-        if(checked){renderGraph(t("practicePlanGraph"),graph,"",{height:300});message("That works. Initialize the result, repeat the multiplication, then return it.","success");}
-        else message("Start by setting result to 1. Multiplication belongs inside the loop, and the return comes last.","warn");
-      };
+      root.innerHTML='<p class="eyebrow">2 · WHAT GETS YOUR PLAN ACCEPTED</p>'
+        +'<h2 id="tutorialTitle">Say enough to be checked.</h2>'
+        +'<p>A plan is accepted when it says four things, in your own words: what you keep track of, how you go through the input, how you produce the answer, and what happens in the awkward case. It does not have to be clever, or the approach anyone else would pick - it has to hold up.</p>'
+        +'<p>Here are two messages about the same problem: <em>swap the keys and values of a dictionary, keeping only the values that appear exactly once</em>.</p>'
+        +choices("plan","Which one gets you to the editor?",[
+          ["thin","<strong>A.</strong> “I’ll loop through the dictionary and swap the keys and the values.”"],
+          ["full","<strong>B.</strong> “I’ll count how many times each value shows up, keep the ones that appear exactly once, and build a new dictionary with the value as the key. An empty dictionary gives back an empty dictionary.”"]])
+        +'<div id="practicePlanGraph"></div>';
+      wireChoices(root,"plan");
+
     }else if(step===2){
-      root.innerHTML='<p class="eyebrow">3 · PUT YOUR PLAN INTO CODE</p><h2 id="tutorialTitle">Fill in the three choices.</h2><div class="practice-code-options">'
-        +choice("Starting result","practiceInitial",["0","1"],answers.initial)+choice("Range stops before","practiceLimit",["n","n + 1"],answers.limit)+choice("Update result with","practiceOperation",["+=","*="],answers.operation)
-        +'</div><pre class="code" aria-label="Your practice Python code"><code id="practiceCode"></code></pre><button id="checkCode" type="button">Check practice code</button><div id="practiceResults"></div>';
-      codePreview();
-      for(const [id,key] of [["practiceInitial","initial"],["practiceLimit","limit"],["practiceOperation","operation"]])t(id).onchange=()=>{answers[key]=t(id).value;checked=false;codePreview();t("practiceResults").replaceChildren();message("");};
-      t("checkCode").onclick=()=>{
-        if(!answers.initial||!answers.limit||!answers.operation){message("Choose all three values first.","warn");return;}
-        // Only evaluate the three displayed choices, never arbitrary code.
-        const run=n=>{let r=Number(answers.initial),stop=answers.limit==="n + 1"?n+1:n;for(let j=1;j<stop;j++){if(answers.operation==="*=")r*=j;else r+=j;}return r;};
-        const cases=[[0,1],[1,1],[5,120]].map(([n,expected])=>({n,expected,actual:run(n)}));
-        checked=cases.every(test=>test.actual===test.expected);
-        t("practiceResults").innerHTML='<table class="practice-results"><caption>Practice checks</caption><thead><tr><th>Input</th><th>Expected</th><th>Your result</th><th>Status</th></tr></thead><tbody>'+cases.map(test=>'<tr><td>factorial('+test.n+')</td><td>'+test.expected+'</td><td>'+test.actual+'</td><td>'+(test.actual===test.expected?'✓ Passed':'Try again')+'</td></tr>').join("")+'</tbody></table>';
-        message(checked?"All three checks passed. Your function also handles zero.":answers.initial==="0"?"Multiplying by zero keeps the result at zero. Which starting value leaves multiplication unchanged?":answers.limit==="n"?"The upper limit is excluded. How can you include n in the loop?":"Factorial is a product. Which operation multiplies the running result?",checked?"success":"warn");
-      };
+      root.innerHTML='<p class="eyebrow">3 · ANSWERING A STEP</p>'
+        +'<h2 id="tutorialTitle">Wrong is not the end of it.</h2>'
+        +'<p>Each step is checked by actually running your code against hidden tests. If it does not pass you are told which cases failed, and you can try again as many times as you like.</p>'
+        +'<p>The answer is <strong>never</strong> shown to you. There is no attempt limit to run out of, and no reveal waiting at the end of one - being stuck is where the learning is, so the site will not end it for you.</p>'
+        +'<pre class="code">Your solution runs but gives the wrong answer on at least one case.\n'
+        +'  ▸ Show 3 of the 7 cases it failed</pre>'
+        +choices("wrong","Your step comes back wrong for the second time. What happens?",[
+          ["reveal","The correct answer is filled in for you"],
+          ["retry","You see the failing cases and can keep trying"],
+          ["lock","The problem locks until your instructor reopens it"]]);
+      wireChoices(root,"wrong");
+
     }else{
-      root.innerHTML='<p class="eyebrow">4 · REFLECT</p><h2 id="tutorialTitle">One idea to take with you.</h2><p>Why does the function start with <code>result = 1</code>?</p><fieldset class="tutorial-choices"><legend class="sr-only">Choose the reason</legend>'
-        +[["identity","Multiplying by 1 preserves a number, and an empty loop returns 1."],["count","It counts how many numbers are in the loop."]].map(([v,label])=>'<label><input type="radio" name="reflection" value="'+v+'"'+(answers.reflection===v?' checked':'')+'><span>'+label+'</span></label>').join("")
-        +'</fieldset><div class="practice-completion"><strong>Ready for your own assignments</strong><p>Your practice example will close when you finish. Your course progress is unchanged.</p></div>';
-      root.querySelectorAll('[name="reflection"]').forEach(el=>el.onchange=()=>{answers.reflection=el.value;message("");});
+      root.innerHTML='<p class="eyebrow">4 · FINISHING, AND COMING BACK</p>'
+        +'<h2 id="tutorialTitle">Your work waits for you.</h2>'
+        +'<p>Nothing here needs saving. Every accepted step, every message and every version of your plan is recorded as you go.</p>'
+        +'<p>Two buttons sit under the editor while you work: <strong>Full file</strong> shows the whole assignment file with your answers already in place, and <strong>Start over</strong> clears a problem back to the beginning if you want a clean run at it.</p>'
+        +choices("saved","You close the tab half way through a problem. You come back tomorrow.",[
+          ["lost","You start that problem again from step 1"],
+          ["kept","You pick up on the step you had reached, with your accepted steps still there"]])
+        +'<div class="practice-completion"><strong>That is the tour.</strong>'
+        +'<p>This page closes when you finish it. You can take it again from <strong>Settings</strong> whenever you want.</p></div>';
+      wireChoices(root,"saved");
     }
     if(step)root.focus({preventScroll:true});
   }
+
   function leave(completed){
     if(completed)AcadiaOnboarding.finish();else AcadiaOnboarding.dismiss();
-    location.replace(AcadiaOnboarding.destination(new URLSearchParams(location.search).get("return")));
+    location.replace(AcadiaOnboarding.destination(
+      new URLSearchParams(location.search).get("return")));
   }
-  t("leaveTutorial").onclick=()=>leave(false);t("tutorialBack").onclick=()=>{step--;render();};
+
+  // A wrong answer is TEACHING, not a gate - each one names the belief it is
+  // correcting rather than saying "try again".
+  const gates=[
+    {key:"first",right:"plan",
+     wrong:{code:"Not yet - the editor is locked until your plan has been reviewed. Talking your approach through is what unlocks it.",
+            answer:"There isn't one to look at. Nothing on this site will show you a solution, at any point."}},
+    {key:"plan",right:"full",
+     wrong:{thin:"A says what to do but not how it holds up: nothing about what is counted, or what happens when a value appears twice. The tutor would ask about both."}},
+    {key:"wrong",right:"retry",
+     wrong:{reveal:"No - the answer is never filled in, however many times you miss. You get the failing cases and another go.",
+            lock:"Nothing locks. There is no attempt limit here at all."}},
+    {key:"saved",right:"kept",
+     wrong:{lost:"Not any more - your session is saved as you go, and reopening a problem puts you back on the step you had reached."}}
+  ];
+
+  t("leaveTutorial").onclick=()=>leave(false);
+  t("tutorialBack").onclick=()=>{step--;render();};
   t("tutorialNext").onclick=()=>{
-    if(step===0&&answers.base!=="1"){message("Factorial of zero is 1. Choose that base case to continue.","warn");return;}
-    if(step===1&&!checked){message("Put the steps in order and check your plan first.","warn");t("checkPlan").focus();return;}
-    if(step===2&&!checked){message("Check your practice code and get all three cases passing first.","warn");t("checkCode").focus();return;}
-    if(step===3){if(answers.reflection!=="identity"){message("Think about the identity for multiplication, including when the loop runs zero times.","warn");return;}leave(true);return;}
-    step++;render();t("tutorialExercise").scrollIntoView({block:"start",behavior:"instant"});
+    const gate=gates[step],picked=answers[gate.key];
+    if(!picked){message("Pick one to carry on.","warn");return;}
+    if(picked!==gate.right){message(gate.wrong[picked]||"Not quite - have another look.","warn");return;}
+    if(step===3){leave(true);return;}
+    step++;render();
+    t("tutorialExercise").scrollIntoView({block:"start",behavior:"instant"});
   };
-  AcadiaOnboarding.ready().then(me=>{if(!me)return;mountHeader({variant:me.role==="teacher"?"instructor":"student",active:"Tutorial"});setCrumbs([{label:"Guided practice"}]);render();});
+
+  AcadiaOnboarding.ready().then(me=>{
+    if(!me)return;
+    mountHeader({variant:me.role==="teacher"?"instructor":"student",active:"Tutorial"});
+    setCrumbs([{label:"How ACADIA works"}]);
+    render();
+  });
 })();

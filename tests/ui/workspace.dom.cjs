@@ -43,7 +43,7 @@ const graph = {nodes:[{id:'n0',kind:'start',label:'Read records'},{id:'n1',kind:
       else if(route==='/design_review/plan'||route==='/design_review') data={approved,reply:approved?'Your approach is approved.':'Explain how you will preserve the earlier records.',plan_graph:graph};
       else if(route==='/grade_chunk'){
         const index=JSON.parse(init.body).expected_index;
-        data=verdict==='correct'?{verdict:'correct',reason:'This step passes.',index:index+1,completed:index===1,solved_independently:true}:verdict==='indeterminate'?{verdict:'indeterminate',reason:'The grader is temporarily unavailable.'}:{verdict:'incorrect',reason:'Try the empty-input case.',failing_case:'employee_update({})',attempts:1};
+        data=verdict==='correct'?{verdict:'correct',reason:'This step passes.',index:index+1,completed:index===1,solved_independently:true}:verdict==='indeterminate'?{verdict:'indeterminate',reason:'The grader is temporarily unavailable.'}:{verdict:'incorrect',reason:'Try the empty-input case.',failing_cases:['employee_update({})\n\nexpected: {}\nyou gave: None','employee_update({2019: {}})\n\nit raised: KeyError(2018)'],failed_total:5,attempts:1};
       }
       else if(route==='/mark_solved') data={ok:true};
       else if(route==='/graphs'){status=comparisonFailure?503:200;data={plan:graph,code:graph,comparison:{similarity:1,notes:['The structure matches.']}};}
@@ -156,6 +156,12 @@ const graph = {nodes:[{id:'n0',kind:'start',label:'Read records'},{id:'n1',kind:
     assert(!doc.body.classList.contains('focus-workspace'));
     await doc.querySelector('#submit').onclick();
     assert(doc.querySelector('#msg .failCase'),'Failure details remain available');
+    // Several cases now, and the summary states the REAL total - the sandbox
+    // caps what it sends back, so counting the listings would under-report.
+    assert.equal(doc.querySelectorAll('#msg .failCase pre').length,2,'Every case sent is shown');
+    assert(doc.querySelector('#msg .failCase summary').textContent.includes('2 of the 5'),
+      doc.querySelector('#msg .failCase summary').textContent);
+    assert(doc.querySelector('#msg .failMore').textContent.includes('3 more'),'The hidden ones are counted');
     assert.equal(value,'    draft = records.copy()');
     verdict='indeterminate';await doc.querySelector('#submit').onclick();
     assert.equal(value,'    draft = records.copy()');

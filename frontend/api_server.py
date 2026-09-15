@@ -364,11 +364,31 @@ def decompose_chunks_route(req: DecomposeRequest, request: Request):
                 problem.update({k: v for k, v in ctx[0]["context"].items()
                                 if k in CONTEXT_FIELDS})
 
+        # RESUME BEFORE DECOMPOSING. A student who answered two of three steps
+        # and closed the tab used to come back to an empty editor on step 1 - a
+        # fresh session was issued every time a problem was opened, and the old
+        # one, still holding their accepted prefix, was simply abandoned. The
+        # work was never lost; nothing looked for it.
+        #
+        # Handing back the SAME session is what makes that safe. The page is not
+        # replaying old answers into a new session - which would claim steps
+        # that session never graded - it is being pointed back at the session
+        # that graded them.
+        #
+        # First, so a resume also skips get_chunk_decomposition entirely: that
+        # call can generate a fresh decomposition and pay for model time, and a
+        # resumed session must keep ITS OWN chunks regardless. Re-deciding the
+        # steps under a student who is half way through them would be worse than
+        # the cost.
+        from main.identity import content_hash
+        from main.sessions import create_session, find_resumable, public_session
+        resumed = find_resumable(claims["sub"], content_hash(problem))
+        if resumed is not None:
+            return public_session(resumed)
+
         result = get_chunk_decomposition(problem)
         # Register a server-owned session. From here the browser never sees a
         # reference, the solution, or oracle data again.
-        from main.identity import content_hash
-        from main.sessions import create_session
         # Identity is bound ONCE, here, from the signed cookie - so every later
         # write (interactions, solved) carries a students.id the student could
         # not have chosen.
@@ -587,12 +607,19 @@ def grade_chunk_route(req: ChunkRequest, request: Request):
             "idempotent_replay": state.get("idempotent_replay", False)}
     if reveal_ref is not None:
         body["revealed_reference"] = reveal_ref     # only ever at the limit
-    # ONE failing case, already rendered for a human (main/grading.failing_case).
-    # The exception to "no failures": the suite stays hidden, but a student told
-    # only "wrong on at least one case" has been given a shrug, not a hint. The
-    # page keeps it behind a disclosure they have to open.
-    if result.failing_case:
-        body["failing_case"] = result.failing_case
+    # The failing cases, already rendered for a human, capped at
+    # grading.MAX_SHOWN_CASES. The exception to "no failures": the suite stays
+    # hidden, but a student told only "wrong on at least one case" has been
+    # given a shrug, not a hint. The page keeps them behind a disclosure they
+    # have to open.
+    #
+    # `failed_total` rides along because it is NOT len(failing_cases) - the
+    # sandbox caps what it reports, so the page would otherwise say "3 cases"
+    # over a submission that failed seven. Only the COUNT crosses; how many
+    # tests exist, and which passed, do not.
+    if result.failing_cases:
+        body["failing_cases"] = result.failing_cases
+        body["failed_total"] = result.failed_total
     return body
 
 
@@ -2051,7 +2078,14 @@ def restart_problem(slug: str, request: Request):
 
     The marker is an mt_messages row with phase='restart'. A third phase needs
     no migration, and /history already keeps only phase='tutor' rows, so the
-    marker can never surface as a chat bubble."""
+    marker can never surface as a chat bubble.
+
+    The GRADING SESSION is retired too, and that became load-bearing the moment
+    /decompose_chunks started resuming instead of issuing a fresh session: a
+    restart that left the old session live would empty the chat and the plan and
+    then hand the student their old accepted steps straight back, on the last
+    step, with no way to reach the first one. The session row itself survives as
+    'abandoned' - same reason nothing else here is deleted."""
     claims = require_student(request)
     sb = get_supabase()
     row = sb.table("problems").select("slug").eq("slug", slug).limit(1).execute().data
@@ -2071,6 +2105,12 @@ def restart_problem(slug: str, request: Request):
             "reason_code": "restart_failed",
             "message": "Could not restart this problem. Try again.",
             "detail": f"{type(e).__name__}: {str(e)[:100]}"})
+
+    # AFTER the marker, so a failure to write the marker cannot leave a student
+    # with their steps retired and their chat still showing the old run - the
+    # one combination neither screen could explain.
+    from main.sessions import abandon_active
+    abandon_active(claims["sub"], slug)
     return {"slug": slug, "restarted": True}
 
 
@@ -2317,43 +2357,37 @@ def assignment_handback(assignment_id: str, request: Request):
     """The student's own copy of the assignment file, with their answers in it.
 
     What they were handed, completed - same classes, same docstrings, same
-    helper code, their body under each `def` at the right indent. It is a
-    RUNNABLE file, so any problem they have not finished keeps the teacher's
-    original body rather than a hole; the header at the top names which is
-    which, so nothing shown is passed off as their own work.
+    helper code, their body under each `def` at the right indent. A problem they
+    have not finished is a `# YOUR CODE STARTS HERE` stub, exactly as the
+    handout had it.
+
+    THAT LAST PART USED TO BE THE TEACHER'S BODY, and it was a disclosure of the
+    answer key. The reasoning written here was that "a problem the student never
+    opened contributes the same text the assignment already handed them" - which
+    is true only if the handout and the upload are the same file. They are not.
+    Students are handed the version with the holes in it (the marker above is
+    what main/assignments._TODO_MARK looks for); the teacher uploads the SOLVED
+    version, because `solution` is the ground truth every oracle is generated
+    from. So the file this rebuilt was the key, and finishing one problem of
+    eleven downloaded the other ten.
+
+    The cost of closing it is real and worth stating: the file no longer passes
+    its own doctests for anything unfinished. That is the correct trade while an
+    assignment is open. If a "completed file" that runs end to end is wanted
+    after the deadline, that is a deadline check here, not a reason to hand the
+    answers out early.
 
     Their OWN work only: student_id comes from the cookie, so this cannot be
-    pointed at a classmate. It reads no chunk references and no oracle, and a
-    problem the student never opened contributes the same text the assignment
-    already handed them - so this discloses nothing they were not given."""
+    pointed at a classmate. It reads no chunk references and no oracle."""
     from fastapi.responses import Response
 
     from main.handback import build_handback
     from main.sessions import completed_answers
 
     claims = require_student(request)
-    sb = get_supabase()
-
-    asg = sb.table("assignments").select("id, name, source_file").eq(
-        "id", assignment_id).limit(1).execute().data
-    if not asg:
-        raise HTTPException(status_code=404, detail={
-            "reason_code": "assignment_not_found",
-            "message": "That assignment does not exist."})
-
-    rows = sb.table("problems").select(
-        "slug, title, description, solution, context, group_title, "
-        "group_order, member_order").eq("assignment_id", assignment_id).execute().data or []
-    if not rows:
-        raise HTTPException(status_code=404, detail={
-            "reason_code": "no_problems",
-            "message": "That assignment has no problems to hand back."})
-
-    problems = [{**r, **_context_of(r),
-                 "order": (r.get("group_order") or 0) * 100
-                          + (r.get("member_order") or 0)}
-                for r in rows]
-    problems.sort(key=lambda p: p["order"])
+    # Shared with /assignments/{id}/file, so the download and the copy the
+    # student reads on screen are always assembled from the same problem set.
+    asg, problems = _assignment_problems_for_file(get_supabase(), assignment_id)
 
     answers = completed_answers(claims["sub"], [p["slug"] for p in problems])
     if not answers:
@@ -2365,13 +2399,14 @@ def assignment_handback(assignment_id: str, request: Request):
     name = (claims.get("name") or claims.get("username") or "").strip()
     text = build_handback(
         problems, {s: a["code"] for s, a in answers.items()},
-        assignment_name=asg[0].get("name") or "Assignment",
+        assignment_name=asg.get("name") or "Assignment",
         student_name=name,
-        revealed_slugs={s for s, a in answers.items() if a["assisted"]})
+        revealed_slugs={s for s, a in answers.items() if a["assisted"]},
+        blank_unanswered=True)
 
     # The teacher's own filename, so what lands in Downloads is recognisably the
     # file they were given rather than a slug nobody chose.
-    stem = (asg[0].get("source_file") or "assignment.py").rsplit("/", 1)[-1]
+    stem = (asg.get("source_file") or "assignment.py").rsplit("/", 1)[-1]
     if stem.endswith(".py"):
         stem = stem[:-3]
     safe = "".join(c if (c.isalnum() or c in "-_") else "_" for c in stem)[:60]
@@ -2383,6 +2418,90 @@ def assignment_handback(assignment_id: str, request: Request):
         headers={"Content-Disposition": f'attachment; filename="{filename}"',
                  # The file changes as they finish more problems.
                  "Cache-Control": "no-store"})
+
+
+def _assignment_problems_for_file(sb, assignment_id: str) -> tuple[dict, list[dict]]:
+    """(assignment row, its problems in file order) or a 404.
+
+    Shared by the two routes that rebuild the teacher's file, so the download
+    and the on-screen copy can never be assembled from different problem sets.
+    Deliberately NOT filtered on `ready`: an unprepared problem is still part of
+    the file the teacher wrote, and leaving it out would put a hole in the
+    middle of the class."""
+    asg = sb.table("assignments").select("id, name, source_file").eq(
+        "id", assignment_id).limit(1).execute().data
+    if not asg:
+        raise HTTPException(status_code=404, detail={
+            "reason_code": "assignment_not_found",
+            "message": "That assignment does not exist."})
+    rows = sb.table("problems").select(
+        "slug, title, description, solution, context, group_title, "
+        "group_order, member_order").eq(
+        "assignment_id", assignment_id).execute().data or []
+    if not rows:
+        raise HTTPException(status_code=404, detail={
+            "reason_code": "no_problems",
+            "message": "That assignment has no problems."})
+    problems = [{**r, **_context_of(r),
+                 "order": (r.get("group_order") or 0) * 100
+                          + (r.get("member_order") or 0)}
+                for r in rows]
+    problems.sort(key=lambda p: p["order"])
+    return asg[0], problems
+
+
+@app.get("/assignments/{assignment_id}/file")
+def assignment_file(assignment_id: str, request: Request):
+    """The assignment file as the student HAS it, for reading while they work.
+
+    Their accepted answers are spliced in under their own `def`s at the right
+    depth; every problem they have not finished is a
+    `# YOUR CODE STARTS HERE` stub. Everything they were GIVEN - the helper
+    classes, the constructors, the docstrings, the methods that are not
+    exercises - is the teacher's file exactly as it was handed out. So a student
+    can see what they are writing against, and run what they have so far.
+
+    WHY THIS IS NOT /handback. That route fills an unfinished problem with the
+    TEACHER'S body, which is right for a file you take away at the end and
+    catastrophic for one you read at step 2 of 3: it would hand over the answer
+    to the next problem in the same class. This route never contains a reference
+    solution for anything the student has not already solved themselves.
+
+    It also refuses nothing. /handback 409s until something is completed,
+    because a download of an untouched assignment is just the handout - but a
+    student who has finished nothing is exactly who needs to see the starter
+    file, so this answers from the first visit.
+
+    Their OWN work only: student_id comes from the cookie, so it cannot be
+    pointed at a classmate. It reads no chunk references and no oracle."""
+    from main.handback import build_handback
+    from main.sessions import completed_answers
+
+    claims = require_student(request)
+    sb = get_supabase()
+    asg, problems = _assignment_problems_for_file(sb, assignment_id)
+
+    answers = completed_answers(claims["sub"], [p["slug"] for p in problems])
+    text = build_handback(
+        problems, {s: a["code"] for s, a in answers.items()},
+        assignment_name=asg.get("name") or "Assignment",
+        student_name=(claims.get("name") or claims.get("username") or "").strip(),
+        revealed_slugs={s for s, a in answers.items() if a["assisted"]},
+        blank_unanswered=True)
+
+    stem = (asg.get("source_file") or "assignment.py").rsplit("/", 1)[-1]
+    done = sorted(answers)
+    return JSONResponse(
+        {"filename": stem if stem.endswith(".py") else stem + ".py",
+         "assignment": asg.get("name") or "Assignment",
+         "text": text,
+         # Counts only - the page says "2 of 5 written" without having to parse
+         # the file it was just handed.
+         "written": done,
+         "remaining": sorted(p["slug"] for p in problems
+                             if p["slug"] not in answers)},
+        # It changes as they finish steps, and it is one student's own work.
+        headers={"Cache-Control": "private, no-store"})
 
 
 @app.post("/design_review/plan")

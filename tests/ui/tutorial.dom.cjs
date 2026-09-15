@@ -27,20 +27,30 @@ const tick=()=>new Promise(r=>setTimeout(r,30));
     const w=await make("tutorial.html?return=student.html"),doc=w.document;
     const next=()=>doc.querySelector("#tutorialNext").click();
     const radio=(name,value)=>doc.querySelector('input[name="'+name+'"][value="'+value+'"]').click();
-    next();assert(doc.querySelector("#tutorialFeedback").textContent.includes("zero"));
-    radio("base","1");next();
-    const down=()=>doc.querySelector('[aria-label="Move Return the result down"]').click();
-    down();down();down();
-    doc.querySelector("#checkPlan").click();assert(doc.querySelector("#practicePlanGraph svg"));next();
-    for(const [id,value]of[["practiceInitial","0"],["practiceLimit","n + 1"],["practiceOperation","*="]]){
-      const el=doc.getElementById(id);el.value=value;el.dispatchEvent(new w.Event("change"));
-    }
-    doc.querySelector("#checkCode").click();assert(doc.querySelector("#tutorialFeedback").textContent.includes("zero"));
-    next();assert(doc.querySelector("#practiceInitial"),"Cannot skip failed code checks");
-    const initial=doc.querySelector("#practiceInitial");initial.value="1";initial.dispatchEvent(new w.Event("change"));
-    doc.querySelector("#checkCode").click();assert.equal(doc.querySelectorAll(".practice-results tbody tr").length,3);
-    assert([...doc.querySelectorAll(".practice-results tbody td:last-child")].every(el=>el.textContent.includes("Passed")));
-    next();radio("reflection","identity");next();await tick();
+    // THE TOUR TEACHES THE PRODUCT, not factorial. Each step corrects one
+    // belief a new student arrives with, and a wrong pick has to say which.
+    next();assert(doc.querySelector("#tutorialFeedback").textContent.includes("Pick one"));
+    radio("first","code");next();
+    assert(doc.querySelector("#tutorialFeedback").textContent.includes("locked"),
+      "the plan gate is the point of step 1");
+    radio("first","plan");next();
+
+    // Picking the workable plan draws the flowchart the page would have drawn.
+    assert(!doc.querySelector("#practicePlanGraph svg"),"nothing drawn before a choice");
+    radio("plan","thin");
+    assert(!doc.querySelector("#practicePlanGraph svg"),"a thin plan draws nothing");
+    next();assert(doc.querySelector("#tutorialFeedback").textContent.includes("counted"));
+    radio("plan","full");assert(doc.querySelector("#practicePlanGraph svg"),"the plan is drawn");
+    next();
+
+    radio("wrong","reveal");next();
+    assert(doc.querySelector("#tutorialFeedback").textContent.includes("never"),
+      "nothing is ever revealed, and the tour has to say so");
+    radio("wrong","retry");next();
+
+    radio("saved","lost");next();
+    assert(doc.querySelector("#tutorialFeedback").textContent.includes("saved"));
+    radio("saved","kept");next();await tick();
     assert.equal(w.location.pathname,"/student.html","Finish closes sample");
     const marker=Object.keys(w.localStorage).find(k=>k.startsWith("acadia.tutorial"));
     assert.equal(JSON.parse(w.localStorage.getItem(marker)).status,"completed");
@@ -50,6 +60,6 @@ const tick=()=>new Promise(r=>setTimeout(r,30));
     assert.equal(teacher.document.body.dataset.portal,"instructor");
     assert.equal(teacher.AcadiaOnboarding.destination("grades.html"),"grades.html");
     assert(calls.every(c=>c.method==="GET"&&c.url.includes("/auth/me")),"Tutorial never creates a real session or grade");
-    console.log("PASS: first-visit detection, account/browser memory, Settings replay, factorial plan/code/reflection checks, automatic exit, role-aware navigation, and zero course writes.");
+    console.log("PASS: first-visit detection, account/browser memory, Settings replay, the four product-tour gates (plan lock, workable plan, never revealed, work is saved), automatic exit, role-aware navigation, and zero course writes.");
   }finally{for(const w of windows)await w.happyDOM.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

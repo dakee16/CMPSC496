@@ -83,11 +83,22 @@ class GradeResult(BaseModel):
     reason_code: str
     # Internal diagnostics; stripped at the API boundary.
     failures: List[dict] = []
-    # ONE failing case, already rendered for a human, and the one thing here
-    # that IS meant to reach the student - behind a disclosure they open. Being
-    # told "wrong on at least one case" and not which case is the difference
-    # between a hint and a shrug. Deliberately one, never the suite.
-    failing_case: Optional[str] = None
+    # Failing cases, already rendered for a human, and the one thing here that
+    # IS meant to reach the student - behind a disclosure they open. Being told
+    # "wrong on at least one case" and not which case is the difference between
+    # a hint and a shrug.
+    #
+    # CAPPED, never the whole suite (grading.MAX_SHOWN_CASES). One counterexample
+    # tells a student their loop is off by one; three tell them WHICH WAY, which
+    # is the difference between guessing and debugging. The cap is what keeps
+    # this from becoming an answer key - a student who could read all fifteen
+    # tests would write code that satisfies the tests instead of the problem,
+    # and that is the failure mode oracle secrecy exists to prevent.
+    failing_cases: List[str] = []
+    # How many cases failed in total, which is NOT len(failing_cases): the
+    # sandbox caps what it reports back, and the student is owed the true count
+    # so "3 shown" never reads as "3 wrong".
+    failed_total: int = 0
     internal_detail: Optional[str] = None
     # Correct, but not the canonical approach - the caller may offer a replan.
     divergent: bool = False

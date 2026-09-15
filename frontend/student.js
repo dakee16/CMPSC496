@@ -486,10 +486,14 @@ function syncHandback(done, total){
   const all = done === total;
   $("handbackTitle").textContent = all
     ? "Your completed file" : "Your file so far";
+  // The old wording here - "the rest is left exactly as it was handed out" -
+  // described the handout and the code was rebuilding the UPLOAD, which is the
+  // solved version. The file now matches the sentence instead of the sentence
+  // being quietly wrong about the file.
   $("handbackSub").textContent = all
-    ? "Every problem, with your answers in place."
-    : `Your answers for ${done} of ${total}. The rest is left exactly as it was `
-      + `handed out, so the file still runs.`;
+    ? "Every problem, with your completed answers filled in."
+    : `Your completed answers for ${done} of ${total}, filled in at the right `
+      + `place. The rest is left blank for you to finish.`;
 }
 
 async function downloadHandback(){
@@ -987,9 +991,20 @@ async function start(p){
   const d = await r.json();
   if (opening !== workspaceEpoch) return;
   sessionId = d.session_id; chunks = d.chunks || []; header = d.header || "";
+  // A RESUMED session hands back the student's own accepted prefix and the step
+  // they had reached, so closing the tab no longer costs them their steps. It is
+  // safe to put back precisely because it is the SAME session that graded it -
+  // see main/sessions.find_resumable. A fresh session sends neither field and
+  // these stay at the empty values set above.
+  accepted = (d.accepted || []).map(a => ({code: a.code || "",
+                                           how: a.how === "revealed" ? "revealed" : "own"}));
+  idx = Math.min(Math.max(Number(d.index) || 0, 0), chunks.length);
   $("msg").innerHTML = "";
   ensureEditor();
   render();
+  if (idx > 0) show("ok", idx === 1
+    ? "Picking up where you left off - your first step is already in."
+    : `Picking up where you left off - your first ${idx} steps are already in.`);
   applyTutorGate();
   // Nothing to put back, so this IS a fresh start - say hello and draw the
   // empty plan. Skipped when history was restored (it painted both already) and
@@ -1009,11 +1024,13 @@ async function start(p){
    graph and a locked editor - and looked exactly like the work had been
    deleted. It never was.
 
-   Deliberately NOT restored: the accepted code and the step position. Those
-   belong to a GRADING SESSION, and /decompose_chunks just issued a fresh one -
-   replaying old answers into it would claim steps this session never graded.
-   Reopening a problem still starts the solving over; what comes back is the
-   thinking around it.
+   The accepted code and the step position are NOT restored here, and that is a
+   division of labour rather than a policy: they belong to a GRADING SESSION, so
+   they come back with the session itself from /decompose_chunks, which now
+   resumes the live one instead of issuing a fresh one every time. Replaying old
+   answers into a NEW session would claim steps that session never graded, which
+   is why this function still must not do it. What comes back here is the
+   thinking around the code - the chat, the plan, the design verdict.
 
    Returns TRUE when it has painted the chat and the plan itself, so the caller
    knows not to overwrite them with a fresh greeting - and true as well when the
@@ -1426,7 +1443,7 @@ $("submit").onclick = async () => {
   // by default because the point of the step is for them to find it themselves;
   // one click away because "wrong on at least one case" and no case is a shrug,
   // and a student with no way forward stops rather than thinks.
-  show("bad", res.reason, failingCaseHTML(res.failing_case));
+  show("bad", res.reason, failingCasesHTML(res));
   // "Attempt 3 of 2" would be a lie now that there is no limit and the answer
   // is never shown. A plain count still tells them where they are without
   // implying a countdown to being given it.
@@ -1434,13 +1451,29 @@ $("submit").onclick = async () => {
     ? `Attempt ${res.attempts}. Keep going - take as many as you need.` : "";
 };
 
-/* The disclosure holding one failing case. Empty string when the server sent
-   none - a crash or a timeout has no case to show. */
-function failingCaseHTML(text){
-  if (!text || !String(text).trim()) return "";
+/* The disclosure holding the failing cases. Empty string when the server sent
+   none - a crash or a timeout has no case to show.
+
+   THE COUNT IS STATED, NOT COUNTED OFF THE LIST. The server shows at most
+   grading.MAX_SHOWN_CASES of them, so three listings under a summary reading
+   "3 cases" would quietly report a submission that failed seven as failing
+   three - and a student who fixes those three and resubmits has been set up to
+   be surprised. Where the two differ the summary says both numbers. */
+function failingCasesHTML(res){
+  const cases = (res.failing_cases || []).filter(c => String(c || "").trim());
+  if (!cases.length) return "";
+  const total = Number(res.failed_total) || cases.length;
+  const hidden = total - cases.length;
+  const noun = n => n === 1 ? "case" : "cases";
+  const head = hidden > 0
+    ? `Show ${cases.length} of the ${total} ${noun(total)} it failed`
+    : `Show the ${total > 1 ? total + " " : ""}${noun(total)} it failed`;
   return `<details class="failCase">
-      <summary>Show the case it failed</summary>
-      <pre class="code">${esc(text)}</pre>
+      <summary>${esc(head)}</summary>
+      ${cases.map(c => `<pre class="code">${esc(c)}</pre>`).join("")}
+      ${hidden > 0 ? `<p class="failMore">${esc(
+        `${hidden} more ${noun(hidden)} also failed. Fix these first - the same
+         mistake is usually behind all of them.`.replace(/\s+/g, " "))}</p>` : ""}
     </details>`;
 }
 

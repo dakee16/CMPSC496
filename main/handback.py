@@ -33,6 +33,73 @@ def _indent(text: str, n: int) -> str:
                      for ln in (text or "").splitlines())
 
 
+# The marker a handout leaves where the student is meant to write. Byte-for-byte
+# what main/assignments._TODO_MARK looks for, so a file this module blanks and a
+# file a teacher hands out say the same thing in the same words.
+STUB_MARK = "# YOUR CODE STARTS HERE"
+
+# ...and `pass` under it, so the file still COMPILES with holes in it. A blank
+# body is a SyntaxError, and a starter file you cannot run is not a starter
+# file - the student is meant to be able to open it and run the doctests.
+STUB = STUB_MARK + "\npass"
+
+
+def blank_body_lines(problem: dict) -> list[str]:
+    """The stub, at this problem's own body indent - what fills a hole the
+    student has not filled themselves."""
+    return _indent(STUB, int(problem.get("context_indent") or 8)).splitlines()
+
+
+def flat_with_body(problem: dict, body: str | None) -> str:
+    """A plain-function problem with `body` in place of the entry function's own.
+
+    `body` is at column 0 - what the chunk store holds - and is seated here at
+    the function's own indent, the same way build_program() seats it to run.
+    None asks for the stub instead.
+
+    Everything else survives: decorators, the `def` line, the docstring that IS
+    the problem statement, any helper the teacher grouped into the same block,
+    and anything after the function. Only the entry function's own body is the
+    exercise, so only it is replaced.
+
+    THIS IS ALSO A FIX. The flat path used to emit `answers[slug]` as the whole
+    problem - but an accepted answer is a BODY, so a downloaded file of plain
+    functions came out as bare statements with no `def` line above them and did
+    not compile. The class path never had the bug because its `def` lives in
+    context_prefix and only the body is ever spliced; this makes the two agree.
+
+    Falls back to the stored source when it will not parse: a file that shows
+    what it has beats one that shows an error, and a solution that does not
+    parse could never have been prepared in the first place."""
+    import ast
+
+    src = problem.get("solution") or ""
+    try:
+        tree = ast.parse(src)
+    except SyntaxError:
+        return src.rstrip()
+    funcs = [n for n in tree.body if isinstance(n, ast.FunctionDef)]
+    if not funcs or not funcs[-1].body:
+        return src.rstrip()
+    fn, lines = funcs[-1], src.splitlines()      # helpers first, entry point last
+    start = fn.body[0].lineno - 1
+    # The docstring is the problem statement, not the implementation: keep it.
+    if (isinstance(fn.body[0], ast.Expr)
+            and isinstance(fn.body[0].value, ast.Constant)
+            and isinstance(fn.body[0].value.value, str) and len(fn.body) > 1):
+        start = fn.body[1].lineno - 1
+    if not 0 <= start < len(lines):
+        return src.rstrip()
+    indent = len(lines[start]) - len(lines[start].lstrip())
+    filling = _indent(body if (body or "").strip() else STUB, indent).splitlines()
+    return "\n".join(lines[:start] + filling + lines[fn.end_lineno:]).rstrip()
+
+
+def blank_solution(problem: dict) -> str:
+    """A plain-function problem with its body replaced by the stub."""
+    return flat_with_body(problem, None)
+
+
 def solution_body_lines(problem: dict) -> list[str]:
     """The teacher's own body for this problem, as it sits in the file.
 
@@ -72,25 +139,33 @@ def body_span(problem: dict, total: int) -> tuple[int, int] | None:
 
 
 def _banner(assignment: str, student: str, filled: list, revealed: list,
-            missing: list) -> list[str]:
+            missing: list, blank: bool = False) -> list[str]:
     """A truthful header. It names what is the student's own work and what is
     not, because a file that silently mixes the two is a file a teacher cannot
-    mark and a student cannot learn from."""
+    mark and a student cannot learn from.
+
+    `blank` says which of the two files this is, and the difference is not
+    cosmetic: an unfinished problem is the TEACHER'S code in a download and a
+    hole in the working copy, so a header claiming "left as given" over a file
+    full of stubs would be a lie about the thing the student is looking at."""
     when = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     out = ['"""', f"{assignment}", ""]
     if student:
-        out.append(f"Completed by: {student}")
-    out += [f"Downloaded:   {when}", ""]
+        out.append(f"{'Working copy for' if blank else 'Completed by'}: {student}")
+    out += [f"{'Generated:  ' if blank else 'Downloaded: '}  {when}", ""]
     out.append(f"Your own answers ({len(filled)}): "
-               + (", ".join(filled) if filled else "none"))
+               + (", ".join(filled) if filled else "none yet" if blank else "none"))
     if revealed:
         out.append(f"Answered with the shown solution ({len(revealed)}): "
                    + ", ".join(revealed))
     if missing:
-        out.append(f"Not attempted, left as given ({len(missing)}): "
+        out.append((f"Still to write ({len(missing)}): " if blank
+                    else f"Not attempted, left as given ({len(missing)}): ")
                    + ", ".join(missing))
     out += ["",
-            "Everything else is the file exactly as it was handed out.",
+            (f"Each one of those is a `{STUB_MARK}` below. Everything else is "
+             f"the file exactly as it was handed out." if blank
+             else "Everything else is the file exactly as it was handed out."),
             '"""']
     return out
 
@@ -98,16 +173,25 @@ def _banner(assignment: str, student: str, filled: list, revealed: list,
 def build_handback(problems: list[dict], answers: dict,
                    assignment_name: str = "Assignment",
                    student_name: str = "",
-                   revealed_slugs: set | None = None) -> str:
+                   revealed_slugs: set | None = None,
+                   blank_unanswered: bool = False) -> str:
     """The finished file.
 
     `problems`   every problem in the assignment, with its context fields.
     `answers`    {slug: body at column 0} - what the student had accepted.
-                 A slug that is absent keeps the teacher's original body, so a
-                 partly finished assignment still downloads and still runs.
     `revealed`   slugs whose answer came from pressing through to the shown
                  solution; named in the banner, never silently presented as the
                  student's own.
+
+    `blank_unanswered` decides what fills a problem the student has NOT
+    finished, and it is the difference between two genuinely different files:
+
+      False  the teacher's own body. Right for the end-of-term download: what
+             lands in Downloads is the handout, completed, and it runs.
+      True   a `# YOUR CODE STARTS HERE` stub. Required for anything a student
+             reads WHILE STILL WORKING - the same file with the teacher's body
+             in it would hand them the answer to the next problem, which is the
+             one thing this whole system exists to not do.
 
     Splices are applied BOTTOM-UP against spans measured on the pristine file,
     because replacing a body changes the line count and would move every span
@@ -121,27 +205,34 @@ def build_handback(problems: list[dict], answers: dict,
         out = []
         for p in sorted(problems, key=lambda x: x.get("order") or 0):
             code = answers.get(p.get("slug"))
-            out.append(code.rstrip() if code else (p.get("solution") or "").rstrip())
+            if code:
+                out.append(flat_with_body(p, code))
+            else:
+                out.append(blank_solution(p) if blank_unanswered
+                           else (p.get("solution") or "").rstrip())
             out.append("")
         body = "\n".join(out)
         filled = sorted(s for s in answers if s not in revealed_slugs)
         head = _banner(assignment_name, student_name, filled,
                        sorted(revealed_slugs),
-                       sorted({p["slug"] for p in problems} - set(answers)))
+                       sorted({p["slug"] for p in problems} - set(answers)),
+                       blank=blank_unanswered)
         return "\n".join(head) + "\n\n" + body
 
     total = len(lines)
     planned = []
     for p in problems:
         slug = p.get("slug")
-        if slug not in answers:
+        answered = slug in answers
+        if not answered and not blank_unanswered:
             continue                      # keep the teacher's body
         span = body_span(p, total)
         if span is None:
             continue
-        planned.append((span, _indent(answers[slug],
-                                      int(p.get("context_indent") or 8)
-                                      ).splitlines()))
+        planned.append((span,
+                        _indent(answers[slug],
+                                int(p.get("context_indent") or 8)).splitlines()
+                        if answered else blank_body_lines(p)))
 
     # Bottom-up: every span was measured on the pristine file.
     for (a, b), replacement in sorted(planned, key=lambda x: x[0][0],
@@ -152,7 +243,8 @@ def build_handback(problems: list[dict], answers: dict,
     filled = sorted(s for s in answers if s not in revealed_slugs)
     head = _banner(assignment_name, student_name, filled,
                    sorted(revealed_slugs & set(answers)),
-                   sorted(all_slugs - set(answers)))
+                   sorted(all_slugs - set(answers)),
+                   blank=blank_unanswered)
     return "\n".join(head) + "\n\n" + "\n".join(lines).rstrip() + "\n"
 
 
@@ -161,12 +253,131 @@ if __name__ == "__main__":
 
     from .assignments import parse_assignment_file
 
+    # ── the blank file, on a synthetic assignment that ships with the repo ──
+    # Deliberately NOT gated on the HW3 fixture below: this is the file a
+    # student reads while they are still working, so the thing it must never do
+    # - show them the reference body of a problem they have not solved - has to
+    # be checked on every run, not only on a machine that happens to have a real
+    # assignment lying next to it.
+    CLASSES = '''"""LAB9 - Stacks"""
+
+
+class Node:
+    """A link in the stack. Given to you."""
+    def __init__(self, value):
+        self.value, self.next = value, None
+
+
+class Stack:
+    """A LIFO stack.
+
+    >>> x = Stack(); x.push(2); x.push(4)
+    >>> x.pop()
+    4
+    """
+    def __init__(self):
+        self.top = None
+
+    def push(self, value):
+        """Put value on the top of the stack."""
+        node = Node(value)
+        node.next = self.top
+        self.top = node
+
+    def pop(self):
+        """Take the top value off the stack and return it."""
+        v = self.top.value
+        self.top = self.top.next
+        return v
+
+    def isEmpty(self):
+        """Return True when nothing is on the stack."""
+        return self.top is None
+'''
+    cls_probs = parse_assignment_file(CLASSES, "lab9.py")["problems"]
+    assert [p["slug"] for p in cls_probs] == \
+        ["stack-push", "stack-pop", "stack-is-empty"], cls_probs
+    mine = "node = Node(value)\nnode.next = self.top\nself.top = node"
+    working = build_handback(cls_probs, {"stack-push": mine}, "LAB9", "A Student",
+                             blank_unanswered=True)
+
+    # THE WHOLE POINT: no reference body for anything they have not solved.
+    for leaked in ("self.top = self.top.next", "return self.top is None",
+                   "v = self.top.value"):
+        assert leaked not in working, f"reference leaked into the working copy: {leaked}"
+    # ...their own answer IS there, under its own def, at the class's depth.
+    assert "\n        node.next = self.top\n" in working, working
+    # ...every unsolved method is a hole, and the file still RUNS with holes in
+    # it, or it is not a starter file.
+    assert working.count("    " + STUB_MARK) == 2, working
+    compile(working, "<working>", "exec")
+    ns = {}
+    exec(working, ns)
+    s_ = ns["Stack"]()
+    s_.push(7)
+    assert s_.top.value == 7, "the student's own push must actually work"
+    assert s_.pop() is None, "an unwritten method is a stub, not the answer"
+    # Code the student was GIVEN is never blanked - Node and __init__ are not
+    # exercises, and a starter file without them cannot run at all.
+    assert "self.value, self.next = value, None" in working
+    assert "self.top = None" in working
+
+    # The completing mode still exists and still completes - but NOTHING SERVES
+    # IT TODAY. /handback used to, and that handed a student who had finished
+    # one problem the teacher's body for every problem they had not. It is kept
+    # for the one case that can justify it - a runnable "completed file" after
+    # an assignment has closed - and a caller that wants it has to ask for it.
+    completing = build_handback(cls_probs, {"stack-push": mine}, "LAB9", "A Student")
+    assert "return self.top is None" in completing
+    assert STUB_MARK not in completing
+    assert "Not attempted, left as given" in completing
+    assert "Still to write (2)" in working, working
+
+    # ── the flat path: same rule, no shared module to splice into ──────────
+    FLAT = '''"""Week 1"""
+
+# --- problem: is-leap-year ---
+def is_leap_year(year):
+    """Return True when year is a leap year."""
+    if year % 400 == 0:
+        return True
+    return year % 4 == 0
+
+
+# --- problem: double-it ---
+def double_it(n):
+    """Return n doubled."""
+    return n * 2
+'''
+    flat_probs = parse_assignment_file(FLAT, "week1.py")["problems"]
+    flat = build_handback(flat_probs, {"double-it": "return n + n"}, "Week 1", "A",
+                          blank_unanswered=True)
+    assert "year % 400" not in flat, "reference leaked on the flat path"
+    assert "return n + n" in flat, "their own answer must survive"
+    # The docstring IS the problem statement, so it is kept, not blanked with
+    # the body it sits above.
+    assert "Return True when year is a leap year." in flat, flat
+    # Counted INDENTED, so the banner's own mention of the marker is not one.
+    assert flat.count("    " + STUB_MARK) == 1, flat
+    assert "def is_leap_year(year):" in flat, "the def line must survive"
+    assert "def double_it(n):" in flat and "\n    return n + n" in flat, \
+        "an accepted answer is a BODY - it has to land under its own def"
+    compile(flat, "<flat>", "exec")
+
+    # A student who has finished nothing is exactly who needs the starter file.
+    starter = build_handback(cls_probs, {}, "LAB9", "A", blank_unanswered=True)
+    compile(starter, "<starter>", "exec")
+    assert starter.count("    " + STUB_MARK) == 3, starter
+    assert "none yet" in starter
+
+    print("handback.py blank-file self-check OK")
+
     # The fixture is a real assignment file, kept out of the repo. Without it
     # there is nothing to rebuild, so skip rather than fail: a self-check that
     # breaks when a sample file moves teaches nothing about this module.
     FIXTURE = os.environ.get("MICROTUTOR_HW3", "assignment_hw3.py")
     if not os.path.exists(FIXTURE):
-        print(f"handback.py self-check SKIPPED (no {FIXTURE})")
+        print(f"handback.py fixture self-check SKIPPED (no {FIXTURE})")
         raise SystemExit(0)
     src = open(FIXTURE).read()
     probs = parse_assignment_file(src, FIXTURE)["problems"]

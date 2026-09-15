@@ -184,6 +184,9 @@
   .failCase[open] > summary::before{transform:rotate(90deg)}
   .failCase > summary:hover{color:var(--text)}
   .failCase pre{margin:8px 0 0}
+  /* Several cases now, so they need to read as a list rather than one blob. */
+  .failCase pre + pre{margin-top:6px}
+  .failMore{margin:8px 0 0; font-size:.8125rem; color:var(--text-dim)}
 
 
 

@@ -77,7 +77,7 @@ function chooseWorkspaceStage(stage, focus = true){
     return;
   }
   closeResource(false);
-  $("workspaceOptions").open = false;
+
   workspaceStage = stage;
   $("workspaceNotice").textContent = "";
   for (const [key, name] of Object.entries(stageNames)) $("stage" + name).hidden = key !== stage;
@@ -96,13 +96,66 @@ function chooseWorkspaceStage(stage, focus = true){
 function returnWorkspaceResources(){
   $("planHome").append($("planCard"));
   $("resourceBody").replaceChildren();
-  for (const button of document.querySelectorAll('[data-resource="plan"]')) button.setAttribute("aria-expanded", "false");
+  for (const button of document.querySelectorAll('[data-resource="plan"],[data-resource="file"]'))
+    button.setAttribute("aria-expanded", "false");
+}
+
+/* THE WHOLE ASSIGNMENT FILE, as this student currently has it: their accepted
+   answers sitting under their own defs at the right depth, every problem they
+   have not finished left as a `# YOUR CODE STARTS HERE` stub, and everything
+   they were GIVEN - helper classes, constructors, docstrings, the methods that
+   are not exercises - exactly as the teacher wrote it.
+
+   It exists because a step prompt is a keyhole. A student writing chunk 2 of
+   `pop` cannot see what `__init__` called the field, what the class hands them,
+   or where their own answer is going to land - and guessing at that is not the
+   thing they are supposed to be learning.
+
+   Fetched fresh on every open rather than cached: it changes the moment a step
+   is accepted, and a stale copy of your own work is worse than a short wait.
+   The server never puts a reference solution in it (api_server.assignment_file),
+   so there is nothing here to withhold. */
+async function renderFileResource(){
+  const box = document.createElement("div");
+  box.className = "fileview";
+  $("resourceBody").append(box);
+  const id = typeof openAssign !== "undefined" && openAssign ? openAssign.id : null;
+  if (!id){
+    box.innerHTML = '<p class="reference-empty">Open a problem from an assignment to see its file.</p>';
+    return;
+  }
+  box.innerHTML = '<p class="reference-empty" role="status">Building your copy of the file…</p>';
+  // The drawer can be closed, or the whole problem swapped, while this is in
+  // flight. Either one makes the answer to this request the wrong thing to draw.
+  const epoch = workspaceEpoch;
+  const stale = () => epoch !== workspaceEpoch || resourceKind !== "file" || !box.isConnected;
+  try {
+    const response = await fetch(`${API}/assignments/${encodeURIComponent(id)}/file`, {cache: "reload"});
+    if (!response.ok) throw new Error(String(response.status));
+    const data = await response.json();
+    if (stale()) return;
+    const written = (data.written || []).length, left = (data.remaining || []).length;
+    box.replaceChildren();
+    const note = document.createElement("p");
+    note.className = "fileview-note";
+    note.innerHTML = esc(data.filename || "assignment.py") + " — <strong>"
+      + esc(`${written} of ${written + left}`) + "</strong> written."
+      + (left ? " The rest is marked <code>" + esc("# YOUR CODE STARTS HERE") + "</code>." : "");
+    const pre = document.createElement("pre");
+    pre.className = "code fileview-code";
+    pre.tabIndex = 0;
+    pre.textContent = data.text || "";
+    box.append(note, pre);
+  } catch {
+    if (stale()) return;
+    box.innerHTML = '<p class="reference-empty">Your file could not be loaded just now. Try opening it again in a moment.</p>';
+  }
 }
 
 // The question travels with the stage, so the only thing still worth pulling
 // into the work column is the plan - it lives on the other tab while coding.
 function openResource(kind){
-  if (!["plan", "tutor"].includes(kind)) return;
+  if (!["plan", "tutor", "file"].includes(kind)) return;
   if (kind === "tutor"){
     toggleWorkspaceTutor(true);
     return;
@@ -115,17 +168,51 @@ function openResource(kind){
   $("resourceDrawer").hidden = false;
   $("resourceBody").dataset.resource = kind;
   for (const button of document.querySelectorAll(`[data-resource="${kind}"]`)) button.setAttribute("aria-expanded", "true");
+  $("resourceTitle").textContent = kind === "file" ? "The whole file" : "Your plan";
+  exitResourceFullscreen();
+  $("expandResource").hidden = kind !== "file";
   if (kind === "plan"){
     if (planGraph?.nodes?.length){$("planCard").hidden = false; $("resourceBody").append($("planCard"));}
     else {const empty = document.createElement("p"); empty.className = "reference-empty"; empty.textContent = "Describe your approach to the tutor to start building your plan."; $("resourceBody").append(empty);}
   }
+  else if (kind === "file") renderFileResource();
   $("resourceBody").scrollTop = 0;
   $("closeResource").focus();
+}
+
+/* Fullscreen for the file view, on the pattern graphs.js already uses: ask for
+   real fullscreen, and fall back to a fixed-position class when the browser
+   refuses (Safari denies it outright inside some embedded contexts). A whole
+   Python file in a 560px drawer is a lot of scrolling, and reading the shape of
+   a class is the reason to open it at all. */
+function toggleResourceFullscreen(){
+  const drawer = $("resourceDrawer"), button = $("expandResource");
+  const leave = () => {
+    drawer.classList.remove("rfake");
+    button.textContent = "Expand";
+  };
+  if (drawer.classList.contains("rfake")) { leave(); button.focus(); return; }
+  if (document.fullscreenElement === drawer) { document.exitFullscreen?.(); return; }
+  try {
+    if (!drawer.requestFullscreen) throw new Error("unsupported");
+    drawer.requestFullscreen().then(() => { button.textContent = "Close"; })
+      .catch(() => { drawer.classList.add("rfake"); button.textContent = "Close"; });
+  } catch {
+    drawer.classList.add("rfake");
+    button.textContent = "Close";
+  }
+}
+
+function exitResourceFullscreen(){
+  $("resourceDrawer").classList.remove("rfake");
+  if (document.fullscreenElement === $("resourceDrawer")) document.exitFullscreen?.();
+  $("expandResource").textContent = "Expand";
 }
 
 function closeResource(restoreFocus = true){
   if (!resourceKind) return;
   resourceKind = null;
+  exitResourceFullscreen();
   returnWorkspaceResources();
   $("resourceDrawer").hidden = true;
   if (restoreFocus && resourceReturnFocus?.isConnected) resourceReturnFocus.focus();
@@ -215,6 +302,13 @@ function initWorkspace(){
   });
   document.querySelectorAll('[data-stage]').forEach(button => button.addEventListener("click", () => chooseWorkspaceStage(button.dataset.stage)));
   document.querySelectorAll('[data-resource]').forEach(button => button.addEventListener("click", () => openResource(button.dataset.resource)));
+  $("expandResource").addEventListener("click", toggleResourceFullscreen);
+  // The real fullscreen has its own exit (Escape, the browser chrome); keep the
+  // button's label honest when it is used.
+  document.addEventListener("fullscreenchange", () => {
+    if (document.fullscreenElement !== $("resourceDrawer"))
+      $("expandResource").textContent = "Expand";
+  });
   $("planContinue").onclick = () => chooseWorkspaceStage("code");
   $("finishReview").onclick = () => chooseWorkspaceStage("reflect");
   $("reflectionNext").onclick = backToProblems;
@@ -237,7 +331,15 @@ function initWorkspace(){
     buttons[next].focus();
   });
   $("resourceDrawer").addEventListener("keydown", event => {
-    if (event.key === "Escape") {event.preventDefault(); event.stopPropagation(); closeResource(); return;}
+    if (event.key !== "Escape") return;
+    event.preventDefault(); event.stopPropagation();
+    // Escape steps OUT of fullscreen before it closes the drawer. Collapsing
+    // both at once means a student who expanded the file to read it loses the
+    // file as well as the fullscreen, and has to find the button again.
+    if ($("resourceDrawer").classList.contains("rfake")){
+      exitResourceFullscreen(); $("expandResource").focus(); return;
+    }
+    closeResource();
   });
   resetWorkspace();
 }

@@ -100,6 +100,50 @@ function gMetrics(graph){
   return {lines, W, H};
 }
 
+/* The longest straight run of a polyline - the roomiest place to seat a label
+   without it spilling around a corner. Returned as endpoints rather than a
+   midpoint so a label that would collide with another can slide ALONG its own
+   line instead of being pushed off it. */
+function gLongestSegment(points){
+  let seg=[points[0][0],points[0][1],points[0][0],points[0][1]],span=-1;
+  for(let i=1;i<points.length;i++){
+    const [ax,ay]=points[i-1],[bx,by]=points[i],d=Math.abs(bx-ax)+Math.abs(by-ay);
+    if(d>span){span=d;seg=[ax,ay,bx,by];}
+  }
+  return seg;
+}
+
+/* Seat each label on its own segment, sliding along it when two would overlap.
+   Labels are the only thing allowed to move here: an edge routed clear of the
+   nodes must never be re-routed to make room for text. A label that cannot find
+   a free spot keeps the last one tried - overlapping text on the right line
+   still beats tidy text on the wrong one. */
+function gSeatLabels(routes){
+  const placed=[],hits=(a,b)=>a.x<b.x+b.w+4&&b.x<a.x+a.w+4&&a.y<b.y+b.h+3&&b.y<a.y+a.h+3;
+  // Routing is orthogonal, so every segment is axis-aligned and a bounding-box
+  // overlap IS the intersection test. A foreign line running under the label is
+  // the whole defect being fixed: the box is opaque, so it breaks whatever it
+  // covers, and a reader cannot tell which of the two broken lines it belongs to.
+  const crosses=(l,pts)=>{
+    for(let i=1;i<pts.length;i++){
+      const [ax,ay]=pts[i-1],[bx,by]=pts[i];
+      if(Math.min(ax,bx)<=l.x+l.w+3&&Math.max(ax,bx)>=l.x-3
+       &&Math.min(ay,by)<=l.y+l.h+3&&Math.max(ay,by)>=l.y-3)return true;
+    }
+    return false;
+  };
+  for(const r of routes){
+    if(!r.label)continue;
+    const [ax,ay,bx,by]=r.label.seg,l=r.label;
+    for(const t of [.5,.36,.64,.24,.76,.14,.86,.08,.92]){
+      l.x=Math.max(2,ax+(bx-ax)*t-l.w/2);l.y=ay+(by-ay)*t-l.h/2;
+      if(!placed.some(p=>hits(l,p))
+       &&!routes.some(o=>o!==r&&crosses(l,o.points)))break;
+    }
+    placed.push(l);
+  }
+}
+
 /* Cycle detection is structural: "repeat" can also label a forward edge
    into a loop body. Invisible rank constraints keep exits below loop bodies. */
 function gStructure(graph){
@@ -208,11 +252,20 @@ function gLayout(graph,W,H){
     r.path=r.points.map(([x,y],i)=>(i?"L ":"M ")+x+" "+y).join(" ");
     if(edge.label){
       const label=String(edge.label),short=label.length>22?label.slice(0,21)+"…":label,width=short.length*6.5+14;
+      // ON THE LINE IT NAMES, never merely near it. Placing the label from the
+      // port/lane geometry put it in the GAP between the two edges leaving one
+      // node: on the nested-loop fixture all three "repeat" labels landed
+      // closer to the sibling "done" edge than to their own, and a label
+      // floating between two arrows names neither of them. Anchored to the
+      // middle of this route's longest straight run instead, so its opaque
+      // background breaks its OWN polyline - the association is drawn rather
+      // than left to the reader to infer. gLabelPlacement keeps it in frame and
+      // off the other labels.
       r.label={text:short,full:label,w:width,h:20,
-        x:r.outer?r.lane-width/2:(sx+dx)/2+(Math.abs(dx-sx)<width+18?12:-width/2),
-        y:r.outer?(leave+enter)/2-10:leave-10};
+               seg:gLongestSegment(r.points),x:0,y:0};
     }
   });
+  gSeatLabels(routes);
   const nodeReach=gridX+gridWidth+(rightCount?32+(rightCount-1)*rightWidth+rightWidth/2:0)+G_PAD;
   const w=Math.max(nodeReach,...routes.map(r=>r.label?r.label.x+r.label.w+G_PAD:0));
   const h=y[rows.length-1]+H+(gapTracks.has(rows.length-1)?gapHeight(rows.length-1):0)+G_PAD;
