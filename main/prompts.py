@@ -261,7 +261,11 @@ Return JSON only: {"subproblems": [{"prompt": "...", "reference": "..."}, ...]}
 # obeys an explicit exclusion and reliably talks itself past a general one.
 WORKABLE_PLAN = """\
 A plan is WORKABLE when the student has said, IN THEIR OWN WORDS, all four of:
-  1. what they keep track of as they go (the state / data structures),
+  1. what they keep track of as they go AND WHAT IT STARTS OUT AS (the
+     state). "I'll count the letters" does not say this: a count lives
+     somewhere, that somewhere has to exist before the first letter is
+     read, and a student who has not said so has not planned the step
+     they are most likely to leave out,
   2. how they process the input (the loop, recursion, or traversal),
   3. how they decide and produce the answer,
   4. what happens on the obvious edge cases for THIS problem.

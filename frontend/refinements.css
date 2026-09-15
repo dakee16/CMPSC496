@@ -79,6 +79,11 @@ body{line-height:1.55}.page{max-width:1440px}
 .plan-submit-row{padding:0 20px 16px;display:block;margin:0}
 .plan-action-buttons{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .plan-action-buttons button{font-size:12px;min-height:40px;padding:9px 13px}.plan-action-buttons #planSubmitBtn{margin-left:auto}
+/* Quiet, and on the far side of the row from "Submit plan for review".
+   Same treatment as the coding bar: present, findable, never competing
+   with the action the student is actually here to take. */
+.plan-action-buttons [data-restart]{font-weight:500;opacity:.75}
+.plan-action-buttons [data-restart]:hover{opacity:1}
 .plan-upload{margin:0 20px 16px;font-size:12px;color:var(--text-muted)}
 .plan-upload>summary{width:fit-content;padding:6px 0;cursor:pointer}
 .guided-workspace .plan-upload .designPanel{padding:16px 0 4px;text-align:left;border:0;border-radius:0;background:transparent}

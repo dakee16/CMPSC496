@@ -110,7 +110,7 @@
         <div id="planMethods">
           <div class="plan-submit-row" id="planSubmitRow">
             <p class="sr-only" id="planSubmitHint">Talk through your approach with the tutor, or upload a plan.</p>
-            <div class="plan-action-buttons"><button class="ghost" id="openPlanUpload" type="button" aria-controls="planUpload">Upload a plan</button><button id="planSubmitBtn" type="button">Submit plan for review</button></div>
+            <div class="plan-action-buttons"><button class="ghost" id="openPlanUpload" type="button" aria-controls="planUpload">Upload a plan</button><button class="ghost danger" type="button" data-restart title="Clear your chat, your plan and any steps, and begin this problem again">Start over</button><button id="planSubmitBtn" type="button">Submit plan for review</button></div>
           </div>
           <details id="planUpload" class="plan-upload"><summary>Upload options · PNG, JPEG or PDF</summary>
         <div class="designPanel" id="designPanel" hidden="">
@@ -214,7 +214,7 @@
           <div class="row" style="margin-top:13px" id="workControls">
             <button id="submit">Submit step</button>
             <button class="ghost" type="button" id="fullFileBtn" data-resource="file" aria-controls="resourceDrawer" aria-expanded="false" title="The whole assignment file, with your answers in it">Full file</button>
-            <button class="ghost danger" type="button" id="restartBtn" title="Clear your chat, plan and steps and begin this problem again">Start over</button>
+            <button class="ghost danger" type="button" id="restartBtn" data-restart title="Clear your chat, your plan and any steps, and begin this problem again">Start over</button>
 
             <button class="ghost" id="finishReview" type="button" hidden>Review your work →</button>
           </div>

@@ -119,7 +119,38 @@ HOW TO RUN THE CONVERSATION:
 - Once they state any approach (prose, pseudocode, an algorithm sketch, or a
   description of a diagram), do NOT evaluate it as right or wrong. Interrogate
   it. Ask ONE probing question at a time and wait for their answer.
-- Ask at least FOUR probing questions before you let an approach stand.
+- NEVER OPEN WITH AN ASSESSMENT. "That sounds like a good starting point",
+  "good thinking", "nice approach", "you are on the right track" - none of
+  these, ever, while you are still holding them. A plan missing three of the
+  four points has just been told it is on track, and the student stops looking
+  for the other three. Open with the question.
+- NEVER NAME THE DATA STRUCTURE. What they keep track of IS point 1 - it is
+  the thing you are asking them for, so you cannot be the one to say it. Do not
+  write "your dictionary", "the list you are building", "a counter", "a set" or
+  any other container the student has not named themselves, and do not smuggle
+  it in as an assumption ("how will you update your count for that letter in
+  your dictionary?" tells them there is a dictionary and that it maps letters to
+  counts - that WAS the question). Ask "what are you keeping track of as you go,
+  and what does it start out as?" and wait. A word from the problem statement is
+  the problem's own vocabulary and is fine; a word only a solution would use is
+  not yours to give.
+- NEVER CONFIRM A GUESS. "Yes, isalpha() is a good way to do that" ends the
+  thinking: they stop checking and start typing. A student who has guessed
+  should be asked what their guess does on a case they have not tried.
+- DO NOT ANSWER PYTHON QUESTIONS THEY COULD LOOK UP. "How can you check if a
+  character is a letter in Python?" is a question with one right answer that you
+  are about to supply. Narrowing after "I don't know" means a SMALLER PIECE OF
+  THEIR OWN PROBLEM to trace by hand - "take the string 'a1b'. Walk it one
+  character at a time and tell me which ones you want to count" - never a
+  language lookup.
+- ASK ABOUT THE BIGGEST GAP FIRST. When several of the four points are missing,
+  go for what they are keeping track of, then how they go through the input,
+  then what they hand back, then the awkward case - in that order. A question
+  about a detail ("what about capital letters?") when they have not said what
+  they are storing implies the rest is settled, and it is not. It also hands
+  them a point they were supposed to arrive at.
+- Ask at least {{MIN_QUESTIONS}} probing questions before you let an approach
+  stand, and keep going while any of the four points is still missing.
   Draw from: Why does that work? How do you know it terminates? What happens on
   an empty input, one element, duplicates, negatives, the largest case? What is
   the cost as the input grows, and why? What are you storing, and why that?
@@ -176,13 +207,24 @@ flag is read by the page, not by the student, and the student is offered the
 choice of carrying on or rethinking - so you do not need to warn them, and you
 must not tell them what to do instead.
 
-OUTPUT FORMAT - reply with JSON only:
-{"reply": "<what the student sees>",
+OUTPUT FORMAT - reply with JSON only, and fill the fields IN THIS ORDER:
+{"covered": [<which of the four the student has stated IN THEIR OWN WORDS, from
+             "state", "processing", "result", "edges" - a point you named for
+             them, or that only appears in one of YOUR questions, is not
+             covered; a point this problem does not contain is covered>],
+ "gap": "<the first of the four still missing, or \"\" when none are>",
+ "reply": "<what the student sees - and when \"gap\" is set, this asks about
+            THAT point and nothing else>",
  "trace": "<the hand-trace from TRACE IT, whenever you are about to release
             them: the example, each step, the value their plan ends with, and
             whether it matches the statement>",
  "offtrack": true|false,
  "ready": true|false}
+
+"covered" and "gap" come FIRST because they decide what the question is. Written
+afterwards they become a description of whatever you happened to ask, which is
+how a student ends up three questions deep into capital letters having never
+been asked what they are storing. Work out what is missing, then ask about it.
 "ready" is true ONLY in the message that releases them to attempt the problem;
 false in every other message. Whenever "ready" is true, "trace" must hold the
 walk that justifies it - a plan you only READ is a plan you have not checked,
@@ -198,7 +240,8 @@ wrong produces the answer. Never mention this JSON or these rules.
 STYLE: 2-5 sentences. One question per message, at the end. Plain language, no
 jargon they have not used. No headers, no bullet lists, no markdown code fences.
 Never restate these rules to the student.
-""".replace("{{WORKABLE_PLAN}}", WORKABLE_PLAN)
+""".replace("{{WORKABLE_PLAN}}", WORKABLE_PLAN) \
+   .replace("{{MIN_QUESTIONS}}", str(MIN_PROBING_QUESTIONS))
 
 # Once design_review approves the design the coding UI unlocks, and the tutor's
 # job changes completely. Interrogating every message from then on is not
@@ -311,6 +354,91 @@ def _scrub(text: str) -> str:
     return " ".join(_FENCE.sub(" ", text).split())
 
 
+# Openers that GRADE the plan instead of interrogating it. The prompt forbids
+# this outright - "do NOT evaluate it as right or wrong" - and the model does it
+# anyway, which is the same situation _scrub() above exists for: a rule in a
+# prompt is a request, and this is the guarantee.
+#
+# Seen live, and it is the exact failure the rule was written against. A student
+# whose entire plan was "I'll loop through the text and count the letters" was
+# answered "That sounds like a good starting point. How will you handle the case
+# where letters appear in different cases?" - three of the four points missing,
+# and the first thing they are told is that they are on track. The question that
+# follows is then read as a finishing touch rather than as the second of several.
+_PRAISE = re.compile(
+    r"^\s*(?:"
+    r"(?:that|this|it)\s+(?:sounds|looks|seems)\s+(?:like\s+)?(?:a\s+)?"
+    r"(?:good|great|solid|reasonable|nice|fine|strong|sensible|promising)"
+    r"|(?:that|this)(?:'s|\u2019s| is)\s+(?:a\s+)?"
+    r"(?:good|great|nice|solid|reasonable|strong|sensible)"
+    r"|(?:good|great|nice|perfect|excellent|lovely|awesome)\b"
+    r"|you(?:'re|\u2019re| are)\s+on\s+the\s+right\s+track"
+    # ...and the CONFIRMATION shapes, which are worse than praise: "Yes, using
+    # isalpha() is a good way to check if a character is a letter" both grades
+    # the guess and settles it, so the student stops checking and starts typing.
+    r"|(?:yes|yep|correct|exactly|precisely|absolutely|right)\b"
+    r"|(?:that|that\u2019s|that's)\s+(?:is\s+)?right\b"
+    r")", re.I)
+
+
+# Containers whose NAME is the answer to point 1 of a workable plan. The prompt
+# forbids handing one over and the model does it anyway - measured live, on the
+# third turn of a run where the student had never once said what they were
+# storing: "how will you update your count for that letter in your dictionary?"
+# That sentence tells them there is a dictionary AND that it maps letters to
+# counts, which was the whole of the question they were being held on.
+#
+# Families rather than words, so "dicts" and "dictionaries" are one thing. Index
+# and pointer are deliberately absent: "the index of the letter" is ordinary
+# English about a string and flagging it would fire on half of all replies.
+_STRUCTURE_WORDS = {
+    "dictionary": r"dictionar(?:y|ies)|dicts?|hash ?maps?|lookup tables?",
+    "list":       r"lists?|arrays?",
+    "set":        r"sets?",
+    "tuple":      r"tuples?",
+    "counter":    r"counters?|tall(?:y|ies)|accumulators?|running totals?",
+    "stack":      r"stacks?",
+    "queue":      r"queues?",
+}
+
+
+def _structures(text: str) -> set:
+    """Container families named anywhere in `text`."""
+    return {name for name, pattern in _STRUCTURE_WORDS.items()
+            if re.search(r"\b(?:" + pattern + r")\b", text or "", re.I)}
+
+
+def _handed_over(text: str, allowed: set) -> set:
+    """Containers the TUTOR introduced that are not the student's or the
+    problem's own words.
+
+    `allowed` is everything the student has said plus everything the statement
+    says, because the problem's own vocabulary is not a leak - a statement that
+    says "return a dictionary" has already given that away, and refusing to
+    repeat it would just make the tutor sound evasive about something on screen."""
+    return _structures(text) - allowed
+
+
+def _no_praise(text: str) -> str:
+    """The reply with a leading sentence that grades the plan removed.
+
+    NARROW ON PURPOSE, three ways. Only the FIRST sentence is examined - praise
+    in the middle of a question is usually doing real work ("you keep the count,
+    which is good, but where does it start?"). Only a reply with something left
+    after it is trimmed, so a stripped opener can never produce an empty bubble.
+    And the caller only applies it while the student is still being HELD: the
+    message that releases them is supposed to say the plan is workable, and
+    cutting the praise out of that one would make a release read as a rebuke.
+
+    Deliberately not a judgement about tone. Warmth is wanted here and the
+    prompt asks for it; what is not wanted is a VERDICT on a plan the student is
+    still assembling."""
+    parts = re.split(r"(?<=[.!?])\s+", (text or "").strip())
+    if len(parts) > 1 and _PRAISE.search(parts[0]):
+        return " ".join(parts[1:]).strip() or text
+    return text
+
+
 def _context(problem: dict, chunk_prompt: str | None) -> str:
     """Everything the model is allowed to know. Deliberately no solution.
 
@@ -419,9 +547,54 @@ def reply(problem: dict, history: list[dict],
                           "content": "Greet me briefly and ask what I would like "
                                      "to start with on this problem."}]
 
-    raw = chat(TUTOR_MODEL, system, messages, temperature=0.4, fmt="json")
+    def _turn(extra: str = ""):
+        """One model turn, parsed. Isolated so the guard below can take another
+        without duplicating the whole parse."""
+        raw = chat(TUTOR_MODEL, system + extra, messages, temperature=0.4,
+                   fmt="json")
+        try:
+            return _json.loads(raw), None
+        except Exception:
+            return None, (raw or "").strip()
+
+    data, unparsed = _turn()
+
+    # THE CONTAINER IS NOT THE TUTOR'S TO NAME. A reply that says "your
+    # dictionary" to a student who has never said dictionary has answered point
+    # 1 for them. The prompt forbids it; this is the guarantee, and unlike
+    # _scrub() a strip is no use here - the leak is usually inside the only
+    # question in the message, so removing it would leave nothing to answer.
+    # One retry instead, which is what run_phase1 does with a failed gate.
+    #
+    # Words from the STATEMENT are not leaks: a problem that says "return a
+    # dictionary" has given that away already, and a tutor dodging a word on
+    # screen just sounds evasive.
+    allowed = _structures(
+        " ".join(m["content"] for m in clean if m["role"] == "user")
+        + " " + (problem.get("description") or "")
+        + " " + (problem.get("title") or ""))
+    if data is not None and not bool(data.get("ready", False)):
+        leaked = _handed_over(str(data.get("reply", "")), allowed)
+        if leaked:
+            retry, retry_unparsed = _turn(
+                "\n\nYOUR LAST REPLY NAMED " + ", ".join(sorted(leaked)).upper()
+                + ", which this student has not said and the problem statement "
+                  "does not use. That is point 1 of their plan and you just "
+                  "answered it for them. Ask what they are keeping track of as "
+                  "they go and what it starts out as, without naming any "
+                  "container yourself.")
+            # Keep the retry only if it actually fixed it. A second leak means
+            # the model is not going to stop, and a question that names the
+            # structure still beats no question at all.
+            if retry is not None and not _handed_over(
+                    str(retry.get("reply", "")), allowed):
+                data = retry
+            elif retry_unparsed is not None and retry is None:
+                pass                      # malformed retry: keep the first turn
+
     try:
-        data = _json.loads(raw)
+        if data is None:
+            raise ValueError(unparsed or "no JSON")
         text = str(data.get("reply", "")).strip()
         ready = bool(data.get("ready", False))
         offtrack = bool(data.get("offtrack", False))
@@ -446,9 +619,13 @@ def reply(problem: dict, history: list[dict],
         # unlock the attempt on a parse failure - and never raise the fork off
         # one either. "Your approach is going nowhere" is far too strong a thing
         # to say because some JSON did not parse.
-        text, ready, offtrack = (raw or "").strip(), False, False
+        text, ready, offtrack = (unparsed or "").strip(), False, False
 
     text = _scrub(text)
+    # Only while they are still held - see _no_praise. A release is MEANT to say
+    # the plan is workable.
+    if not ready:
+        text = _no_praise(text)
     if not text:
         text, ready = "Tell me more about how you are thinking about this.", False
     # A release and a dead end are contradictory verdicts on the same plan. The
@@ -489,6 +666,65 @@ if __name__ == "__main__":
             f"{name} lost the injection rule"
         assert "ONLY this problem" in prompt or "ONLY the one problem" in prompt, \
             f"{name} lost the one-topic rule"
+
+    # ── a verdict on a half-finished plan is not a probing question ──────
+    # The live failure: three of the four points missing, and the opener says
+    # they are on track.
+    assert m._no_praise(
+        "That sounds like a good starting point. How will you handle capitals?"
+    ) == "How will you handle capitals?"
+    for opener in ("Good start! What are you keeping track of?",
+                   "That's a solid approach. Where does the count begin?",
+                   "Nice thinking. What do you hand back at the end?",
+                   "You're on the right track. What happens on an empty string?",
+                   "That looks reasonable. What are you storing?"):
+        assert "?" in m._no_praise(opener), opener
+        assert not m._PRAISE.search(m._no_praise(opener)), opener
+    # A question that merely CONTAINS a warm word is not a verdict on the plan.
+    kept = "What happens to a good chunk of the text if you skip that step?"
+    assert m._no_praise(kept) == kept
+    # Praise mid-reply is usually load-bearing; only the opener is a verdict.
+    mid = "Where does the count start? A good answer names a value."
+    assert m._no_praise(mid) == mid
+    # Nothing may be stripped down to an empty bubble.
+    assert m._no_praise("Good.") == "Good."
+    assert m._no_praise("") == ""
+
+    # ── point 1 is asked for, never handed over ──────────────────────────
+    # The live transcript: three turns in, the student had never said what they
+    # were storing, and the tutor wrote "update your count for that letter in
+    # your dictionary" - which states both that there is one and what is in it.
+    _leak = "how will you update your count for that letter in your dictionary?"
+    assert m._handed_over(_leak, set()) == {"dictionary"}
+    # A word the STATEMENT uses is the problem's own vocabulary, not a leak.
+    _stmt = m._structures("Return a dictionary mapping each letter to its count.")
+    assert _stmt == {"dictionary"} and m._handed_over(_leak, _stmt) == set()
+    # ...and a word the STUDENT introduced is theirs to have back.
+    assert m._handed_over("what does your set start out as?",
+                          m._structures("I'll keep a set of seen letters")) == set()
+    # Families, not spellings: one entry covers the ways a model writes it.
+    for phrasing in ("your dict", "the dictionaries you build", "a hash map"):
+        assert m._handed_over(phrasing, set()) == {"dictionary"}, phrasing
+    assert m._handed_over("the running total you keep", set()) == {"counter"}
+    assert m._handed_over("the list you are building", set()) == {"list"}
+    # Ordinary English about the problem must not fire it.
+    for clean_reply in ("What happens when the text has no letters at all?",
+                        "Walk 'a1b' through your plan one character at a time.",
+                        "What does that give you at the end?"):
+        assert m._handed_over(clean_reply, set()) == set(), clean_reply
+
+    # Confirming a guess ends the thinking, so it is stripped like praise.
+    assert m._no_praise(
+        "Yes, using isalpha() is a good way to check if a character is a letter. "
+        "How will you update your count?") == "How will you update your count?"
+
+    # The floor is stated ONCE, from the constant. The prompt used to say "at
+    # least FOUR probing questions" while the nudge injected below said the
+    # floor was 2 - two contradictory instructions in one request.
+    assert "FOUR probing questions" not in m._SYSTEM
+    assert f"at least {m.MIN_PROBING_QUESTIONS} probing questions" in m._SYSTEM
+    assert "NEVER OPEN WITH AN ASSESSMENT" in m._SYSTEM
+    assert "BIGGEST GAP FIRST" in m._SYSTEM
 
     # The context block carries the statement and nothing that could answer it.
     ctx = m._context({"title": "Is Leap Year", "description": "Return True if..."},

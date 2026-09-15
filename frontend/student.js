@@ -1869,7 +1869,14 @@ $("designClear").onclick = () => { clearDesign(); dDrop.focus(); };
 $("designBtn").addEventListener("click", uploadDesign);
 $("planSubmitBtn").addEventListener("click", submitPlanGraph);
 $("handbackBtn").addEventListener("click", downloadHandback);
-$("restartBtn").addEventListener("click", openRestart);
+// ONE PER STAGE, not one on the page. Restart is a problem-level action, so it
+// has to be reachable from wherever the student gives up - which is usually the
+// planning stage, before any code exists. Two triggers rather than one shared
+// header button because they are never on screen together (stage 1 owns the
+// plan row, stage 2 the coding bar), and a control that follows you across
+// stages reads as page chrome rather than as something that acts on THIS
+// problem. Both open the same confirm dialog; nothing restarts on a click.
+document.querySelectorAll("[data-restart]").forEach(b => b.addEventListener("click", openRestart));
 $("restartNo").addEventListener("click", closeRestart);
 $("restartYes").addEventListener("click", doRestart);
 // Backdrop click or Escape dismisses it: a destructive dialog must be easy to
