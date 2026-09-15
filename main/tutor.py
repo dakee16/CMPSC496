@@ -517,6 +517,46 @@ def _strip_code(text: str) -> str:
     return "\n".join(l for k, l in enumerate(lines) if k not in drop).strip()
 
 
+# The four points of WORKABLE_PLAN, in the order the prompt asks for them.
+_RUBRIC = ("state", "processing", "result", "edges")
+
+# ...and one fixed question per point. THE FLOOR UNDER EVERY GUARD. The guards
+# above CUT text and send whatever is left, which can be worse than doing
+# nothing - during development `_no_praise` turned "Exactly which character does
+# that skip? Try it." into "Try it.", a reply with the question taken out of it.
+# So: if a guard strips something and no question survives, the reply is thrown
+# away and one of these is sent instead. No model call, so this holds even when
+# every other layer has failed.
+_FALLBACK = {
+    "state": "What are you keeping track of as you work through this, and what "
+             "does it start out as before you look at anything?",
+    "processing": "How do you go through the input - what happens on one pass, "
+                  "and what makes you stop?",
+    "result": "Once you have been all the way through, how do you work out what "
+              "to send back?",
+    "edges": "What should happen on the smallest or strangest input this "
+             "problem allows?",
+}
+
+
+def _first_gap(covered: set) -> str:
+    """The first rubric point the student has not stated, or "" when none.
+
+    DERIVED, NOT TRUSTED. The model reports `covered` and `gap` itself and
+    nothing checked that the two agreed, so a reply could name every point as
+    covered and still ask about one of them - or, the way it actually goes
+    wrong, report a gap it had already decided was filled and ask a question
+    with no content behind it. The order is the prompt's own order, so "first
+    missing" means the same thing on both sides.
+
+    ponytail: derived rather than retried. The report this came from suggests
+    re-calling the model when its own two fields disagree; deriving costs
+    nothing and fixes the field that MATTERS, which is the one the fallback
+    question is keyed off. Upgrade to a retry if mis-aimed questions show up in
+    practice - that costs a model call per disagreement."""
+    return next((p for p in _RUBRIC if p not in covered), "")
+
+
 def _context(problem: dict, chunk_prompt: str | None) -> str:
     """Everything the model is allowed to know. Deliberately no solution.
 
@@ -671,10 +711,14 @@ def reply(problem: dict, history: list[dict],
             elif retry_unparsed is not None and retry is None:
                 pass                      # malformed retry: keep the first turn
 
+    gap = ""
     try:
         if data is None:
             raise ValueError(unparsed or "no JSON")
         text = str(data.get("reply", "")).strip()
+        covered = {str(c).strip().lower() for c in (data.get("covered") or [])
+                   if isinstance(c, str)}
+        gap = _first_gap(covered)
         # json_flag, not bool: a model that answers "false" as a STRING
         # would otherwise release the student - see main/prompts.json_flag.
         ready = json_flag(data.get("ready"))
@@ -690,6 +734,17 @@ def reply(problem: dict, history: list[dict],
         # submit it"), so the cost of holding one back is a single extra
         # question - and the question below is one they learn from, because it
         # makes THEM do the trace the model skipped.
+        # A RELEASE NEEDS EVERY POINT BEHIND IT, and the model already knows
+        # which ones this problem has: WORKABLE_PLAN tells it that a point the
+        # problem does not contain counts as covered, so a one-line predicate
+        # releases with all four listed and loses nothing here. What this
+        # catches is the release that reports two points covered and lets the
+        # student go anyway - nothing checked that `covered` and `ready` were
+        # telling the same story. Same shape as the trace requirement below,
+        # and the same cost when it fires: one more question, about the point
+        # that is actually missing.
+        if ready and gap:
+            ready, text = False, _FALLBACK[gap]
         if ready and len(str(data.get("trace") or "").strip()) < MIN_TRACE_CHARS:
             ready = False
             text = ("Before you write it - walk your plan through the smallest "
@@ -702,13 +757,20 @@ def reply(problem: dict, history: list[dict],
         # to say because some JSON did not parse.
         text, ready, offtrack = (unparsed or "").strip(), False, False
 
-    text = _strip_code(_scrub(text))
+    guarded = _strip_code(_scrub(text))
     # Only while they are still held - see _no_praise. A release is MEANT to say
     # the plan is workable.
     if not ready:
-        text = _no_praise(text)
+        guarded = _no_praise(guarded)
+        # THE GUARDS CUT; THIS DECIDES WHETHER WHAT IS LEFT IS STILL A TURN.
+        # A held message exists to ask one question, so a strip that took the
+        # question with it has produced a worse reply than no guard at all.
+        # Throw it away and ask about the gap instead - see _FALLBACK.
+        if guarded != text and "?" not in guarded:
+            guarded = _FALLBACK[gap or "state"]
+    text = guarded
     if not text:
-        text, ready = "Tell me more about how you are thinking about this.", False
+        text, ready = _FALLBACK[gap or "state"], False
     # A release and a dead end are contradictory verdicts on the same plan. The
     # release wins: it is the one the model had to produce a hand-trace for.
     return {"reply": text, "ready": ready, "offtrack": offtrack and not ready,
@@ -855,5 +917,24 @@ if __name__ == "__main__":
     assert "Is Leap Year" in ctx and "Return True if..." in ctx
     assert "Write the divisibility check" in ctx
     assert "NOT been shown a solution" in ctx
+
+    # ── the gap the guards fall back on ───────────────────────────────────
+    # Derived from `covered`, in the prompt's own order, so the canned question
+    # and the model's own account of what is missing cannot disagree.
+    assert m._first_gap(set()) == "state"
+    assert m._first_gap({"state"}) == "processing"
+    assert m._first_gap({"state", "processing", "edges"}) == "result"
+    assert m._first_gap(set(m._RUBRIC)) == "", "a full plan has no gap left"
+    # A stale or invented point must not shift the answer.
+    assert m._first_gap({"state", "vibes"}) == "processing"
+    # Every point has a canned question, and every one of them ASKS something -
+    # the whole purpose is to survive a guard that cut the question out.
+    assert set(m._FALLBACK) == set(m._RUBRIC), m._FALLBACK
+    for point, question in m._FALLBACK.items():
+        assert question.strip().endswith("?"), point
+        # ...and cannot itself trip the guards it exists to backstop.
+        assert m._handed_over(question, set()) == set(), point
+        assert m._strip_code(question) == question, point
+        assert m._no_praise(question) == question, point
 
     print("tutor.py self-check OK")

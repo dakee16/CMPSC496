@@ -96,9 +96,14 @@
     const page=location.pathname.split("/").pop();
     if(!["dashboard.html","teacher.html"].includes(page)||remembered(account))return;
     remember("offered"); // Once on a landing page, never while solving.
-    const el=dialog("acadiaWelcome","welcomeTitle",'<p class="eyebrow">WELCOME TO ACADIA</p><h2 id="welcomeTitle">Try one problem together.</h2><p>'
-      +(account.role==="teacher"?"Explore the student experience with a short factorial exercise. Then return to your course workspace.":"Get comfortable with your tutor, working plan and coding steps in a short factorial exercise.")
-      +'</p><ol class="welcome-path"><li>Understand the question</li><li>Build a working plan</li><li>Code and check your answer</li></ol><div class="dialog-actions"><button class="ghost" id="skipTutorial" type="button">Maybe later</button><button id="beginTutorial" type="button">Start guided practice →</button></div><p class="settings-note">About 3 minutes. You can always retake it in Settings.</p>');
+    // THIS DESCRIBES THE PAGE IT OPENS, and for a while it did not: the
+    // tutorial stopped being a factorial worksheet and became a four-step tour
+    // of the product, and this modal - the very first thing a new student sees
+    // - went on advertising an exercise that no longer exists. Kept in the same
+    // words as tutorial.html so the promise and the page agree.
+    const el=dialog("acadiaWelcome","welcomeTitle",'<p class="eyebrow">WELCOME TO ACADIA</p><h2 id="welcomeTitle">How ACADIA works.</h2><p>'
+      +(account.role==="teacher"?"See what your students see: four things this site does differently. Then return to your course workspace.":"Four things this site does differently, worth knowing before you open your first assignment.")
+      +'</p><ol class="welcome-path"><li>Why the editor stays locked until you plan</li><li>What gets a plan accepted</li><li>How a step is checked - and why the answer is never shown</li><li>Where your work is kept</li></ol><div class="dialog-actions"><button class="ghost" id="skipTutorial" type="button">Maybe later</button><button id="beginTutorial" type="button">Take the tour →</button></div><p class="settings-note">About 3 minutes. You can always retake it in Settings.</p>');
     el.querySelector("#beginTutorial").onclick=start;
     el.querySelector("#skipTutorial").onclick=()=>{remember("skipped");el.close();};
   }

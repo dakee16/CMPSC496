@@ -4,6 +4,14 @@ let workspaceStage = "read";
 let workspaceReadyState = false, workspaceComplete = false, workspaceComparison = false;
 let workspaceEpoch = 0;
 let planLoading=false,planUpdating=false,historyUnavailable=false;
+/* The stage to land on once it unlocks, set by the history replay and consumed
+   once. A problem reopened with its plan already approved used to open on
+   "Question & plan" every single time, so every return trip started with a
+   click on "Code" that the page could have made itself. Only on RESUME: an
+   approval earned in this sitting has its own moment ("Continue to Code →")
+   and jumping the student past it would skip the one bit of feedback the gate
+   exists to give. */
+let resumeStage = null;
 let resourceKind = null, resourceReturnFocus = null;
 let workspaceTutorVisible = true;
 // Reading and planning are ONE stage: the question has to stay on screen while
@@ -34,7 +42,11 @@ function workspaceSync(){
     button.querySelector('.journey-state').textContent = !available ? (stage === "code" ? "Requires an approved plan" : stage === "reflect" ? "Available after completion" : "Preparing this problem") : done ? "Completed" : "";
   }
   $("planApproved").hidden = !tutorReleased;
-  $("planMethods").hidden = tutorReleased;
+  // Only the SUBMISSION controls go once the plan is in - see syncPlanSubmit.
+  // Hiding the whole block took "Full file" and "Start over" with it, which
+  // are exactly the two a student wants on a problem they have already
+  // unlocked and come back to.
+  $("planUpload").hidden = tutorReleased;
   $("planStageHint").textContent = tutorReleased ? "Your approved approach stays here whenever you need to look back." : "Describe your approach to the tutor, or upload a plan you’ve made.";
   $("finishReview").hidden = !workspaceComplete;
   $("planPreviewStatus").textContent=historyUnavailable?"Could not load your saved plan":planLoading?"Loading your saved plan…":planUpdating?"Updating your plan…":planGraph?.nodes?.length?(tutorReleased?"Approved approach":"Up to date"):"Ready to build your plan";
@@ -43,6 +55,12 @@ function workspaceSync(){
   $("backToWork").textContent = workspaceStage === "code" ? "Back to code ↑" : "Back to work ↑";
   syncPlanSubmit();
   placeWorkspaceChat();
+  // Cleared before the call, so the chooseWorkspaceStage -> workspaceSync loop
+  // runs exactly once.
+  if (resumeStage && stageAvailable(resumeStage) && workspaceStage === "read"){
+    const go = resumeStage; resumeStage = null;
+    chooseWorkspaceStage(go, false);
+  } else if (resumeStage && workspaceStage !== "read") resumeStage = null;
 }
 
 function placeWorkspaceChat(){
@@ -221,7 +239,7 @@ function closeResource(restoreFocus = true){
 }
 
 function resetWorkspace(){
-  planLoading=false;planUpdating=false;historyUnavailable=false;
+  planLoading=false;planUpdating=false;historyUnavailable=false;resumeStage=null;
   $("planUpload").open=false;
   workspaceEpoch++;
   closeResource(false);

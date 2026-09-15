@@ -418,7 +418,11 @@ async function submitPlanGraph(){
 /* Keep the next action discoverable, with a reason until a plan exists. */
 function syncPlanSubmit(){
   const row=$("planSubmitRow");if(!row)return;
-  row.hidden=tutorReleased;
+  // The ROW stays - it carries "Full file" and "Start over" too. Only the two
+  // controls that submit a plan go once there is nothing left to submit; a
+  // disabled "Submit plan for review" sitting there afterwards was just taking
+  // up the slot beside the buttons that still do something.
+  $("planSubmitBtn").hidden=tutorReleased;
   const ready=!!planGraph?.nodes?.length,busy=planLoading||planUpdating;
   $("planEmpty").hidden=ready||busy||historyUnavailable;
   if(resourceKind!=="plan")$("planCard").hidden=!(ready||busy||historyUnavailable);
@@ -1122,6 +1126,10 @@ async function restoreHistory(p,request){
   if (h.design_approved || h.solved){
     tutorReleased = true;
     applyTutorGate();
+    // Reopening an unlocked problem lands on the coding stage rather than on
+    // the plan they already had accepted. Consumed once, when the stage
+    // actually unlocks - see workspace.js.
+    if (!h.solved) resumeStage = "code";
     markUnlocked(h.solved
       ? "You solved this before. The editor is unlocked - the steps start again from the top."
       : "Your design was accepted earlier. The editor is unlocked for this problem.");

@@ -24,6 +24,8 @@ the column the method's body sits at, and accepted chunk code is held at column
 0 (main/indent.py), exactly as build_program() expects. So `pop`'s answer lands
 under `def pop`, at the class's own depth, with nothing to line up by hand.
 """
+import ast
+import re
 from datetime import datetime, timezone
 
 
@@ -148,6 +150,43 @@ def body_span(problem: dict, total: int) -> tuple[int, int] | None:
     return (a, b) if 0 <= a <= b <= total else None
 
 
+# The teacher's own plumbing: the block markers main/assignments.py reads the
+# file with. `# --- steps: push, pop, peek ---` tells a student which methods
+# are graded and which are scaffolding, which is not theirs to know, and
+# `# --- problem: ... ---` is upload syntax that means nothing on their side.
+_PLUMBING = re.compile(
+    r"^[ \t]*#[ \t]*-{2,}[ \t]*(?:problem|steps?)[ \t]*:.*$")
+
+
+def _student_facing(text: str) -> str:
+    """The rebuilt file with what belongs to the TEACHER taken back out.
+
+    The module is reassembled from stored context, so it comes back exactly as
+    it was UPLOADED - including two things written for the instructor rather
+    than the class. HW3's module docstring is a set of instructions for using
+    the Instructor page ("Upload this file on the Instructor page..."), and the
+    `# --- steps: ... ---` markers name which methods are the exercises.
+    Neither is a reference solution, and neither belongs in a student's copy.
+
+    The docstring goes wholesale rather than by trying to tell an instruction
+    from a description: _banner has already put the assignment's name at the
+    top, so nothing a student needs is lost.
+
+    ponytail: text in, text out, applied once at the end. It has to run AFTER
+    every splice - the spans build_handback works with were measured on the
+    pristine file, and dropping lines first would move all of them."""
+    lines = [ln for ln in text.splitlines() if not _PLUMBING.match(ln)]
+    try:
+        tree = ast.parse("\n".join(lines))
+    except SyntaxError:
+        return "\n".join(lines)          # a file that will not parse is served as is
+    doc = tree.body[0] if tree.body else None
+    if (isinstance(doc, ast.Expr) and isinstance(doc.value, ast.Constant)
+            and isinstance(doc.value.value, str)):
+        del lines[doc.lineno - 1:doc.end_lineno]
+    return "\n".join(lines).strip("\n")
+
+
 def _banner(assignment: str, student: str, filled: list, revealed: list,
             missing: list, blank: bool = False) -> list[str]:
     """A truthful header. It names what is the student's own work and what is
@@ -265,7 +304,7 @@ def build_handback(problems: list[dict], answers: dict,
                 out.append(blank_solution(p) if blank_unanswered
                            else (p.get("solution") or "").rstrip())
             out.append("")
-        body = "\n".join(out)
+        body = _student_facing("\n".join(out))
         filled = sorted(s for s in answers if s not in revealed_slugs)
         head = _banner(assignment_name, student_name, filled,
                        sorted(revealed_slugs),
@@ -324,7 +363,7 @@ def build_handback(problems: list[dict], answers: dict,
                    sorted(revealed_slugs & set(answers)),
                    sorted(all_slugs - set(answers)),
                    blank=blank_unanswered)
-    return "\n".join(head) + "\n\n" + "\n".join(lines).rstrip() + "\n"
+    return "\n".join(head) + "\n\n" + _student_facing("\n".join(lines)).rstrip() + "\n"
 
 
 if __name__ == "__main__":
@@ -411,6 +450,19 @@ class Stack:
     assert STUB_MARK not in completing
     assert "Not attempted, left as given" in completing
     assert "Still to write (2)" in working, working
+    # The TEACHER'S OWN NOTES DO NOT TRAVEL. The module is rebuilt from stored
+    # context, so it comes back as it was UPLOADED - docstring of instructions
+    # for the Instructor page included - and the `steps:` markers say outright
+    # which methods are the graded exercises. Neither is the student's.
+    assert "LAB9 - Stacks" not in working, working
+    assert "Upload this file" not in working
+    marked = CLASSES.replace("class Stack:",
+                             "# --- steps: push, pop, isEmpty ---\nclass Stack:")
+    mk_probs = parse_assignment_file(marked, "lab9.py")["problems"]
+    mk = build_handback(mk_probs, {}, "LAB9", "A Student", blank_unanswered=True)
+    assert "--- steps:" not in mk, mk
+    assert "--- problem:" not in mk, mk
+    compile(mk, "<marked>", "exec")
 
     # ── A CLASS AND A LOOSE FUNCTION IN ONE FILE ──────────────────────────
     # The file is rebuilt from the CLASS's stored context, which carries the

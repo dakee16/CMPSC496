@@ -590,7 +590,51 @@ _JUDGE_SYSTEM = (
     "You judge ONE step of a student's partial solution. Return STRICT JSON: "
     '{"correct": true/false, "reason": "<one sentence for the student>", '
     '"confidence": 0.0-1.0, "evidence_category": "<short label>"}. '
-    "Never quote the reference solution, hidden tests, or internal code in reason.")
+    "Never quote the reference solution, hidden tests, or internal code in reason. "
+    # ...AND NEVER DESCRIBE IT EITHER. The rule above says "quote", and the
+    # model complied with it exactly: asked about `counts = []` it answered
+    # "it should be a dictionary to map letters to their counts", which quotes
+    # nothing and hands over the container AND what it maps - point 1 of the
+    # plan rubric, the thing the tutor holds a student at the design gate to
+    # work out for themselves. Saying it in prose is the same disclosure.
+    "Do not describe the correct approach either - naming the data structure, "
+    "the algorithm, or what the student should have written instead is the "
+    "same disclosure as quoting it. Say what their code DOES and where it "
+    "stops matching the step as asked; never say what it should do.")
+
+
+# The vocabulary guard the TUTOR already runs on every reply. Reused rather than
+# re-derived so the two halves of the product cannot drift into disagreeing
+# about what counts as handing the answer over.
+def _leaks_answer(reason: str, allowed_text: str) -> bool:
+    from .tutor import _handed_over, _strip_code, _structures
+    r = (reason or "").strip()
+    return bool(_handed_over(r, _structures(allowed_text))) or _strip_code(r) != r
+
+
+# What a leaking verdict is replaced with. It keeps the VERDICT, which the
+# student is entitled to, and drops the explanation, which was the leak. Their
+# own plan is where the missing sentence is supposed to come from.
+_REDACTED_REASON = (
+    "That is not doing what this step asks for yet. Read the step again "
+    "beside your own plan - what were you going to keep track of here, and "
+    "what does it start out as?")
+
+
+def _safe_reason(reason: str, problem, chunk, student_code: str, upto: str) -> str:
+    """A judge's sentence, or a redaction if it gave the answer away.
+
+    ONLY ON AN INCORRECT VERDICT, which is where the leak lives: three live
+    submissions on `frequency` each came back naming the container the student
+    had been held at the gate to name themselves. A CORRECT verdict cannot leak
+    - it is describing code the student already wrote.
+
+    `allowed` is the same idea as in tutor.reply(): the problem statement, the
+    step as asked, and the student's own code are not secrets, so a word that
+    appears in any of them is not a disclosure when the judge repeats it."""
+    return reason if not _leaks_answer(
+        reason, f"{problem.get('description') or ''} {chunk.get('prompt') or ''} "
+                f"{student_code} {upto}") else _REDACTED_REASON
 
 
 def _ask_judge(payload: str, role: str):
@@ -632,7 +676,9 @@ def _tier4(problem, chunk, upto, student_code, why, evidence, corr=None) -> Grad
                    consume_attempt=False,
                    internal_detail=f"a={a_ok}/{a_conf} b={b_ok}/{b_conf}")
     _trace(trace.record_route, corr, "llm-judge", "correct" if a_ok else "incorrect")
-    return _ok("correct" if a_ok else "incorrect", "llm-judge", a_reason,
+    return _ok("correct" if a_ok else "incorrect", "llm-judge",
+               a_reason if a_ok else _safe_reason(a_reason, problem, chunk,
+                                                  student_code, upto),
                f"judge_{a_cat or 'agreed'}", deterministic=False)
 
 
