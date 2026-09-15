@@ -343,7 +343,12 @@ def context_of(row: dict) -> dict:
 
 
 CONTEXT_FIELDS = ("context_prefix", "context_suffix", "context_indent",
-                  "entry_hint", "group_slug", "group_title", "group_description")
+                  "entry_hint", "group_slug", "group_title", "group_description",
+                  # The top of a FLAT file - imports and module constants, which
+                  # belong to no problem and so were stored nowhere. Rides in the
+                  # same jsonb blob (no migration), and is deliberately NOT
+                  # context_prefix: that field is what makes is_method() true.
+                  "module_preamble")
 
 
 def problem_of(session: dict) -> dict:
@@ -547,6 +552,59 @@ def session_snapshot(session_id: str, db_path: str | None = None) -> dict | None
     finally:
         conn.close()
     return _row_to_session(r) if r is not None else None
+
+
+def accepted_so_far(student_id: str, slugs: list[str],
+                    db_path: str | None = None) -> dict:
+    """What this student has had accepted on problems they have NOT finished.
+
+    {slug: {"code": <body at column 0>, "assisted": bool}} for every ACTIVE
+    session holding at least one accepted step. completed_answers() is the
+    companion and deliberately refuses these: a partial body is not something to
+    hand back in a file that has to run.
+
+    For the on-screen copy the calculation is different, though. A student two
+    steps into a three-step method opens the file to see what they have built,
+    and being shown a `# YOUR CODE STARTS HERE` stub over their own two accepted
+    lines reads as the work having been lost - the same wrong signal that
+    reopening a problem used to give before sessions resumed. The caller
+    compiles the result and falls back to the stub if the half-written body will
+    not parse, so this stays a view and never becomes a broken download.
+
+    Never raises: a file that shows a little less is still a useful file."""
+    if not student_id or not slugs:
+        return {}
+    try:
+        conn = _connect(db_path)
+    except Exception:
+        return {}
+    try:
+        rows = conn.execute(
+            "SELECT slug, accepted_json, assisted FROM sessions WHERE"
+            " student_id=? AND state='active' AND expires_at > ?"
+            " ORDER BY updated_at ASC", (student_id, _now())).fetchall()
+    except Exception:
+        return {}
+    finally:
+        conn.close()
+
+    want, out = set(slugs), {}
+    for r in rows:                       # ascending, so the newest wins
+        if r["slug"] not in want:
+            continue
+        try:
+            accepted = json.loads(r["accepted_json"]) or []
+        except Exception:
+            continue
+        code = "\n".join(a.get("code", "") for a in accepted if a.get("code"))
+        if not code.strip():
+            continue
+        out[r["slug"]] = {
+            "code": code,
+            "assisted": bool(r["assisted"]) or any(
+                a.get("provenance") == "revealed_reference" for a in accepted),
+        }
+    return out
 
 
 def completed_answers(student_id: str, slugs: list[str],

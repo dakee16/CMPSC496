@@ -27,6 +27,16 @@ under `def pop`, at the class's own depth, with nothing to line up by hand.
 from datetime import datetime, timezone
 
 
+class HandbackUnsafe(RuntimeError):
+    """A blank file could not be blanked, so it must not be served.
+
+    The only error this module raises. Everything else here degrades - an
+    unparseable solution falls back to its stored text, a missing span is
+    skipped - because a file that shows a bit less is still useful. A file that
+    shows a bit MORE is the one failure mode that is not recoverable, so it is
+    the one that stops."""
+
+
 def _indent(text: str, n: int) -> str:
     pad = " " * n
     return "\n".join(pad + ln if ln.strip() else ln
@@ -170,6 +180,45 @@ def _banner(assignment: str, student: str, filled: list, revealed: list,
     return out
 
 
+def _replace_function(lines: list[str], problem: dict,
+                      body: str | None) -> tuple[list[str], bool]:
+    """`lines` with this plain function's body replaced by `body`, or the stub.
+
+    For a problem carried in a file that was rebuilt from a CLASS's context
+    there is no body_span to work from - that number comes from the problem's
+    own context_prefix, and a loose function has none. So the function is found
+    by parsing the text we actually have and matching the entry point by name.
+
+    Returns (lines, replaced). A miss leaves the text untouched, which is the
+    right direction for the completing download and the WRONG one for the blank
+    view - an untouched function there is the teacher's answer. The caller
+    raises rather than serving that, so a shape this cannot handle becomes a
+    loud failure instead of a quiet disclosure."""
+    import ast
+
+    name = (problem.get("entry_hint") or "").strip()
+    src = "\n".join(lines)
+    try:
+        tree = ast.parse(src)
+    except SyntaxError:
+        return lines, False
+    fn = next((n for n in tree.body
+               if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+               and n.name == name), None)
+    if fn is None or not fn.body:
+        return lines, False
+    start = fn.body[0].lineno - 1
+    if (isinstance(fn.body[0], ast.Expr)
+            and isinstance(fn.body[0].value, ast.Constant)
+            and isinstance(fn.body[0].value.value, str) and len(fn.body) > 1):
+        start = fn.body[1].lineno - 1      # the docstring IS the statement
+    if not 0 <= start < len(lines):
+        return lines, False
+    indent = len(lines[start]) - len(lines[start].lstrip())
+    filling = _indent(body if (body or "").strip() else STUB, indent).splitlines()
+    return lines[:start] + filling + lines[fn.end_lineno:], True
+
+
 def build_handback(problems: list[dict], answers: dict,
                    assignment_name: str = "Assignment",
                    student_name: str = "",
@@ -201,8 +250,13 @@ def build_handback(problems: list[dict], answers: dict,
 
     if lines is None:
         # A flat file of plain functions: there is no shared module to splice
-        # into, so the file IS its problems, in order.
-        out = []
+        # into, so the file IS its problems, in order - preceded by the top of
+        # the file, which belongs to no problem and is stored beside them
+        # (main/assignments.module_preamble). Without it the rebuild silently
+        # dropped the imports and module constants the problems below need.
+        preamble = next((p.get("module_preamble") for p in problems
+                         if (p.get("module_preamble") or "").strip()), "")
+        out = [preamble, ""] if preamble else []
         for p in sorted(problems, key=lambda x: x.get("order") or 0):
             code = answers.get(p.get("slug"))
             if code:
@@ -220,7 +274,7 @@ def build_handback(problems: list[dict], answers: dict,
         return "\n".join(head) + "\n\n" + body
 
     total = len(lines)
-    planned = []
+    planned, unplaced = [], []
     for p in problems:
         slug = p.get("slug")
         answered = slug in answers
@@ -228,6 +282,16 @@ def build_handback(problems: list[dict], answers: dict,
             continue                      # keep the teacher's body
         span = body_span(p, total)
         if span is None:
+            # NO CONTEXT, so there is no hole in the rebuilt module to splice
+            # into - this problem is a plain function sitting beside the class,
+            # and `lines` was rebuilt from the CLASS's context, which carries
+            # that function's full body along with everything else in the file.
+            #
+            # Skipping it, which is what this did, left the teacher's working
+            # implementation in a file titled "the rest is left blank for you".
+            # One mixed assignment - any class plus any loose function - and the
+            # answer came back out through the starter view. Found by audit.
+            unplaced.append(p)
             continue
         planned.append((span,
                         _indent(answers[slug],
@@ -238,6 +302,21 @@ def build_handback(problems: list[dict], answers: dict,
     for (a, b), replacement in sorted(planned, key=lambda x: x[0][0],
                                       reverse=True):
         lines[a:b] = replacement
+
+    # The loose functions, found by their own `def` in the rebuilt text rather
+    # than by a stored span they do not have. Done AFTER the class splices and
+    # re-measured each time, because every splice above moved the line numbers.
+    for p in unplaced:
+        lines, replaced = _replace_function(
+            lines, p, answers.get(p.get("slug")) if p.get("slug") in answers
+            else None)
+        # FAIL LOUD, NEVER QUIETLY. In blank mode an un-replaced function is the
+        # teacher's body sitting in a file the student is told is blank; a
+        # traceback the instructor sees beats a disclosure nobody sees.
+        if blank_unanswered and not replaced:
+            raise HandbackUnsafe(
+                f"could not blank '{p.get('slug')}' - refusing to serve a "
+                f"starter file that still contains a reference solution")
 
     all_slugs = {p.get("slug") for p in problems}
     filled = sorted(s for s in answers if s not in revealed_slugs)
@@ -251,7 +330,7 @@ def build_handback(problems: list[dict], answers: dict,
 if __name__ == "__main__":
     import os
 
-    from .assignments import parse_assignment_file
+    from .assignments import parse_assignment_file  # noqa: F401
 
     # ── the blank file, on a synthetic assignment that ships with the repo ──
     # Deliberately NOT gated on the HW3 fixture below: this is the file a
@@ -332,6 +411,45 @@ class Stack:
     assert STUB_MARK not in completing
     assert "Not attempted, left as given" in completing
     assert "Still to write (2)" in working, working
+
+    # ── A CLASS AND A LOOSE FUNCTION IN ONE FILE ──────────────────────────
+    # The file is rebuilt from the CLASS's stored context, which carries the
+    # loose function's full body with it - and that function has no span of its
+    # own to splice into, so it used to be skipped and its reference answer went
+    # out inside a file headed "the rest is left blank for you". Found by audit.
+    MIXED = CLASSES.rstrip() + (
+        "\n\n\ndef running_total(nums):\n"
+        '    """Return the running totals of nums."""\n'
+        "    out, total = [], 0\n"
+        "    for n in nums:\n"
+        "        total += n\n"
+        "        out.append(total)\n"
+        "    return out\n")
+    mixed = parse_assignment_file(MIXED, "lab9.py")["problems"]
+    assert "running-total" in [p["slug"] for p in mixed], \
+        [p["slug"] for p in mixed]
+    both = build_handback(mixed, {"stack-push": mine}, "LAB9", "A",
+                          blank_unanswered=True)
+    assert "out.append(total)" not in both, "the loose function kept its answer"
+    assert "def running_total(nums):" in both, "...and must still be IN the file"
+    assert "Return the running totals of nums." in both, "the statement stays"
+    compile(both, "<mixed>", "exec")
+    # The student's own answer to a loose function lands under its own def.
+    theirs = build_handback(mixed, {"running-total": "return nums"}, "LAB9", "A",
+                            blank_unanswered=True)
+    assert "\n    return nums\n" in theirs, theirs
+    compile(theirs, "<mixed2>", "exec")
+    # A shape this cannot blank must RAISE, never quietly ship the answer.
+    broken = [dict(p, entry_hint="not_a_real_name") if p["slug"] == "running-total"
+              else p for p in mixed]
+    try:
+        build_handback(broken, {}, "LAB9", "A", blank_unanswered=True)
+        raise AssertionError("an unblankable file was served")
+    except HandbackUnsafe:
+        pass
+    # ...but the completing download is untouched by that guard.
+    assert "out.append(total)" in build_handback(broken, {"stack-push": mine},
+                                                 "LAB9", "A")
 
     # ── the flat path: same rule, no shared module to splice into ──────────
     FLAT = '''"""Week 1"""

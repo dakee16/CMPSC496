@@ -259,6 +259,26 @@ Return JSON only: {"subproblems": [{"prompt": "...", "reference": "..."}, ...]}
 # the student agreed with a probing question, and agreement got scored as a
 # plan. So "what is NOT workable" is enumerated, because the model reliably
 # obeys an explicit exclusion and reliably talks itself past a general one.
+def json_flag(value) -> bool:
+    """A boolean out of model JSON, where anything that is not TRUE is false.
+
+    `bool(value)` is wrong here and it fails OPEN. A model that answers
+    {"approved": "false"} - a string, which they do - hands bool() a non-empty
+    string, and bool("false") is True. The gate that decides whether a student
+    may start coding then opens because the model said no in the wrong type.
+    Every other guard around these fields is written to fail closed on bad
+    output; this was the one that did the opposite.
+
+    Only a real True, or a string that says so, counts. Numbers are refused
+    outright rather than folded through truthiness, so a stray 1 or -1 cannot
+    become an approval either."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in ("true", "yes")
+    return False
+
+
 WORKABLE_PLAN = """\
 A plan is WORKABLE when the student has said, IN THEIR OWN WORDS, all four of:
   1. what they keep track of as they go AND WHAT IT STARTS OUT AS (the

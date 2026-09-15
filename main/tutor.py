@@ -25,10 +25,12 @@ stops the tutor leaking OUR answer, not AN answer. For a well-known exercise
 the model can compose a correct solution unaided, so rule 1 in each prompt is
 doing real work and is written to be hard to talk around.
 """
+import ast
 import re
+import textwrap
 
 from .ollama_client import TUTOR_MODEL, chat
-from .prompts import WORKABLE_PLAN
+from .prompts import WORKABLE_PLAN, json_flag
 
 # A FLOOR ON THE SMALLEST PROBLEM, not a target for every one. It was 4, set
 # when the tutor's own `ready` opened the coding gate and four questions were
@@ -373,10 +375,17 @@ _PRAISE = re.compile(
     r"(?:good|great|nice|solid|reasonable|strong|sensible)"
     r"|(?:good|great|nice|perfect|excellent|lovely|awesome)\b"
     r"|you(?:'re|\u2019re| are)\s+on\s+the\s+right\s+track"
+    r"|i\s+like\s+(?:where|how|that)\b|well\s+done\b|good\s+job\b"
     # ...and the CONFIRMATION shapes, which are worse than praise: "Yes, using
     # isalpha() is a good way to check if a character is a letter" both grades
     # the guess and settles it, so the student stops checking and starts typing.
-    r"|(?:yes|yep|correct|exactly|precisely|absolutely|right)\b"
+    #
+    # PUNCTUATION MUST FOLLOW. As bare words these fired on ordinary English and
+    # took the question with them: "Correct me if I am wrong." and "Exactly
+    # which character does that skip?" both opened a legitimate reply and both
+    # were being cut. "right" is gone entirely - "Right, so walk me through it"
+    # is a discourse marker, not a verdict, and nothing distinguishes the two.
+    r"|(?:yes|yep|correct|exactly|precisely|absolutely)\s*[,.!\u2014-]"
     r"|(?:that|that\u2019s|that's)\s+(?:is\s+)?right\b"
     r")", re.I)
 
@@ -433,10 +442,79 @@ def _no_praise(text: str) -> str:
     Deliberately not a judgement about tone. Warmth is wanted here and the
     prompt asks for it; what is not wanted is a VERDICT on a plan the student is
     still assembling."""
-    parts = re.split(r"(?<=[.!?])\s+", (text or "").strip())
-    if len(parts) > 1 and _PRAISE.search(parts[0]):
-        return " ".join(parts[1:]).strip() or text
-    return text
+    parts = [p for p in re.split(r"(?<=[.!?])\s+|\s+[\u2013\u2014-]\s+",
+                                 (text or "").strip()) if p]
+    if len(parts) < 2 or not _PRAISE.search(parts[0]):
+        return text
+    # A SENTENCE WITH A QUESTION IN IT IS NEVER JUST PRAISE. Without this the
+    # guard ate the one thing the reply existed to say: "Exactly which character
+    # does that skip? Try it." came back as "Try it." Cutting a verdict is worth
+    # doing; cutting the question is worse than leaving the verdict in.
+    if "?" in parts[0]:
+        return text
+    return " ".join(parts[1:]).strip() or text
+
+
+# Statements that are CODE rather than a mention of code. A bare expression is
+# deliberately absent: "Think." and "Trace it." both parse as one, and flagging
+# them would eat ordinary replies.
+_CODE_NODES = (ast.Assign, ast.AugAssign, ast.AnnAssign, ast.Return, ast.For,
+               ast.AsyncFor, ast.While, ast.If, ast.With, ast.AsyncWith,
+               ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Import,
+               ast.ImportFrom, ast.Try, ast.Raise, ast.Assert, ast.Delete)
+
+
+def _is_code(block: str) -> bool:
+    """Does this run of lines PARSE as Python that does something?
+
+    English almost never parses - "return the count you built" is a syntax
+    error, and that asymmetry is the whole mechanism. Checked as a block rather
+    than line by line so an unfenced listing is caught whole: `for ch in txt:`
+    on its own is a syntax error, and only the loop plus its body parses."""
+    body = textwrap.dedent(block).strip()
+    if not body:
+        return False
+    try:
+        tree = ast.parse(body)
+    except SyntaxError:
+        return False
+    return any(isinstance(n, _CODE_NODES) for n in tree.body)
+
+
+def _strip_code(text: str) -> str:
+    """The reply with any run of lines that parses as Python removed.
+
+    THE OTHER HALF OF _scrub. That one takes fenced blocks, and its docstring
+    says plainly that it does not try to recognise bare Python in prose - so a
+    model that answered without fences handed over a working line and nothing
+    stopped it. This is the parse-and-reject pass that docstring names as the
+    upgrade, and it is a parser rather than a bigger regex for the reason given
+    there: a regex that hunts for code eats sentences like "return the count".
+
+    The LONGEST parsing window, not the whole reply: real leaks arrive wrapped
+    in prose - "Start here:", three lines of Python, "does that help?" - and a
+    check that needed the entire message to parse would keep every one of them.
+    Longest-first so a loop leaves with its body; taking the shortest window
+    would strip `counts = {}` and leave the `for` beneath it."""
+    lines = (text or "").splitlines()
+    n = len(lines)
+    drop = set()
+    i = 0
+    while i < n:
+        if i in drop or not lines[i].strip():
+            i += 1
+            continue
+        window = 0
+        for j in range(n, i, -1):                 # longest first
+            if _is_code("\n".join(lines[i:j])):
+                window = j - i
+                break
+        if window:
+            drop.update(range(i, i + window))
+            i += window
+        else:
+            i += 1
+    return "\n".join(l for k, l in enumerate(lines) if k not in drop).strip()
 
 
 def _context(problem: dict, chunk_prompt: str | None) -> str:
@@ -513,7 +591,8 @@ def reply(problem: dict, history: list[dict],
         # No fork here. They are implementing an APPROVED design; offering to
         # "try something else" now would invite them to abandon the plan the
         # reviewer already walked through and passed.
-        return {"reply": _scrub(text) or "Ask me whenever you get stuck.",
+        return {"reply": _strip_code(_scrub(text))
+                         or "Ask me whenever you get stuck.",
                 "ready": True, "offtrack": False, "questions_asked": asked,
                 "min_questions": MIN_PROBING_QUESTIONS}
 
@@ -573,7 +652,7 @@ def reply(problem: dict, history: list[dict],
         " ".join(m["content"] for m in clean if m["role"] == "user")
         + " " + (problem.get("description") or "")
         + " " + (problem.get("title") or ""))
-    if data is not None and not bool(data.get("ready", False)):
+    if data is not None and not json_flag(data.get("ready")):
         leaked = _handed_over(str(data.get("reply", "")), allowed)
         if leaked:
             retry, retry_unparsed = _turn(
@@ -596,8 +675,10 @@ def reply(problem: dict, history: list[dict],
         if data is None:
             raise ValueError(unparsed or "no JSON")
         text = str(data.get("reply", "")).strip()
-        ready = bool(data.get("ready", False))
-        offtrack = bool(data.get("offtrack", False))
+        # json_flag, not bool: a model that answers "false" as a STRING
+        # would otherwise release the student - see main/prompts.json_flag.
+        ready = json_flag(data.get("ready"))
+        offtrack = json_flag(data.get("offtrack"))
         # A RELEASE NEEDS THE WALK BEHIND IT. Asking for the trace in the prompt
         # made this better and not reliable - the same run that refused an
         # off-by-one ("count until the next node is None", which never counts
@@ -621,7 +702,7 @@ def reply(problem: dict, history: list[dict],
         # to say because some JSON did not parse.
         text, ready, offtrack = (unparsed or "").strip(), False, False
 
-    text = _scrub(text)
+    text = _strip_code(_scrub(text))
     # Only while they are still held - see _no_praise. A release is MEANT to say
     # the plan is workable.
     if not ready:
@@ -680,6 +761,23 @@ if __name__ == "__main__":
                    "That looks reasonable. What are you storing?"):
         assert "?" in m._no_praise(opener), opener
         assert not m._PRAISE.search(m._no_praise(opener)), opener
+    # ...including the ones joined by a dash, which is how a model most often
+    # writes a verdict without a full stop after it.
+    assert m._no_praise("Nice - what are you keeping track of?") \
+        == "what are you keeping track of?"
+    assert m._no_praise("I like where this is going. What are you storing?") \
+        == "What are you storing?"
+    # NEVER AT THE COST OF THE QUESTION. Each of these lost its question to an
+    # over-eager guard: a bare "correct"/"exactly"/"right" reads as a verdict
+    # and is usually just English.
+    for intact in ("Right, so walk me through it. What do you get?",
+                   "Correct me if I am wrong. Are you storing a count?",
+                   "Exactly which character does that skip? Try it."):
+        assert m._no_praise(intact) == intact, intact
+    # ...but a confirmation with punctuation behind it is still a verdict.
+    assert m._no_praise("Exactly. What does it start as?") \
+        == "What does it start as?"
+
     # A question that merely CONTAINS a warm word is not a verdict on the plan.
     kept = "What happens to a good chunk of the text if you skip that step?"
     assert m._no_praise(kept) == kept
@@ -689,6 +787,31 @@ if __name__ == "__main__":
     # Nothing may be stripped down to an empty bubble.
     assert m._no_praise("Good.") == "Good."
     assert m._no_praise("") == ""
+
+    # ── UNFENCED code: the half _scrub was documented as not covering ────
+    for leak, why in (
+            ("counts = {}", "a bare assignment"),
+            ("return counts", "a bare return"),
+            ("for ch in txt:\n    counts[ch] = 1", "a loop with its body"),
+            ("You could try this:\nresult = 1\nThen what?", "one line in prose"),
+            ("Start here:\ncounts = {}\nfor ch in txt:\n    counts[ch] = 1\n"
+             "Does that help?", "a whole listing wrapped in prose")):
+        out = m._strip_code(leak)
+        assert "counts[" not in out and "= {}" not in out and "= 1" not in out, \
+            (why, out)
+    # A loop must leave WITH its body - stripping the shortest window first
+    # would take `counts = {}` and leave the `for` under it.
+    assert m._strip_code("counts = {}\nfor ch in txt:\n    counts[ch] = 1") == ""
+    # ...and ordinary English must survive, including the shapes that look
+    # closest to code. This is why it is a parser and not a bigger regex.
+    for prose in ("What are you keeping track of as you go?",
+                  "Walk the string 'a1b' through your plan, one at a time.",
+                  "Return the count you built up. What does it start as?",
+                  "What does isalpha() give you for a space?",
+                  "Think about it.",
+                  "Try the empty string."):
+        assert m._strip_code(prose) == prose, prose
+    assert m._strip_code("") == ""
 
     # ── point 1 is asked for, never handed over ──────────────────────────
     # The live transcript: three turns in, the student had never said what they

@@ -237,6 +237,38 @@ def _problem_from_block(slug: str | None, src: str, index: int) -> dict:
             "entry_hint": entry.name, "order": index}
 
 
+def module_preamble(text: str, marks: list, tree: ast.Module) -> str:
+    """Everything above the first problem: the module docstring, the imports,
+    the module-level constants.
+
+    IT BELONGS TO NO PROBLEM, so nothing used to keep it. A flat file is stored
+    as its problem blocks and rebuilt from them, which meant `from typing import
+    List` and `MAX = 100` were dropped on the way in and could not come back:
+    the starter file a student downloads lost the top of the file the teacher
+    wrote, and any annotation or constant the code needed came back undefined.
+
+    A CLASS file never had the problem - every method carries context_prefix and
+    context_suffix, which together are the whole module - so this closes the gap
+    for the flat half.
+
+    Cut at the first problem, whichever way the file marks one: the first slug
+    marker, else the first top-level def or class."""
+    cut = marks[0].start() if marks else None
+    if cut is None:
+        tops = [n.lineno - 1 for n in tree.body
+                if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef,
+                                  ast.ClassDef))]
+        for n in tree.body:                      # decorators sit above the def
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef,
+                              ast.ClassDef)):
+                tops += [d.lineno - 1 for d in n.decorator_list]
+        if not tops:
+            return ""
+        lines = text.splitlines()
+        return "\n".join(lines[:min(tops)]).rstrip()
+    return text[:cut].rstrip()
+
+
 def parse_assignment_file(text: str, filename: str = "assignment.py") -> dict:
     """Parse an assignment file.
 
@@ -259,6 +291,7 @@ def parse_assignment_file(text: str, filename: str = "assignment.py") -> dict:
         name = (re.sub(r"\.py$", "", filename).replace("_", " ").strip()
                 or "Untitled assignment")
 
+    source = text                     # `text` is rebound in the block loop below
     marks = list(_MARKER.finditer(text))
     blocks: list[tuple[str | None, str]] = []
     if marks:
@@ -326,6 +359,12 @@ def parse_assignment_file(text: str, filename: str = "assignment.py") -> dict:
 
     if not problems and not errors:
         raise AssignmentParseError("no problems found in the file")
+    # Carried on every problem, used only by the flat rebuild: a class problem
+    # already holds the whole module in its context and would duplicate it.
+    preamble = module_preamble(source, marks, ast.parse(source))
+    if preamble:
+        for p in problems:
+            p.setdefault("module_preamble", preamble)
     return {"name": name, "problems": problems, "errors": errors}
 
 

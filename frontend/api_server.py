@@ -223,12 +223,12 @@ class TutorChatRequest(BaseModel, extra="forbid"):
     # The plan the page has drawn from this chat. Sent so the tutor can put a
     # release past the REAL gate before promising anything - see /tutor_chat.
     plan: dict | None = None
-    # Whether this student's design has been approved by /design_review. It only
-    # selects the tutor's POSTURE (push back vs. help), so a forged `true` costs
-    # nothing worse than a friendlier tutor - it can never reveal a solution,
-    # since the tutor is not given one in either mode. The coding-UI lock itself
-    # is currently enforced client-side; making it server-authoritative needs an
-    # identity to key the approval to, which arrives with the PSU auth work.
+    # IGNORED. It used to select the tutor's posture - interrogate, or help
+    # someone already past the gate - straight from the browser, so a forged
+    # `true` bought a student their way out of the Socratic phase. The server
+    # now derives it from the same mt_designs record that gates the step
+    # prompts. The field is kept only so an older page does not 422 against
+    # extra="forbid"; nothing reads it.
     design_ok: bool = False
 
 
@@ -392,7 +392,12 @@ def decompose_chunks_route(req: DecomposeRequest, request: Request):
         from main.sessions import create_session, find_resumable, public_session
         resumed = find_resumable(claims["sub"], content_hash(problem))
         if resumed is not None:
-            return public_session(resumed)
+            # THE SAME GATE AS A FRESH SESSION. Returning early here skipped the
+            # steps_locked blanking below, so reopening an UNAPPROVED problem
+            # handed over the step prompts that the first opening had withheld -
+            # and the prompts are the answer, split up. Resume changes which
+            # session you get back, never what you are allowed to see.
+            return _gate_steps(claims["sub"], req.slug, public_session(resumed))
 
         result = get_chunk_decomposition(problem)
         # Register a server-owned session. From here the browser never sees a
@@ -435,12 +440,23 @@ def decompose_chunks_route(req: DecomposeRequest, request: Request):
         # travel, so the page can show how many there are and size itself;
         # only the PROMPTS - which are the answer, split up - are withheld.
         # /session_steps hands them over once the gate is passed.
-        if not _design_approved(claims["sub"], req.slug):
-            public = {**public, "steps_locked": True,
-                      "chunks": [{**c, "prompt": ""} for c in public["chunks"]]}
-        return public          # session_id, decomposition_id, header, PUBLIC chunks
+        return _gate_steps(claims["sub"], req.slug, public)
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=f"Decomposition unavailable: {e}")
+
+
+def _gate_steps(student_id: str | None, slug: str, public: dict) -> dict:
+    """The session payload with the step PROMPTS withheld until the design is in.
+
+    Shared by both paths out of /decompose_chunks - a fresh session and a
+    resumed one - because they were allowed to disagree once and did: resume
+    returned before the check and handed over prompts the first opening had
+    hidden. The count and each step's indent still travel, so the page can size
+    itself; only the prompts, which are the answer split up, are held back."""
+    if _design_approved(student_id, slug):
+        return public
+    return {**public, "steps_locked": True,
+            "chunks": [{**c, "prompt": ""} for c in public.get("chunks", [])]}
 
 
 def _design_approved(student_id: str | None, slug: str) -> bool:
@@ -463,23 +479,45 @@ def _design_approved(student_id: str | None, slug: str) -> bool:
         return False
 
 
+def _owned_session(request: Request, session_id: str) -> tuple[dict, dict]:
+    """(claims, session snapshot) for a session THIS student owns, or 403/404.
+
+    WHY THIS IS A FUNCTION AND NOT A LINE IN EACH ROUTE. require_student() only
+    asks whether someone is signed in; it says nothing about whose session they
+    just named. Four routes took a session_id and only /session_steps checked,
+    so a signed-in student who knew another's id could submit against it -
+    burning their attempts and advancing their index - and could read
+    /graphs back, which carries the other student's accepted CODE.
+    A session id is not a secret in the sense that authorisation may rest on it.
+
+    Anonymous sessions (student_id NULL, from before sign-in existed) are left
+    readable by any signed-in caller rather than orphaned: there is no owner to
+    compare against, and refusing them would break problems mid-flight."""
+    claims = require_student(request)
+    from main.sessions import session_snapshot
+    snap = session_snapshot(session_id)
+    if snap is None:
+        raise HTTPException(status_code=404, detail={
+            "reason_code": "session_not_found", "message": "Unknown session."})
+    if snap.get("student_id") and snap["student_id"] != claims["sub"]:
+        # The same answer for "not yours" as for "does not exist" would be
+        # tidier, but these routes already 404 on a bad id and a student whose
+        # own session expired deserves to be told which of the two happened.
+        raise HTTPException(status_code=403, detail={
+            "reason_code": "not_your_session",
+            "message": "That session belongs to someone else."})
+    return claims, snap
+
+
 @app.get("/session_steps/{session_id}")
 def session_steps(session_id: str, request: Request):
     """The step prompts, once the design gate has been passed.
 
     Called by the page the moment a design is approved. Re-checks the approval
     here rather than believing the caller."""
-    from main.sessions import public_chunks, session_snapshot
+    from main.sessions import public_chunks
 
-    claims = require_student(request)
-    snap = session_snapshot(session_id)
-    if snap is None:
-        raise HTTPException(status_code=404, detail={
-            "reason_code": "session_not_found", "message": "Unknown session."})
-    if snap.get("student_id") and snap["student_id"] != claims["sub"]:
-        raise HTTPException(status_code=403, detail={
-            "reason_code": "not_your_session",
-            "message": "That session belongs to someone else."})
+    claims, snap = _owned_session(request, session_id)
     if not _design_approved(claims["sub"], snap.get("slug", "")):
         raise HTTPException(status_code=403, detail={
             "reason_code": "design_not_approved",
@@ -498,7 +536,17 @@ def grade_chunk_route(req: ChunkRequest, request: Request):
     from main.grading import align_submission, grade_submission
     from main.sessions import MAX_ATTEMPTS, SessionError, load_session
 
-    require_student(request)
+    # OWNERSHIP FIRST, before load_session says anything about the session at
+    # all - a foreign id must not come back "completed" or "expired" either.
+    claims, _snap = _owned_session(request, req.session_id)
+    # ...and the design gate, which was enforced only in the browser. The step
+    # prompts are already withheld until a design is accepted; grading them was
+    # not, so a request made straight to this route skipped the planning the
+    # whole product exists to require. Same durable record /session_steps reads.
+    if not _design_approved(claims["sub"], _snap.get("slug", "")):
+        raise HTTPException(status_code=403, detail={
+            "reason_code": "design_not_approved",
+            "message": "Submit your plan for review before writing code."})
     try:
         session = load_session(req.session_id)
     except SessionError as e:
@@ -2163,7 +2211,7 @@ def tutor_chat(req: TutorChatRequest, request: Request):
     already see."""
     from main.tutor import MAX_TURNS, reply
 
-    require_student(request)
+    claims = require_student(request)
     if len(req.messages) > MAX_TURNS * 2:
         raise HTTPException(status_code=400, detail={
             "reason_code": "conversation_too_long",
@@ -2176,8 +2224,14 @@ def tutor_chat(req: TutorChatRequest, request: Request):
             "reason_code": "problem_not_found",
             "message": f"Unknown problem '{req.slug}'."})
 
+    # DERIVED, never taken from the request. `design_ok` picks the tutor's
+    # posture - interrogate, or help someone already past the gate - and a
+    # forged `true` skipped the Socratic phase for free. It costs a read of the
+    # same durable record /session_steps and /grade_chunk gate on, and the
+    # client field is now ignored entirely (see TutorChatRequest).
+    approved = _design_approved(claims["sub"], req.slug)
     try:
-        out = reply(row[0], req.messages, req.chunk_prompt, req.design_ok)
+        out = reply(row[0], req.messages, req.chunk_prompt, approved)
     except Exception as e:
         # A tutor outage is not a judgement about the student.
         raise HTTPException(status_code=503, detail={
@@ -2281,8 +2335,18 @@ def plan_graph_route(req: PlanGraphRequest, request: Request):
     _student = current_student(request)
     if _student and fresh.get("nodes"):
         from main.archive import save_graph
-        prev = [n.get("id") for n in ((req.current or {}).get("nodes") or [])]
-        if [n.get("id") for n in fresh["nodes"]] != prev:   # only real changes
+        # CONTENT, not just ids. This compared node ids alone, so a student who
+        # CORRECTED a step - same node, new label - got the fixed graph back on
+        # screen and nothing written down, and the correction was gone on
+        # reopen. Re-labelling is the commonest edit there is: the first pass
+        # says "check the letters", the second says "count each letter". Edges
+        # had the same hole - a rerouted branch changes no node id at all.
+        def _shape(g):
+            return ([(n.get("id"), n.get("kind"), n.get("label"))
+                     for n in (g or {}).get("nodes") or []],
+                    [(e.get("src"), e.get("dst"), e.get("label"))
+                     for e in (g or {}).get("edges") or []])
+        if _shape(fresh) != _shape(req.current):           # only real changes
             save_graph(get_supabase(), _student, req.slug, "plan", fresh)
     return fresh
 
@@ -2296,12 +2360,9 @@ def graphs_route(req: GraphsRequest, request: Request):
     from main.graphs import build_both
     from main.sessions import session_snapshot
 
-    require_student(request)
-    session = session_snapshot(req.session_id)
-    if session is None:
-        raise HTTPException(status_code=404, detail={
-            "reason_code": "session_not_found",
-            "message": "That session no longer exists."})
+    # build_both() draws the CODE GRAPH from the session's accepted answers, so
+    # an unowned read here is a read of someone else's work.
+    _claims, session = _owned_session(request, req.session_id)
     out = build_both(session, req.plan)
     out["completed"] = session["state"] == "completed"
 
@@ -2388,10 +2449,19 @@ async def design_review(request: Request,
     from main.archive import save_design, save_messages
     _student = current_student(request)
     if _student:
-        save_design(get_supabase(), _student, slug, blob,
-                    design.content_type or "", out)
+        recorded = save_design(get_supabase(), _student, slug, blob,
+                               design.content_type or "", out)
         save_messages(get_supabase(), _student, slug, "design",
                       [{"role": "assistant", "content": out["reply"]}])
+        # AN APPROVAL THAT DID NOT RECORD IS NOT AN APPROVAL. These rows are
+        # what /grade_chunk and /tutor_chat read to decide the gate has been
+        # passed, so a swallowed insert would tell the student on screen that
+        # they were through and refuse every submission afterwards, with nothing
+        # on either side able to explain it. Say so instead and let them resend.
+        if out.get("approved") and not recorded:
+            out = {**out, "approved": False,
+                   "reply": "Your plan looks good, but we could not record the "
+                            "approval just now - please submit it once more."}
     return out
 
 
@@ -2518,31 +2588,53 @@ def assignment_file(assignment_id: str, request: Request):
     Their OWN work only: student_id comes from the cookie, so it cannot be
     pointed at a classmate. It reads no chunk references and no oracle."""
     from main.handback import build_handback
-    from main.sessions import completed_answers
+    from main.sessions import accepted_so_far, completed_answers
 
     claims = require_student(request)
     sb = get_supabase()
     asg, problems = _assignment_problems_for_file(sb, assignment_id)
+    slugs = [p["slug"] for p in problems]
 
-    answers = completed_answers(claims["sub"], [p["slug"] for p in problems])
-    text = build_handback(
-        problems, {s: a["code"] for s, a in answers.items()},
-        assignment_name=asg.get("name") or "Assignment",
-        student_name=(claims.get("name") or claims.get("username") or "").strip(),
-        revealed_slugs={s for s, a in answers.items() if a["assisted"]},
-        blank_unanswered=True)
+    answers = completed_answers(claims["sub"], slugs)
+    # WORK IN PROGRESS COUNTS HERE, unlike in the download. A student two steps
+    # into a three-step method opens this to see what they have built, and a
+    # stub sitting over their own accepted lines reads as the work having been
+    # thrown away. Finished problems still win where both exist.
+    partial = {s: a for s, a in accepted_so_far(claims["sub"], slugs).items()
+               if s not in answers}
+    shown = {**answers, **partial}
+
+    def _render(entries):
+        return build_handback(
+            problems, {s: a["code"] for s, a in entries.items()},
+            assignment_name=asg.get("name") or "Assignment",
+            student_name=(claims.get("name") or claims.get("username") or "").strip(),
+            revealed_slugs={s for s, a in entries.items() if a["assisted"]},
+            blank_unanswered=True)
+
+    text = _render(shown)
+    # A half-written body is often not valid Python on its own - a `for` header
+    # whose loop body is the step not yet answered, say. The file is meant to be
+    # runnable, so it is compiled before it is served and the partial work is
+    # dropped if it will not parse. Better a stub than a file that cannot run.
+    if partial:
+        try:
+            compile(text, "<file>", "exec")
+        except SyntaxError:
+            text, partial = _render(answers), {}
 
     stem = (asg.get("source_file") or "assignment.py").rsplit("/", 1)[-1]
-    done = sorted(answers)
     return JSONResponse(
         {"filename": stem if stem.endswith(".py") else stem + ".py",
          "assignment": asg.get("name") or "Assignment",
          "text": text,
          # Counts only - the page says "2 of 5 written" without having to parse
-         # the file it was just handed.
-         "written": done,
+         # the file it was just handed. `in_progress` is listed separately so a
+         # half-finished problem is not counted as done.
+         "written": sorted(answers),
+         "in_progress": sorted(partial),
          "remaining": sorted(p["slug"] for p in problems
-                             if p["slug"] not in answers)},
+                             if p["slug"] not in shown)},
         # It changes as they finish steps, and it is one student's own work.
         headers={"Cache-Control": "private, no-store"})
 
@@ -2586,10 +2678,19 @@ def design_review_plan(req: PlanSubmitRequest, request: Request):
     from main.archive import save_design, save_messages
     _student = current_student(request)
     if _student:
-        save_design(get_supabase(), _student, req.slug, b"",
-                    "application/x-plan-graph", out)
+        recorded = save_design(get_supabase(), _student, req.slug, b"",
+                               "application/x-plan-graph", out)
         save_messages(get_supabase(), _student, req.slug, "design",
                       [{"role": "assistant", "content": out["reply"]}])
+        # AN APPROVAL THAT DID NOT RECORD IS NOT AN APPROVAL. These rows are
+        # what /grade_chunk and /tutor_chat read to decide the gate has been
+        # passed, so a swallowed insert would tell the student on screen that
+        # they were through and refuse every submission afterwards, with nothing
+        # on either side able to explain it. Say so instead and let them resend.
+        if out.get("approved") and not recorded:
+            out = {**out, "approved": False,
+                   "reply": "Your plan looks good, but we could not record the "
+                            "approval just now - please submit it once more."}
         if out.get("approved"):
             # The plan that PASSED the gate is the one worth keeping, and from
             # here it is frozen - see the student page. Snapshot it now so a
@@ -2607,11 +2708,10 @@ def mark_solved(req: MarkSolvedRequest, request: Request):
     incomplete or assisted work."""
     from main.sessions import session_snapshot
 
-    require_student(request)
-    snap = session_snapshot(req.session_id)
-    if snap is None:
-        raise HTTPException(status_code=404, detail={
-            "reason_code": "session_not_found", "message": "Unknown session."})
+    # It credits snap["student_id"], never the caller, so this was not a way to
+    # steal a solve - but it was a way to touch another student's record, and
+    # every session route now answers the same question the same way.
+    _claims, snap = _owned_session(request, req.session_id)
     if snap["state"] != "completed":
         raise HTTPException(status_code=409, detail={
             "reason_code": "session_incomplete",

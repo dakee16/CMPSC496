@@ -9,6 +9,15 @@ let sessionId = null, chunks = [], idx = 0, accepted = [], editor = null, header
 const BODY_INDENT = 4;
 // The tutor is scoped to whatever is open on the LEFT. No problem, no chat.
 let openProblem = null, chatLog = [], chatBusy = false;
+// Turns sent to /tutor_chat. Comfortably inside the server's own ceiling
+// (main/tutor.MAX_TURNS * 2), so a long conversation is trimmed on the way out
+// rather than refused on arrival.
+const TUTOR_WINDOW = 60;
+// What one message may carry. main/tutor.MAX_MESSAGE_CHARS truncates past this
+// SILENTLY - a student who pasted a long trace had the end of it quietly
+// removed and was answered on the half that survived. Enforced here where it
+// can be seen instead.
+const MAX_MESSAGE_CHARS = 2000;
 // A student may not write code until they have submitted a DESIGN and the
 // reviewer has approved it. Designing before coding IS the pedagogy, so this
 // gates the whole coding column, not just the submit button - leaving the
@@ -741,11 +750,20 @@ async function openAssignment(a){
   $("probSummary").textContent = "";
   $("problems").innerHTML = `<li style="grid-column:1/-1; display:block">${
     skeletonRows(3)}</li>`;
+  // WHOSE LIST IS THIS. The heading, the crumb and the title are set above, at
+  // once; the rows arrive later. Open A, then B before A answers, and A's rows
+  // landed under B's name - the page said "Assignment B" over Assignment A's
+  // problems, and clicking one opened a problem the heading never mentioned.
+  // Every path out of the await re-checks that this is still the open one.
+  const wanted = a.id;
   try {
     const r = await fetch(`${API}/assignments/${a.id}/problems`);
+    if (!openAssign || openAssign.id !== wanted) return;   // they moved on
     if (!r.ok) throw new Error();
     a._problems = (await r.json()).problems || [];
+    if (!openAssign || openAssign.id !== wanted) return;
   } catch {
+    if (!openAssign || openAssign.id !== wanted) return;
     $("problems").innerHTML = `<li style="grid-column:1/-1; display:block">
       <div class="banner bad" style="margin:0">Could not load the problems in
       this assignment. <button class="retry" type="button">Try again</button>
@@ -1149,6 +1167,47 @@ function failStart(msg){
   failedWorkspace(msg);
 }
 
+/* UNSUBMITTED CODE, KEPT. render() reseeds the editor with a pad of spaces
+   every time it runs, and start() calls render() - so opening another problem
+   and coming back silently threw away whatever had been typed. Nothing warned,
+   and there was nothing to warn about: it was gone before the page changed.
+
+   Held per problem AND per step, because they are different drafts, and in
+   sessionStorage so a reload keeps them too. Student code in the student's own
+   tab: nothing here crosses to another person, and it is cleared the moment a
+   step is accepted, so a finished answer never lingers as a draft.
+
+   Every access is wrapped: a private window or blocked site data makes these
+   throw, and losing a draft is a nuisance while losing the editor is an
+   outage. */
+const DRAFT_PREFIX = "acadia.draft.";
+
+function draftKey(){
+  return openProblem ? `${DRAFT_PREFIX}${openProblem.slug}:${idx}` : null;
+}
+
+function saveDraft(){
+  const key = draftKey();
+  if (!key || !editor) return;
+  const value = editor.getValue();
+  try {
+    if (value.trim()) sessionStorage.setItem(key, value);
+    else sessionStorage.removeItem(key);
+  } catch (e) { /* no storage: the draft simply does not survive */ }
+}
+
+function takeDraft(){
+  const key = draftKey();
+  if (!key) return null;
+  try { return sessionStorage.getItem(key); } catch (e) { return null; }
+}
+
+function clearDraft(){
+  const key = draftKey();
+  if (!key) return;
+  try { sessionStorage.removeItem(key); } catch (e) { /* nothing to clear */ }
+}
+
 function ensureEditor(){
   if (editor) return;
   editor = CodeMirror.fromTextArea($("code"), {
@@ -1170,6 +1229,11 @@ function ensureEditor(){
   // around only the editable part would give that away as a lie.
   editor.on("focus", () => $("codestack").classList.add("focus"));
   editor.on("blur",  () => $("codestack").classList.remove("focus"));
+  // Saved as they type, so navigating away at any moment keeps the draft. The
+  // write is one sessionStorage.setItem on a string a student typed by hand -
+  // cheap enough not to need debouncing, and debouncing would reintroduce the
+  // exact window this closes.
+  editor.on("change", saveDraft);
   // A freshly created editor defaults to editable - re-assert the current gate
   // so it does not spring open the moment fromTextArea() runs.
   applyTutorGate();
@@ -1344,8 +1408,12 @@ function render(){
     // costs nothing; what it buys is an editor that lines up with the code
     // above it instead of contradicting it.
     const pad = " ".repeat(BODY_INDENT + ((cur && cur.indent) || 0));
-    editor.setValue(pad);
-    editor.setCursor({line: 0, ch: pad.length});
+    // A draft for THIS step wins over a fresh pad - see saveDraft above.
+    const draft = takeDraft();
+    editor.setValue(draft && draft.trim() ? draft : pad);
+    editor.setCursor(draft && draft.trim()
+      ? {line: editor.lineCount() - 1, ch: editor.getLine(editor.lineCount() - 1).length}
+      : {line: 0, ch: pad.length});
     editor.refresh();
     // CodeMirror re-lays out its gutter after the option change, so the width
     // read during renderContext() above was the PREVIOUS one. Re-measure on the
@@ -1388,13 +1456,33 @@ function show(kind, text, extra){
   $("msg").innerHTML = `<div class="banner pre ${kind}">${esc(text)}</div>` + (extra || "");
 }
 
+/* A short stable digest of a submission, so retrying the same answer reuses its
+   submission id. Not a security boundary - the server owns the session and the
+   verdict; this only has to be stable and collision-free enough that two
+   DIFFERENT answers at one step do not share an id. */
+function hash32(text){
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++){
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(36);
+}
+
 $("submit").onclick = async () => {
   const code = editor ? editor.getValue() : "";
   if (!code.trim()) return show("warn", "Write something first.");
   const btn = $("submit");
   setBusy(btn, true, "Grading…");
-  // Stable per submission, so a retry of the same answer is never graded twice.
-  const submissionId = `${sessionId}:${idx}:${Date.now()}`;
+  // STABLE ACROSS RETRIES, which is the whole point of the id. It carried
+  // Date.now(), so every press minted a fresh one: a submission that reached
+  // the server and then lost the connection was told "your attempt was not
+  // used", and pressing again asked the server to grade it a SECOND time under
+  // an id it had never seen. The idempotency table could not match them.
+  //
+  // Keyed on the answer instead. The same code at the same step replays the
+  // stored result; genuinely different code is a genuinely different attempt.
+  const submissionId = `${sessionId}:${idx}:${hash32(code)}`;
   let r;
   try {
     r = await fetch(`${API}/grade_chunk`, {
@@ -1404,7 +1492,13 @@ $("submit").onclick = async () => {
     });
   } catch {
     setBusy(btn, false);
-    return show("bad", "Could not reach the server. Your attempt was not used.");
+    // NOT "your attempt was not used" - we do not know that. The request may
+    // have arrived and been graded with the answer lost on the way back. What
+    // IS true is that submitting the same code again cannot double-count it,
+    // because the id above is derived from the code and the server replays a
+    // stored result for an id it has already seen.
+    return show("bad", "Could not reach the server. Press Submit again - the "
+                     + "same answer will not be counted twice.");
   }
   setBusy(btn, false);
 
@@ -1422,6 +1516,7 @@ $("submit").onclick = async () => {
   if (res.verdict === "correct") {
     // Store it the way the server did, not the way it was typed.
     accepted[idx] = {code: alignToStep(code, (chunks[idx] || {}).indent), how: "own"};
+    clearDraft();                    // it is an answer now, not a draft
     const completedIndex = idx;
     idx = res.index;
     if (res.completed) return finish(res);
@@ -1785,7 +1880,14 @@ async function sendToTutor(text){
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({
         slug: openProblem.slug,
-        messages: chatLog,
+        // A WINDOW, not the whole log. The server rejects a conversation past
+        // MAX_TURNS*2 with "start a fresh one", and the only recovery the page
+        // offered was Start over - which wipes the plan, the design and every
+        // accepted step to get past a message limit. The tutor already reads
+        // only the last MAX_TURNS turns (main/tutor.reply), so sending more was
+        // never doing anything except bringing that wall closer. The full log
+        // stays on screen and in the archive; only what travels is trimmed.
+        messages: chatLog.slice(-TUTOR_WINDOW),
         chunk_prompt: chunks[idx] ? chunks[idx].prompt : null,
         design_ok: tutorReleased,
         // So the tutor can put a release past the REAL gate before promising
@@ -1889,6 +1991,21 @@ addEventListener("keydown", e => {
 });
 
 $("cform").addEventListener("submit", e => { e.preventDefault(); submitChat(); });
+
+/* THE LIMIT, SHOWN. main/tutor.MAX_MESSAGE_CHARS cuts a message at 2,000
+   characters server-side and says nothing, so a student who pasted a long trace
+   was answered on the half that survived and had no way to know the rest never
+   arrived. `maxlength` on the field makes the cut impossible; this says how much
+   room is left once it starts to matter, so hitting the wall is never a
+   surprise either. */
+$("cinput").addEventListener("input", () => {
+  const left = MAX_MESSAGE_CHARS - $("cinput").value.length;
+  const near = left <= 300;
+  $("cinputCount").hidden = !near;
+  if (near) $("cinputCount").textContent = left > 0
+    ? `${left} characters left`
+    : "That is the longest message the tutor can read. Send this, then carry on.";
+});
 $("cinput").addEventListener("input", e => autogrow(e.target));
 $("cinput").addEventListener("keydown", e => {
   // Shift+Enter is a newline; plain Enter sends. Ignore Enter mid-IME so

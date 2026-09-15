@@ -260,14 +260,23 @@ def save_messages(client, student_id: str | None, slug: str, phase: str,
 
 
 def save_design(client, student_id: str | None, slug: str, image_bytes: bytes,
-                mime: str, review: dict) -> None:
+                mime: str, review: dict) -> bool:
     """The uploaded design plus its verdict.
 
     The image goes to private object storage and only its path is recorded.
     An upload failure still records the ROW - knowing a student submitted a
-    third design that was rejected matters even if the picture is lost."""
+    third design that was rejected matters even if the picture is lost.
+
+    RETURNS WHETHER THE ROW LANDED, and that is the one place this module's
+    "never block the student" rule needs a caller's judgement. An APPROVAL is no
+    longer only analytics: /grade_chunk and /tutor_chat read these rows to decide
+    whether the design gate has been passed, so a swallowed insert leaves a
+    student told they are approved on screen and refused by the server - a
+    divergence nothing on either side can explain. The caller decides what to do
+    about that; a rejected design that fails to record is still just analytics
+    and still fails silently."""
     if not student_id:
-        return
+        return False
     from .design_review import ALLOWED_MIME
 
     rnd = int(review.get("round", 0))
@@ -282,7 +291,7 @@ def save_design(client, student_id: str | None, slug: str, image_bytes: bytes,
         except Exception as e:
             print(f"  ⚠️  archive: design upload failed: {str(e)[:160]}")
 
-    _write(client, "mt_designs", {
+    return _write(client, "mt_designs", {
         "student_id": student_id, "slug": slug, "round": rnd, "mime": mime,
         "storage_path": stored, "byte_size": len(image_bytes or b""),
         "approved": bool(review.get("approved")),

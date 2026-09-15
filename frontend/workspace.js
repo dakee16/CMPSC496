@@ -139,7 +139,8 @@ async function renderFileResource(){
     const note = document.createElement("p");
     note.className = "fileview-note";
     note.innerHTML = esc(data.filename || "assignment.py") + " · <strong>"
-      + esc(`${written} of ${written + left}`) + "</strong> written."
+      + esc(`${written} of ${written + going + left}`) + "</strong> finished"
+      + (going ? esc(`, ${going} in progress`) : "") + "."
       + (left ? " The rest is marked <code>" + esc("# YOUR CODE STARTS HERE") + "</code>." : "");
     const pre = document.createElement("pre");
     pre.className = "code fileview-code";

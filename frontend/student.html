@@ -110,7 +110,7 @@
         <div id="planMethods">
           <div class="plan-submit-row" id="planSubmitRow">
             <p class="sr-only" id="planSubmitHint">Talk through your approach with the tutor, or upload a plan.</p>
-            <div class="plan-action-buttons"><button class="ghost" id="openPlanUpload" type="button" aria-controls="planUpload">Upload a plan</button><button class="ghost danger" type="button" data-restart title="Clear your chat, your plan and any steps, and begin this problem again">Start over</button><button id="planSubmitBtn" type="button">Submit plan for review</button></div>
+            <div class="plan-action-buttons"><button class="ghost" id="openPlanUpload" type="button" aria-controls="planUpload">Upload a plan</button><button class="ghost" type="button" data-resource="file" aria-controls="resourceDrawer" aria-expanded="false" title="The whole assignment file, with your answers in it">Full file</button><button class="ghost danger" type="button" data-restart title="Clear your chat, your plan and any steps, and begin this problem again">Start over</button><button id="planSubmitBtn" type="button">Submit plan for review</button></div>
           </div>
           <details id="planUpload" class="plan-upload"><summary>Upload options · PNG, JPEG or PDF</summary>
         <div class="designPanel" id="designPanel" hidden="">
@@ -250,7 +250,7 @@
           <form class="cfoot" id="cform">
             <label class="sr-only" for="cinput">Message the tutor</label>
             <div class="crow">
-              <textarea id="cinput" rows="2" placeholder="Explain your thinking, or ask a question"></textarea>
+              <textarea id="cinput" rows="2" maxlength="2000" placeholder="Explain your thinking, or ask a question" aria-describedby="cinputCount"></textarea><p class="charcount" id="cinputCount" role="status" aria-live="polite" hidden></p>
               <button type="submit">Send</button>
             </div>
             <p class="ckeys"><kbd>Enter</kbd> to send ·

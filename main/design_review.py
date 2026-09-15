@@ -26,7 +26,7 @@ import base64
 import re
 
 from .ollama_client import TUTOR_MODEL, VISION_MODEL, chat
-from .prompts import WORKABLE_PLAN
+from .prompts import WORKABLE_PLAN, json_flag
 
 # Exactly the three formats the student page offers. Anything else is refused
 # at the door rather than sent to the model and charged for.
@@ -248,7 +248,10 @@ def _approval_stands(data: dict) -> bool:
 
     Rejection needs no trace: there is nothing to be wrong about, and demanding
     one would turn a model's formatting slip into an unlock."""
-    if not bool(data.get("approved", False)):
+    # json_flag, not bool. THIS is the gate that unlocks the editor, and
+    # bool("false") is True - a model answering in strings would have
+    # opened it. Everything else here fails closed; this did not.
+    if not json_flag(data.get("approved")):
         return False
     return len(str(data.get("trace") or "").strip()) >= MIN_TRACE_CHARS
 
