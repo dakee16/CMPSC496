@@ -1,17 +1,17 @@
-# Caddyfile - TLS, and the network fence the app's threat model assumes.
+# Caddyfile - TLS, and an OPTIONAL network fence.
 #
-# WHY THE FENCE MATTERS. Registration checks only that an address ENDS WITH
-# psu.edu (main/auth.py:122) - there is no confirmation email. On a public URL
-# anyone can register nobody@psu.edu and reach main/execution.py, which says
-# plainly that it is a hardened harness and not a secure sandbox. auth.py's own
-# header states the assumption: "the network boundary is the college VPN".
-# This file is that boundary.
+# The PSU-VPN allowlist was dropped deliberately: access is gated in the app by
+# an explicit roster (MICROTUTOR_ALLOWED_EMAILS, main/auth.py:130), which is
+# checked on registration, on sign-in, and on every request carrying a cookie.
+# That is a stronger control than source IP, and it does not care where a
+# student is sitting.
+#
+# The matcher below stays because it costs nothing and defaults to "allow
+# everything" (docker-compose.yml). Set MICROTUTOR_ALLOWED_CIDRS only if you
+# later want to narrow the network too.
 #
 # PORT 80 MUST STAY OPEN TO THE WORLD in the server firewall. The Let's Encrypt
-# challenge arrives from their validation servers, not from campus. Firewalling
-# 80 to PSU ranges lets issuance succeed once and then silently fail to RENEW
-# about 60 days later, taking the site down at a moment nobody is watching.
-# Blocking belongs here, at the application layer, not in the firewall.
+# challenge arrives from their validation servers, not from campus.
 
 {$MICROTUTOR_DOMAIN} {
 	# Space-separated CIDRs, from MICROTUTOR_ALLOWED_CIDRS, e.g.
