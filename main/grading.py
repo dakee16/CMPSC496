@@ -506,6 +506,69 @@ def _provider_down(reason_code: str, detail: str | None = None) -> GradeResult:
                deterministic=False, consume_attempt=False, internal_detail=detail)
 
 
+# ── Deferred initializer hoist - deterministic, before Tier 3 ────────────
+
+def _hoistable_declarations(problem: dict, chunks: list, header: str,
+                            upto: str, ref_tail: str) -> list[str]:
+    """Declarations the trusted tail assumes, that the student has not made YET.
+
+    The tail is the teacher's own code for the remaining steps, so it reads
+    whatever the reference had bound by this point - including names the
+    reference created long before it needed them. Calculator._getPostfix opens
+    chunk 1, the tokenizer, with `postfixStack = Stack()` and
+    `precedence = {...}` and touches neither until chunk 3. A student who defers
+    both to chunk 3 has written a correct tokenizer, but the tail reads them as
+    if they exist, so the composed program died on NameError and the submission
+    fell through to the Tier 3 adapter. Across 24 live trials of the IDENTICAL
+    student code that adapter returned a clean calibrated rewrite 12 times and,
+    the other 12, also invented a self-referencing alias
+    ({"target": "postfixStack", "source": "postfixStack"}) that _valid_aliases
+    rightly refused - so WHICH TIER decided a correct answer was a coin flip on
+    the model's mood rather than on anything the student did.
+
+    Returns the lines to prepend to the tail, in the reference's own order, or
+    [] to change nothing. It never judges: it only restates a declaration the
+    tail was always entitled to assume, and the tests and the pass/fail
+    comparison are untouched.
+
+    ALL OR NOTHING, AND ONLY PURE DECLARATIONS. `postfixStack = Stack()` reads
+    nothing but a module-level class and literals, so it means the same thing
+    wherever it runs. `total = n * 2` does not - `n` was computed somewhere
+    specific in the reference's own control flow, and moving that line early
+    either raises a NameError that reads as a grader bug or, far worse, binds
+    silently to some unrelated `n` in the student's own code and makes a wrong
+    answer look right. One name that cannot be settled this way disqualifies the
+    whole submission, which then takes the Tier 3 path exactly as it does
+    today."""
+    needed = (_names(ref_tail, ast.Load) - _names(ref_tail, ast.Store)
+              - _names(upto, ast.Store) - _header_params(header)
+              - _module_names(problem) - _SAFE_BUILTINS)
+    if not needed:
+        return []            # the student bound everything the tail reads
+    try:
+        tree = _parse_body("\n".join((c.get("reference") or "") for c in chunks))
+    except SyntaxError:
+        return []
+    relocatable = _header_params(header) | _module_names(problem) | _SAFE_BUILTINS
+    found = []
+    for name in needed:
+        matches = [n for n in ast.walk(tree)
+                   if isinstance(n, ast.Assign) and len(n.targets) == 1
+                   and isinstance(n.targets[0], ast.Name)
+                   and n.targets[0].id == name]
+        if len(matches) != 1:
+            return []        # nowhere, or several places: not ours to guess at
+        rhs = {n.id for n in ast.walk(matches[0].value)
+               if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load)}
+        if rhs - relocatable:
+            return []        # reads a local: not the same line somewhere else
+        found.append(matches[0])
+    # The reference's own order, in case one declaration is ever written in
+    # terms of another - and so the same submission always yields the same tail.
+    return [ast.unparse(n)
+            for n in sorted(found, key=lambda n: (n.lineno, n.col_offset))]
+
+
 # ── Tier 3: calibrated adaptation ────────────────────────────────────────
 
 _ADAPT_SYSTEM = (
@@ -783,11 +846,26 @@ def grade_submission(session: dict, student_code: str,
     # ── NON-LAST - trusted reference tail ──
     ref_tail = "\n".join((chunks[j].get("reference") or "")
                          for j in range(idx + 1, len(chunks)))
+    # The tail may read a name the reference declared earlier than the student
+    # chose to. Settle that here, for free, instead of letting a NameError send
+    # a correct answer to the Tier 3 model - computed ONCE, so the ordinary case
+    # (nothing needed) costs nothing and the fixable one is fixed on the first
+    # and only run.
+    hoisted = _hoistable_declarations(problem, chunks, header, upto, ref_tail)
+    if hoisted:
+        ref_tail = "\n".join(hoisted) + "\n" + ref_tail
     res = classify_run(_assemble(problem, header, upto, ref_tail), tests, entry_name=entry)
     if res.outcome == "pass":
+        if hoisted:
+            # Same verdict, same tier, still deterministic - no model is
+            # consulted anywhere on this path. Tagged only so telemetry can
+            # count how often the ordering difference is real.
+            _trace(trace.record_route, corr, "execution-reference", "correct",
+                   hoisted=hoisted)
         return _ok("correct", "execution-reference",
                    "Correct - your step works with the rest of the solution.",
-                   "reference_pass", execution_outcome="pass")
+                   "reference_pass_hoisted" if hoisted else "reference_pass",
+                   execution_outcome="pass")
     if res.outcome == "harness_error":
         return _system("harness_error", res.internal_error)
     if res.outcome == "policy_violation":
@@ -995,5 +1073,90 @@ if __name__ == "__main__":
     class _None:
         total, passed = 0, 0
     assert _failed_total(_None(), 3) == 3
+
+    # ── the deferred initializer hoist ──────────────────────────────────
+    # The shape of Calculator._getPostfix: the reference declares its stack and
+    # its precedence table in chunk 1 and reads neither until chunk 3, so a
+    # student who declares them in chunk 3 - which is where they are actually
+    # used - handed the trusted tail a NameError and a coin flip between tiers.
+    _hdr = "def to_postfix(tokens):"
+    _refs = [
+        'terms = [t.strip() for t in tokens]\n'
+        'stack = []\n'
+        'prec = {"+": 1, "-": 1, "*": 2, "/": 2}',
+
+        'out = []\n'
+        'for t in terms:\n'
+        '    if t not in prec:\n'
+        '        out.append(t)\n'
+        '    else:\n'
+        '        while stack and prec[stack[-1]] >= prec[t]:\n'
+        '            out.append(stack.pop())\n'
+        '        stack.append(t)',
+
+        'while stack:\n'
+        '    out.append(stack.pop())\n'
+        'return out',
+    ]
+    _sess = {"slug": "postfix", "title": "Postfix", "description": "shunting-yard",
+             "solution": _hdr + "\n" + _indent("\n".join(_refs)),
+             "header": _hdr, "index": 0, "accepted": [],
+             "chunks": [{"prompt": f"step {i}", "reference": r}
+                        for i, r in enumerate(_refs, 1)]}
+    _postfix_tests = [
+        {"input": [["3", "+", "4", "*", "2"]], "expected": ["3", "4", "2", "*", "+"]},
+        {"input": [["8", "/", "2", "/", "2"]], "expected": ["8", "2", "/", "2", "/"]},
+    ]
+    _deferred = "terms = [t.strip() for t in tokens]"   # stack/prec left to step 3
+    _tail = "\n".join(_refs[1:])
+    _prob = problem_of(_sess)
+
+    # Exactly the two names the tail cannot supply itself, in the reference's
+    # own order. The tail's own locals - t, out - are bound by the tail and must
+    # never show up here.
+    assert _hoistable_declarations(_prob, _sess["chunks"], _hdr, _deferred, _tail) \
+        == ["stack = []", "prec = {'+': 1, '-': 1, '*': 2, '/': 2}"]
+    # A name the student bound HERSELF is hers, whatever it holds. A genuinely
+    # different interface is Tier 3's to adapt, never this gate's to paper over.
+    assert _hoistable_declarations(_prob, _sess["chunks"], _hdr,
+                                   _deferred + "\nstack = 0\nprec = {}", _tail) == []
+    # NEGATIVE, and the more important half: `size` is computed from another
+    # local, so that line does not mean the same thing anywhere else. One name
+    # that cannot be settled disqualifies the submission - nothing is hoisted.
+    _neg_refs = ["terms = [t.strip() for t in tokens]\nsize = len(terms)",
+                 "out = terms[:size]",
+                 "return out"]
+    _neg = {**_sess, "solution": _hdr + "\n" + _indent("\n".join(_neg_refs)),
+            "chunks": [{"prompt": f"step {i}", "reference": r}
+                       for i, r in enumerate(_neg_refs, 1)]}
+    assert _hoistable_declarations(problem_of(_neg), _neg["chunks"], _hdr,
+                                   _deferred, "\n".join(_neg_refs[1:])) == []
+
+    # End to end, against real runs. A model call is a bug on BOTH paths: the
+    # hoist must never need one, and the negative fixture must not be quietly
+    # rescued by one either - it has to take the same road it takes today.
+    def _no_model(*a, **k):
+        raise AssertionError("no model may be consulted here")
+
+    _request_adaptation, chat = _no_model, _no_model
+
+    _graded = grade_submission(_sess, _deferred, oracle_loader=lambda p: _postfix_tests)
+    assert _graded.verdict == "correct", (_graded.verdict, _graded.student_reason)
+    assert _graded.tier == "execution-reference", _graded.tier
+    assert _graded.deterministic is True and _graded.execution_outcome == "pass"
+    assert _graded.reason_code == "reference_pass_hoisted", _graded.reason_code
+    # Deterministic means deterministic: identical code, identical verdict,
+    # every time. That was the whole complaint - 24 identical submissions, 12
+    # of them decided by a judge because the adapter model wavered.
+    for _ in range(3):
+        assert grade_submission(_sess, _deferred,
+                                oracle_loader=lambda p: _postfix_tests) == _graded
+
+    # ...and the un-hoistable fixture still falls through to the model tiers
+    # untouched, where the stubs above make it land on the outage path.
+    _fell = grade_submission(_neg, _deferred,
+                             oracle_loader=lambda p: [{"input": [[" 3 ", "+"]],
+                                                       "expected": ["3", "+"]}])
+    assert _fell.reason_code == "judge_unavailable", _fell.reason_code
 
     print("grading.py scope-gate self-check OK")

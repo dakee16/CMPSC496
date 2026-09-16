@@ -67,14 +67,14 @@ Create an **A record** for your hostname → the static IP. Confirm it resolves
 before step 5, or Caddy's first certificate request fails:
 
 ```bash
-dig +short microtutor.example.edu     # must print the static IP
+dig +short acadiapsu.com     # must print the static IP
 ```
 
 ## 4. Clone and configure
 
 ```bash
-git clone https://github.com/dakee16/CMPSC496.git microtutor
-cd microtutor
+git clone https://github.com/dakee16/CMPSC496.git acadia
+cd acadia
 cp .env.example .env
 nano .env
 ```
@@ -88,7 +88,7 @@ SUPABASE_KEY                anon key
 OPENAI_API_KEY              sk-...
 MICROTUTOR_ENV              production
 MICROTUTOR_ALLOWED_DOMAINS  psu.edu
-MICROTUTOR_DOMAIN           microtutor.example.edu
+MICROTUTOR_DOMAIN           acadiapsu.com
 MICROTUTOR_ALLOWED_CIDRS    (leave empty until PSU IT sends the ranges)
 ```
 
@@ -124,7 +124,7 @@ minutes of paid model work per problem to regenerate.
 ## 6. Verify
 
 ```bash
-curl https://microtutor.example.edu/health      # {"status":"ok",...}
+curl https://acadiapsu.com/health      # {"status":"ok",...}
 ```
 
 In a browser: register, sign in, check the cookie has **Secure** set (DevTools →
@@ -156,14 +156,63 @@ with* `psu.edu` (`main/auth.py:122`) - there is no confirmation email - so on a
 public URL anyone can create an account and reach `main/execution.py`, which
 states plainly that it is a hardened harness, not a secure sandbox.
 
-## Updating
+## Shipping a change
+
+Edit locally, never on the server - a stray edit there is either clobbered by
+the next `git pull` or turns into a merge conflict at the worst moment.
 
 ```bash
-cd microtutor && git pull && docker compose up -d --build
+# on your machine
+git add -A && git commit -m "..." && git push
+
+# on the server
+cd ~/acadia && git pull && docker compose up -d --build
+docker compose logs -f            # watch it come back, Ctrl-C to detach
 ```
 
-The named volume survives rebuilds. Take a Lightsail **snapshot** before
-anything risky - it is the one-click way back.
+`--build` is required for ANY code change, frontend included: `COPY . .` bakes
+the files into the image, so nothing is live-mounted. It is not slow, though -
+the pip layer is cached, so a typical rebuild is ~20s rather than the first
+build's few minutes.
+
+WHAT SURVIVES a rebuild: everything on the named volumes - grading sessions,
+the oracle cache, transcripts, and Caddy's certificate. Containers are
+disposable; the volumes are the state.
+
+DOWNTIME is roughly 20-40s while the new container starts. Fine between labs,
+worth avoiding mid-class.
+
+### Only changed .env?
+
+No rebuild needed - the image has not changed, only the environment handed to
+it:
+
+```bash
+docker compose up -d
+```
+
+### Frontend edits and the browser cache
+
+Nothing to do - just deploy. `RevalidatedFiles` (frontend/api_server.py) adds
+`Cache-Control: no-cache` to every static file, so the browser revalidates on
+each request and picks up a changed .js or .css immediately. "no-cache" still
+caches: unchanged files answer 304 with no body, so this costs one small
+conditional request per asset, not a re-download.
+
+The old `?v=N` query strings are gone. They were manual cache-busting that the
+header made redundant, and leaving them in only invited someone to keep bumping
+a number that no longer does anything.
+
+### Rolling back
+
+```bash
+git log --oneline -5                       # find the last good commit
+git checkout <sha> && docker compose up -d --build
+```
+
+If that is not enough - a wrecked volume, a bad data migration - restore the
+Lightsail snapshot instead. Which is why the snapshot is taken BEFORE anything
+risky, not after.
 
 ## Operational notes
 
