@@ -155,7 +155,7 @@ async function openProblem(slug){
        later run has since cleared it${d.oracle && d.oracle.strong
          ? ` - the oracle is now STRONG at
              ${Math.round(d.oracle.kill_rate_direct * 100)}%` : ""}.
-       Re-prepare it from the <a href="teacher.html#list">Assignments</a> page
+       Re-prepare it from the <a href="teacher-assignments.html">Assignments</a> page
        to make it available to students.`
     : esc(d.prepare_error || "");
   const o = $("dOracle");

@@ -1691,6 +1691,24 @@ def teacher_assignment_problems(assignment_id: str, request: Request):
             "count": len(rows)}
 
 
+@app.get("/teacher/dashboard")
+def teacher_dashboard(request: Request, assignment_id: str | None = None):
+    from main.teacher_dashboard import dashboard_snapshot
+
+    require_teacher(request)
+    try:
+        data = dashboard_snapshot(get_supabase(), assignment_id)
+    except LookupError:
+        raise HTTPException(status_code=404, detail={
+            "message": "Choose a published assignment."}) from None
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("Teacher dashboard could not be loaded")
+        raise HTTPException(status_code=503, detail={
+            "message": "Class insights are temporarily unavailable. Please try again."}) from None
+    return JSONResponse(data, headers={"Cache-Control": "private, no-store"})
+
+
 @app.get("/teacher/assignments/{assignment_id}/grades")
 def teacher_grades(assignment_id: str, request: Request):
     """The grade sheet for one assignment: every student, one row each.

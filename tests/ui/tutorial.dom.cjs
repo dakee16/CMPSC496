@@ -98,9 +98,11 @@ const tick=()=>new Promise(r=>setTimeout(r,30));
     assert.equal(JSON.parse(w.localStorage.getItem(marker)).status,"completed");
     assert.equal(w.AcadiaOnboarding.destination("https://evil.invalid"),"dashboard.html");
     assert.equal(w.AcadiaOnboarding.destination("teacher.html"),"dashboard.html");
+    assert.equal(w.AcadiaOnboarding.destination("teacher-assignments.html"),"dashboard.html");
     const teacher=await make("tutorial.html","teacher");
     assert.equal(teacher.document.body.dataset.portal,"instructor");
     assert.equal(teacher.AcadiaOnboarding.destination("grades.html"),"grades.html");
+    assert.equal(teacher.AcadiaOnboarding.destination("teacher-assignments.html"),"teacher-assignments.html");
     // The only writes in this whole file are the two ACCOUNT ones asserted
     // above. Anything else reaching the server would be the tutorial touching
     // a real session, submission or grade, which is the thing it must not do.

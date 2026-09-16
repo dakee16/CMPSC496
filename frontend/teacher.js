@@ -1,5 +1,5 @@
 const S = requireSession("teacher");
-mountHeader({variant: "instructor", active: "Home"});
+mountHeader({variant: "instructor", active: "Assignments"});
 const $ = id => document.getElementById(id);
 let TEMPLATE = "";
 const MAX_UPLOAD = 2 * 1024 * 1024;   // a .py of assignments, not a data dump
@@ -459,7 +459,6 @@ function emptyAssignments(){
 }
 
 async function loadAssignments(){
-  paintCourseStats(null);
   $("listBody").innerHTML = skeletonRows(2);
   let d;
   try {
@@ -471,7 +470,6 @@ async function loadAssignments(){
     return;
   }
   const rows = d.assignments || [];
-  paintCourseStats(rows);
   if (!rows.length){
     $("listBody").innerHTML = emptyAssignments();
     $("openFmt").onclick = () => {
@@ -1101,8 +1099,3 @@ $("uploadDrawer").addEventListener("click", e => {
 $("go").addEventListener("click", () => {
   if (run) $("uploadDrawer").close();
 });
-function paintCourseStats(rows){
-  const values = rows ? [rows.length, rows.filter(a => a.published !== false).length,
-    rows.reduce((n,a) => n + (a.ready || 0), 0)] : ["-", "-", "-"];
-  $("courseStats").querySelectorAll("[data-metric]").forEach((el,i) => el.textContent = values[i]);
-}

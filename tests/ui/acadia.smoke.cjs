@@ -59,6 +59,7 @@ const server = http.createServer((req,res) => {
       let json={}; let status=200;
       if(pathname==='/auth/me'){json={name:'Alex Morgan',student_id:'ui-fixture',role};if(!loggedIn)status=401;}
       else if(pathname==='/assignments') json={assignments};
+      else if(pathname==='/teacher/dashboard') json=require('./teacher-dashboard.fixture.cjs')(new URL(route.request().url()).searchParams.get('assignment_id'));
       else if(pathname==='/student/progress')json={problems:problems.map(p=>({...p,assignment_id:'lab1'}))};
       else if(pathname==='/solved') json={slugs:['word-count'],opened:['employee-update'],last_slug:'employee-update'};
       else if(pathname==='/assignments/lab1/problems') json={problems};
@@ -213,15 +214,16 @@ const server = http.createServer((req,res) => {
     }
     await page.setViewportSize({width:1600,height:1000});
     role='teacher';
-    for(const name of ['teacher','grades','playground']){
+    for(const name of ['teacher','teacher-assignments','grades','playground']){
       await page.goto(base+'/'+name+'.html');
       await page.waitForFunction(()=>!document.querySelector('.skelRow'));
       assert.match(await page.title(),/ACADIA/);
       assert(!(await page.locator('body').innerText()).includes('MicroTutor'));
       await noOverflow(name);
       if(name==='teacher'){
-        const alignment=await page.locator('.metric').first().evaluate(el=>{
-          const label=el.querySelector('.metric-label').getBoundingClientRect(),value=el.querySelector('.metric-value').getBoundingClientRect();
+        await page.locator('.insight-metrics').waitFor();
+        const alignment=await page.locator('.insight-metrics>div').first().evaluate(el=>{
+          const label=el.querySelector('dt').getBoundingClientRect(),value=el.querySelector('dd').getBoundingClientRect();
           return {label:label.left,value:value.left};
         });
         assert(Math.abs(alignment.label-alignment.value)<1,'Metric label and value share a left edge');

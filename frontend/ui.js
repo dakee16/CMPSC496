@@ -319,7 +319,7 @@ function mountHeader({active = "", wide = false, variant = "", crumbs = null} = 
     ${uiIcon(icon)}<span class="htext">${label}</span></a>`;
   const nav = role === "instructor"
     ? navItem("Overview",roleHome,"grid","Home","homeBtn")
-      + navItem("Assignments","teacher.html#list","book","Assignments")
+      + navItem("Assignments","teacher-assignments.html","book","Assignments")
       + navItem("Grades","grades.html","chart","Grades")
       + navItem("Playground","playground.html","lab","Playground")
     : navItem("Dashboard",roleHome,"grid","Dashboard","homeBtn")
@@ -430,15 +430,6 @@ function mountHeader({active = "", wide = false, variant = "", crumbs = null} = 
   },{signal});
   const media=matchMedia('(max-width: 760px)');
   media.addEventListener('change',e => {if(!e.matches)closeNav();},{signal});
-  const updateNav=() => {
-    if(role !== 'instructor' || !location.pathname.endsWith('teacher.html'))return;
-    const key=location.hash==='#list'?'Assignments':'Home';
-    shell.querySelectorAll('[data-nav]').forEach(el=>{
-      el.classList.toggle('on',el.dataset.nav===key);
-      if(el.dataset.nav===key)el.setAttribute('aria-current','page');else el.removeAttribute('aria-current');
-    });
-  };
-  addEventListener('hashchange',updateNav,{signal}); updateNav();
   syncThemeControls(Theme.get());
   setCrumbs(crumbs);
   return shell.querySelector('.hdr');

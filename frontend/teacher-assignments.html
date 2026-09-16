@@ -1,0 +1,121 @@
+<!DOCTYPE html><html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script>try{document.documentElement.dataset.theme=(localStorage.getItem("mt.theme")==="dark"?"dark":"light")}catch(e){document.documentElement.dataset.theme="light"}</script>
+<title>Assignments · ACADIA</title>
+
+<meta name="theme-color" content="#f5ebdd">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&amp;family=Space+Grotesk:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="ui.css">
+<link rel="stylesheet" href="teacher.css">
+<link rel="stylesheet" href="refinements.css">
+</head>
+<body>
+<main class="page">
+  <div class="page-heading"><div><p class="eyebrow">Your teaching workspace</p><h1>Assignments</h1><p class="sub">Upload assignments, prepare problems, and manage what students can access.</p></div><button id="newAssignment"><span aria-hidden="true">＋</span> New assignment</button></div>
+
+  <div id="resumeNote"></div>
+
+  <div class="card" id="run" hidden="">
+    <div class="runhead">
+      <h2 id="runTitle">Preparing</h2>
+      <span class="count" id="runCount"></span>
+      <button class="ghost" id="cancel">Cancel</button>
+    </div>
+
+    <div class="bar" role="progressbar" aria-label="Preparing assignment" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="prog" style="margin:0 0 14px"><i id="barFill"></i></div>
+    <ul class="items" id="items"></ul>
+
+    <div id="summary" role="status" aria-live="polite"></div>
+  </div>
+
+  <div class="rvScrim" id="rvScrim" hidden="">
+    <div class="rvBox" role="dialog" aria-modal="true" aria-labelledby="rvTitle">
+      <h3 id="rvTitle">A few problems need a second opinion</h3>
+      <p class="rvLead">
+        ACADIA writes test cases for every problem, then checks them by
+        breaking your solution on purpose. If a test notices the break, the
+        tests are doing their job.
+      </p>
+      <p class="rvLead">
+        For the problems below, a few of those deliberate breaks slipped past.
+        That means one of two things, and ACADIA cannot tell which on its
+        own: either the break made no difference to the answer (harmless), or
+        it did and a test case is missing. Until someone looks, these stay
+        hidden from students.
+      </p>
+      <ul class="rvList" id="rvList"></ul>
+      <div class="rvActs">
+        <button class="ghost" id="rvLater">Ignore for now</button>
+        <button id="rvNow">Review the first one</button>
+      </div>
+      <p class="rvFoot">Ignoring is safe. Nothing is lost, and you can come
+        back from Playground in the profile menu whenever you want.</p>
+    </div>
+  </div>
+
+  <div class="card assignment-library" id="list">
+    <div class="section-heading"><span class="section-icon"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"></path><path d="M14 2v6h6M8 13h8M8 17h5"></path></svg></span><h2>Assignment library</h2></div>
+    <p class="hint">Manage preparation and publishing. Open an assignment to review its problems.</p>
+    <div id="listBody" class="table-scroll" tabindex="0" role="region" aria-label="Assignments and preparation status"></div>
+  </div>
+</main><dialog id="uploadDrawer" class="upload-drawer" aria-labelledby="uploadTitle"><div class="drawer-head"><div><p class="eyebrow">Create a learning experience</p><h2 id="uploadTitle">New assignment</h2></div><button type="button" class="icon-button" id="closeUpload" aria-label="Close new assignment">×</button></div><div class="card upload-card">
+    <div class="upload-info">
+    <div class="section-heading"><span class="section-icon"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"></path><path d="M14 2v6h6M8 13h8M8 17h5"></path></svg></span><h2>Assignment file</h2></div>
+    <p class="hint">
+      A plain Python file. Each problem is one function: its <strong>docstring is the
+      problem statement students see</strong>, its body is your solution, which students
+      never see. To keep helper functions with a problem, put a
+      <code>#&nbsp;---&nbsp;problem:&nbsp;slug&nbsp;---</code> line above them.
+    </p>
+
+    <details style="margin-bottom:16px" id="fmt">
+      <summary>Show the format</summary>
+      <p class="fmtLead">One problem, start to finish:</p>
+      <pre class="code" id="example"></pre>
+      <p class="fmtLead">The full template, with every option:</p>
+
+      <pre class="code" id="tmpl" tabindex="0" role="group" aria-label="Assignment file template, scrolls" style="max-height:300px">loading...</pre>
+      <button class="ghost" id="dl" style="margin-top:11px">Download this template</button>
+    </details>
+
+    </div>
+    <div class="upload-action">
+    <input type="file" id="file" accept=".py,text/x-python" hidden="">
+    <div class="drop" id="drop" tabindex="0" role="button" aria-label="Choose or drop a Python assignment file">
+      <span class="upload-symbol"><svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V3m-5 5 5-5 5 5M4 15v5a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5"></path></svg></span>
+      <div class="big" id="dropTitle">Drop your Python file here</div>
+      <div class="sm" id="dropSub">Choose a .py file · Up to 2 MB</div>
+    </div>
+
+    <div id="picked" hidden="" style="margin-top:14px">
+      <span class="filechip">
+        <span class="fname" id="fname"></span>
+        <span class="fsize" id="fsize"></span>
+        <button type="button" class="fx" id="fclear" aria-label="Remove this file">×</button>
+      </span>
+    </div>
+
+    <div id="fileErr"></div>
+
+    <div class="row" style="margin-top:16px">
+      <button id="go">Upload and prepare</button>
+      <span class="hint" style="margin:0; flex:1; min-width:240px">
+        Preparing writes test cases, checks they are strong enough to grade against,
+        and splits each problem into steps. Expect a minute or two per problem.
+      </span>
+    </div>
+    </div>
+  </div></dialog>
+
+<script src="ui.js"></script>
+<script src="cache.js"></script>
+<script src="onboarding.js"></script>
+<script src="teacher.js"></script>
+
+</body></html>

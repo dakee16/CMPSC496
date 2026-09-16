@@ -141,11 +141,11 @@ async function loadAssignments(){
     $("pick").innerHTML = "<option>No assignments yet</option>";
     $("pick").disabled = true;
     $("body").innerHTML = empty("No assignments yet.",
-      `Upload one on the <a href="teacher.html">Home</a> screen first.`);
+      `Upload one on the <a href="teacher-assignments.html">Assignments</a> tab first.`);
     return;
   }
-  let last = null;
-  try { last = localStorage.getItem(LAST); } catch {}
+  let last = new URLSearchParams(location.search).get("assignment");
+  if (!last) { try { last = localStorage.getItem(LAST); } catch {} }
   $("pick").innerHTML = list.map(a =>
     `<option value="${esc(a.id)}"${String(a.id) === last ? " selected" : ""}
       >${esc(a.name)}</option>`).join("");

@@ -70,6 +70,7 @@ function serve(role,port){
       });
     }
     if(p==="/assignments")return send({assignments});
+    if(p==="/teacher/dashboard")return send(require('./teacher-dashboard.fixture.cjs')(url.searchParams.get('assignment_id')));
     if(p==="/student/progress")return setTimeout(()=>send(progress()),250);
     if(p==="/solved")return send({slugs:["is-empty"],opened:["invert","length"],last_slug:"invert"});
     if(/^\/assignments\/[^/]+\/problems$/.test(p))return send({problems:problems.filter(x=>x.assignment_id===p.split("/")[2])});

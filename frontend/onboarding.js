@@ -13,8 +13,8 @@
     const fallback=account?.role==="teacher"?"teacher.html":"dashboard.html";
     try{
       const url=new URL(value||fallback,location.href),page=url.pathname.split("/").pop();
-      if(url.origin!==location.origin||!["dashboard.html","student.html","student-grades.html","teacher.html","grades.html","playground.html"].includes(page))return fallback;
-      if(account?.role!=="teacher"&&["teacher.html","grades.html","playground.html"].includes(page))return "dashboard.html";
+      if(url.origin!==location.origin||!["dashboard.html","student.html","student-grades.html","teacher.html","teacher-assignments.html","grades.html","playground.html"].includes(page))return fallback;
+      if(account?.role!=="teacher"&&["teacher.html","teacher-assignments.html","grades.html","playground.html"].includes(page))return "dashboard.html";
       return page+url.search+url.hash;
     }catch{return fallback;}
   }

@@ -1,5 +1,36 @@
 # ACADIA UI checks
 
+## Teacher dashboard
+
+The teacher overview reads saved `mt_sessions` and `mt_submissions` records through
+the teacher-only `/teacher/dashboard` endpoint. No migration, chart dependency,
+model call, or new grade calculation is required. Insights cover ready problems
+in published assignments and each registered student's latest session per problem.
+Earlier sessions remain available in the work-history download.
+
+Overview (`teacher.html`) contains class insights. The separate Assignments tab
+(`teacher-assignments.html`) owns the library, upload drawer, preparation, and
+publishing controls. The dashboard checks also cover navigation between these
+pages and selecting a file in the upload drawer.
+
+Each bar counts distinct students: unresolved incorrect steps, missed steps later
+passed, and attempts without recorded misses. Repeated submissions do not inflate
+these counts; indeterminate grading results are excluded. Step numbers describe
+positions in individual solutions, not a shared concept taxonomy. Assignment
+filters, recorded feedback, follow-up names, and gradebook links provide detail.
+
+```sh
+.venv/bin/python -m pytest tests/test_teacher_dashboard.py -q
+cd tests/ui
+node teacher-insights.dom.cjs
+UI_ARTIFACTS=/tmp/acadia-teacher-dashboard npm run test:teacher-browser
+```
+
+The dashboard's DOM and Chromium checks pass, including light/dark themes and
+320–1440px layouts. The broader DOM run has an existing failure at
+`workspace.dom.cjs:213` (expected `stageRead`, got `stageCode`); that test and
+all frontend files it loads are unchanged by the teacher-dashboard work.
+
 These checks use synthetic API responses. They never start the Python backend,
 query student records, invoke a model, or execute submitted Python code.
 
