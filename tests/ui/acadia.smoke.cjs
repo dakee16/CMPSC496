@@ -221,9 +221,9 @@ const server = http.createServer((req,res) => {
       assert(!(await page.locator('body').innerText()).includes('MicroTutor'));
       await noOverflow(name);
       if(name==='teacher'){
-        await page.locator('.insight-metrics').waitFor();
-        const alignment=await page.locator('.insight-metrics>div').first().evaluate(el=>{
-          const label=el.querySelector('dt').getBoundingClientRect(),value=el.querySelector('dd').getBoundingClientRect();
+        await page.locator('.insight-bar-row').first().waitFor();
+        const alignment=await page.locator('.insight-bar-count').first().evaluate(el=>{
+          const label=el.querySelector('strong').getBoundingClientRect(),value=el.querySelector('small').getBoundingClientRect();
           return {label:label.left,value:value.left};
         });
         assert(Math.abs(alignment.label-alignment.value)<1,'Metric label and value share a left edge');

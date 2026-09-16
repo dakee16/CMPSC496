@@ -44,11 +44,22 @@ const server=http.createServer((req,res)=>{
     await page.locator('.insight-bar-row').first().waitFor();
     assert.equal(await page.locator('#list, #newAssignment, #uploadDrawer').count(),0);
     assert.equal(await page.locator('.insight-bar-row').count(),6);
+    assert.equal(await page.locator('#insightFocus').isVisible(),false);
     await page.locator('.insight-bar-row').nth(1).focus();await page.keyboard.press('Enter');
     assert.match(await page.locator('#insightDetailTitle').innerText(),/postfix/);
-    assert.equal(await page.locator('.insight-bar-row').nth(1).evaluate(el=>el===document.activeElement),true);
+    assert.equal(await page.locator('#insightDetailTitle').evaluate(el=>el===document.activeElement),true);
     await page.locator('#reviewPriority').click();
     assert.equal(await page.locator('#insightDetailTitle').evaluate(el=>el===document.activeElement),true);
+    assert.equal(await page.locator('.student-feedback').first().isVisible(),false);
+    await page.locator('.insight-students summary').first().click();
+    assert.equal(await page.locator('.student-feedback').first().isVisible(),true);
+    if(process.env.UI_ARTIFACTS){
+      fs.mkdirSync(process.env.UI_ARTIFACTS,{recursive:true});
+      await page.locator('.insight-detail').screenshot({path:path.join(process.env.UI_ARTIFACTS,'teacher-problem-details.png')});
+    }
+    await page.locator('#closeInsightDetail').click();
+    assert.equal(await page.locator('#insightFocus').isVisible(),false);
+    assert.equal(await page.locator('.insight-bar-row').first().evaluate(el=>el===document.activeElement),true);
     for(const theme of ['light','dark']){
       await page.evaluate(t=>Theme.set(t),theme);
       for(const width of [1440,1024,768,390,320]){
@@ -65,12 +76,13 @@ const server=http.createServer((req,res)=>{
       }
     }
     await page.locator('#insightAssignment').selectOption('hw3');
-    await page.waitForFunction(()=>document.querySelector('#insightDetailTitle')?.textContent.includes('postfix'));
+    await page.waitForFunction(()=>document.querySelector('#teachingSuggestion')?.textContent.includes('postfix'));
+    assert.equal(await page.locator('#insightFocus').isVisible(),false);
     fail=true;await page.locator('#refreshInsights').click();
     await page.waitForFunction(()=>document.querySelector('#insightNotice').textContent.includes('last successful update'));
     assert.equal(await page.locator('.insight-bar-row').count(),6);
     fail=false;empty=true;await page.locator('#retryInsights').click();
-    await page.waitForFunction(()=>document.querySelector('#classInsights').textContent.includes('first attempts'));
+    await page.waitForFunction(()=>document.querySelector('#classInsights').textContent.includes('No answers to review yet'));
     assert.equal(await page.locator('.insight-bar-row').count(),0);
     await page.setViewportSize({width:1440,height:1100});
     await page.locator('[data-nav="Assignments"]').click();

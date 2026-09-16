@@ -13,11 +13,12 @@ Overview (`teacher.html`) contains class insights. The separate Assignments tab
 publishing controls. The dashboard checks also cover navigation between these
 pages and selecting a file in the upload drawer.
 
-Each bar counts distinct students: unresolved incorrect steps, missed steps later
-passed, and attempts without recorded misses. Repeated submissions do not inflate
-these counts; indeterminate grading results are excluded. Step numbers describe
-positions in individual solutions, not a shared concept taxonomy. Assignment
-filters, recorded feedback, follow-up names, and gradebook links provide detail.
+Each bar shows one measure: students with an incorrect answer they have not yet
+corrected. A plain-language definition appears before the chart, and each row
+spells out the student count and how many tried the problem. Repeated submissions
+do not inflate these counts; indeterminate grading results are excluded. The
+suggested review comes first. Selecting a problem opens its steps and students;
+selecting a student reveals their feedback. Counting rules sit in a disclosure.
 
 ```sh
 .venv/bin/python -m pytest tests/test_teacher_dashboard.py -q

@@ -17,12 +17,12 @@
 </head>
 <body>
 <main class="page">
-  <div class="page-heading"><div><p class="eyebrow">Your teaching workspace</p><h1>Teacher dashboard</h1><p class="sub">See where students need a hand. Turn their practice into your next teaching moment.</p></div></div>
+  <div class="page-heading"><div><p class="eyebrow">Your teaching workspace</p><h1>Teacher dashboard</h1><p class="sub">See what to review with your class and which students may need a hand.</p></div></div>
 
   <section class="class-insights" aria-labelledby="classInsightsTitle">
     <div class="insight-toolbar">
-      <div><h2 id="classInsightsTitle">Where the class needs help</h2><p class="hint">Published assignments · Latest session per student and problem</p></div>
-      <div class="insight-controls"><label for="insightAssignment" class="sr-only">Filter class insights by assignment</label><select id="insightAssignment" disabled><option value="">All published assignments</option></select><button id="refreshInsights" class="ghost" type="button">Refresh</button></div>
+      <div><h2 id="classInsightsTitle">Where the class needs help</h2><p class="hint">Based on students’ saved answers.</p></div>
+      <div class="insight-controls"><label for="insightAssignment">Assignment</label><select id="insightAssignment" disabled><option value="">All assignments</option></select><button id="refreshInsights" class="ghost" type="button">Refresh</button></div>
     </div>
     <div id="insightNotice" role="status" aria-live="polite"></div>
     <div id="classInsights" aria-busy="true"><div class="insight-empty" role="status">Loading class insights…</div></div>

@@ -14,14 +14,18 @@
 
   function detail(p) {
     if (!p) return "";
-    const difficult = p.steps.filter(s => s.needs_help || s.recovered);
+    const difficult = p.steps.filter(s => s.needs_help);
     return `<section class="insight-detail" aria-labelledby="insightDetailTitle">
-      <div class="insight-detail-head"><div><p class="eyebrow">Problem focus</p><h3 id="insightDetailTitle" tabindex="-1">${esc(p.title || p.slug)}</h3><p class="hint">${esc(assignmentName(p))}</p></div><a class="insight-link" href="${gradeLink(p)}">Open gradebook <span aria-hidden="true">↗</span></a></div>
-      <div class="insight-detail-grid"><div><h4>Steps worth revisiting</h4>
-        ${difficult.length ? `<ol class="insight-steps">${difficult.map(s => `<li><span class="step-number">${s.number}</span><div><strong>Step ${s.number}</strong><span>${count(s.needs_help)} without a passing answer · ${s.recovered} passed after retry</span></div><span class="step-reach">${s.attempted} tried</span></li>`).join("")}</ol>` : `<p class="hint">No incorrect answers recorded for this problem.</p>`}
-        <p class="insight-footnote">Step numbers describe positions in a solution. Students may take different approaches; use their feedback to guide the review.</p>
-      </div><div><h4>Students to check in with <span class="insight-count">${p.needs_help}</span></h4>
-        ${p.follow_up.length ? `<ul class="insight-students">${p.follow_up.map(s => `<li><div class="followup-heading"><strong>${esc(s.name)}</strong><span>Step${s.steps.length === 1 ? "" : "s"} ${s.steps.join(", ")}</span></div><p>${esc(s.reason)}</p><a class="insight-link" href="${API}/teacher/assignments/${encodeURIComponent(p.assignment_id)}/transcript/${encodeURIComponent(s.student_id)}" download>Download work history <span aria-hidden="true">↓</span></a></li>`).join("")}</ul>` : `<div class="insight-clear"><strong>No outstanding misses.</strong><p>Everyone who missed a step has a recorded pass for it in their latest session.</p></div>`}
+      <div class="insight-detail-head"><div><p class="eyebrow">A closer look</p><h3 id="insightDetailTitle" tabindex="-1">${esc(p.title || p.slug)}</h3><p class="hint">${esc(assignmentName(p))}</p></div><button class="ghost" id="closeInsightDetail" type="button">Close details</button></div>
+      <div class="insight-detail-grid"><div><h4>Where are they getting stuck?</h4>
+        <p class="insight-explanation">Students write their solution one small step at a time. These steps still have incorrect answers.</p>
+        ${difficult.length ? `<ol class="insight-steps">${difficult.map(s => `<li><span class="step-number" aria-hidden="true">${s.number}</span><div><strong>Step ${s.number}</strong><span>${count(s.needs_help)} may need help</span></div></li>`).join("")}</ol>` : `<p class="insight-clear">No uncorrected answers in the saved work.</p>`}
+        ${p.recovered ? `<p class="insight-recovery">${count(p.recovered)} corrected their earlier mistakes.</p>` : ""}
+        <p class="insight-footnote">Students may use different approaches, so the same step number can cover different code.</p>
+        <a class="insight-link" href="${gradeLink(p)}">View grades for this assignment <span aria-hidden="true">↗</span></a>
+      </div><div><h4>Who may need help?</h4>
+        <p class="insight-explanation">Choose a student to see feedback you can discuss with them.</p>
+        ${p.follow_up.length ? `<ul class="insight-students">${p.follow_up.map(s => `<li><details><summary><strong>${esc(s.name)}</strong><span>Check step${s.steps.length === 1 ? "" : "s"} ${s.steps.join(", ")}</span></summary><div class="student-feedback"><p class="feedback-label">Feedback to discuss</p><p>${esc(s.reason)}</p><a class="insight-link" href="${API}/teacher/assignments/${encodeURIComponent(p.assignment_id)}/transcript/${encodeURIComponent(s.student_id)}" download>Download this student’s work <span aria-hidden="true">↓</span></a></div></details></li>`).join("")}</ul>` : `<p class="insight-clear">No students to follow up with on this problem. They may still have unfinished work.</p>`}
       </div></div>
     </section>`;
   }
@@ -30,49 +34,64 @@
     const {summary: s, problems} = snapshot;
     const tried = problems.filter(p => p.attempted);
     const visible = expanded ? tried : tried.slice(0, 6);
-    if (!tried.some(p => p.slug === selected)) selected = tried[0]?.slug;
+    if (!tried.some(p => p.slug === selected)) selected = null;
     const focus = tried.find(p => p.slug === selected);
     const top = tried[0];
-    const max = Math.max(1, ...tried.map(p => p.attempted));
-    let takeaway = "Student practice will reveal the first teaching priorities.";
-    let title = "Waiting for practice";
+    const max = Math.max(1, ...tried.map(p => p.needs_help));
+    let title = "Waiting for student work";
+    let takeaway = "Once students start submitting code, you’ll see which problems they may need help with.";
     if (top?.needs_help) {
-      title = "Start the next check-in here";
-      takeaway = `<strong>${esc(top.title || top.slug)}</strong> has ${count(top.needs_help)} with missed steps and no passing answer yet, out of ${top.attempted} who tried it.`;
+      title = `Review ${esc(top.title || top.slug)}`;
+      takeaway = `${count(top.needs_help)} may need help with this problem, the most in this selection. A short walkthrough could help them move forward.`;
     } else if (top) {
-      title = "No outstanding misses";
-      takeaway = "Students have passed every step they previously missed in their latest sessions. Unfinished and unattempted steps may still remain.";
+      title = "No uncorrected answers so far";
+      takeaway = "There are no saved mistakes still waiting to be corrected. Students may still have problems to finish or start.";
     }
-    host.innerHTML = `<div class="insight-board">
-      <div class="insight-chart"><div class="insight-chart-heading"><h3>Difficulty by problem</h3><span>Number of students</span></div>
-        <div class="insight-legend"><span><i class="needs-help"></i>No passing answer yet</span><span><i class="recovered"></i>Passed missed steps</span><span><i class="no-miss"></i>No recorded misses</span></div>
-        ${tried.length ? `<div class="insight-chart-axis" aria-hidden="true"><span>0</span><span>${max} students</span></div><div class="insight-bars">${visible.map(p => `<button class="insight-bar-row" type="button" data-insight-problem="${esc(p.slug)}" aria-pressed="${p.slug === selected}" aria-controls="insightFocus" aria-label="${esc(p.title || p.slug)}: ${p.needs_help} without a passing answer, ${p.recovered} passed missed steps, ${p.attempted} students tried. Show details."><span class="insight-bar-label"><strong>${esc(p.title || p.slug)}</strong><small>${esc(assignmentName(p))}</small></span><span class="insight-track" aria-hidden="true"><i class="needs-help" style="width:${p.needs_help / max * 100}%"></i><i class="recovered" style="width:${p.recovered / max * 100}%"></i><i class="no-miss" style="width:${(p.attempted - p.needs_help - p.recovered) / max * 100}%"></i></span><span class="insight-bar-count" aria-hidden="true"><b>${p.needs_help}</b> / ${p.attempted}<small>need follow-up</small></span></button>`).join("")}</div>
-        ${tried.length > 6 ? `<button class="ghost insight-show" id="showAllInsights" aria-expanded="${expanded}">${expanded ? "Show priority problems" : `Show all ${tried.length} problems`}</button>` : ""}
-        <p class="insight-footnote">Sorted by students needing follow-up. Each student counts once per problem. Select a row to see the steps and feedback.</p>` : `<div class="insight-empty"><span aria-hidden="true">↗</span><h3>${s.problems ? "The first attempts will tell the story." : "Publish an assignment to get started."}</h3><p>${s.problems ? "Once students submit code, this chart will show which problems need a class review. Attempts and feedback are saved as they work." : "Ready problems in published assignments appear here as students start practicing."}</p></div>`}
-      </div>
-      <aside class="insight-takeaway"><p class="eyebrow">Teaching focus</p><h3>${title}</h3><p>${takeaway}</p>${top?.needs_help ? `<p class="insight-focus-step">Most affected position <strong>Step ${top.steps[0].number}</strong><span>${count(top.steps[0].needs_help)} without a passing answer</span></p><button class="ghost" id="reviewPriority" type="button">Review this problem <span aria-hidden="true">→</span></button>` : ""}<p class="insight-footnote">Based on saved outcomes, not a prediction or a grade.</p></aside>
-      <dl class="insight-metrics"><div><dt>Students who started</dt><dd>${s.active}<span> / ${s.students} registered</span></dd></div><div><dt>Students to check in with</dt><dd>${s.needs_help}<span> across these problems</span></dd></div><div><dt>Problems attempted</dt><dd>${s.attempted_problems}<span> / ${s.problems} ready</span></dd></div></dl>
-    </div>
-    ${s.indeterminate ? `<p class="insight-system-note">${count(s.indeterminate, "submission")} could not be graded. These are excluded from difficulty counts.</p>` : ""}
-    <div id="insightFocus">${detail(focus)}</div>`;
+    host.innerHTML = `<section class="insight-takeaway" aria-labelledby="teachingSuggestion"><div><p class="eyebrow">Suggested next step</p><h3 id="teachingSuggestion">${title}</h3><p>${takeaway}</p></div>${top?.needs_help ? `<button id="reviewPriority" type="button">See who needs help <span aria-hidden="true">→</span></button>` : ""}</section>
+      <div class="insight-board"><div class="insight-chart">
+        <div class="insight-chart-heading"><h3>Which problems need a review?</h3></div>
+        <p class="insight-explanation" id="chartExplanation"><strong>“May need help” means a student submitted an incorrect answer and hasn’t corrected it yet.</strong> Longer bars mean more students may need help.</p>
+        ${tried.length ? `<p class="insight-chart-instruction">Choose a problem to see the students and the steps they’re having trouble with.</p><div class="insight-bars" role="group" aria-describedby="chartExplanation">${visible.map(p => `<button class="insight-bar-row" type="button" data-insight-problem="${esc(p.slug)}" aria-expanded="${p.slug === selected}" aria-controls="insightFocus" aria-label="${esc(p.title || p.slug)}: ${count(p.needs_help)} may need help. ${count(p.attempted)} tried this problem. Show details."><span class="insight-bar-label"><strong>${esc(p.title || p.slug)}</strong><small>${esc(assignmentName(p))}</small></span><span class="insight-track" aria-hidden="true"><i style="width:${p.needs_help / max * 100}%"></i></span><span class="insight-bar-count"><strong>${p.needs_help ? `${count(p.needs_help)} may need help` : "No uncorrected answers"}</strong><small>${count(p.attempted)} tried this problem</small></span><span class="insight-row-arrow" aria-hidden="true">→</span></button>`).join("")}</div>
+        ${tried.length > 6 ? `<button class="ghost insight-show" id="showAllInsights" aria-expanded="${expanded}">${expanded ? "Show fewer problems" : `Show all ${tried.length} problems`}</button>` : ""}` : `<div class="insight-empty"><h3>${s.problems ? "No answers to review yet" : "Publish an assignment to get started"}</h3><p>${s.problems ? "The chart will appear after students submit their first answers." : "Add and publish an assignment in the Assignments tab. Student progress will appear here."}</p>${s.problems ? "" : `<a class="insight-link" href="teacher-assignments.html">Go to Assignments →</a>`}</div>`}
+      </div></div>
+      <div id="insightFocus"${focus ? "" : " hidden"}>${detail(focus)}</div>
+      <details class="insight-method"><summary>How are these numbers worked out?</summary>
+        <ul><li><strong>May need help:</strong> a student has at least one incorrect answer they haven’t corrected yet. This is a reason to check in, not a grade.</li><li><strong>Tried this problem:</strong> a student submitted code and received a correct or incorrect result. Simply opening a problem doesn’t count.</li><li>A student counts once per problem, even if they try many times. We use their most recent attempt at each problem; restarting begins a new attempt.</li><li>Only assignments currently available to students are included. Problems with no checked answers aren’t shown in the chart.</li></ul>
+        ${s.indeterminate ? `<p>${count(s.indeterminate, "submission")} could not be checked. ${s.indeterminate === 1 ? "It is" : "They are"} left out of the chart and not counted as a student mistake.</p>` : ""}
+      </details>`;
     host.querySelectorAll("[data-insight-problem]").forEach(button => {
       button.onclick = () => select(button.dataset.insightProblem);
     });
     const show = document.getElementById("showAllInsights");
     if (show) show.onclick = () => {expanded = !expanded; render(); document.getElementById("showAllInsights").focus();};
     const review = document.getElementById("reviewPriority");
-    if (review) review.onclick = () => {
-      if (!visible.some(p => p.slug === top.slug)) expanded = false;
-      select(top.slug);
-      document.getElementById("insightDetailTitle")?.focus();
+    if (review) review.onclick = () => select(top.slug);
+    wireDetail();
+  }
+
+  function wireDetail() {
+    const close = document.getElementById("closeInsightDetail");
+    if (close) close.onclick = () => {
+      const previous = selected;
+      selected = null;
+      document.getElementById("insightFocus").hidden = true;
+      let returnFocus = document.getElementById("showAllInsights");
+      host.querySelectorAll("[data-insight-problem]").forEach(button => {
+        button.setAttribute("aria-expanded", "false");
+        if (button.dataset.insightProblem === previous) returnFocus = button;
+      });
+      returnFocus?.focus();
     };
   }
 
   function select(slug) {
     selected = slug;
-    // Keep the selected button in the DOM so keyboard focus is not lost.
-    host.querySelectorAll("[data-insight-problem]").forEach(button => button.setAttribute("aria-pressed", String(button.dataset.insightProblem === slug)));
-    document.getElementById("insightFocus").innerHTML = detail(snapshot.problems.find(p => p.slug === slug));
+    host.querySelectorAll("[data-insight-problem]").forEach(button => button.setAttribute("aria-expanded", String(button.dataset.insightProblem === slug)));
+    const focus = document.getElementById("insightFocus");
+    focus.innerHTML = detail(snapshot.problems.find(p => p.slug === slug));
+    focus.hidden = false;
+    wireDetail();
+    document.getElementById("insightDetailTitle")?.focus();
   }
 
   async function load() {
@@ -93,13 +112,13 @@
       const data = await response.json();
       if (id !== request) return;
       snapshot = data;
-      pick.innerHTML = `<option value="">All published assignments</option>` + data.assignments.map(a => `<option value="${esc(a.id)}">${esc(a.name)}</option>`).join("");
+      pick.innerHTML = `<option value="">All assignments</option>` + data.assignments.map(a => `<option value="${esc(a.id)}">${esc(a.name)}</option>`).join("");
       pick.value = filter;
       pick.disabled = !data.assignments.length;
       if (!sameScope) {selected = null; expanded = false;}
       render();
       const at = new Date(data.generated_at);
-      document.getElementById("insightUpdated").textContent = `Updated ${at.toLocaleString(undefined, {month: "short", day: "numeric", hour: "numeric", minute: "2-digit"})} · All time, latest sessions. Earlier work remains in student work histories.`;
+      document.getElementById("insightUpdated").textContent = `Updated ${at.toLocaleString(undefined, {month: "short", day: "numeric", hour: "numeric", minute: "2-digit"})}.`;
     } catch {
       if (id !== request) return;
       notice.innerHTML = `<div class="banner warn">${sameScope ? "Could not refresh. Showing the last successful update." : "Class insights are temporarily unavailable."} <button id="retryInsights" class="ghost" type="button">Try again</button></div>`;
