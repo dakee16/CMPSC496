@@ -33,6 +33,7 @@ similarity but never for equality.
 import ast
 import difflib
 import json
+import re
 import textwrap
 
 from .indent import dedent_block
@@ -375,6 +376,101 @@ def merge_plan(from_design: dict, from_chat: dict) -> dict:
     return from_design if d >= c else from_chat
 
 
+# ── redundant-structure hint: a shape check, not a proof ─────────────────
+# Words that name a CREATION, not a use - "create an empty list" is this;
+# "loop through the list" is not. Loose on purpose: a false negative here just
+# means the hint never fires, which is the same as this feature not existing.
+_CREATE = re.compile(
+    r"\b(?:create|build|make|start(?:s)? with|begin(?:s)? with|initiali[sz]e)\b"
+    r".{0,40}\b(?:empty|new)\b", re.I)
+
+# A node that ITERATES an earlier structure rather than just mentioning it -
+# "loop through the list", "for each item in the list". Deliberately excludes
+# "to"/"onto" (as in "append it TO the list"): that is WRITING into a
+# structure, the opposite of reading it back out, and the first version of
+# this fired on the write instead of the read and never found the real
+# consuming node at all.
+_READS_FROM = re.compile(r"\b(?:from|over|through|in|using|out of)\b", re.I)
+
+# How many nodes forward of the "reads from" node to look for a different
+# structure being built. THE REAL REASON THIS IS A WINDOW AND NOT "the same
+# node": tested against main/graphs.plan_graph's own extractor output and it
+# never puts "loop through the list" and "add to the dictionary" in one node -
+# the loop node names the source, and the decision to write into the target
+# sits in the branch/step node that follows it. Requiring same-node
+# co-occurrence (the first version of this) found nothing on a real plan graph
+# that has exactly the redundant shape it was written to catch.
+_WINDOW = 5
+
+
+def redundant_structure(graph: dict) -> tuple[str, str, str] | None:
+    """(source, consuming node id, target) for the first COLLECT-THEN-
+    TRANSFORM shape in a plan graph, or None.
+
+    THE SHAPE: a step CREATES a structure, a LATER node reads it (a loop over
+    it, typically), and somewhere in the handful of nodes that follow that
+    read a DIFFERENT structure gets built - with the first structure never
+    mentioned again afterward. That is "I collected something into a box and
+    the only thing I ever do with the box is immediately unpack it into a
+    second box" - the box did not have to exist.
+
+    A HEURISTIC ON WORDS AND ORDER, not on data-flow - and that limitation is
+    real, not a hedge. The plan graph has no variable-level wiring: a node's
+    label is prose a model wrote down, and an edge is CONTROL flow
+    (then/yes/no/repeat), never "this value feeds that node". So this cannot
+    PROVE the second structure was built from the first - it infers it from
+    the source being read, a different structure appearing soon after, and the
+    source going quiet afterward. It will be wrong on a plan that happens to
+    fit that shape without one structure actually feeding the other. That is
+    exactly why the only thing this produces is a HINT fed to a reviewer that
+    still does its own trace - see review_plan_graph - never a verdict on its
+    own.
+
+    Checks the FIRST place a structure is read, not every place - a source
+    read twice, once harmlessly and once redundantly, may go undetected. Node
+    order is array order, which is what the extractor emits front-to-back for
+    a plan - not independently verified as topological."""
+    from .tutor import _structures            # one-directional: tutor never
+                                               # imports from graphs
+
+    nodes = (graph or {}).get("nodes") or []
+    created: dict[str, int] = {}              # family -> index it was made at
+    for i, n in enumerate(nodes):
+        label = str(n.get("label") or "")
+        if n.get("kind") != "step" or not _CREATE.search(label):
+            continue
+        for fam in _structures(label):
+            created.setdefault(fam, i)
+
+    for source, made_at in created.items():
+        consume_at = None
+        for j in range(made_at + 1, len(nodes)):
+            n = nodes[j]
+            if n.get("kind") not in ("step", "loop"):
+                continue
+            label = str(n.get("label") or "")
+            if source in _structures(label) and _READS_FROM.search(label):
+                consume_at = j
+                break
+        if consume_at is None:
+            continue
+
+        target = target_at = None
+        for k in range(consume_at + 1, min(consume_at + 1 + _WINDOW, len(nodes))):
+            others = _structures(str(nodes[k].get("label") or "")) - {source}
+            if others:
+                target, target_at = sorted(others)[0], k
+                break
+        if target is None:
+            continue
+
+        later = " ".join(str(nodes[m].get("label") or "")
+                         for m in range(target_at + 1, len(nodes)))
+        if source not in _structures(later):
+            return source, str(nodes[consume_at].get("id") or ""), target
+    return None
+
+
 # ── comparison: what the two shapes disagree about ───────────────────────
 
 def _signature(graph: dict) -> list[str]:
@@ -505,4 +601,63 @@ if __name__ == "__main__":
     assert c["plan_only"] or c["code_only"] or c["aligned"]
     assert any("decision" in n for n in c["notes"]), c["notes"]
     assert compare(_empty("plan"), g)["notes"][0].startswith("No plan")
+    # ── redundant_structure: pinned to a REAL extractor output ───────────
+    # This is not a synthetic fixture - it is main/graphs.plan_graph's actual
+    # response on "create an empty list ... append to it ... create an empty
+    # dictionary ... loop through the list ... letter in dictionary? ...
+    # return dictionary." The first version of this detector required both
+    # structures to appear in ONE node's label and found nothing on this exact
+    # shape, because the real extractor never writes it that way - the loop
+    # node names the source alone, and the decision to write into the target
+    # sits in the branch that follows it.
+    _real_list_then_dict = {"nodes": [
+        {"id": "n0", "kind": "start", "label": "Start process"},
+        {"id": "n1", "kind": "step", "label": "Create empty list"},
+        {"id": "n2", "kind": "loop", "label": "Loop through text"},
+        {"id": "n3", "kind": "branch", "label": "Is character a letter?"},
+        {"id": "n4", "kind": "step", "label": "Append lowercased letter to list"},
+        {"id": "n5", "kind": "step", "label": "Create empty dictionary"},
+        {"id": "n6", "kind": "loop", "label": "Loop through list"},
+        {"id": "n7", "kind": "branch", "label": "Letter in dictionary?"},
+        {"id": "n8", "kind": "step", "label": "Increment letter count"},
+        {"id": "n9", "kind": "step", "label": "Set letter count to 1"},
+        {"id": "n10", "kind": "return", "label": "Return dictionary"},
+    ]}
+    assert redundant_structure(_real_list_then_dict) == ("list", "n6", "dictionary")
+
+    # A single-structure plan - also real extractor output - must not fire.
+    _real_single = {"nodes": [
+        {"id": "n0", "kind": "start", "label": "Start process"},
+        {"id": "n1", "kind": "step", "label": "Initialize dictionary"},
+        {"id": "n2", "kind": "loop", "label": "Loop through each character in text"},
+        {"id": "n3", "kind": "branch", "label": "Is character a letter?"},
+        {"id": "n4", "kind": "branch", "label": "Is letter in dictionary?"},
+        {"id": "n5", "kind": "step", "label": "Add 1 to letter count"},
+        {"id": "n6", "kind": "step", "label": "Add letter with count 1"},
+        {"id": "n7", "kind": "return", "label": "Return dictionary"},
+    ]}
+    assert redundant_structure(_real_single) is None
+
+    # A structure that IS used again after the transform must not fire - the
+    # one condition that most directly distinguishes "redundant" from "still
+    # load-bearing", and the case the docstring names as a plan the heuristic
+    # can get wrong the other direction.
+    _list_reused = {"nodes": [
+        {"id": "n0", "kind": "start", "label": "Start"},
+        {"id": "n1", "kind": "step", "label": "Create empty list"},
+        {"id": "n2", "kind": "loop", "label": "Loop through text"},
+        {"id": "n3", "kind": "step", "label": "Append letter to list"},
+        {"id": "n4", "kind": "step", "label": "Create empty dictionary"},
+        {"id": "n5", "kind": "loop", "label": "Loop through list"},
+        {"id": "n6", "kind": "step", "label": "Add letter to dictionary"},
+        {"id": "n7", "kind": "step", "label": "Sort the list for the report"},
+        {"id": "n8", "kind": "return", "label": "Return dictionary and list"},
+    ]}
+    assert redundant_structure(_list_reused) is None, \
+        "a structure mentioned again after the transform is not redundant"
+
+    # No creation at all - nothing to anchor on, never an error.
+    assert redundant_structure({"nodes": []}) is None
+    assert redundant_structure(None) is None
+
     print("graphs self-check ok")

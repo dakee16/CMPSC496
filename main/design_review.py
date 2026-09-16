@@ -58,6 +58,15 @@ Read "said, in their own words" as "put on the page, or said in the messages
 below". If all four are there and the logic actually holds, APPROVE IT.
 
 ABSOLUTE RULES:
+- NEVER REJECT FOR BEING INEFFICIENT. A plan that uses one more variable, one
+  more pass, or one more intermediate list or dict than the leanest possible
+  solution would need is NOT a defect if it still produces the correct answer.
+  Elegance, style and step count are not in the four points above and MUST
+  NEVER be why "approved" is false. Set "approved": false ONLY when your trace
+  shows the plan produces the WRONG value, or a point above was never stated
+  at all. "This works, but here is a leaner way" is a compliment for after
+  class, never a rejection - if the only thing you can say against a plan is
+  that a leaner one exists, that plan is APPROVED.
 - You do NOT know the reference solution and must never invent one. Never say
   what "the" answer is.
 - NEVER fix the design for them. Do not supply the missing step, do not name the
@@ -256,7 +265,22 @@ def _approval_stands(data: dict) -> bool:
     rather than the answer.
 
     Rejection needs no trace: there is nothing to be wrong about, and demanding
-    one would turn a model's formatting slip into an unlock."""
+    one would turn a model's formatting slip into an unlock.
+
+    DELIBERATELY KNOWS NOTHING ABOUT NECESSITY/EFFICIENCY. That used to run
+    through here too - a "necessity_check" field, required whenever
+    main/graphs.redundant_structure fired, discarding the approval if it was
+    too short. It measured engagement, and it worked for that: every trial
+    that hit it had the model correctly identify the unnecessary structure.
+    But "approved" and "necessity_check" sat in the SAME verdict the model was
+    producing, and in 3 of 16 live trials the model rejected the plan over it
+    anyway, despite the prompt saying in plain words that it must not. A rule
+    living beside a field the model can act against is still a request; only
+    removing the field from this decision's reach is a guarantee. See
+    review_plan_graph for where the necessity note moved: a SEPARATE call,
+    made only when this function has already returned True, whose own schema
+    has no field that could mean "reject" - there is no longer any channel
+    between "this could be leaner" and whether the plan passes."""
     # json_flag, not bool. THIS is the gate that unlocks the editor, and
     # bool("false") is True - a model answering in strings would have
     # opened it. Everything else here fails closed; this did not.
@@ -389,6 +413,54 @@ def render_graph_text(graph: dict | None) -> str:
     return "\n".join(out)[:MAX_GRAPH_CHARS]
 
 
+def _necessity_note(source: str, target: str) -> str:
+    """A short, OPTIONAL, friendly aside about a possibly-unnecessary
+    intermediate structure - structurally incapable of blocking anything.
+
+    Called ONLY after the real reviewer call has already set `approved`, and
+    its own JSON schema has NO field that means "reject" - there is nothing
+    here for a model to set that this function's caller ever reads as a
+    verdict. That absence is the actual guarantee. It was tried twice with the
+    concern living inside the SAME call that decides approval - once as a
+    prompt sentence, once as a required field next to "approved" - and the
+    live model rejected an otherwise-workable plan over it in both versions,
+    despite being told plainly not to (see _approval_stands's history for the
+    numbers). A rule sitting beside a field a model can act against is still
+    only a request. Removing the field is what a decoupled call actually buys:
+    there is no longer any question this call could answer that changes
+    whether the student may code.
+
+    Returns "" liberally - on any doubt, any parse failure, or a model that
+    says there is nothing worth mentioning. A missing tip costs nothing; a
+    wrong one costs the tutor's credibility on a message that is supposed to
+    read as encouragement, not correction."""
+    import json as _json
+
+    prompt = (
+        f"A student's approved plan uses a {source}, and the only later use "
+        f"of it is to build a {target}. In ONE short, warm sentence: is there "
+        f"a simpler way to reach the {target} without collecting the "
+        f"{source} first? If you are not clearly sure, say there is nothing "
+        f"worth mentioning - do not guess.\n\n"
+        'Return JSON only: {"has_tip": true/false, "note": "<one sentence, '
+        'or empty>"}')
+    try:
+        raw = chat(TUTOR_MODEL,
+                   "You suggest ONE optional simplification, warmly, as a "
+                   "postscript to a plan that has already been approved. You "
+                   "do not grade, approve, or reject anything - that already "
+                   "happened and is not yours to revisit. Return JSON only.",
+                   [{"role": "user", "content": prompt}],
+                   temperature=0.2, fmt="json")
+        data = _json.loads(raw)
+        if not json_flag(data.get("has_tip")):
+            return ""
+        note = str(data.get("note") or "").strip()
+        return note if len(note) >= 10 else ""
+    except Exception:
+        return ""
+
+
 def review_plan_graph(problem: dict, graph: dict,
                       history: list[dict] | None = None,
                       chat_log: list[dict] | None = None) -> dict:
@@ -426,6 +498,24 @@ def review_plan_graph(problem: dict, graph: dict,
                          "forum - a few minutes with a person will be faster "
                          "than another round here.",
                 "approved": False, "round": rounds}
+
+    # A STRUCTURAL HINT, computed here rather than left to be noticed. The
+    # reviewer's own hand-trace is what actually catches a redundant
+    # intermediate structure - it did, once, on a real plan this was built
+    # from - but that depends on the model happening to notice while it walks
+    # a concrete example. This makes the check happen every time a plan has
+    # the SHAPE for it, by looking at the diagram's own boxes and arrows
+    # before any model is asked to judge anything.
+    #
+    # NOT SHOWN TO THE MODEL THAT DECIDES APPROVAL, on purpose - see
+    # _approval_stands for why. This is computed here only so it can be
+    # handed to a SEPARATE, later, schema-isolated call once approval is
+    # already final - main/graphs.redundant_structure's own docstring is
+    # explicit that it cannot prove one structure fed another, only that the
+    # shape looks like it might have, which is exactly why it must never sit
+    # anywhere near the field that decides whether a student gets to code.
+    from .graphs import redundant_structure
+    hit = redundant_structure(graph)
 
     ask = ("Here is my plan for this problem. Above are the messages where I "
            "described it; below is the same plan as the page drew it:"
@@ -472,7 +562,26 @@ def review_plan_graph(problem: dict, graph: dict,
     if not text:
         text, approved = ("I could not read that plan. Add a little more detail "
                           "in the chat and try again.", False)
-    return {"reply": text, "approved": approved, "round": rounds + 1}
+
+    # THE NECESSITY NOTE, if any - a SEPARATE call, made only once approval is
+    # already locked in. Nothing this call returns can withhold approval: see
+    # _necessity_note for the schema that makes that true by construction
+    # rather than by asking nicely.
+    #
+    # Returned as its own field rather than appended to "reply" - the page
+    # turns this into an explicit choice (a popup, same shape as the restart
+    # confirmation: keep the plan as it is, or go back and try to simplify it)
+    # rather than a one-line aside buried in the approval message that most
+    # students would skim past without ever acting on.
+    redundant = None
+    if hit and approved:
+        source, _node_id, target = hit
+        note = _necessity_note(source, target)
+        if note:
+            redundant = {"source": source, "target": target, "note": note}
+
+    return {"reply": text, "approved": approved, "round": rounds + 1,
+            "redundant": redundant}
 
 
 if __name__ == "__main__":

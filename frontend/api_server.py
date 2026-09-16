@@ -253,6 +253,15 @@ class TutorChatRequest(BaseModel, extra="forbid"):
     # prompts. The field is kept only so an older page does not 422 against
     # extra="forbid"; nothing reads it.
     design_ok: bool = False
+    # Both set ONLY by the page, ONLY on the message sent right after the
+    # student clicks "Try something else" on the wrong-direction fork -
+    # offtrack_hint carries back the tutor's OWN prior diagnosis (see
+    # main/tutor.reply), never something the browser invents. Still CLIENT-
+    # SUPPLIED text reaching a system prompt, so it is bounded here and, in
+    # reply(), fenced as reported data rather than trusted as an instruction -
+    # the same posture already applied to a submitted plan's own text.
+    offtrack_hint: str = ""
+    offtrack_count: int = 0
 
 
 class PlanGraphRequest(BaseModel, extra="forbid"):
@@ -2380,7 +2389,9 @@ def tutor_chat(req: TutorChatRequest, request: Request):
     # client field is now ignored entirely (see TutorChatRequest).
     approved = _design_approved(claims["sub"], req.slug)
     try:
-        out = reply(row[0], req.messages, req.chunk_prompt, approved)
+        out = reply(row[0], req.messages, req.chunk_prompt, approved,
+                    offtrack_hint=(req.offtrack_hint or "")[:300],
+                    offtrack_count=max(0, min(req.offtrack_count, 20)))
     except Exception as e:
         # A tutor outage is not a judgement about the student.
         raise HTTPException(status_code=503, detail={

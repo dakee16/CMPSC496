@@ -224,5 +224,13 @@
     ],
     "confirmed": true,
     "slug": "not-a-real-problem-xyz"
+  },
+  "0489e0276dec700152cf9821d7283e6420dfab8862149dcbc83ff9a46f8bb86c": {
+    "entry_name": "_getPostfix",
+    "params": [
+      "txt"
+    ],
+    "confirmed": true,
+    "slug": "calculator-get-postfix"
   }
 }

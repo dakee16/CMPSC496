@@ -9,6 +9,15 @@ let sessionId = null, chunks = [], idx = 0, accepted = [], editor = null, header
 const BODY_INDENT = 4;
 // The tutor is scoped to whatever is open on the LEFT. No problem, no chat.
 let openProblem = null, chatLog = [], chatBusy = false;
+// The wrong-direction fork's own memory. `lastOfftrackReason` is the tutor's
+// OWN prior diagnosis (main/tutor.py offtrack_reason), echoed back only when
+// the student explicitly asks to try something else - never shown on screen,
+// only ever sent back to the same server that wrote it. `offtrackForkCount`
+// is how many times THIS problem has forked so far, which is what lets the
+// server narrow the question further each time instead of repeating itself.
+// Both reset at the top of historyLoading(), the one place every problem
+// open passes through before anything else happens.
+let lastOfftrackReason = "", offtrackForkCount = 0;
 // Turns sent to /tutor_chat. Comfortably inside the server's own ceiling
 // (main/tutor.MAX_TURNS * 2), so a long conversation is trimmed on the way out
 // rather than refused on arrival.
@@ -442,6 +451,31 @@ function syncPlanSubmit(){
 /* ---------- starting a problem over ---------- */
 
 let restartPrev = null;      // focus to restore when the dialog closes
+
+/* ---------- the optimize-or-continue popup ----------
+
+   Fires only when a plan is APPROVED and also has the redundant-structure
+   shape (main/graphs.redundant_structure -> main/design_review._necessity_note).
+   Never a rejection, never a warning - the plan already passed. This is a
+   genuine choice, same spirit as the wrong-direction fork above: the student
+   is told a leaner path may exist and decides for themselves whether it is
+   worth the detour, rather than having it decided for them either way. */
+let optimizePrev = null, optimizeRedundant = null;
+
+function openOptimizePopup(redundant){
+  optimizeRedundant = redundant;
+  optimizePrev = document.activeElement;
+  $("optimizeNote").textContent = redundant.note || "";
+  $("optimizeModal").hidden = false;
+  $("optimizeContinue").focus();
+}
+
+function closeOptimizePopup(){
+  $("optimizeModal").hidden = true;
+  optimizeRedundant = null;
+  if (optimizePrev && optimizePrev.focus) optimizePrev.focus();
+  optimizePrev = null;
+}
 
 function openRestart(){
   if (!openProblem) return;
@@ -1707,7 +1741,7 @@ function showFork(){
     answer. It is your call.</p>
     <button type="button" class="chip" data-say="I have thought about it - I want to
       keep going with this approach.">Keep going this way</button>
-    <button type="button" class="chip" data-say="I would like to try a different
+    <button type="button" class="chip" data-redirect="true" data-say="I would like to try a different
       approach. What should I be asking myself?">Try something else</button>`;
   wrap.addEventListener("click", e => {
     const c = e.target.closest(".chip");
@@ -1720,7 +1754,14 @@ function showFork(){
     // The student's CHOICE is what goes into the log, so the rest of the
     // conversation - and the transcript an instructor reads later - shows
     // which way they went and that it was theirs to pick.
-    sendToTutor(c.dataset.say.replace(/\s+/g, " ").trim());
+    //
+    // Only "Try something else" carries the diagnosis back. "Keep going this
+    // way" is a decision to NOT rethink - sending the hint along with it would
+    // push the tutor toward the redirect they just declined.
+    const extra = c.dataset.redirect
+      ? {offtrack_hint: lastOfftrackReason, offtrack_count: offtrackForkCount}
+      : {};
+    sendToTutor(c.dataset.say.replace(/\s+/g, " ").trim(), extra);
   });
   $("clog").appendChild(wrap);
   $("clog").scrollTop = $("clog").scrollHeight;
@@ -1844,6 +1885,7 @@ function setRestoring(on){
 }
 
 function historyLoading(){
+  lastOfftrackReason = ""; offtrackForkCount = 0;
   setRestoring(true);
   $("clog").innerHTML =
     `<div class="restoring" role="status">
@@ -1865,7 +1907,7 @@ function resetChat(title){
   // The stage introduction now provides the guidance once given by a popup.
 }
 
-async function sendToTutor(text){
+async function sendToTutor(text, extra = {}){
   // They found the chat on their own, so the tip has done its job.
   dismissCoach(true);
   if (chatBusy || planLoading || historyUnavailable) return;
@@ -1901,7 +1943,8 @@ async function sendToTutor(text){
         // So the tutor can put a release past the REAL gate before promising
         // anything. Without it the tutor says "sounds workable" and the gate
         // rejects the same plan thirty seconds later.
-        plan: planGraph
+        plan: planGraph,
+        ...extra
       })
     });
     const data = await r.json();
@@ -1915,7 +1958,11 @@ async function sendToTutor(text){
     chatLog.push({role: "assistant", content: data.reply});
     // Planning only. Once the design is approved they are implementing a plan
     // that has already been walked and passed, and the server pins this false.
-    if (data.offtrack && !tutorReleased) showFork();
+    if (data.offtrack && !tutorReleased){
+      lastOfftrackReason = data.offtrack_reason || "";
+      offtrackForkCount++;
+      showFork();
+    }
     // Not awaited: the graph grows in the background while the student reads
     // the reply. It is a picture, so it must never make the chat feel slower.
     refreshPlanGraph();
@@ -1986,6 +2033,27 @@ $("handbackBtn").addEventListener("click", downloadHandback);
 // plan row, stage 2 the coding bar), and a control that follows you across
 // stages reads as page chrome rather than as something that acts on THIS
 // problem. Both open the same confirm dialog; nothing restarts on a click.
+$("optimizeContinue").addEventListener("click", () => {
+  closeOptimizePopup();
+  openGate();
+});
+$("optimizeTry").addEventListener("click", () => {
+  const r = optimizeRedundant;
+  closeOptimizePopup();
+  // Sent as the STUDENT'S OWN message, same convention the wrong-direction
+  // fork above uses (sendToTutor) - it is a first-person request to reconsider,
+  // never an instruction telling them what to remove. The tutor still owes
+  // them a QUESTION back, not the fix - nothing about this route bypasses
+  // that; it only decides to keep them in the planning stage for one more
+  // round instead of unlocking code immediately.
+  //
+  // Never destructive either way - the plan already passed, so there is no
+  // "undo" needed the way restart's confirm exists to prevent one.
+  if (r) sendToTutor(
+    `I'd like to see if I can simplify my plan - do I really need to collect `
+    + `everything into ${r.source} first, or can I build ${r.target} `
+    + `directly instead?`);
+});
 document.querySelectorAll("[data-restart]").forEach(b => b.addEventListener("click", openRestart));
 $("restartNo").addEventListener("click", closeRestart);
 $("restartYes").addEventListener("click", doRestart);
@@ -1996,6 +2064,15 @@ $("restartModal").addEventListener("click", e => {
 });
 addEventListener("keydown", e => {
   if (e.key === "Escape" && !$("restartModal").hidden) closeRestart();
+  // Dismissing this one defaults to "continue" - the safe, non-destructive
+  // side. Nothing is lost either way; an ambiguous dismiss should not be the
+  // thing that decides to fork them into another chat message instead.
+  if (e.key === "Escape" && !$("optimizeModal").hidden){
+    closeOptimizePopup(); openGate();
+  }
+});
+$("optimizeModal").addEventListener("click", e => {
+  if (e.target === $("optimizeModal")){ closeOptimizePopup(); openGate(); }
 });
 
 $("cform").addEventListener("submit", e => { e.preventDefault(); submitChat(); });
