@@ -152,7 +152,15 @@ async function renderFileResource(){
     if (!response.ok) throw new Error(String(response.status));
     const data = await response.json();
     if (stale()) return;
-    const written = (data.written || []).length, left = (data.remaining || []).length;
+    // `going` is the half-finished problems - the route lists them separately
+    // from `written` so a partly-answered method is not counted as done. It was
+    // read below without ever being declared, which threw a ReferenceError on
+    // EVERY render; the catch below could not tell that apart from the fetch
+    // failing, so a file that had arrived intact still reported "could not be
+    // loaded just now" and the Full file button never worked at all.
+    const written = (data.written || []).length,
+          going = (data.in_progress || []).length,
+          left = (data.remaining || []).length;
     box.replaceChildren();
     const note = document.createElement("p");
     note.className = "fileview-note";
@@ -240,6 +248,11 @@ function closeResource(restoreFocus = true){
 
 function resetWorkspace(){
   planLoading=false;planUpdating=false;historyUnavailable=false;resumeStage=null;
+  // A NEW workspace has nothing in flight, whatever the old one was waiting on.
+  // The request handlers now decline to touch state after the epoch moves, so
+  // without this the flag an abandoned request would have cleared stays true
+  // and the new problem's chat is locked with no way back.
+  chatBusy=false;
   $("planUpload").open=false;
   workspaceEpoch++;
   closeResource(false);

@@ -94,14 +94,42 @@ def flat_with_body(problem: dict, body: str | None) -> str:
     if not funcs or not funcs[-1].body:
         return src.rstrip()
     fn, lines = funcs[-1], src.splitlines()      # helpers first, entry point last
-    start = fn.body[0].lineno - 1
     # The docstring is the problem statement, not the implementation: keep it.
+    doc = None
+    target = fn.body[0]
     if (isinstance(fn.body[0], ast.Expr)
             and isinstance(fn.body[0].value, ast.Constant)
             and isinstance(fn.body[0].value.value, str) and len(fn.body) > 1):
-        start = fn.body[1].lineno - 1
+        doc, target = fn.body[0], fn.body[1]
+    start = target.lineno - 1
     if not 0 <= start < len(lines):
         return src.rstrip()
+
+    # DOES THE BODY SHARE ITS LINE WITH THE SIGNATURE? `def double(n): return
+    # n * 2` is one line, so slicing whole lines from the first body statement
+    # takes the `def` with it: the generated exercise was a bare stub with no
+    # function in it at all, and the student lost the name, the parameters and
+    # the contract rather than being handed an empty body to fill. The same cut
+    # lands mid-signature when the parameters wrap and the body follows the
+    # closing bracket. Everything before the statement on that line is kept and
+    # the replacement is opened on a line of its own - which is also the only
+    # way the result parses, since a def with an inline body cannot then be
+    # followed by an indented block.
+    head = lines[start][:target.col_offset]
+    if head.strip():
+        indent = 4                              # a flat function's own body
+        if doc is not None and doc.lineno - 1 == start:
+            # Keep the statement, move it down: `def f(): """d"""; x` has to
+            # become a def line, then the docstring, then the body.
+            signature = lines[start][:doc.col_offset].rstrip()
+            kept = [_indent(lines[start][doc.col_offset:doc.end_col_offset], indent)]
+        else:
+            signature = head.rstrip().rstrip(";").rstrip()
+            kept = []
+        filling = _indent(body if (body or "").strip() else STUB, indent).splitlines()
+        return "\n".join(lines[:start] + [signature] + kept + filling
+                         + lines[fn.end_lineno:]).rstrip()
+
     indent = len(lines[start]) - len(lines[start].lstrip())
     filling = _indent(body if (body or "").strip() else STUB, indent).splitlines()
     return "\n".join(lines[:start] + filling + lines[fn.end_lineno:]).rstrip()
@@ -539,6 +567,33 @@ def double_it(n):
     compile(starter, "<starter>", "exec")
     assert starter.count("    " + STUB_MARK) == 3, starter
     assert "none yet" in starter
+
+    # ── a body on the def's own line ──────────────────────────────────────
+    # `def double(n): return n * 2` is valid Python a teacher may well upload,
+    # and replacing the body by whole lines took the signature with it: the
+    # exercise came out as a bare stub with no function in it, so the student
+    # lost the name, the parameters and the contract they were meant to write
+    # against. The wrapped-signature case cuts in the same place, mid-`def`.
+    for _src, _want in (
+            ('def double(n): """Return n doubled."""; return n * 2',
+             'def double(n):'),
+            ('def double(n): return n * 2', 'def double(n):'),
+            ('def add(a,\n        b): return a + b', 'def add(a,'),
+            ('def stub(n): """Just a docstring."""', 'def stub(n):'),
+            ('@staticmethod\ndef double(n): return n * 2', '@staticmethod')):
+        _blanked = flat_with_body({"solution": _src}, None)
+        assert _want in _blanked, (_src, _blanked)
+        assert STUB_MARK in _blanked, (_src, _blanked)
+        # It has to RUN, which is the whole point of handing back a file.
+        compile(_blanked, "<oneline>", "exec")
+    # The docstring is the problem statement and survives the move down.
+    assert '"""Return n doubled."""' in flat_with_body(
+        {"solution": 'def double(n): """Return n doubled."""; return n * 2'}, None)
+    # ...and an accepted answer still lands under its own def on this path.
+    _filled = flat_with_body({"solution": "def double(n): return n * 2"},
+                             "return n + n")
+    assert "def double(n):" in _filled and "\n    return n + n" in _filled, _filled
+    compile(_filled, "<oneline-filled>", "exec")
 
     print("handback.py blank-file self-check OK")
 

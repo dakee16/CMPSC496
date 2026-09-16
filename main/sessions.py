@@ -382,6 +382,44 @@ def stored_result(session_id: str, submission_id: str,
     return None
 
 
+def stored_result(session_id: str, submission_id: str,
+                  db_path: str | None = None) -> dict | None:
+    """The result already recorded for this submission, or None.
+
+    READ-ONLY, and it reserves nothing - begin_submission() is still what
+    claims a row for a submission that has never been graded. This exists
+    because the answer to "have I already graded this?" has to be available
+    BEFORE the rules written for new submissions run.
+
+    Those rules are load_session() refusing a completed session and the
+    stale-index check, both correct for new work and both wrong for a replay:
+    the first successful grade is what completed the session and moved the
+    index, so a student whose browser lost that response got 409
+    session_completed or 409 stale_index on every retry, with their own passing
+    verdict sitting in this table unreachable. An answer that was graded once
+    must be recoverable by asking for it again with the same id.
+
+    Not an authorisation boundary - the caller checks ownership first."""
+    try:
+        conn = _connect(db_path)
+    except Exception:
+        return None
+    try:
+        r = conn.execute("SELECT result_json FROM submissions WHERE"
+                         " session_id=? AND submission_id=?",
+                         (session_id, submission_id)).fetchone()
+        if r is None or not r["result_json"]:
+            return None          # never seen, or claimed and still in flight
+        return {**json.loads(r["result_json"]), "idempotent_replay": True}
+    except Exception:
+        # A replay that cannot be read is not an error the student can act on;
+        # fall through and let the ordinary path speak.
+        return None
+    finally:
+        try: conn.close()
+        except Exception: pass
+
+
 def begin_submission(session_id: str, submission_id: str,
                      db_path: str | None = None) -> tuple[dict | None, dict]:
     """Reserve a submission. Returns (stored_result_or_None, session).
@@ -749,5 +787,28 @@ if __name__ == "__main__":
     assert abandon_active(WHO, "invert", db_path=db) == 0
     assert abandon_active("student-2", "invert", db_path=db) == 0
     assert abandon_active(None, "invert", db_path=db) == 0
+
+    # ── a graded submission stays recoverable ─────────────────────────────
+    # The response can be lost on the way back - a dropped connection, a closed
+    # laptop. Retrying with the SAME id has to return the verdict that was
+    # already reached, INCLUDING after the final chunk completed the session,
+    # because completing it is exactly what made the ordinary route refuse.
+    replayable = create_session(prob, decomp, "hash-replay", student_id=WHO, db_path=db)["session_id"]
+    _prior, _s = begin_submission(replayable, "sub-A", db_path=db)
+    assert _prior is None
+    commit_outcome(replayable, "sub-A", _s["revision"],
+                   {"verdict": "correct", "tier": "execution-reference",
+                    "deterministic": True, "reason": "ok", "divergent": False},
+                   accept_code="counts = {}", provenance="student",
+                   consume_attempt=True, db_path=db)
+    _replay = stored_result(replayable, "sub-A", db_path=db)
+    assert _replay and _replay["verdict"] == "correct", _replay
+    assert _replay["idempotent_replay"] is True, "a replay must say so"
+    # Never seen, and claimed-but-not-yet-graded, are both "no result" - a
+    # reservation must not read as a verdict or the twin would be answered
+    # with a result nobody produced.
+    assert stored_result(replayable, "sub-never", db_path=db) is None
+    begin_submission(replayable, "sub-B", db_path=db)
+    assert stored_result(replayable, "sub-B", db_path=db) is None
 
     print("sessions.py resume self-check OK")

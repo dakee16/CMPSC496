@@ -70,6 +70,11 @@ class _Builder:
         self.nodes: list[dict] = []
         self.edges: list[dict] = []
         self._n = 0
+        # One entry per loop currently being walked: its head node, and the
+        # `break` nodes found inside it. A break does not end the function, it
+        # ends the LOOP, so its node has to be handed to whatever follows that
+        # loop; a continue goes back to the head. See the For/While arms below.
+        self._loops: list[tuple[str, list[str]]] = []
 
     def add(self, kind: str, label: str, line: int | None = None) -> str:
         nid = f"n{self._n}"
@@ -105,16 +110,20 @@ class _Builder:
                 nid = self.add("loop", f"for {_src(st.target)} in "
                                        f"{_src(st.iter)}", st.lineno)
                 self.link(prevs, nid)
+                self._loops.append((nid, []))
                 body_out = self.walk(st.body, [nid])
                 self.link(body_out, nid, "repeat")   # the back edge
-                prevs = [nid]                        # leave when it is exhausted
+                # Exhausted OR broken out of: both leave the loop, and a break
+                # that is not carried here reads as a dead end in the picture.
+                prevs = [nid] + self._loops.pop()[1]
 
             elif isinstance(st, ast.While):
                 nid = self.add("loop", f"while {_src(st.test)}", st.lineno)
                 self.link(prevs, nid)
+                self._loops.append((nid, []))
                 body_out = self.walk(st.body, [nid])
                 self.link(body_out, nid, "repeat")
-                prevs = [nid]
+                prevs = [nid] + self._loops.pop()[1]
 
             elif isinstance(st, ast.Return):
                 nid = self.add("return",
@@ -126,6 +135,16 @@ class _Builder:
             elif isinstance(st, (ast.Break, ast.Continue, ast.Raise)):
                 nid = self.add("step", _src(st), st.lineno)
                 self.link(prevs, nid)
+                # All three end the STATEMENT LIST, but only a raise ends the
+                # flow. `continue` goes back to the loop head and `break` goes
+                # past the loop; drawn as dead ends they made a perfectly
+                # ordinary loop look like it stopped in the middle.
+                if self._loops:
+                    head, breaks = self._loops[-1]
+                    if isinstance(st, ast.Break):
+                        breaks.append(nid)
+                    elif isinstance(st, ast.Continue):
+                        self.link([nid], head, "repeat")
                 return []
 
             elif isinstance(st, (ast.FunctionDef, ast.AsyncFunctionDef,
@@ -136,7 +155,32 @@ class _Builder:
                 self.link(prevs, nid)
                 prevs = [nid]
 
-            elif isinstance(st, (ast.Try, ast.With, ast.AsyncWith)):
+            elif isinstance(st, ast.Try):
+                # THE HANDLER IS THE POINT. Walking only st.body drew "try" and
+                # whatever it guards and stopped: `except ValueError: return
+                # None` vanished, so the picture of a function whose whole job
+                # is rejecting bad input showed no rejection in it, and the
+                # student's own explanation of their code was missing the
+                # branch they most needed to see.
+                nid = self.add("step", "try", st.lineno)
+                self.link(prevs, nid)
+                outs = self.walk(st.body, [nid])
+                if st.orelse:                        # ran only if nothing raised
+                    outs = self.walk(st.orelse, outs or [nid])
+                for handler in st.handlers:
+                    caught = _src(handler.type) if handler.type else ""
+                    hid = self.add("branch",
+                                   f"except {caught}".strip(), handler.lineno)
+                    # From the TRY, not from the end of its body: the raise can
+                    # come from any statement inside, which is the whole reason
+                    # the handler is a branch rather than a next step.
+                    self.link([nid], hid, "fails")
+                    outs = outs + self.walk(handler.body, [hid])
+                if st.finalbody:                     # runs on every path out
+                    outs = self.walk(st.finalbody, outs or [nid])
+                prevs = outs or [nid]
+
+            elif isinstance(st, (ast.With, ast.AsyncWith)):
                 nid = self.add("step", type(st).__name__.lower(), st.lineno)
                 self.link(prevs, nid)
                 prevs = self.walk(st.body, [nid]) or [nid]
@@ -659,5 +703,42 @@ if __name__ == "__main__":
     # No creation at all - nothing to anchor on, never an error.
     assert redundant_structure({"nodes": []}) is None
     assert redundant_structure(None) is None
+
+    # ── control flow the walker used to drop ──────────────────────────────
+    # The graph is shown to the student as "what your code does", so a path
+    # missing from it is a path they are told they did not write. Walking only
+    # a try's body lost the handler entirely - the whole answer to "what
+    # happens when this input is not a number" - and break/continue were drawn
+    # as dead ends rather than as the loop exits they are.
+    _flow = code_graph(
+        "def f(words):\n"
+        "    out = ''\n"
+        "    for w in words:\n"
+        "        if w == '-':\n"
+        "            continue\n"
+        "        try:\n"
+        "            float(w)\n"
+        "        except ValueError:\n"
+        "            return None\n"
+        "        if w == 'stop':\n"
+        "            break\n"
+        "        out += w\n"
+        "    return out\n")
+    _labels = {n["id"]: n["label"] for n in _flow["nodes"]}
+    _by_label = {v: k for k, v in _labels.items()}
+    assert "except ValueError" in _by_label, _labels
+    # The handler hangs off the TRY, not off the end of its body: the raise can
+    # come from anywhere inside.
+    _try, _exc = _by_label["try"], _by_label["except ValueError"]
+    assert any(e["src"] == _try and e["dst"] == _exc for e in _flow["edges"])
+    # ...and what the handler does is in the picture too.
+    assert any(e["src"] == _exc and _labels[e["dst"]] == "return None"
+               for e in _flow["edges"]), "the handler's own body is missing"
+    # continue goes back to the loop head; break goes past it. Neither is an end.
+    _loop = _by_label["for w in words"]
+    assert any(e["src"] == _by_label["continue"] and e["dst"] == _loop
+               for e in _flow["edges"]), "continue must return to the loop"
+    assert any(e["src"] == _by_label["break"] and _labels[e["dst"]] == "return out"
+               for e in _flow["edges"]), "break must leave the loop, not stop"
 
     print("graphs self-check ok")

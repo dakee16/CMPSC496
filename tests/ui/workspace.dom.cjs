@@ -210,7 +210,15 @@ const graph = {nodes:[{id:'n0',kind:'start',label:'Read records'},{id:'n1',kind:
     assert.equal(doc.querySelector('#workspaceStatus').textContent,'');
     history={found:true,design_approved:true,plan:graph,code:graph,comparison:{similarity:1},messages:[{role:'user',content:'Earlier work'}]};
     await window.start(problem);await tick();
-    assert.deepEqual(visibleStage(),['stageRead']);
+    // AN APPROVED SESSION REOPENS WHERE THE WORK IS. This asserted 'stageRead'
+    // and was left behind when resume started restoring the coding stage: a
+    // student who had already passed the gate was being put back on the
+    // planning screen to re-find their own place. The gate is passed, so Code
+    // is the honest landing - keeping the old expectation would mean changing
+    // correct behaviour to satisfy a test rather than the other way round.
+    assert.deepEqual(visibleStage(),['stageCode']);
+    assert.equal(doc.querySelector('#tabCode').getAttribute('aria-disabled'),'false',
+      'a restored approval must leave the editor open');
     assert.equal(doc.querySelector('#tabReflect').getAttribute('aria-disabled'),'false');
     assert(doc.querySelector('#reflectSummary').textContent.includes('previous attempt'));
     assert.equal(doc.querySelector('#reflectionCodeDetails').hidden,true,'Historical graphs cannot claim a new completed function');

@@ -337,11 +337,17 @@ async function uploadDesign(){
   fd.append("chat", JSON.stringify(chatLog));
   fd.append("design", designFileRef);
 
+  // A verdict on THIS problem's design. Approval unlocks the coding stage, so
+  // a review that lands after the student opened something else would open the
+  // gate on a problem whose plan nobody has read - see sendToTutor for the
+  // same guard on the chat path.
+  const reviewing = workspaceEpoch;
   setBusy(btn, true, "Reviewing…");
   designMsg("info", "Reading your design. This takes a few seconds.");
   try {
     const r = await fetch(`${API}/design_review`, {method: "POST", body: fd});
     const data = await r.json();
+    if (reviewing !== workspaceEpoch) return;
     if (!r.ok){
       const m = (data.detail && data.detail.message)
         || "Could not review that design. Try again.";
@@ -368,11 +374,14 @@ async function uploadDesign(){
     }
     refreshPlanGraph();
   } catch (e) {
+    if (reviewing !== workspaceEpoch) return;
     designMsg("bad", "Could not reach the reviewer. Check your connection and "
       + "try again - nothing was submitted.");
   } finally {
-    setBusy(btn, false);
-    if (!designFileRef) disable(btn, "Choose a PNG, JPEG or PDF first.");
+    if (reviewing === workspaceEpoch){
+      setBusy(btn, false);
+      if (!designFileRef) disable(btn, "Choose a PNG, JPEG or PDF first.");
+    }
   }
 }
 
@@ -383,6 +392,10 @@ async function uploadDesign(){
    What it skips is the screenshot round trip. */
 async function submitPlanGraph(){
   const btn = $("planSubmitBtn");
+  // Same guard, same reason as uploadDesign: this one ends in openGate(), and
+  // an approval applied to whatever happens to be open is an unlocked editor
+  // on a problem that was never planned.
+  const reviewing = workspaceEpoch;
   setBusy(btn, true, "Reviewing…");
   designMsg("info", "Reading your plan. This takes a few seconds.");
   try {
@@ -404,6 +417,7 @@ async function submitPlanGraph(){
                             history: designLog, messages: chatLog})
     });
     const data = await r.json();
+    if (reviewing !== workspaceEpoch) return;
     if (!r.ok){
       return designMsg("bad", (data.detail && data.detail.message)
         || "Could not review that plan. Try again.");
@@ -415,12 +429,21 @@ async function submitPlanGraph(){
     bubble("me", "Submitted my plan from the chat");
     bubble("bot", data.reply);
     designMsg(data.approved ? "ok" : "warn", data.reply);
-    if (data.approved) openGate();          // freezes the plan as it stands
+    // APPROVED, and the reviewer also spotted the collect-then-transform shape:
+    // offer the choice instead of unlocking straight through. openOptimizePopup
+    // was written, styled and given both its handlers, and then nothing ever
+    // called it - the reviewer has been returning `redundant` to a page that
+    // dropped it on the floor, so the popup could not fire for anyone. Every
+    // way out of the dialog still reaches openGate() except "Try something
+    // simpler", which deliberately keeps them in planning for one more round.
+    if (data.approved) data.redundant ? openOptimizePopup(data.redundant)
+                                      : openGate();   // freezes the plan as it stands
   } catch (e) {
+    if (reviewing !== workspaceEpoch) return;
     designMsg("bad", "Could not reach the reviewer. Check your connection and "
       + "try again - nothing was submitted.");
   } finally {
-    setBusy(btn, false);
+    if (reviewing === workspaceEpoch) setBusy(btn, false);
   }
 }
 
@@ -1515,6 +1538,13 @@ $("submit").onclick = async () => {
   const code = editor ? editor.getValue() : "";
   if (!code.trim()) return show("warn", "Write something first.");
   const btn = $("submit");
+  // THE GRADE BELONGS TO THE PROBLEM THAT WAS SUBMITTED. Everything below
+  // writes the answer into accepted[idx] and moves idx on, and both of those
+  // are the OPEN problem's - so a verdict arriving after the student switched
+  // filed one problem's code as another's accepted work and advanced its step.
+  // sessionId travels in the request, so the server was never confused; only
+  // the page was, which is exactly the part the student is reading.
+  const grading = workspaceEpoch;
   setBusy(btn, true, "Grading…");
   // STABLE ACROSS RETRIES, which is the whole point of the id. It carried
   // Date.now(), so every press minted a fresh one: a submission that reached
@@ -1533,6 +1563,7 @@ $("submit").onclick = async () => {
                             student_code: code, expected_index: idx})
     });
   } catch {
+    if (grading !== workspaceEpoch) return;
     setBusy(btn, false);
     // NOT "your attempt was not used" - we do not know that. The request may
     // have arrived and been graded with the answer lost on the way back. What
@@ -1542,6 +1573,7 @@ $("submit").onclick = async () => {
     return show("bad", "Could not reach the server. Press Submit again - the "
                      + "same answer will not be counted twice.");
   }
+  if (grading !== workspaceEpoch) return;   // a different problem is open now
   setBusy(btn, false);
 
   if (!r.ok) {
@@ -1551,6 +1583,7 @@ $("submit").onclick = async () => {
   }
 
   const res = await r.json();
+  if (grading !== workspaceEpoch) return;
 
   // Covers the OpenAI outage case. The server guarantees no attempt was spent.
   if (res.verdict === "indeterminate") return show("warn", res.reason);
@@ -1915,6 +1948,13 @@ async function sendToTutor(text, extra = {}){
     bubble("bot", "Open a problem on the left first - I can only help with the one you are working on.");
     return;
   }
+  // WHICH WORKSPACE ASKED. A tutor reply can arrive after the student has
+  // moved to another problem, and everything below writes into whatever is
+  // open NOW: the reply was appended to the new problem's chatLog, the
+  // wrong-direction fork opened over it, and the busy flag it cleared was the
+  // new request's. The answer to a question about problem A is not an answer
+  // about problem B, so once the epoch moves this reply has nowhere to go.
+  const asked = workspaceEpoch;
   chatBusy = true;
   hideChips();
   // Whatever they type next IS their answer to the fork, so a stale pair of
@@ -1948,6 +1988,7 @@ async function sendToTutor(text, extra = {}){
       })
     });
     const data = await r.json();
+    if (asked !== workspaceEpoch) return;   // another problem is open now
     if (!r.ok){
       thinking.textContent = (data.detail && data.detail.message)
         || "The tutor is unavailable right now. Try again shortly.";
@@ -1981,12 +2022,19 @@ async function sendToTutor(text, extra = {}){
                   + "or upload your own drawing as a PNG, JPEG, or PDF.");
     }
   } catch (e) {
+    if (asked !== workspaceEpoch) return;
     thinking.textContent = "Could not reach the tutor. Check your connection.";
     chatLog.pop();
   } finally {
-    chatBusy = false;
-    // Do not steal focus if the student started coding while the tutor replied.
-    if (workspaceTutorVisible && $("cform").contains(document.activeElement)) $("cinput").focus({preventScroll:true});
+    // Cleanup is state too: clearing chatBusy here after the student moved on
+    // would free a request belonging to the workspace now open, and let a
+    // second message go out under it. resetWorkspace() clears the flag for the
+    // new workspace, so nothing is left stuck either way.
+    if (asked === workspaceEpoch){
+      chatBusy = false;
+      // Do not steal focus if the student started coding while the tutor replied.
+      if (workspaceTutorVisible && $("cform").contains(document.activeElement)) $("cinput").focus({preventScroll:true});
+    }
   }
 }
 
@@ -2061,6 +2109,35 @@ $("restartYes").addEventListener("click", doRestart);
 // get out of and hard to confirm by accident.
 $("restartModal").addEventListener("click", e => {
   if (e.target === $("restartModal")) closeRestart();
+});
+/* KEEP TAB INSIDE AN OPEN DIALOG.
+
+   Both of these say aria-modal="true", and neither behaved like it: they are
+   plain divs rather than <dialog>.showModal(), so the browser traps nothing and
+   two presses of Tab walked a keyboard user out of the dialog and into the page
+   behind it - which is still sitting there, still clickable, with a modal open
+   over it and the buttons that dismiss it now unreachable in the tab order.
+   Escape already worked; this is the other half. */
+function openModal(){
+  return [$("restartModal"), $("optimizeModal")].find(m => m && !m.hidden) || null;
+}
+addEventListener("keydown", e => {
+  if (e.key !== "Tab") return;
+  const modal = openModal();
+  if (!modal) return;
+  const stops = [...modal.querySelectorAll(
+    'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')]
+    .filter(el => !el.disabled);
+  if (!stops.length) return;
+  const first = stops[0], last = stops[stops.length - 1];
+  const inside = modal.contains(document.activeElement);
+  // Wrapping at the ends is the trap; pulling focus back in when it is already
+  // outside covers the case where something else moved it while this was open.
+  if (e.shiftKey ? (!inside || document.activeElement === first)
+                 : (!inside || document.activeElement === last)){
+    e.preventDefault();
+    (e.shiftKey ? last : first).focus();
+  }
 });
 addEventListener("keydown", e => {
   if (e.key === "Escape" && !$("restartModal").hidden) closeRestart();

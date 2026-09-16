@@ -654,6 +654,19 @@ def grade_chunk_route(req: ChunkRequest, request: Request):
         raise HTTPException(status_code=403, detail={
             "reason_code": "design_not_approved",
             "message": "Submit your plan for review before writing code."})
+    # ALREADY GRADED? Answer from the record before any rule written for NEW
+    # work runs. Both of the rules below are right for a new submission and
+    # wrong for a replay: the first successful grade is itself what completed
+    # the session and moved the index, so a student whose browser dropped that
+    # response was told "session completed" or "your page is out of date" on
+    # every retry, while the passing verdict they were retrying FOR sat in the
+    # submissions table. Ownership is already established above, so this can
+    # only ever hand back the caller's own result.
+    from main.sessions import stored_result
+    replay = stored_result(req.session_id, req.submission_id)
+    if replay is not None:
+        return replay
+
     try:
         session = load_session(req.session_id)
     except SessionError as e:
