@@ -376,7 +376,22 @@ function mountHeader({active = "", wide = false, variant = "", crumbs = null} = 
   const closeMenu = () => { whoMenu.hidden = true; whoBtn.setAttribute('aria-expanded','false'); };
   whoBtn.onclick = () => { const open = whoMenu.hidden; whoMenu.hidden = !open; whoBtn.setAttribute('aria-expanded',String(open)); };
   document.addEventListener('click',e => { if(!acct.contains(e.target))closeMenu(); },{signal});
-  acct.addEventListener('focusout',() => queueMicrotask(() => {if(!acct.contains(document.activeElement))closeMenu();}),{signal});
+  /* A mousedown on a menu item blurs whoBtn (this fires) before the browser
+     hands focus to the item being pressed - document.activeElement sits on
+     <body> for that one tick. Checking it via queueMicrotask caught exactly
+     that gap and read it as "focus left the widget", closing the menu while
+     the mouse button was still down. The menu item's own button then vanished
+     out from under the pointer, so mouseup landed on whatever page content
+     was underneath instead - Settings and Sign out silently did nothing.
+     e.relatedTarget is set by the browser AT BLUR TIME to where focus is
+     headed, so it already names the menu item and needs no waiting. Kept as
+     a guard rather than a replacement: a focusout with no relatedTarget (an
+     old browser, or focus lost to a non-focusable click) still falls back to
+     the microtask check exactly as before. */
+  acct.addEventListener('focusout',e => {
+    if(acct.contains(e.relatedTarget))return;
+    queueMicrotask(() => {if(!acct.contains(document.activeElement))closeMenu();});
+  },{signal});
   acct.addEventListener('keydown',e => {
     if(e.key !== 'ArrowDown' && e.key !== 'ArrowUp')return;
     e.preventDefault(); whoMenu.hidden=false; whoBtn.setAttribute('aria-expanded','true');
