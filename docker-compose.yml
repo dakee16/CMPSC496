@@ -21,6 +21,7 @@ services:
       MICROTUTOR_SESSION_DB: /data/grading_sessions.sqlite3
       MICROTUTOR_ORACLE_CACHE: /data/oracles/tests_cache.json
       MICROTUTOR_TRANSCRIPTS: /data/transcripts.json
+      MICROTUTOR_CHUNK_POOL: /data/chunk_pool.json
       PORT: "8000"
     volumes:
       - microtutor-data:/data

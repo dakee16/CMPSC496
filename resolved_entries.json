@@ -232,5 +232,13 @@
     ],
     "confirmed": true,
     "slug": "calculator-get-postfix"
+  },
+  "7a0da3afc3eebbba9e622714f833caa1e08492568d4e9edc5904a077f6f1749e": {
+    "entry_name": "total",
+    "params": [
+      "values"
+    ],
+    "confirmed": true,
+    "slug": "total"
   }
 }

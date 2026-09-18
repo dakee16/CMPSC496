@@ -52,7 +52,9 @@ def _sb():
     return _SB
 
 
-_CHUNK_POOL_PATH = os.path.join(os.path.dirname(__file__), "chunk_pool.json")
+_CHUNK_POOL_PATH = os.environ.get(
+    "MICROTUTOR_CHUNK_POOL",
+    os.path.join(os.path.dirname(__file__), "chunk_pool.json"))
 _POOL_TARGET = 5          # stop generating fresh once a problem has this many
 _FRESH_PROBABILITY = 0.4  # chance to generate fresh even when pool has entries
 

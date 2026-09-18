@@ -137,16 +137,27 @@ async function renderFileResource(){
   const box = document.createElement("div");
   box.className = "fileview";
   $("resourceBody").append(box);
+  // The drawer can be closed, or the whole problem swapped, while this is in
+  // flight. Either one makes the answer to this request the wrong thing to draw.
+  const epoch = workspaceEpoch;
+  await drawFileInto(box, () =>
+    epoch !== workspaceEpoch || resourceKind !== "file" || !box.isConnected);
+}
+
+/* The file, drawn into whichever surface asked for it.
+
+   TWO surfaces do now - the resource drawer and the "Full file" disclosure that
+   sits beside the question in the coding stage - and they must not become two
+   slightly different renderers of the same bytes. `stale` is how each one says
+   "the thing I was drawing for has gone away"; it is asked AFTER the await,
+   because that is the only moment at which the answer can be the wrong one. */
+async function drawFileInto(box, stale){
   const id = typeof openAssign !== "undefined" && openAssign ? openAssign.id : null;
   if (!id){
     box.innerHTML = '<p class="reference-empty">Open a problem from an assignment to see its file.</p>';
     return;
   }
   box.innerHTML = '<p class="reference-empty" role="status">Building your copy of the file…</p>';
-  // The drawer can be closed, or the whole problem swapped, while this is in
-  // flight. Either one makes the answer to this request the wrong thing to draw.
-  const epoch = workspaceEpoch;
-  const stale = () => epoch !== workspaceEpoch || resourceKind !== "file" || !box.isConnected;
   try {
     const response = await fetch(`${API}/assignments/${encodeURIComponent(id)}/file`, {cache: "reload"});
     if (!response.ok) throw new Error(String(response.status));
@@ -177,6 +188,24 @@ async function renderFileResource(){
     if (stale()) return;
     box.innerHTML = '<p class="reference-empty">Your file could not be loaded just now. Try opening it again in a moment.</p>';
   }
+}
+
+/* "Full file" beside the question, opening the same way the question does.
+
+   A step prompt is a keyhole, and the file is the rest of the room - so it
+   belongs where the student is already looking for context, not behind a button
+   in the toolbar under the editor. Re-fetched on every open rather than kept:
+   it changes the moment a step is accepted, and a stale copy of your own work
+   is the one thing worse than waiting a second for it. */
+function initInlineFile(){
+  const card = $("fileDetails");
+  if (!card) return;
+  card.addEventListener("toggle", () => {
+    const box = $("fileInline");
+    if (!card.open){ box.replaceChildren(); return; }
+    const epoch = workspaceEpoch;
+    drawFileInto(box, () => epoch !== workspaceEpoch || !card.open || !box.isConnected);
+  });
 }
 
 // The question travels with the stage, so the only thing still worth pulling
@@ -392,6 +421,7 @@ function initWorkspace(){
     }
     closeResource();
   });
+  initInlineFile();
   resetWorkspace();
 }
 

@@ -663,7 +663,27 @@ def _calibrate(problem, header, trusted_prefix, alias_lines, tail, tests, entry)
 _JUDGE_SYSTEM = (
     "You judge ONE step of a student's partial solution. Return STRICT JSON: "
     '{"correct": true/false, "reason": "<one sentence for the student>", '
+    '"failing_input": "<required when correct is false: a concrete input value '
+    'on which this code produces a different RESULT than the step requires, or '
+    'empty string if you cannot name one>", '
     '"confidence": 0.0-1.0, "evidence_category": "<short label>"}. '
+    # THE ONLY GROUND FOR CONVICTION IS A DIFFERENT RESULT. The judge is handed
+    # the reference, so it drifts into marking any deviation from it wrong:
+    # `txt.replace(" ", "")` before an isalpha() check was failed live as
+    # "unnecessary" - redundant, yes, and identical in output, so the student
+    # was told correct code was incorrect. Style, efficiency, redundancy,
+    # naming and structure are not this judge's business, and a rule saying so
+    # is only half of it: failing_input is the half that has teeth, because
+    # "unnecessary" cannot name an input where the answer differs. See
+    # _tier4 for what happens when the field comes back empty.
+    "THE ONLY REASON TO ANSWER correct=false IS THAT THE CODE PRODUCES A "
+    "DIFFERENT RESULT than this step requires. Before answering false, name "
+    "the input in failing_input and satisfy yourself that the student's code "
+    "really does produce something different on it. If their code reaches the "
+    "same result by a longer, redundant, slower, differently-named or "
+    "differently-shaped route than the reference, that is CORRECT - say so. "
+    "Extra work that changes nothing is not an error. Differing from the "
+    "reference is not an error. Only a different answer is an error. "
     "Never quote the reference solution, hidden tests, or internal code in reason. "
     # ...AND NEVER DESCRIBE IT EITHER. The rule above says "quote", and the
     # model complied with it exactly: asked about `counts = []` it answered
@@ -716,7 +736,8 @@ def _ask_judge(payload: str, role: str):
                [{"role": "user", "content": payload}], temperature=0, fmt="json")
     d = json.loads(raw)
     return (bool(d["correct"]), str(d.get("reason", ""))[:300],
-            float(d.get("confidence", 0.0)), str(d.get("evidence_category", ""))[:60])
+            float(d.get("confidence", 0.0)), str(d.get("evidence_category", ""))[:60],
+            str(d.get("failing_input", ""))[:200].strip())
 
 
 def _tier4(problem, chunk, upto, student_code, why, evidence, corr=None) -> GradeResult:
@@ -728,10 +749,10 @@ def _tier4(problem, chunk, upto, student_code, why, evidence, corr=None) -> Grad
                f"EXECUTION EVIDENCE: {evidence}\nWHY EXECUTION WAS INCONCLUSIVE: {why}")
     try:
         with trace.model_call(corr, GRADING_MODEL, "judge", role="primary"):
-            a_ok, a_reason, a_conf, a_cat = _ask_judge(payload, "primary judge")
+            a_ok, a_reason, a_conf, a_cat, a_input = _ask_judge(payload, "primary judge")
         _trace(trace.record_judge, corr, GRADING_MODEL, "primary", a_ok, a_conf)
         with trace.model_call(corr, GRADING_MODEL, "judge", role="verifier"):
-            b_ok, b_reason, b_conf, b_cat = _ask_judge(
+            b_ok, b_reason, b_conf, b_cat, b_input = _ask_judge(
                 payload + f"\n\nPRIMARY JUDGMENT: correct={a_ok} reason={a_reason}",
                 "independent verifier")
         _trace(trace.record_judge, corr, GRADING_MODEL, "verifier", b_ok, b_conf)
@@ -749,6 +770,25 @@ def _tier4(problem, chunk, upto, student_code, why, evidence, corr=None) -> Grad
                    "judge_disagreement", deterministic=False,
                    consume_attempt=False,
                    internal_detail=f"a={a_ok}/{a_conf} b={b_ok}/{b_conf}")
+
+    # AN "INCORRECT" THAT CANNOT NAME A FAILING INPUT IS NOT A CONVICTION.
+    # Execution already failed to decide this submission - that is why we are
+    # here - so the judge's sentence is all the evidence there is, and a
+    # sentence like "this removes spaces first, which is unnecessary" is an
+    # observation about style wearing a verdict's clothes. Requiring a concrete
+    # input is what separates the two: code that is merely redundant has none
+    # to give, because there is no input on which it answers differently.
+    # Indeterminate rather than correct - we have not shown them right either -
+    # and it costs no attempt, in keeping with this module's rule that our own
+    # inability to decide is never evidence about the student.
+    if not a_ok and not (a_input and b_input):
+        _trace(trace.record_route, corr, "llm-judge", "indeterminate")
+        return _ok("indeterminate", "llm-judge",
+                   "This one needs a closer look - we couldn't decide "
+                   "confidently, so your attempt was not used.",
+                   "judge_unsupported", deterministic=False,
+                   consume_attempt=False,
+                   internal_detail=f"no failing input: a={a_input!r} b={b_input!r}")
     _trace(trace.record_route, corr, "llm-judge", "correct" if a_ok else "incorrect")
     return _ok("correct" if a_ok else "incorrect", "llm-judge",
                a_reason if a_ok else _safe_reason(a_reason, problem, chunk,
@@ -1178,5 +1218,36 @@ if __name__ == "__main__":
                              oracle_loader=lambda p: [{"input": [[" 3 ", "+"]],
                                                        "expected": ["3", "+"]}])
     assert _fell.reason_code == "judge_unavailable", _fell.reason_code
+
+    # ── a judge may only convict on a different RESULT ────────────────────
+    # Live, a student's step 1 on `frequency` was failed with "the code
+    # incorrectly removes spaces before checking for alphabetic characters,
+    # which is unnecessary". Redundant, yes - and identical in output, because
+    # isalpha() already skips spaces. Correct code, marked wrong for not being
+    # lean. The prompt now says style is not grounds; this is the half that
+    # does not depend on the model agreeing. No network: the judge is stubbed.
+    _real_ask = _ask_judge
+    def _stub(ok, reason, failing_input):
+        return lambda payload, role: (ok, reason, 0.9, "style", failing_input)
+
+    _p, _c = {"description": "Count letters."}, {"prompt": "Prepare.", "reference": "counts = {}"}
+    try:
+        # No failing input named => not a conviction, and no attempt spent.
+        _ask_judge = _stub(False, "This removes spaces first, which is unnecessary.", "")
+        _v = _tier4(_p, _c, "", "code", "why", "evidence")
+        assert _v.verdict == "indeterminate", _v.verdict
+        assert _v.consume_attempt is False, "an undecided verdict costs no attempt"
+        # A real fault names the input it breaks on, and still convicts.
+        _ask_judge = _stub(False, "It counts a character it should skip.", "'a1b'")
+        _v = _tier4(_p, _c, "", "code", "why", "evidence")
+        assert _v.verdict == "incorrect", _v.verdict
+        # A CORRECT verdict never needed evidence of failure.
+        _ask_judge = _stub(True, "This prepares the count correctly.", "")
+        assert _tier4(_p, _c, "", "code", "why", "evidence").verdict == "correct"
+    finally:
+        _ask_judge = _real_ask
+    assert "DIFFERENT RESULT" in _JUDGE_SYSTEM, \
+        "the judge must be told that only a different answer is an error"
+    assert "failing_input" in _JUDGE_SYSTEM, "the field is the half with teeth"
 
     print("grading.py scope-gate self-check OK")
