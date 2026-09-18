@@ -1241,11 +1241,23 @@ def _group_columns(problem: dict) -> dict:
     columns and the context is one jsonb."""
     from main.sessions import CONTEXT_FIELDS
     context = {k: problem[k] for k in CONTEXT_FIELDS if k in problem}
+    # THE TEACHER'S OWN ORDER, for a plain function too. main/assignments.py
+    # numbers every block as it reads down the file - `order` - but only the
+    # class path was copying that into a column, so a flat assignment reached
+    # the database with nothing recording the order it was written in. Every
+    # query then fell back to sorting by slug, and LAB1 was served to students
+    # alphabetically: "Employee Update" was offered first as a good place to
+    # start when it is the LAST problem in the file. A plain function is its own
+    # group of one, so it takes the block number and member 0, and one ordering
+    # - group_order, member_order, slug - now works for both shapes.
+    order = problem.get("group_order")
+    if order is None:
+        order = problem.get("order")
     return {"group_slug": problem.get("group_slug"),
             "group_title": problem.get("group_title"),
             "group_description": problem.get("group_description"),
-            "group_order": problem.get("group_order"),
-            "member_order": problem.get("member_order"),
+            "group_order": order,
+            "member_order": problem.get("member_order") or 0,
             "context": context or None}
 
 
@@ -1678,9 +1690,15 @@ def assignment_problems(assignment_id: str, request: Request):
     # publishing again is a flag flip rather than another hour of preparation.
     if not _is_published(assignment_id):
         return {"problems": [], "count": 0, "published": False}
+    # IN THE TEACHER'S ORDER. This asked for no order at all, so the rows came
+    # back in whatever order the database happened to return them - and every
+    # other reader sorted by slug, which is the alphabet, not the syllabus.
+    # group_order is the block's place in the uploaded file and member_order its
+    # place within a class; slug only breaks a genuine tie.
     res = sb.table("problems").select(
         _PUBLIC_PROBLEM_COLS).eq("assignment_id", assignment_id).eq(
-        "ready", True).execute()
+        "ready", True).order("group_order").order("member_order").order(
+        "slug").execute()
     return {"problems": res.data or [], "count": len(res.data or []),
             "published": True}
 

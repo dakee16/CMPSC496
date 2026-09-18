@@ -21,7 +21,9 @@ def dashboard_snapshot(client, assignment_id=None):
     for offset in range(0, len(ids), 100):
         problems.extend(_pages(lambda: client.table("problems").select(
             "slug, title, assignment_id").in_("assignment_id", ids[offset:offset + 100])
-            .eq("ready", True).order("slug")))
+            # The teacher's order, same as every other reader.
+            .eq("ready", True).order("group_order").order("member_order")
+            .order("slug")))
     students = _pages(lambda: client.table("students").select(
         "id, username, first_name, last_name").eq("role", "student").order("id"))
     roster = {s["id"]: full_name(s) for s in students}

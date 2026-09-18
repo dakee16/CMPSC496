@@ -147,6 +147,9 @@ def assignment_problems(client, assignment_id: str) -> list[dict]:
         "slug, title, description, solution, ready, context, group_slug, "
         "group_title, group_description").eq(
         "assignment_id", assignment_id).eq("ready", True).order(
+        # The teacher's order, not the alphabet - see _group_columns in
+        # frontend/api_server.py for why these two columns carry it.
+        "group_order").order("member_order").order(
         "slug").execute().data or []
     return [{**r, **context_of(r)} for r in rows]
 

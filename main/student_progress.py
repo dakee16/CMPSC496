@@ -45,7 +45,10 @@ def progress_snapshot(client, student_id, tz="UTC", now=None):
     problems = _pages(lambda: client.table("problems").select(
         "slug, title, assignment_id, description, solution, ready, context, "
         "group_slug, group_title, group_description").in_("assignment_id", ids)
-        .eq("ready", True).order("slug")) if ids else []
+        # The teacher's order: block in the file, then position within a
+        # class, and slug only to break a real tie.
+        .eq("ready", True).order("group_order").order("member_order")
+        .order("slug")) if ids else []
     problems = [{**p, **context_of(p)} for p in problems]
     counts = step_counts(client, problems) if problems else {}
     allowed = {p["slug"] for p in problems}
