@@ -7,7 +7,9 @@ const insightEl = id => document.getElementById(id);
 let progressData = null;
 let loadingProgress = false;
 const gradeFilters = {assignment: new URLSearchParams(location.search).get("assignment") || "all", search: "", status: "all", sort: "title"};
-const statusNames = {solved:"Solved independently",helped:"Completed with help",progress:"In progress",todo:"Not started",passed:"Passed",shown:"Shown answer",needs_work:"Keep practicing",not_started:"Not attempted",not_graded:"Not graded yet"};
+// One word for a finished problem - see STAT_LABEL in student.js for why the
+// independent/with-help split is no longer shown to the student.
+const statusNames = {solved:"Solved",helped:"Solved",progress:"In progress",todo:"Not started",passed:"Passed",shown:"Shown answer",needs_work:"Keep practicing",not_started:"Not attempted",not_graded:"Not graded yet"};
 const scoreText = value => value === null || value === undefined ? "-" : `${value}%`;
 const workLink = (assignment, slug) => `student.html?assignment=${encodeURIComponent(assignment)}${slug ? `&problem=${encodeURIComponent(slug)}` : ""}`;
 const gradeLink = assignment => `student-grades.html?assignment=${encodeURIComponent(assignment)}`;
@@ -101,7 +103,7 @@ function renderGrades(data){
     <div class="grade-filters" aria-label="Grade filters">
       <div class="field"><label for="gradeAssignment">Assignment</label><select id="gradeAssignment"><option value="all">All assignments</option>${data.assignments.map(a=>`<option value="${esc(a.id)}">${esc(a.name)}</option>`).join("")}</select></div>
       <div class="field search-field"><label for="gradeSearch">Find a problem</label><input id="gradeSearch" type="search" placeholder="Search problem names…" autocomplete="off"></div>
-      <div class="field"><label for="gradeStatus">Status</label><select id="gradeStatus"><option value="all">All statuses</option><option value="progress">In progress</option><option value="todo">Not started</option><option value="solved">Solved independently</option><option value="helped">Completed with help</option></select></div>
+      <div class="field"><label for="gradeStatus">Status</label><select id="gradeStatus"><option value="all">All statuses</option><option value="progress">In progress</option><option value="todo">Not started</option><option value="solved">Solved</option></select></div>
       <div class="field"><label for="gradeSort">Sort by</label><select id="gradeSort"><option value="title">Problem name</option><option value="lowest">Lowest grade first</option><option value="recent">Recent activity</option></select></div>
     </div>
     <div class="grades-top" id="gradeOverview"></div>
@@ -135,7 +137,7 @@ function renderGradeResults(){
   const s=selectedSummary();
   const assignment=gradeFilters.assignment==="all"?null:progressData.assignments.find(a=>String(a.id)===gradeFilters.assignment);
   insightEl("gradeOverview").innerHTML=`<section class="card grade-total"><p class="eyebrow">${assignment?"ASSIGNMENT GRADE":"OVERALL STEP CREDIT"}</p><div class="grade-total-number">${scoreText(s.percent)}</div><p>${s.earned} of ${s.total} available steps passed</p>${barHTML(s.percent,"Earned step credit")}</section><section class="card grade-summary"><h2>${assignment?esc(assignment.name):"A clear view of your work."}</h2><p>You earn credit when your own code passes a step. Keep practicing at your pace. Your passing work stays in your record.${s.ungraded_problems?` ${s.ungraded_problems} problem${s.ungraded_problems===1?" is":"s are"} awaiting a step count.`:""}</p><div class="grade-breakdown"><div><strong>${s.earned}</strong><span>Steps passed</span></div><div><strong>${s.shown}</strong><span>Answers shown</span></div><div><strong>${s.remaining}</strong><span>Steps remaining</span></div></div></section>`;
-  let rows=progressData.problems.filter(p=>(gradeFilters.assignment==="all"||String(p.assignment_id)===gradeFilters.assignment)&&(gradeFilters.status==="all"||p.status===gradeFilters.status)&&`${p.title} ${p.group||""}`.toLowerCase().includes(gradeFilters.search.trim().toLowerCase()));
+  let rows=progressData.problems.filter(p=>(gradeFilters.assignment==="all"||String(p.assignment_id)===gradeFilters.assignment)&&(gradeFilters.status==="all"||p.status===gradeFilters.status||(gradeFilters.status==="solved"&&p.status==="helped"))&&`${p.title} ${p.group||""}`.toLowerCase().includes(gradeFilters.search.trim().toLowerCase()));
   rows.sort((a,b)=>gradeFilters.sort==="lowest"?(a.percent??101)-(b.percent??101)||a.title.localeCompare(b.title):gradeFilters.sort==="recent"?(b.last_activity||"").localeCompare(a.last_activity||""):a.title.localeCompare(b.title));
   insightEl("gradeResultCount").textContent=`${rows.length} problem${rows.length===1?"":"s"} · Select “View steps” for the breakdown`;
   if(!rows.length){

@@ -18,7 +18,8 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 30));
 const members = ['isEmpty', '__len__', 'push', 'pop', 'peek'];
 const PROBLEMS = members.map((name, i) => ({
   slug: `stack-${name.replace(/_/g, '')}`.toLowerCase(),
-  title: name, group_slug: 'stack', group_title: 'Stack', member_order: i, ready: true,
+  title: name, group_slug: 'stack', group_title: 'Stack',
+  group_order: 0, member_order: i, ready: true,
 }));
 
 (async () => {
@@ -48,6 +49,8 @@ const PROBLEMS = members.map((name, i) => ({
 
     const shown = () => [...doc.querySelectorAll('#problems .rowitem .rname')]
       .map(el => el.textContent.trim()).filter(Boolean);
+    // Read before the test starts driving the control.
+    const defaultSort = window.inspect('pSort');
 
     window.inspect(`PROBLEMS = ${JSON.stringify(PROBLEMS)}; pSort = 'alpha'; renderProblems();`);
     const alpha = shown();
@@ -62,6 +65,14 @@ const PROBLEMS = members.map((name, i) => ({
     const byStatus = shown().filter(t => members.includes(t));
     assert.deepEqual(byStatus, members,
       'with every method in the same state, file order is the tiebreak');
+
+    // ...and file order is a sort in its own right - the DEFAULT one, because
+    // the teacher's file is the syllabus and the alphabet is not.
+    window.inspect(`pSort = 'file'; renderProblems();`);
+    assert.deepEqual(shown().filter(t => members.includes(t)), members,
+      'File order must show the methods in the order the teacher wrote them');
+    assert.equal(defaultSort, 'file',
+      'file order is only useful as a default if it IS the default');
 
     console.log('problem-sort.dom.cjs OK');
   } finally {

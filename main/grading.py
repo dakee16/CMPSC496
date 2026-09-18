@@ -11,6 +11,7 @@ Two rules shape the whole design:
     returns `indeterminate` and costs no attempt - it never defaults to wrong.
 """
 import ast
+import difflib
 import json
 import re
 
@@ -448,8 +449,18 @@ def _scope_violation(student_code: str, in_scope: set) -> tuple[str, str] | None
     bare = sorted(x for x in _bare_builtin_types(tree)
                   if x not in bound and x not in in_scope)
     if bare:
+        # NAME THE VARIABLE THEY ALMOST CERTAINLY MEANT. "Did you mean one of
+        # the function's parameters?" was a fixed sentence, and on the case it
+        # fires most - `new_dict = {}` ... `return dict` - it is pointing at
+        # the wrong thing entirely: the parameter is `txt`, and the answer is a
+        # variable an earlier step produced. A student who follows that
+        # sentence goes looking in the one place the fix is not.
+        near = difflib.get_close_matches(bare[0], sorted(in_scope | bound),
+                                         n=1, cutoff=0.6)
         return (f"This step uses `{bare[0]}` as a value, but that is Python's "
-                f"built-in type. Did you mean one of the function's parameters?",
+                + (f"built-in type. Did you mean `{near[0]}`?" if near else
+                   "built-in type. Use one of the function's parameters, or a "
+                   "value from an earlier step."),
                 "builtin_type_as_value")
     return None
 
@@ -967,6 +978,15 @@ if __name__ == "__main__":
     for code, scope, expect_code in flagged:
         got = _scope_violation(code, set(scope))
         assert got is not None and got[1] == expect_code, (code, got)
+
+    # ...and it names the variable in scope, not "the function's parameters".
+    # `frequency(txt)` builds `new_dict` and finishes `return dict`: the
+    # parameter is txt, and pointing there sends them the wrong way.
+    _ret = _scope_violation("return dict", {"txt", "new_dict"})
+    assert _ret[1] == "builtin_type_as_value" and "`new_dict`" in _ret[0], _ret
+    # No near match, no guess - the generic sentence still names both places.
+    _far = _scope_violation("max_element = max(list)", params)
+    assert "earlier step" in _far[0] and "`list`" in _far[0], _far
 
     clean = [
         ("first = max(nums)", params),

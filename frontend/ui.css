@@ -152,7 +152,7 @@ tbody tr:hover>td{background:var(--accent-tint)}
 .stat{display:inline-flex;align-items:center;gap:6px;font-size:.75rem;white-space:nowrap}
 .dotmark{width:7px;height:7px;border:1.5px solid currentColor;border-radius:50%;flex:none}
 .stat.solved,.stat.helped{color:var(--success)}
-.stat.solved .dotmark{background:var(--success)}
+.stat.solved .dotmark,.stat.helped .dotmark{background:var(--success)}
 .stat.progress{color:var(--warning)}
 .stat.todo{color:var(--text-subtle)}
 .filters{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:22px}

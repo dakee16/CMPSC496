@@ -292,15 +292,34 @@ function failedWorkspace(message){
   workspaceSync();
 }
 
-function completeWorkspace(res){
+function completeWorkspace(){
   workspaceComplete = true;
-  $("reflectTitle").textContent = res.solved_independently ? "You made it, one step at a time." : "You worked through every step.";
+  $("reflectTitle").textContent = "Congratulations — you solved it.";
   const own = accepted.filter(step => step && step.how === "own").length;
-  $("reflectSummary").textContent = `${own} of ${chunks.length} steps passed independently in this attempt. ${res.solved_independently ? "Take a moment to see how your thinking became code." : "Review the steps you needed help with, then practice them again when you’re ready."}`;
+  $("reflectSummary").textContent = `${own} of ${chunks.length} steps passed in this attempt. Take a moment to see how your thinking became code.`;
   $("reflectionCode").textContent = $("ctxCode").textContent;
   $("reflectionCodeDetails").hidden = false;
   $("reflectionGrades").href = "student-grades.html" + (openAssign ? `?assignment=${encodeURIComponent(openAssign.id)}` : "");
   $("comparisonStatus").textContent = "Preparing your plan and code comparison…";
+  workspaceSync();
+}
+
+/* REOPENING A PROBLEM THAT IS ALREADY DONE. It used to drop the student back
+   into the working screen - question, chat, plan, an unlocked editor and a
+   tutor line saying they had solved this before - which is a lot of machinery
+   for someone who has nothing left to do here. The Reflect stage already IS
+   the congratulations page, so a finished problem lands on it: well done, and
+   the two things they might actually want next. Marking it complete is what
+   makes that stage reachable; it is also simply true. */
+function solvedEarlier(){
+  workspaceComplete = true;
+  $("reflectTitle").textContent = "Congratulations — you solved it.";
+  $("reflectSummary").textContent = "You have already worked all the way through this problem. Start it over to practise it again from the first step, or move on to the next one.";
+  // Nothing was typed in THIS sitting, so there is no completed function to
+  // disclose - an empty <pre> under "Your completed function" reads as lost
+  // work. comparisonReady() re-decides this by the same rule if one arrives.
+  $("reflectionCodeDetails").hidden = !$("reflectionCode").textContent.trim();
+  $("reflectionGrades").href = "student-grades.html" + (openAssign ? `?assignment=${encodeURIComponent(openAssign.id)}` : "");
   workspaceSync();
 }
 
@@ -312,7 +331,7 @@ function comparisonReady(restored = false){
     $("reflectTitle").textContent = "A look at your earlier work.";
     $("reflectSummary").textContent = "This comparison is from your previous attempt. The Code stage begins a new set of steps; your recorded grades stay available in My grades.";
     $("reflectionCodeDetails").hidden = true;
-  } else $("reflectionCodeDetails").hidden = false;
+  } else $("reflectionCodeDetails").hidden = !$("reflectionCode").textContent.trim();
   workspaceSync();
 }
 
@@ -343,7 +362,7 @@ function initWorkspace(){
   });
   $("planContinue").onclick = () => chooseWorkspaceStage("code");
   $("finishReview").onclick = () => chooseWorkspaceStage("reflect");
-  $("reflectionNext").onclick = backToProblems;
+  $("reflectionNext").onclick = goNextProblem;
   $("closeResource").onclick = () => closeResource();
   $("showTutor").onclick = () => toggleWorkspaceTutor(!workspaceTutorVisible);
   $("backToWork").onclick = () => {

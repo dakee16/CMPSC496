@@ -633,7 +633,7 @@ function isDone(slug){ return SOLVED.has(slug) || ASSISTED.has(slug); }
 let ASSIGNMENTS = [];          // enriched with slugs / solved / last
 let openAssign = null;         // the assignment currently open
 let PROBLEMS = [];             // its problems
-let pQuery = "", pFilter = "all", pSort = "alpha";
+let pQuery = "", pFilter = "all", pSort = "file";
 let landingLinkHandled = false;
 
 const TOUCH_KEY = "mt.touched";
@@ -650,7 +650,12 @@ function statusOf(slug){
   if (ASSISTED.has(slug)) return "helped";
   return OPENED.has(slug) ? "progress" : "todo";
 }
-const STAT_LABEL = {solved: "Solved", helped: "Solved with help",
+/* "Solved with help" meant a step had used a revealed reference. Nothing is
+   revealed to a student any more, so the split had stopped describing anything
+   they could see - it read as a permanent demerit for a distinction the page no
+   longer makes. The two sets stay apart underneath (the instructor's record
+   still separates them); what a student is shown is one word. */
+const STAT_LABEL = {solved: "Solved", helped: "Solved",
                     progress: "In progress", todo: "Not started"};
 function statMark(state){
   return `<span class="stat ${state}"><span class="dotmark" aria-hidden="true"></span>${
@@ -791,9 +796,9 @@ async function openAssignment(a){
   if (!a) return;
   history.replaceState(null, "", `${location.pathname}?assignment=${encodeURIComponent(a.id)}`);
   openAssign = a;
-  pQuery = ""; pFilter = "all"; pSort = "alpha";
+  pQuery = ""; pFilter = "all"; pSort = "file";
   $("pfilter").value = "";
-  $("psort").value = "alpha";
+  $("psort").value = "file";
   $("pchips").querySelectorAll(".chip").forEach(c =>
     c.setAttribute("aria-pressed", String(c.dataset.f === "all")));
   $("assignName").textContent = a.name;
@@ -844,9 +849,17 @@ function renderProblems(){
   // ONE comparator, used for the top-level list and again inside each class
   // group, so the control means the same thing everywhere it is applied.
   const name = r => String(r.p.title || r.p.slug);
+  /* THE ORDER THE TEACHER WROTE THEM IN, which is the default: group_order is
+     the block's place in the uploaded .py and member_order its place within a
+     class. Both already travel to the browser with every problem, and the
+     server hands the list back in exactly this order - the alphabet was a
+     choice the page was making on top of it, and it put "Employee Update"
+     first in a file that ends with it. */
+  const byFile = (a, b) => ((a.p.group_order ?? 0) - (b.p.group_order ?? 0))
+                        || ((a.p.member_order ?? 0) - (b.p.member_order ?? 0));
   const sortRows = (a, b) => pSort === "status"
     ? (rank[a.state] - rank[b.state]) || name(a).localeCompare(name(b))
-    : name(a).localeCompare(name(b));
+    : pSort === "alpha" ? name(a).localeCompare(name(b)) : byFile(a, b);
 
   const rows = PROBLEMS
     .map(p => ({p, state: statusOf(p.slug)}))
@@ -928,14 +941,13 @@ function renderProblems(){
   // grouped them.
   for (const g of groups)
     if (g.members)
-      g.members.sort((a, b) => pSort === "alpha"
-        ? sortRows(a, b)
+      g.members.sort((a, b) => pSort === "status"
         // Under "status", the teacher's file order is the secondary key rather
         // than the alphabet: inside a class it carries real meaning - push
         // before pop before peek - and alphabetising it would scramble the
         // order the methods are meant to be learned in for no one's benefit.
-        : (rank[a.state] - rank[b.state])
-          || (a.p.member_order ?? 0) - (b.p.member_order ?? 0));
+        ? (rank[a.state] - rank[b.state]) || byFile(a, b)
+        : sortRows(a, b));
 
   $("problems").innerHTML = groups.map(g => {
     if (g.solo) return `<li>${rowHTML(g.solo)}</li>`;
@@ -1034,6 +1046,7 @@ async function start(p){
   reviewIdx = null;
   reviewDraft = null;
   $("ctx").style.maxHeight = "";          // a previous finish() may have opened it
+  $("editorWrap").hidden = false;         // ...and finish() hid the editor
   $("submit").style.display = ""; $("backP").style.display = "";
   $("msg").innerHTML = `<div class="banner info">Getting this problem ready…</div>`;
   $("attempts").textContent = "";
@@ -1203,7 +1216,12 @@ async function restoreHistory(p,request){
     // Reopening an unlocked problem lands on the coding stage rather than on
     // the plan they already had accepted. Consumed once, when the stage
     // actually unlocks - see workspace.js.
-    if (!h.solved) resumeStage = "code";
+    // ALREADY FINISHED lands on Reflect, not back in the working screen: see
+    // solvedEarlier() in workspace.js. It also has to be marked complete
+    // BEFORE the comparison block below, or comparisonReady() paints "a look
+    // at your earlier work" over the congratulations.
+    if (h.solved) solvedEarlier();
+    resumeStage = h.solved ? "reflect" : "code";
     markUnlocked(h.solved
       ? "You solved this before. The editor is unlocked - the steps start again from the top."
       : "Your design was accepted earlier. The editor is unlocked for this problem.");
@@ -1674,11 +1692,8 @@ async function finish(res){
   $("ctx").style.maxHeight = "none";
   renderContext();
   $("submit").style.display = "none";
-  show(res.solved_independently ? "ok" : "warn",
-       res.solved_independently
-         ? "Solved. Every step on your own, nice work."
-         : "Problem complete. Some steps used the shown answer, so this is recorded as solved with help.");
-  completeWorkspace(res);
+  show("ok", "Solved. Nice work.");
+  completeWorkspace();
   try {
     await fetch(`${API}/mark_solved`, {
       method: "POST", headers: {"Content-Type": "application/json"},
@@ -1695,6 +1710,18 @@ async function finish(res){
   // Both graphs, now that there is a finished function to draw the second one
   // from. Awaited last so a slow render never delays the "solved" message.
   if (sid === sessionId) await showDualGraphs(sid);
+}
+
+/* The next problem in this assignment, in the order the list is showing, and
+   preferring one they have not finished - moving straight onto a problem they
+   already solved is not "next". Nothing left after this one means the list
+   itself is the next thing. */
+function goNextProblem(){
+  const i = openProblem
+    ? PROBLEMS.findIndex(p => p.slug === openProblem.slug) : -1;
+  const rest = i < 0 ? [] : PROBLEMS.slice(i + 1);
+  const next = rest.find(p => !isDone(p.slug)) || rest[0];
+  return next ? start(next) : backToProblems();
 }
 
 /* Back to the problem list, with the list redrawn: a problem just solved has
@@ -2115,8 +2142,11 @@ $("optimizeTry").addEventListener("click", () => {
   // Never destructive either way - the plan already passed, so there is no
   // "undo" needed the way restart's confirm exists to prevent one.
   if (r) sendToTutor(
+    // r.source / r.target are bare family names ("list", "dictionary"), so the
+    // articles belong here - without them the student's own message went out
+    // reading "collect everything into list first".
     `I'd like to see if I can simplify my plan - do I really need to collect `
-    + `everything into ${r.source} first, or can I build ${r.target} `
+    + `everything into a ${r.source} first, or can I build the ${r.target} `
     + `directly instead?`);
 });
 document.querySelectorAll("[data-restart]").forEach(b => b.addEventListener("click", openRestart));

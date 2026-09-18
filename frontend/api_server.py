@@ -2388,8 +2388,20 @@ def student_problem_history(slug: str, request: Request):
             if m.get("phase") == "tutor" and m.get("role") in ("user", "assistant")
             and _after(m)]
 
+    # SOLVED, IN THE RUN THEY ARE IN NOW. The `solved` table is permanent by
+    # design - a restart deletes nothing - so it alone still answered "yes" to
+    # a student who had just pressed Start over. That was merely a stale line
+    # of chat until the page began opening a finished problem on its
+    # congratulations screen; then it made Start over a loop that put them
+    # straight back on the screen they had just left. A restart is read here
+    # the same way it is read for designs and messages above: only a session
+    # COMPLETED since the marker counts. No marker, no change - a student who
+    # has never restarted still gets the flag exactly as before.
     solved = bool(sb.table("solved").select("problem_slug").eq(
         "student_id", claims["sub"]).eq("problem_slug", slug).execute().data)
+    if since:
+        solved = any((ses.get("completed_at") or "") > since
+                     for ses in (h.get("sessions") or []))
 
     return {"slug": slug,
             "found": bool(msgs or plan or code

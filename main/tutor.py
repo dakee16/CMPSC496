@@ -494,6 +494,27 @@ def _states_expectation(text: str) -> bool:
     return bool(_EXPECTS.search(text) and _LITERAL.search(text))
 
 
+# THE TURN ALREADY SAYS WHAT IT STARTS AS. Live transcript: asked "what are you
+# planning to keep track of, and what does it start out as?", the student
+# answered "dict = {}" - and was asked "You just mentioned a dictionary. What
+# does it start out as?" straight back. The canned question is a checkpoint for
+# a container named with no starting value; fired over an answer that is
+# already on screen it reads as the tutor not having read the message it is
+# replying to. Either half is enough: an empty literal or constructor in the
+# code they typed, or the words for it in prose.
+_INIT_ANSWER = re.compile(
+    r"=\s*(?:\{\s*\}|\[\s*\]|\(\s*\)|0\b|([\"'])\s*\1"
+    r"|(?:dict|list|set|tuple|Counter)\s*\(\s*\))"
+    r"|\bempty\b|\bnothing\s+in\s+it\b"
+    r"|\bstarts?\s+(?:it\s+|them\s+|out\s+)*(?:as|at)\b"
+    r"|\binitiali[sz]e[sd]?\s+(?:it|them)?\s*to\b", re.I)
+
+
+def _states_initial_value(text: str) -> bool:
+    """True when this turn already says what the structure starts out as."""
+    return bool(_INIT_ANSWER.search(text or ""))
+
+
 def _handed_over(text: str, allowed: set) -> set:
     """Containers the TUTOR introduced that are not the student's or the
     problem's own words.
@@ -1003,7 +1024,9 @@ def reply(problem: dict, history: list[dict],
     # about the problem. The starting value can be asked a turn later; a wrong
     # expected result cannot wait, because every step they plan next is built
     # on it. Deterministic, and it only steps aside - it never answers.
-    if new_structs and _states_expectation(clean[-1]["content"] if clean else ""):
+    _last_said = clean[-1]["content"] if clean else ""
+    if new_structs and (_states_expectation(_last_said)
+                        or _states_initial_value(_last_said)):
         new_structs = set()
     if new_structs:
         # ONE MORE CHECK before this commits to a canned reply: is the student
@@ -1396,6 +1419,16 @@ if __name__ == "__main__":
                       "content": "I'll use a list and a dictionary together."}]
     assert m._new_structures(_both_at_once) == {"list", "dictionary"}
 
+    # ...and a turn that ANSWERS the question in the same breath it names the
+    # structure never gets asked it. "dict = {}" is the whole answer, and the
+    # live transcript had the tutor ask for it anyway, one message later.
+    for _said in ("dict = {}", "I'd use an empty dictionary",
+                  "counts = {} to start", "a dictionary that starts at empty"):
+        assert m._states_initial_value(_said), _said
+    for _said in ("I add it to a dictionary, incrementing the count",
+                  "I'll use a list to hold the letters"):
+        assert not m._states_initial_value(_said), _said
+
     # No user turns yet, or a single turn with nothing new relative to itself.
     assert m._new_structures([]) == set()
     assert m._new_structures(
@@ -1414,6 +1447,14 @@ if __name__ == "__main__":
     assert out["reply"] == "You just mentioned a dictionary. What does it "\
                            "start out as?", out["reply"]
     assert out["ready"] is False, "must never release on this turn"
+    # The SAME structure, introduced with its starting value already stated,
+    # must NOT produce the canned question - that is the bug this pairs with.
+    _answered_inline = _list_only[:1] + [
+        {"role": "assistant", "content": "What are you keeping track of?"},
+        {"role": "user", "content": "dict = {}"}]
+    assert m._new_structures(_answered_inline) == {"dictionary"}, \
+        "the structure IS new - it is the question that must be skipped"
+    assert m._states_initial_value(_answered_inline[-1]["content"])
     # ...and once answered, reply() must fall through to a REAL model turn
     # rather than asking about the dictionary a second time - covered by
     # _new_structures itself returning empty above; not re-checked here since

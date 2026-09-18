@@ -223,6 +223,18 @@ const graph = {nodes:[{id:'n0',kind:'start',label:'Read records'},{id:'n1',kind:
     assert(doc.querySelector('#reflectSummary').textContent.includes('previous attempt'));
     assert.equal(doc.querySelector('#reflectionCodeDetails').hidden,true,'Historical graphs cannot claim a new completed function');
     assert.equal(doc.querySelectorAll('#clog').length,1);
+
+    // A problem that is ALREADY SOLVED opens on the congratulations stage, not
+    // back in the working screen with an unlocked editor and nothing to do.
+    history={found:true,solved:true,design_approved:true,plan:graph,messages:[{role:'user',content:'Earlier work'}]};
+    await window.start(problem);await tick();
+    assert.deepEqual(visibleStage(),['stageReflect'],'a finished problem reopens on Reflect');
+    assert(doc.querySelector('#reflectTitle').textContent.includes('Congratulations'),
+      doc.querySelector('#reflectTitle').textContent);
+    assert.equal(doc.querySelector('#reflectionNext').textContent.trim(),'Next problem →');
+    assert(doc.querySelector('.reflection-actions [data-restart]'),'...and an offer to start it over');
+    assert.equal(doc.querySelector('#reflectionCodeDetails').hidden,true,
+      'no code was restored, so there is no completed function to disclose');
     // Saved chat and graph share an explicit loading/error boundary.
     let releaseHistory;
     historyGate=new Promise(resolve=>releaseHistory=resolve);

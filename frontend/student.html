@@ -66,6 +66,7 @@
           </div>
           <label class="sr-only" for="psort">Sort problems</label>
           <select id="psort" style="width:auto; min-width:120px; flex:none">
+            <option value="file">File order</option>
             <option value="alpha">A - Z</option>
             <option value="status">Status</option>
           </select>
@@ -225,7 +226,7 @@
         </div>
     </section>
     <section id="stageReflect" class="journey-panel reflection-stage" role="tabpanel" aria-labelledby="tabReflect" tabindex="-1" hidden>
-      <div class="reflection-hero"><span class="reflection-mark" aria-hidden="true">✓</span><p class="eyebrow">PAUSE. LOOK BACK. TAKE IT FORWARD.</p><h2 id="reflectTitle">You worked through it.</h2><p id="reflectSummary"></p><div class="reflection-actions"><button id="reflectionNext" type="button">Choose another problem →</button><a class="ghost" id="reflectionGrades" href="student-grades.html">See my grades</a><button class="ghost" type="button" data-stage="code">Review your code</button></div></div>
+      <div class="reflection-hero"><span class="reflection-mark" aria-hidden="true">✓</span><p class="eyebrow">PAUSE. LOOK BACK. TAKE IT FORWARD.</p><h2 id="reflectTitle">You worked through it.</h2><p id="reflectSummary"></p><div class="reflection-actions"><button id="reflectionNext" type="button">Next problem →</button><button class="ghost" type="button" data-restart>Start over</button><a class="ghost" id="reflectionGrades" href="student-grades.html">See my grades</a><button class="ghost" type="button" data-stage="code">Review your code</button></div></div>
       <details class="reflection-code" id="reflectionCodeDetails"><summary>Your completed function</summary><pre class="code" id="reflectionCode"></pre></details>
       <div class="reflection-graph-heading"><h3>From your plan to your code</h3><p>Explore how your approach became a working solution.</p></div><div id="comparisonStatus" role="status"></div>
       <div class="card graphCard" id="dualCard" hidden="">

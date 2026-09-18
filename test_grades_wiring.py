@@ -139,6 +139,18 @@ def test_mark_solved_still_means_they_did_it_themselves():
     assert 'table("solved")' in route[i:], "the write must stay behind the guard"
 
 
+def test_start_over_is_not_a_loop_back_to_the_congratulations_screen():
+    """A finished problem now opens on its congratulations screen, which offers
+    "Start over". /restart deletes nothing - the `solved` row is permanent - so
+    reading that row alone sent the student straight back to the screen they had
+    just left. The restart marker already scopes designs and messages; `solved`
+    has to be read through it too."""
+    route = _api_src().split('@app.get("/history/{slug}")')[1].split("\n@app.")[0]
+    after = route[route.index('table("solved")'):]
+    assert "if since:" in after, "the restart marker must narrow the solved flag"
+    assert "completed_at" in after, "...and only a session finished SINCE it counts"
+
+
 def test_the_student_list_counts_finished_problems_not_just_independent_ones():
     """Three separate places count progress - the assignment card, the problem
     header, and each class group. All three must agree, or a bar moves while
@@ -165,7 +177,10 @@ def test_the_student_list_counts_finished_problems_not_just_independent_ones():
 def test_an_assisted_finish_reads_as_done_not_as_in_progress():
     js = _student_js()
     assert 'ASSISTED.has(slug)) return "helped"' in js
-    assert '"helped": "Solved with help"' in js or 'helped: "Solved with help"' in js
+    # ONE word. Nothing is revealed to a student any more, so an assisted
+    # finish is shown as "Solved" too - what must not happen is it reading as
+    # unfinished work. The two sets still differ underneath.
+    assert '"helped": "Solved"' in js or 'helped: "Solved"' in js
     # ...and the state has a colour of its own, or it renders unstyled.
     css = (pathlib.Path(__file__).parent / "frontend" / "ui.css").read_text()
     assert ".stat.helped{" in css
