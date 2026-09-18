@@ -114,6 +114,38 @@ def test_unknown_denominator_is_not_a_zero_grade(db):
     assert data["summary"]["ungraded_problems"] == 1
 
 
+def test_a_student_is_graded_out_of_the_decomposition_they_were_served(db):
+    """Their own session's step count, not the largest one in the class.
+
+    step_counts() reports the LARGEST total_chunks any session for a slug ever
+    had, which is right for a problem this student never opened and wrong the
+    moment two decompositions differ in length - main/chunk_pool holds both
+    two- and three-chunk splits of `invert`. A student served two chunks,
+    who answered both, was shown "2 of 3 - 67% - Step 3: Not attempted" beside
+    "Solved independently": a step they were never given, counted against them.
+    """
+    db.data["mt_sessions"].append(
+        {"session_id": "9", "student_id": "alice", "slug": "new",
+         "started_at": "2026-09-11T23:00:00Z", "completed_at": "2026-09-11T23:30:00Z",
+         "solved_independently": True, "total_chunks": 2})
+    db.data["mt_submissions"] += [
+        {"id": 900, "student_id": "alice", "slug": "new", "chunk_index": 0,
+         "verdict": "correct", "created_at": "2026-09-12T01:00:00Z"},
+        {"id": 901, "student_id": "alice", "slug": "new", "chunk_index": 1,
+         "verdict": "correct", "created_at": "2026-09-12T01:00:00Z"}]
+    p = next(p for p in snapshot(db)["problems"] if p["slug"] == "new")
+    assert p["total"] == 2, "the class-wide 3 must not become this student's"
+    assert p["solved"] == 2 and p["percent"] == 100
+    assert [s["number"] for s in p["steps"]] == [1, 2], "no phantom third step"
+    assert p["status"] == "solved"
+
+
+def test_a_problem_never_opened_still_uses_the_class_step_count(db):
+    """The fallback the fix must not break: no session means no own count."""
+    p = next(p for p in snapshot(db)["problems"] if p["slug"] == "new")
+    assert p["total"] == 3 and p["solved"] == 0
+
+
 def test_completion_with_help_is_separate_from_earned_credit(db, monkeypatch):
     monkeypatch.setattr(grades,"MAX_ATTEMPTS",2)
     db.data["mt_sessions"][0].update(completed_at="2026-09-12T02:00:00Z",solved_independently=False)

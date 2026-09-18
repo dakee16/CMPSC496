@@ -52,8 +52,10 @@ def progress_snapshot(client, student_id, tz="UTC", now=None):
 
     # Filters are attached at the database boundary, not just after fetching.
     # Avoid a long URL-sized IN list on the student's potentially large history.
+    # total_chunks travels with the session because THIS student's denominator
+    # is the decomposition THEY were served - see the fallback below.
     sessions = _pages(lambda: client.table("mt_sessions").select(
-        "slug, started_at, completed_at, solved_independently").eq(
+        "slug, started_at, completed_at, solved_independently, total_chunks").eq(
         "student_id", student_id).order("session_id")) if allowed else []
     submissions = _pages(lambda: client.table("mt_submissions").select(
         "slug, chunk_index, verdict, created_at").eq("student_id", student_id)
@@ -73,8 +75,23 @@ def progress_snapshot(client, student_id, tz="UTC", now=None):
     for p in problems:
         slug = p["slug"]
         records, visits = by_submission[slug], by_session[slug]
-        score = tally(counts.get(slug, 0), records)
         completed = [s for s in visits if s.get("completed_at")]
+        # THEIR OWN DENOMINATOR, not the class's. step_counts() takes the
+        # LARGEST total_chunks any session for this slug ever had, which is the
+        # right answer for a problem this student never opened and the wrong one
+        # the moment two decompositions differ in length. main/chunk_pool holds
+        # six for `invert` alone, of two and three chunks, so a student served
+        # the two-chunk version finished every step they were given and was
+        # shown "2 of 3 · 67% · Step 3: Not attempted" beside "Solved
+        # independently" - two numbers from two different decompositions, one of
+        # which they were never asked to do. A session they COMPLETED wins over
+        # one they merely opened; the class-wide count stays as the fallback for
+        # a problem they have no session for at all.
+        own_total = next((int(s["total_chunks"]) for s in completed
+                          if s.get("total_chunks")), 0) \
+            or next((int(s["total_chunks"]) for s in visits
+                     if s.get("total_chunks")), 0)
+        score = tally(own_total or counts.get(slug, 0), records)
         own = slug in independent or any(s.get("solved_independently") for s in completed)
         status = "solved" if own else "helped" if completed else "progress" if records or visits else "todo"
         timestamps = []

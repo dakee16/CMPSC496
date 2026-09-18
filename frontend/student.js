@@ -841,6 +841,12 @@ async function openAssignment(a){
 function renderProblems(){
   const q = pQuery.trim().toLowerCase();
   const rank = {progress: 0, todo: 1, helped: 2, solved: 3};
+  // ONE comparator, used for the top-level list and again inside each class
+  // group, so the control means the same thing everywhere it is applied.
+  const name = r => String(r.p.title || r.p.slug);
+  const sortRows = (a, b) => pSort === "status"
+    ? (rank[a.state] - rank[b.state]) || name(a).localeCompare(name(b))
+    : name(a).localeCompare(name(b));
 
   const rows = PROBLEMS
     .map(p => ({p, state: statusOf(p.slug)}))
@@ -852,10 +858,7 @@ function renderProblems(){
        (pFilter === "solved" && state === "helped")) &&
       (!q || String(p.title || p.slug).toLowerCase().includes(q) ||
              String(p.slug).toLowerCase().includes(q)))
-    .sort((a, b) => pSort === "status"
-      ? (rank[a.state] - rank[b.state]) ||
-        String(a.p.title || a.p.slug).localeCompare(String(b.p.title || b.p.slug))
-      : String(a.p.title || a.p.slug).localeCompare(String(b.p.title || b.p.slug)));
+    .sort(sortRows);
 
   const solvedN = PROBLEMS.filter(p => isDone(p.slug)).length;
   const pct = PROBLEMS.length ? Math.round(solvedN / PROBLEMS.length * 100) : 0;
@@ -916,9 +919,23 @@ function renderProblems(){
     }
     g.members.push(r);
   }
+  // THE CHOSEN ORDER APPLIES INSIDE A CLASS TOO. This re-sorted every group by
+  // the teacher's file order unconditionally, throwing away whatever the
+  // control said: picking "A - Z" left Stack sitting in isEmpty, __len__, push,
+  // pop, peek and nothing on screen explained why. A sort control that visibly
+  // does nothing is worse than no control. File order stays as the tiebreak, so
+  // members the comparator calls equal still read in the order the teacher
+  // grouped them.
   for (const g of groups)
     if (g.members)
-      g.members.sort((a, b) => (a.p.member_order ?? 0) - (b.p.member_order ?? 0));
+      g.members.sort((a, b) => pSort === "alpha"
+        ? sortRows(a, b)
+        // Under "status", the teacher's file order is the secondary key rather
+        // than the alphabet: inside a class it carries real meaning - push
+        // before pop before peek - and alphabetising it would scramble the
+        // order the methods are meant to be learned in for no one's benefit.
+        : (rank[a.state] - rank[b.state])
+          || (a.p.member_order ?? 0) - (b.p.member_order ?? 0));
 
   $("problems").innerHTML = groups.map(g => {
     if (g.solo) return `<li>${rowHTML(g.solo)}</li>`;

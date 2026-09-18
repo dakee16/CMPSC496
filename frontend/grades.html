@@ -31,13 +31,30 @@
   </div><div class="metrics" id="gradeStats" aria-label="Class progress"><div class="metric"><div><div class="metric-label">Students</div><div class="metric-value" data-metric="0">-</div></div></div><div class="metric"><div><div class="metric-label">Submitted</div><div class="metric-value" data-metric="1">-</div></div></div><div class="metric"><div><div class="metric-label">Missing</div><div class="metric-value" data-metric="2">-</div></div></div></div>
 
   <div class="card grade-results">
-    <h2>Student results</h2>
-    <p class="hint">Each transcript includes planning, diagrams, submissions, and feedback.</p>
+    <div class="results-head">
+      <h2>Student results</h2>
+      <button class="ghost" type="button" id="reportAll">Open class report</button>
+    </div>
+    <p class="hint">Select a student&rsquo;s grade to read their full record, then save it as a PDF. The class report puts every student side by side on the same problem.</p>
     <p class="grading-note">Only steps passed with the student’s own code earn credit. Revealed answers and unattempted steps do not count.</p>
 
     <div class="table-scroll" tabindex="0" role="region" aria-label="Student grades"><div id="body" role="status" aria-live="polite"></div></div>
   </div>
 </main>
+
+<!-- The record, full screen, before it is saved. Same bytes the download
+     writes - an instructor should never save something they have not seen. -->
+<div class="reportOverlay" id="reportOverlay" hidden>
+  <div class="reportBar">
+    <strong id="reportTitle">Learning record</strong>
+    <span class="reportGrow"></span>
+    <button class="ghost" type="button" id="reportPdf">Save as PDF</button>
+    <button class="ghost" type="button" id="reportHtml">Download HTML</button>
+    <button class="ghost" type="button" id="reportTab">Open in new tab</button>
+    <button class="ghost" type="button" id="reportClose" aria-label="Close report">Close</button>
+  </div>
+  <iframe id="reportFrame" title="Learning record"></iframe>
+</div>
 
 <script src="ui.js"></script>
 <script src="cache.js"></script>

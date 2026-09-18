@@ -1762,6 +1762,54 @@ def teacher_transcript(assignment_id: str, student_id: str, request: Request):
         "Cache-Control": "no-store"})
 
 
+def _report_response(assignment_id: str, student_ids, mode: str, download: bool):
+    """Build one learning record and answer with it as HTML.
+
+    ONE builder for both shapes - see main/report.py. `download` only changes
+    the Content-Disposition: the same bytes are previewed in the drawer and
+    saved to disk, so what an instructor reads is exactly what they keep. The
+    PDF comes from the page's own Save as PDF, which is the browser's print
+    pipeline rather than a second renderer that could drift from this one.
+    """
+    from fastapi.responses import HTMLResponse
+    from main.report import gather, render_html
+
+    record = gather(get_supabase(), assignment_id, student_ids)
+    if mode == "student" and not record["students"]:
+        raise HTTPException(status_code=404, detail={
+            "reason_code": "student_not_found",
+            "message": "That student no longer exists."})
+    filename, html = render_html(record, mode)
+    headers = {"Cache-Control": "no-store"}
+    if download:
+        headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return HTMLResponse(html, headers=headers)
+
+
+@app.get("/teacher/assignments/{assignment_id}/report/{student_id}")
+def teacher_report(assignment_id: str, student_id: str, request: Request,
+                   download: bool = False):
+    """One student's whole record on one assignment, readable.
+
+    Replaces the plain-text transcript for human reading - that route stays for
+    anyone who wants the raw dump. Teacher-gated like every route that carries a
+    transcript: it contains other people's work verbatim."""
+    require_teacher(request)
+    return _report_response(assignment_id, [student_id], "student", download)
+
+
+@app.get("/teacher/assignments/{assignment_id}/report")
+def teacher_class_report(assignment_id: str, request: Request,
+                         download: bool = False):
+    """Every student on one assignment, grouped problem-first so the same task
+    can be compared across the class.
+
+    The roster comes from the students table, so a student who never opened the
+    assignment is still in the report rather than silently absent."""
+    require_teacher(request)
+    return _report_response(assignment_id, None, "class", download)
+
+
 def _findings_for(row: dict) -> dict | None:
     """Which specific checks decided this problem's verdict, in the instructor's
     terms - or None when it was never validated.

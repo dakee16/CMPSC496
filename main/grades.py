@@ -300,7 +300,20 @@ def transcript(client, assignment_id: str, student_id: str) -> tuple[str, str]:
     for i, p in enumerate(problems, 1):
         slug = p["slug"]
         subs = for_slug("submissions", slug)
-        t = tally(counts.get(slug, 0), subs)
+        # THIS STUDENT'S OWN STEP COUNT, for the same reason the student-facing
+        # sheet uses it (main/student_progress.py): step_counts() reports the
+        # largest total_chunks any session for this slug ever had, so a student
+        # served a two-chunk decomposition of a problem someone else got in
+        # three was reported to their instructor as "3 total | 2 solved | 1 not
+        # done" - a step they were never given, recorded against them. Prefer a
+        # session they FINISHED, then any they opened, then the class-wide
+        # count for a problem they have no session for.
+        _visits = for_slug("sessions", slug)
+        _own = next((int(s["total_chunks"]) for s in _visits
+                     if s.get("completed_at") and s.get("total_chunks")), 0) \
+            or next((int(s["total_chunks"]) for s in _visits
+                     if s.get("total_chunks")), 0)
+        t = tally(_own or counts.get(slug, 0), subs)
         for k in agg:
             agg[k] += t[k]
 
