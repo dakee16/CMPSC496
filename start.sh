@@ -16,6 +16,12 @@ fail() { echo "FATAL: $*" >&2; exit 1; }
 #   MICROTUTOR_SESSION_DB    main/sessions.py:62     - live grading sessions
 #   MICROTUTOR_ORACLE_CACHE  main/oracle_store.py:23 - validated oracle tests
 #   MICROTUTOR_TRANSCRIPTS   main/transcripts.py:39  - failed-prepare evidence
+#   MICROTUTOR_CHUNK_POOL    main/run_phase1.py:55   - gated decompositions
+#
+# The pool was the one that got away: it had no env knob at all, so it was
+# invisible to this loop and lived at /app/main/chunk_pool.json inside the
+# image. Every redeploy silently emptied it and the model work to regenerate
+# each decomposition was paid again.
 for var in MICROTUTOR_SESSION_DB MICROTUTOR_ORACLE_CACHE MICROTUTOR_TRANSCRIPTS MICROTUTOR_CHUNK_POOL; do
     eval "path=\$$var"
     [ -n "$path" ] || fail "$var is unset. It must point at the mounted volume, not the image - see DEPLOY.md."

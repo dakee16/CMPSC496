@@ -40,6 +40,9 @@ GradeTier = Literal[
     "syntax",                # did not parse
     "policy",                # rejected by the safety policy before running
     "execution-reference",   # ran with the trusted reference tail
+    "execution-bridged",     # ran with the reference tail UNCHANGED, the
+                             # student's names bridged to it by VALUE - see
+                             # main/bridge.py. Deterministic, no model.
     "execution-adapted",     # ran with a CALIBRATED adapted tail
     "execution-final",       # last chunk: whole function, no borrowed tail
     "llm-judge",             # execution could not attribute fault
@@ -102,6 +105,12 @@ class GradeResult(BaseModel):
     internal_detail: Optional[str] = None
     # Correct, but not the canonical approach - the caller may offer a replan.
     divergent: bool = False
+    # How many chunks this ONE submission actually answered, when the student
+    # wrote ahead of the boundary they were asked for. 1 for an ordinary accept.
+    # main/bridge.find matches against every later boundary too, so a student
+    # who did step 2's work inside step 1 is accepted for both rather than being
+    # asked next for code they have already written.
+    covers_chunks: int = 1
     # Infrastructure failure must not cost the student an attempt.
     consume_attempt: bool = True
     execution_outcome: Optional[ExecutionOutcome] = None

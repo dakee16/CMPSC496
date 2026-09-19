@@ -508,7 +508,7 @@ def release_submission(session_id: str, submission_id: str,
 
 def commit_outcome(session_id: str, submission_id: str, revision: int, result: dict,
                    *, accept_code: str | None = None, provenance: str = "student",
-                   consume_attempt: bool = True,
+                   consume_attempt: bool = True, covers_chunks: int = 1,
                    db_path: str | None = None) -> dict:
     """Commit a graded submission with compare-and-swap on `revision`.
 
@@ -531,9 +531,21 @@ def commit_outcome(session_id: str, submission_id: str, revision: int, result: d
         accepted, idx = list(s["accepted"]), s["index"]
         attempts, assisted, state = s["attempts"], s["assisted"], s["state"]
         if accept_code is not None:
-            accepted.append({"step_id": s["chunks"][idx]["step_id"],
-                             "code": accept_code, "provenance": provenance})
-            idx += 1
+            # ONE submission may answer more than one step. A student who wrote
+            # step 2's work inside step 1 has already done it, and asking them
+            # for it again is asking them to write the same lines twice - so
+            # main/bridge.find reports how far their code actually reaches and
+            # the session advances that far. The code is recorded against the
+            # FIRST step and the steps it also covers are recorded as empty, so
+            # the accepted prefix still reassembles to exactly what they wrote:
+            # repeating the text once per step would duplicate their loop.
+            first = idx
+            for step in range(first, min(first + max(1, covers_chunks),
+                                         len(s["chunks"]))):
+                accepted.append({"step_id": s["chunks"][step]["step_id"],
+                                 "code": accept_code if step == first else "",
+                                 "provenance": provenance})
+                idx += 1
             attempts = 0
             if provenance == "revealed_reference":
                 assisted = 1

@@ -4,17 +4,48 @@ grading.py - the answer-checking state machine.
 One orchestration function, grade_submission(), owns every verdict. Routes must
 not re-implement any part of it.
 
-Two rules shape the whole design:
+Three rules shape the whole design:
+
   * Execution decides, opinion is last. A verdict is deterministic only when a
     real run attributed the fault to the student.
   * Our failure is never evidence about the student. Infrastructure trouble
     returns `indeterminate` and costs no attempt - it never defaults to wrong.
+  * CORRECT CODE MUST NEVER BE MARKED WRONG. Differently named, differently
+    structured, redundant, slow, or written ahead of the step it was asked for -
+    all correct. A false `incorrect` costs a student an attempt and is the one
+    unacceptable outcome; a false "we could not tell" costs them nothing.
+
+WHAT MAY CONVICT, AND WHAT MAY ONLY ACQUIT. The third rule is enforced by
+splitting the tiers on exactly that line, because "be careful" is not a
+mechanism. `incorrect` may only come from evidence about the student's own code
+that no later chunk can repair, and that never involves comparing their
+intermediate state to the teacher's:
+
+    blank answer, syntax, indentation, policy violation, an undefined name,
+    and - on the LAST chunk only - the real oracle.
+
+Everything below is an ACQUITTAL PATH. Each may return `correct`, and none may
+return `incorrect`:
+
+    execution-reference  the teacher's tail runs as-is against their work
+    execution-bridged    same tail, byte for byte, with their names matched to
+                         it BY VALUE (main/bridge.py). Deterministic, no model.
+    execution-adapted    a model rewrites the tail; calibration, the full oracle
+                         and a neutralised knockout must all still pass
+    llm-judge            two independent judges both say it is right
+
+A tier that cannot acquit falls through, and running out of tiers is
+`indeterminate` with no attempt spent. What that costs is the ability to tell a
+student their non-final step is wrong on anything other than their own code -
+which was never something we could do soundly. Identical submissions came back
+correct at 1am and incorrect at 4:58am because a model was deciding it.
 """
 import ast
 import difflib
 import json
 import re
 
+from . import bridge
 from .execution import classify_run
 from .identity import get_resolved_entry
 from .indent import align_to_chunk
@@ -24,7 +55,32 @@ from .schemas import GradeResult
 from .context import build_program
 from .sessions import accepted_prefix, problem_of
 
-MAX_ADAPT_TRIES = 2
+# Retries of the Tier 3 adapter. Raised from 2 once that tier became
+# acquit-only, because the two situations are not the same kind of thing.
+# Re-running a JUDGE until it agrees with itself manufactures confidence: the
+# output is an opinion nothing checks, so repetition converges on the model's
+# favourite answer (at a 70% bias, an agreed verdict is wrong 84% of the time).
+# Re-running the ADAPTER is a SEARCH: every candidate must still pass
+# calibration, the full oracle and the anti-bypass check before it can acquit,
+# so a bad one is discarded by execution rather than believed. Failure now
+# costs nothing but latency, which makes another look worth taking.
+MAX_ADAPT_TRIES = 4
+
+# Verdict memo, so identical code gets an identical verdict. Tier 3 and Tier 4
+# are model calls, and a model that wavers turns one student's answer into
+# `correct` and an identical answer into `cannot verify` - a milder version of
+# the 1am/4:58am flip, but the same complaint. Keyed by what was actually
+# graded, never by submission id, and bounded so a long-lived process cannot
+# grow without limit. In-process is sufficient: start.sh pins uvicorn to one
+# worker (three other stores already depend on that).
+_VERDICT_MEMO: dict = {}
+_MEMO_LIMIT = 512
+
+
+def _memo_key(problem, idx, upto, student_code):
+    import hashlib
+    raw = f"{problem.get('slug','')}\x00{idx}\x00{upto}\x00{student_code}"
+    return hashlib.sha256(raw.encode()).hexdigest()
 
 
 def _trace(fn, *a, **k):
@@ -351,8 +407,17 @@ def _indent_message(student_code: str) -> str | None:
     return None
 
 
-def _module_names(problem: dict) -> set:
+def _module_names(problem: dict, header: str = "") -> set:
     """Top-level names the assembled program already defines.
+
+    `header` MATTERS FOR A PLAIN FUNCTION, and leaving it out convicted every
+    recursive submission. build_program() for a non-method is the def line plus
+    the body, so without the def line the assembled module defines nothing at
+    all - and the function's OWN name is therefore not in scope. A student
+    writing `return n * factorial(n - 1)` was told "`factorial` isn't defined",
+    which is both wrong and the exact opposite of what they needed to hear.
+    Python binds a function's name before its body ever runs, so a function can
+    always call itself.
 
     The scope gate asks "does every name this step reads resolve to something
     real", and for a METHOD the answer depends on the module it was carved out
@@ -368,7 +433,7 @@ def _module_names(problem: dict) -> set:
     the direction of a false rejection but never of a false pass."""
     from .context import build_program
     try:
-        tree = ast.parse(build_program(problem, "pass"))
+        tree = ast.parse(build_program(problem, "pass", header))
     except Exception:
         return set()
     out = set()
@@ -415,7 +480,26 @@ def _header_params(header: str) -> set:
     return names
 
 
-def _scope_violation(student_code: str, in_scope: set) -> tuple[str, str] | None:
+def _has_star_import(code: str) -> bool:
+    """Does this body do `from X import *`?
+
+    A star import binds names this module cannot enumerate, so every name the
+    step reads might legitimately come from it. Live, `from math import *`
+    followed by `sqrt(nums[0])` was failed as "`sqrt` isn't defined" - valid
+    Python, allowed by the execution policy (math is in _ALLOWED_IMPORTS), and
+    convicted by the gate in front of it. The gate cannot answer this question,
+    so it must decline to answer it rather than guess wrong."""
+    try:
+        tree = _parse_body(code)
+    except SyntaxError:
+        return False
+    return any(isinstance(n, ast.ImportFrom)
+               and any(a.name == "*" for a in n.names)
+               for n in ast.walk(tree))
+
+
+def _scope_violation(student_code: str, in_scope: set,
+                     star_import: bool = False) -> tuple[str, str] | None:
     """Deterministic pre-LLM gate: every name this step READS must resolve to
     something real - a function parameter, a variable an earlier accepted step
     produced, or a safe builtin. A step that reads an undefined name (a typo, or
@@ -425,7 +509,11 @@ def _scope_violation(student_code: str, in_scope: set) -> tuple[str, str] | None
     intent and green-lights nonsense like `max(list)`.
 
     Returns (student_message, reason_code) on a violation, else None. A parse
-    failure returns None - syntax is classified elsewhere."""
+    failure returns None - syntax is classified elsewhere, and so does a star
+    import anywhere in the accepted prefix or this step: see _has_star_import.
+    """
+    if star_import:
+        return None
     try:
         tree = _parse_body(student_code)
     except SyntaxError:
@@ -519,6 +607,30 @@ def _provider_down(reason_code: str, detail: str | None = None) -> GradeResult:
 
 # ── Deferred initializer hoist - deterministic, before Tier 3 ────────────
 
+def _is_literal_declaration(value, problem: dict, header: str = "") -> bool:
+    """May this right-hand side be restated anywhere, without computing?
+
+    True for a literal (`{}`, `[]`, `0`, `{'+': 1, '-': 1}`) and for a call
+    taking NO arguments (`Stack()`, `set()`, `dict()`). An empty constructor is
+    a literal wearing a name: it depends on nothing, so it means the same thing
+    at any point in the function.
+
+    False for everything else, and the argument list is what does the work.
+    `sum(values)`, `len(nums)` and `list(values)` are all calls that read the
+    student's problem and answer part of it; `Stack()` cannot. See
+    _hoistable_declarations for the submission this was written against."""
+    if isinstance(value, ast.Call):
+        if value.args or value.keywords:
+            return False
+        return (isinstance(value.func, ast.Name)
+                and value.func.id in (_module_names(problem, header)
+                                      | _SAFE_BUILTINS))
+    try:
+        ast.literal_eval(value)
+        return True
+    except (ValueError, TypeError, SyntaxError, MemoryError, RecursionError):
+        return False
+
 def _hoistable_declarations(problem: dict, chunks: list, header: str,
                             upto: str, ref_tail: str) -> list[str]:
     """Declarations the trusted tail assumes, that the student has not made YET.
@@ -542,25 +654,44 @@ def _hoistable_declarations(problem: dict, chunks: list, header: str,
     tail was always entitled to assume, and the tests and the pass/fail
     comparison are untouched.
 
-    ALL OR NOTHING, AND ONLY PURE DECLARATIONS. `postfixStack = Stack()` reads
-    nothing but a module-level class and literals, so it means the same thing
-    wherever it runs. `total = n * 2` does not - `n` was computed somewhere
-    specific in the reference's own control flow, and moving that line early
-    either raises a NameError that reads as a grader bug or, far worse, binds
-    silently to some unrelated `n` in the student's own code and makes a wrong
-    answer look right. One name that cannot be settled this way disqualifies the
-    whole submission, which then takes the Tier 3 path exactly as it does
-    today."""
-    needed = (_names(ref_tail, ast.Load) - _names(ref_tail, ast.Store)
-              - _names(upto, ast.Store) - _header_params(header)
-              - _module_names(problem) - _SAFE_BUILTINS)
+    ALL OR NOTHING, AND ONLY LITERAL DECLARATIONS. `postfixStack = Stack()` and
+    `prec = {...}` mean the same thing wherever they run. `total = n * 2` does
+    not - `n` was computed somewhere specific in the reference's own control
+    flow, and moving that line early either raises a NameError that reads as a
+    grader bug or, far worse, binds silently to some unrelated `n` in the
+    student's own code and makes a wrong answer look right. One name that cannot
+    be settled this way disqualifies the whole submission, which then takes the
+    Tier 3 path exactly as it does today.
+
+    "READS ONLY PARAMETERS" WAS NOT A STRICT ENOUGH TEST, and the gap was
+    reproducible rather than theoretical: for a reference whose first chunk is
+    `result = sum(values)`, that line reads nothing but the function's own
+    parameter, so it qualified - and a student submitting literally `pass`
+    received correct/deterministic=True, with the grader having computed the
+    answer on their behalf. Two rules close it:
+
+      LITERAL ONLY   the right-hand side must be a literal, or a call with NO
+                     arguments (`Stack()`, `set()`). `sum(values)` is a call
+                     WITH an argument and can compute; `{}` and `{'+': 1}`
+                     cannot. This is what separates declaring a container from
+                     filling one.
+      GAP ONLY       hoisting may fill gaps beside the student's work, never
+                     stand in for all of it. If the tail reads nothing the
+                     student actually bound, there is no work to fill a gap in,
+                     and the submission is refused here.
+    """
+    tail_free = (_names(ref_tail, ast.Load) - _names(ref_tail, ast.Store)
+                 - _header_params(header) - _module_names(problem, header)
+                 - _SAFE_BUILTINS)
+    needed = tail_free - _names(upto, ast.Store)
     if not needed:
         return []            # the student bound everything the tail reads
+    if not (tail_free & _names(upto, ast.Store)):
+        return []            # GAP ONLY - the student supplied none of it
     try:
         tree = _parse_body("\n".join((c.get("reference") or "") for c in chunks))
     except SyntaxError:
         return []
-    relocatable = _header_params(header) | _module_names(problem) | _SAFE_BUILTINS
     found = []
     for name in needed:
         matches = [n for n in ast.walk(tree)
@@ -569,10 +700,8 @@ def _hoistable_declarations(problem: dict, chunks: list, header: str,
                    and n.targets[0].id == name]
         if len(matches) != 1:
             return []        # nowhere, or several places: not ours to guess at
-        rhs = {n.id for n in ast.walk(matches[0].value)
-               if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load)}
-        if rhs - relocatable:
-            return []        # reads a local: not the same line somewhere else
+        if not _is_literal_declaration(matches[0].value, problem, header):
+            return []        # computes something: not ours to hand over
         found.append(matches[0])
     # The reference's own order, in case one declaration is ever written in
     # terms of another - and so the same submission always yields the same tail.
@@ -640,7 +769,15 @@ def _tail_is_sane(tail: str, current_outputs: set, solution: str) -> bool:
         if isinstance(n, (ast.Import, ast.ImportFrom)):
             return False
     # Must not overwrite what the current chunk produced.
-    if _names(tail, ast.Store) & current_outputs:
+    #
+    # COMPREHENSION VARIABLES ARE NOT OVERWRITES. In Python 3 the `p` of
+    # `{p[0]: p[1] for p in pairs}` is sealed inside the comprehension and
+    # cannot touch a `p` the student is using, but ast marks it Store - so a
+    # perfectly good adapted tail was thrown away whenever the model happened to
+    # pick a letter the student had also used. Measured: the same tail with `q`
+    # instead of `p` was accepted. That is a coin flip on a variable name, and
+    # part of why this tier's reliability looked like ~50%.
+    if (_names(tail, ast.Store) - bridge._comprehension_vars(tree)) & current_outputs:
         return False
     # Must not simply be the reference solution pasted back in.
     body = re.sub(r"\s+", "", tail)
@@ -697,38 +834,13 @@ _JUDGE_SYSTEM = (
     "stops matching the step as asked; never say what it should do.")
 
 
-# The vocabulary guard the TUTOR already runs on every reply. Reused rather than
-# re-derived so the two halves of the product cannot drift into disagreeing
-# about what counts as handing the answer over.
-def _leaks_answer(reason: str, allowed_text: str) -> bool:
-    from .tutor import _handed_over, _strip_code, _structures
-    r = (reason or "").strip()
-    return bool(_handed_over(r, _structures(allowed_text))) or _strip_code(r) != r
-
-
-# What a leaking verdict is replaced with. It keeps the VERDICT, which the
-# student is entitled to, and drops the explanation, which was the leak. Their
-# own plan is where the missing sentence is supposed to come from.
-_REDACTED_REASON = (
-    "That is not doing what this step asks for yet. Read the step again "
-    "beside your own plan - what were you going to keep track of here, and "
-    "what does it start out as?")
-
-
-def _safe_reason(reason: str, problem, chunk, student_code: str, upto: str) -> str:
-    """A judge's sentence, or a redaction if it gave the answer away.
-
-    ONLY ON AN INCORRECT VERDICT, which is where the leak lives: three live
-    submissions on `frequency` each came back naming the container the student
-    had been held at the gate to name themselves. A CORRECT verdict cannot leak
-    - it is describing code the student already wrote.
-
-    `allowed` is the same idea as in tutor.reply(): the problem statement, the
-    step as asked, and the student's own code are not secrets, so a word that
-    appears in any of them is not a disclosure when the judge repeats it."""
-    return reason if not _leaks_answer(
-        reason, f"{problem.get('description') or ''} {chunk.get('prompt') or ''} "
-                f"{student_code} {upto}") else _REDACTED_REASON
+# The answer-leak redaction that used to live here is gone with the verdict it
+# guarded. It rewrote a judge's sentence when an INCORRECT explanation named the
+# data structure the student was being held at the design gate to work out for
+# themselves. A judge can no longer return incorrect, and its own docstring made
+# the point that a CORRECT verdict cannot leak - it describes code the student
+# has already written. The tutor keeps its own guard (tutor._handed_over), which
+# is where that logic belongs and where it is still exercised.
 
 
 def _ask_judge(payload: str, role: str):
@@ -751,10 +863,16 @@ def _tier4(problem, chunk, upto, student_code, why, evidence, corr=None) -> Grad
         with trace.model_call(corr, GRADING_MODEL, "judge", role="primary"):
             a_ok, a_reason, a_conf, a_cat, a_input = _ask_judge(payload, "primary judge")
         _trace(trace.record_judge, corr, GRADING_MODEL, "primary", a_ok, a_conf)
+        # THE SECOND JUDGE IS NOT SHOWN THE FIRST ONE'S ANSWER. It used to be:
+        # the payload carried the first judge's verdict and reason appended to
+        # it, which anchors the second on the very answer it is supposed to
+        # check independently. Two anchored samples agreeing is close to no
+        # evidence at all, and their agreement was the whole basis for acting.
+        # Same payload, different role, no cross-talk. The self-check at the
+        # bottom of this file guards against it being reintroduced.
         with trace.model_call(corr, GRADING_MODEL, "judge", role="verifier"):
             b_ok, b_reason, b_conf, b_cat, b_input = _ask_judge(
-                payload + f"\n\nPRIMARY JUDGMENT: correct={a_ok} reason={a_reason}",
-                "independent verifier")
+                payload, "independent verifier")
         _trace(trace.record_judge, corr, GRADING_MODEL, "verifier", b_ok, b_conf)
     except Exception as e:
         # This try wraps ONLY the two model calls, so anything landing here is
@@ -771,6 +889,31 @@ def _tier4(problem, chunk, upto, student_code, why, evidence, corr=None) -> Grad
                    consume_attempt=False,
                    internal_detail=f"a={a_ok}/{a_conf} b={b_ok}/{b_conf}")
 
+    # A JUDGE MAY ACQUIT, NEVER CONVICT.
+    #
+    # This is the rule the 1am/4:58am flip came down to. Everything above this
+    # line is an opinion: no run attributed anything to the student, and the
+    # tier exists precisely because execution could not. An opinion that costs a
+    # student an attempt is the one thing this module is not allowed to do, and
+    # the failure is not hypothetical - correct-but-redundant code was failed
+    # live as "unnecessary" by judges that agreed with each other.
+    #
+    # Requiring a nameable failing_input (below) narrowed that, but it is still
+    # the model deciding what counts as a failing input. So a `false` here now
+    # ends the same way an "I don't know" does: indeterminate, no attempt spent,
+    # and the student is asked to look again. What is LOST is the ability to
+    # tell a student their non-final step is wrong on a model's say-so, which
+    # was never a thing we could do soundly. The final chunk still runs the real
+    # oracle and still convicts on it.
+    if not a_ok:
+        _trace(trace.record_route, corr, "llm-judge", "indeterminate")
+        return _ok("indeterminate", "llm-judge",
+                   "We could not confirm this step. Your attempt was not used - "
+                   "check it against your plan and try again.",
+                   "judge_no_acquittal", deterministic=False,
+                   consume_attempt=False,
+                   internal_detail=f"agreed incorrect a={a_input!r} b={b_input!r}")
+
     # AN "INCORRECT" THAT CANNOT NAME A FAILING INPUT IS NOT A CONVICTION.
     # Execution already failed to decide this submission - that is why we are
     # here - so the judge's sentence is all the evidence there is, and a
@@ -781,18 +924,12 @@ def _tier4(problem, chunk, upto, student_code, why, evidence, corr=None) -> Grad
     # Indeterminate rather than correct - we have not shown them right either -
     # and it costs no attempt, in keeping with this module's rule that our own
     # inability to decide is never evidence about the student.
-    if not a_ok and not (a_input and b_input):
-        _trace(trace.record_route, corr, "llm-judge", "indeterminate")
-        return _ok("indeterminate", "llm-judge",
-                   "This one needs a closer look - we couldn't decide "
-                   "confidently, so your attempt was not used.",
-                   "judge_unsupported", deterministic=False,
-                   consume_attempt=False,
-                   internal_detail=f"no failing input: a={a_input!r} b={b_input!r}")
-    _trace(trace.record_route, corr, "llm-judge", "correct" if a_ok else "incorrect")
-    return _ok("correct" if a_ok else "incorrect", "llm-judge",
-               a_reason if a_ok else _safe_reason(a_reason, problem, chunk,
-                                                  student_code, upto),
+    # Both judges, independently, said this step is right. That is an ACQUITTAL
+    # and nothing more: it is still flagged deterministic=False, because no run
+    # attributed anything, and the final chunk will check the whole solution
+    # against the real oracle regardless.
+    _trace(trace.record_route, corr, "llm-judge", "correct")
+    return _ok("correct", "llm-judge", a_reason,
                f"judge_{a_cat or 'agreed'}", deterministic=False)
 
 
@@ -867,8 +1004,12 @@ def grade_submission(session: dict, student_code: str,
     # function the two agree, and for a METHOD the resolved params belong to the
     # injected driver rather than to the def the student is writing under.
     in_scope = (_names(prefix, ast.Store) | set(resolved["params"])
-                | _header_params(header) | _module_names(problem))
-    scope = _scope_violation(student_code, in_scope)
+                | _header_params(header) | _module_names(problem, header))
+    # A star import ANYWHERE in what has run so far - an earlier accepted step
+    # or this one - makes the set of defined names unknowable, so the gate
+    # declines rather than convicts. Checked on `upto`, not student_code: the
+    # import may sit in a step accepted three submissions ago.
+    scope = _scope_violation(student_code, in_scope, _has_star_import(upto))
     if scope is not None:
         return _ok("incorrect", "syntax", scope[0], scope[1])
 
@@ -924,9 +1065,30 @@ def grade_submission(session: dict, student_code: str,
                    "allowed here.", "policy_violation",
                    execution_outcome="policy_violation")
 
+    # ── TIER 2.5 - DETERMINISTIC VALUE BRIDGE, before any model ──
     # A fixed reference tail can fail purely because it expected different
-    # variable names. That is not the student's fault, so we do NOT convict
-    # here - we try a calibrated adapter instead.
+    # variable names. That is a naming difference, not a mistake, and matching
+    # names by the VALUES they hold settles it by execution alone - no model, no
+    # rewriting of the teacher's code, the same answer every time. It is tried
+    # before Tier 3 because Tier 3 was measured at ~50% on exactly this case.
+    # See main/bridge.py for why a bridge may only ever acquit.
+    bridged = bridge.find(problem, header, chunks, idx, upto, tests, entry,
+                          set(resolved["params"]) | _header_params(header)
+                          | _module_names(problem, header) | _SAFE_BUILTINS)
+    if bridged:
+        covers = bridged["boundary"] - idx + 1
+        _trace(trace.record_route, corr, "execution-bridged", "correct",
+               mapping=bridged["mapping"], boundary=bridged["boundary"])
+        return _ok("correct", "execution-bridged",
+                   "Correct - you named things differently to our version, and "
+                   "your step works with the rest of the solution."
+                   if covers == 1 else
+                   f"Correct - and you have already written what the next "
+                   f"{covers - 1} step(s) asked for, so we have marked those "
+                   f"done too.",
+                   "bridged_pass", execution_outcome="pass",
+                   divergent=True, covers_chunks=covers)
+
     return _tier3(problem, session, chunk, header, prefix, student_code, upto,
                   ref_tail, tests, entry, res, corr)
 
@@ -936,6 +1098,18 @@ def _tier3(problem, session, chunk, header, prefix, student_code, upto,
     """Adapt the tail to the student's interface - but only a CALIBRATED
     adapter may influence a verdict."""
     idx = session["index"]
+    # Identical code, identical verdict - see _VERDICT_MEMO. Everything from
+    # here down can consult a model, and this is the last point before that.
+    memo_key = _memo_key(problem, idx, upto, student_code)
+    if memo_key in _VERDICT_MEMO:
+        return _VERDICT_MEMO[memo_key]
+
+    def _remember(result):
+        if len(_VERDICT_MEMO) >= _MEMO_LIMIT:
+            _VERDICT_MEMO.clear()       # cheap bound; correctness never depends
+        _VERDICT_MEMO[memo_key] = result
+        return result
+
     trusted_prefix = "\n".join((session["chunks"][j].get("reference") or "")
                                for j in range(idx + 1))
     current_outputs = _names(student_code, ast.Store)
@@ -971,35 +1145,71 @@ def _tier3(problem, session, chunk, header, prefix, student_code, upto,
         # undefined reference name and raise NameError on every run.
         cand = classify_run(_assemble(problem, header, upto, tail), tests, entry_name=entry)
         if cand.outcome == "pass":
-            # ANTI-BYPASS - knock out ONLY the student chunk; if it still
-            # passes, the tail was doing the student's work for them.
-            ko = classify_run(_assemble(problem, header, prefix, "pass", tail),
-                              tests, entry_name=entry)
+            # ANTI-BYPASS - blank out what the student's chunk PRODUCED, keeping
+            # the names, and require the composite to break. Deleting the chunk
+            # instead is foolable: the tail then reads a name that no longer
+            # exists, raises NameError, and "it broke without them" reads as
+            # necessity even when the tail was doing all the work. Rebinding
+            # each name to an empty value of its own type removes the VALUES
+            # while leaving the interface intact, so only a tail that genuinely
+            # used their work survives.
+            #
+            # Unlike the bridge below it, an adapted tail is model-written code
+            # that CAN compute, so this check still earns its keep here.
+            neutral = "\n".join(f"{n} = type({n})()" for n in sorted(current_outputs))
+            ko = classify_run(
+                _assemble(problem, header, upto, neutral, tail),
+                tests, entry_name=entry)
             if ko.outcome == "pass":
                 _trace(trace.record_adapter, corr, GRADING_MODEL, attempt, "bypass_rejected")
                 continue                            # bypassing adapter: reject
             _trace(trace.record_adapter, corr, GRADING_MODEL, attempt, "accepted")
             _trace(trace.record_route, corr, "execution-adapted", "correct")
-            return _ok("correct", "execution-adapted",
-                       "Correct - your approach differs from ours, but it works.",
-                       "adapted_pass", execution_outcome="pass", divergent=True)
-        if cand.outcome == "wrong_output":
-            # Calibrated tail + clean run + wrong answers => the student's step
-            # is genuinely wrong. This is the only adapter path that convicts.
-            shown = failing_cases(problem, tests, cand.failures)
-            return _ok("incorrect", "execution-adapted",
-                       "Your step runs, but the finished solution gives the "
-                       "wrong answer.", "adapted_wrong_output",
-                       execution_outcome="wrong_output", failures=cand.failures,
-                       failing_cases=shown,
-                       failed_total=_failed_total(cand, len(shown)))
+            return _remember(_ok(
+                "correct", "execution-adapted",
+                "Correct - your approach differs from ours, but it works.",
+                "adapted_pass", execution_outcome="pass", divergent=True))
         if cand.outcome == "harness_error":
             return _system("harness_error", cand.internal_error)
-        break     # crash/timeout: ownership ambiguous -> Tier 4
+        if cand.outcome == "wrong_output":
+            # THE EVIDENCE WITHOUT THE VERDICT. A calibrated tail ran cleanly on
+            # their work and the finished solution came out wrong somewhere.
+            # That is worth SHOWING and not worth CONVICTING on: the cases are
+            # concrete and checkable by hand, while the claim that the fault is
+            # theirs rests on a model having re-expressed the tail faithfully,
+            # which calibration does not establish.
+            #
+            # Without this a wrong answer got the bare "we could not confirm
+            # this step", which is the worst of both - no verdict AND no way
+            # forward - and a student cannot advance past a step they keep
+            # failing. Costs no attempt, so being wrong about it is free.
+            shown = failing_cases(problem, tests, cand.failures)
+            _trace(trace.record_adapter, corr, GRADING_MODEL, attempt, "evidence_only")
+            _trace(trace.record_route, corr, "execution-adapted", "indeterminate")
+            return _remember(_ok(
+                "indeterminate", "execution-adapted",
+                "We ran your step together with the rest of the solution and the "
+                "finished answer came out wrong on at least one case. We can't "
+                "be certain the fault is in this step, so your attempt was not "
+                "used - but the case below is worth tracing by hand.",
+                "adapted_evidence_only", deterministic=False,
+                consume_attempt=False, execution_outcome="wrong_output",
+                failures=cand.failures, failing_cases=shown,
+                failed_total=_failed_total(cand, len(shown))))
+        # ANYTHING ELSE IS NOT A CONVICTION, and this is the change that
+        # matters most in this function. It used to return `incorrect` on
+        # wrong_output, which means a student was failed on the strength of code
+        # a language model wrote: calibration proves the tail is a correct
+        # continuation of the REFERENCE's own earlier chunks, never that it was
+        # faithfully re-expressed in the student's vocabulary. A subtly wrong
+        # re-expression produces wrong answers that are not the student's. So
+        # this tier may now only ever acquit, and a failure falls through.
+        _trace(trace.record_adapter, corr, GRADING_MODEL, attempt,
+               f"no_acquittal_{cand.outcome}")
 
-    return _tier4(problem, chunk, upto, student_code,
-                  "no calibrated adapter produced attributable evidence", evidence,
-                  corr)
+    return _remember(_tier4(
+        problem, chunk, upto, student_code,
+        "no calibrated adapter produced attributable evidence", evidence, corr))
 
 
 if __name__ == "__main__":
@@ -1062,6 +1272,23 @@ if __name__ == "__main__":
     # ...and a typo of it is still the student's error.
     assert _scope_violation("if slef.top is None:\n    return None",
                             meth)[1] == "undefined_name"
+
+    # ── A FUNCTION MAY CALL ITSELF ───────────────────────────────────────
+    # Every recursive submission was convicted: build_program for a plain
+    # function is the def line plus the body, and _module_names was calling it
+    # WITHOUT the def line, so the assembled module defined nothing and the
+    # function's own name was not in scope. `return n * factorial(n - 1)` came
+    # back "`factorial` isn't defined".
+    _fact_h = "def factorial(n):"
+    _fact_p = {"slug": "fact", "entry_hint": "factorial",
+               "solution": _fact_h + "\n    return 1"}
+    assert _module_names(_fact_p, _fact_h) == {"factorial"}, \
+        _module_names(_fact_p, _fact_h)
+    _fact_scope = {"n"} | _module_names(_fact_p, _fact_h)
+    assert _scope_violation("return n * factorial(n - 1)", _fact_scope) is None
+    # ...and a misspelling of it is still the student's error.
+    assert _scope_violation("return factorail(n - 1)",
+                            _fact_scope)[1] == "undefined_name"
 
     # A builtin exception is not an undefined name. Calculator._isNumber is
     # try/float/except and was failed for naming ValueError.
@@ -1183,7 +1410,12 @@ if __name__ == "__main__":
     # NEGATIVE, and the more important half: `size` is computed from another
     # local, so that line does not mean the same thing anywhere else. One name
     # that cannot be settled disqualifies the submission - nothing is hoisted.
-    _neg_refs = ["terms = [t.strip() for t in tokens]\nsize = len(terms)",
+    # `size` is deliberately NOT len(terms). An earlier version of this fixture
+    # used `size = len(terms)`, which makes `out` a copy of `terms` on every
+    # input - so the value bridge correctly matched them and the fixture stopped
+    # testing the fall-through it exists for. Dropping the last token keeps the
+    # two genuinely different.
+    _neg_refs = ["terms = [t.strip() for t in tokens]\nsize = len(terms) - 1",
                  "out = terms[:size]",
                  "return out"]
     _neg = {**_sess, "solution": _hdr + "\n" + _indent("\n".join(_neg_refs)),
@@ -1216,38 +1448,103 @@ if __name__ == "__main__":
     # untouched, where the stubs above make it land on the outage path.
     _fell = grade_submission(_neg, _deferred,
                              oracle_loader=lambda p: [{"input": [[" 3 ", "+"]],
-                                                       "expected": ["3", "+"]}])
+                                                       "expected": ["3"]},
+                                                      {"input": [["a", "b", "c"]],
+                                                       "expected": ["a", "b"]}])
     assert _fell.reason_code == "judge_unavailable", _fell.reason_code
 
-    # ── a judge may only convict on a different RESULT ────────────────────
+    # ── the value bridge, end to end, with no model reachable ────────────
+    # THE SUBMISSION THIS WHOLE TIER EXISTS FOR. The teacher wrote `counts`,
+    # the student wrote `new_dict`, and identical code came back correct at 1am
+    # and incorrect twice at 4:58am because an LLM was being asked to rewrite
+    # the teacher's tail and managed it about half the time. _no_model is still
+    # installed above, so a model call anywhere on this path fails the check.
+    _fh = "def frequency(txt):"
+    _frefs = ["counts = {}",
+              "for ch in txt:\n    if ch.isalpha():\n"
+              "        counts[ch] = counts.get(ch, 0) + 1",
+              "return counts"]
+    _fsess = {"slug": "frequency", "title": "f", "description": "Count letters.",
+              "solution": _fh + "\n" + _indent("\n".join(_frefs)), "header": _fh,
+              "index": 0, "accepted": [],
+              "chunks": [{"step_id": f"Part {i + 1}", "prompt": f"step {i + 1}",
+                          "reference": r} for i, r in enumerate(_frefs)]}
+    _ftests = [{"input": ["hello"], "expected": {"h": 1, "e": 1, "l": 2, "o": 1}},
+               {"input": ["aab"], "expected": {"a": 2, "b": 1}},
+               {"input": [""], "expected": {}}]
+    _fl = lambda p: _ftests
+
+    _b = grade_submission(_fsess, "new_dict = {}", oracle_loader=_fl)
+    assert _b.verdict == "correct", (_b.verdict, _b.student_reason)
+    assert _b.tier == "execution-bridged" and _b.deterministic is True, _b.tier
+    assert _b.covers_chunks == 1, _b.covers_chunks
+    # Deterministic means deterministic. This is the assertion the bug report was.
+    for _ in range(5):
+        assert grade_submission(_fsess, "new_dict = {}", oracle_loader=_fl) == _b
+
+    # AHEAD: step 2's work done inside step 1 is accepted for BOTH steps, so the
+    # student is never asked to write the same loop a second time.
+    _a = grade_submission(_fsess, "out = {}\nfor ch in txt:\n    if ch.isalpha():"
+                                  "\n        out[ch] = out.get(ch, 0) + 1",
+                          oracle_loader=_fl)
+    assert _a.verdict == "correct" and _a.covers_chunks == 2, _a
+
+    # The teacher's own name needs no bridge and must not take this path.
+    assert grade_submission(_fsess, "counts = {}",
+                            oracle_loader=_fl).tier == "execution-reference"
+
+    # A WRONG submission finds no bridge - and that is never a conviction. With
+    # the model stubbed out it lands on the outage path; what matters is that it
+    # is not `incorrect` and costs no attempt.
+    _w = grade_submission(_fsess, "new_dict = []", oracle_loader=_fl)
+    assert _w.verdict != "incorrect", _w.verdict
+    assert _w.consume_attempt is False, "a bridge that is not found costs nothing"
+
+    # ── A JUDGE MAY ACQUIT, NEVER CONVICT ────────────────────────────────
     # Live, a student's step 1 on `frequency` was failed with "the code
     # incorrectly removes spaces before checking for alphabetic characters,
     # which is unnecessary". Redundant, yes - and identical in output, because
     # isalpha() already skips spaces. Correct code, marked wrong for not being
-    # lean. The prompt now says style is not grounds; this is the half that
-    # does not depend on the model agreeing. No network: the judge is stubbed.
+    # lean, by two judges that agreed with each other.
+    #
+    # Requiring a nameable failing input narrowed that but left the model
+    # deciding what counts as one. The rule below does not depend on the model
+    # agreeing to anything: a `false` from this tier cannot reach a student as
+    # `incorrect` at all, whatever it says and however confident it is. No
+    # network - the judge is stubbed.
     _real_ask = _ask_judge
     def _stub(ok, reason, failing_input):
         return lambda payload, role: (ok, reason, 0.9, "style", failing_input)
 
     _p, _c = {"description": "Count letters."}, {"prompt": "Prepare.", "reference": "counts = {}"}
     try:
-        # No failing input named => not a conviction, and no attempt spent.
+        # Style complaint, no failing input: not a conviction, no attempt spent.
         _ask_judge = _stub(False, "This removes spaces first, which is unnecessary.", "")
         _v = _tier4(_p, _c, "", "code", "why", "evidence")
         assert _v.verdict == "indeterminate", _v.verdict
         assert _v.consume_attempt is False, "an undecided verdict costs no attempt"
-        # A real fault names the input it breaks on, and still convicts.
+        # ...and NEITHER IS A CONFIDENT ONE THAT NAMES AN INPUT. This is the
+        # case that used to convict. Both judges agree, both are sure, both can
+        # point at 'a1b' - and it is still an opinion about code no run
+        # attributed anything to, so it still costs the student nothing.
         _ask_judge = _stub(False, "It counts a character it should skip.", "'a1b'")
         _v = _tier4(_p, _c, "", "code", "why", "evidence")
-        assert _v.verdict == "incorrect", _v.verdict
-        # A CORRECT verdict never needed evidence of failure.
+        assert _v.verdict == "indeterminate", _v.verdict
+        assert _v.consume_attempt is False, "an opinion may never cost an attempt"
+        assert _v.reason_code == "judge_no_acquittal", _v.reason_code
+        # An ACQUITTAL is what this tier is still for.
         _ask_judge = _stub(True, "This prepares the count correctly.", "")
-        assert _tier4(_p, _c, "", "code", "why", "evidence").verdict == "correct"
+        _v = _tier4(_p, _c, "", "code", "why", "evidence")
+        assert _v.verdict == "correct" and _v.deterministic is False, _v
     finally:
         _ask_judge = _real_ask
     assert "DIFFERENT RESULT" in _JUDGE_SYSTEM, \
         "the judge must be told that only a different answer is an error"
-    assert "failing_input" in _JUDGE_SYSTEM, "the field is the half with teeth"
+    # The verifier must not be shown the primary's answer: two anchored samples
+    # agreeing is not independent agreement, and agreement was the whole basis
+    # for acting on this tier at all.
+    import inspect as _inspect
+    assert "PRIMARY JUDGMENT" not in _inspect.getsource(_tier4), \
+        "the second judge must not be anchored on the first"
 
     print("grading.py scope-gate self-check OK")

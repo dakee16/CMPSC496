@@ -81,6 +81,41 @@ def align_to(code: str, columns: int) -> str:
     return "\n".join(pad + ln if ln.strip() else "" for ln in body.split("\n"))
 
 
+def is_seatable(code: str) -> bool:
+    """Can a student's answer to this chunk be re-seated unambiguously?
+
+    Only when the chunk's FIRST line is also its shallowest. Then the whole
+    block sits at one depth, the student types it flat, and align_to() puts it
+    back - which is the case this module was written for.
+
+    A chunk that starts indented and then dedents has no single depth to seat.
+    It is the tail of a block its predecessor opened AND the code that follows
+    that block:
+
+        step 1:  counts = {}
+                 for char in txt.lower():      <- leaves a block open
+        step 2:      if char.isalpha():        <- first line, column 4
+                         counts[char] = ...
+                 return counts                 <- column 0, outside the loop
+
+    The student is shown an empty editor and a one-line prompt. Nothing tells
+    them the last line leaves the loop, and no flat answer can express it: the
+    `if` and the `return` sit at the same depth in anything they can type.
+    base_indent reads the MINIMUM, so it answers 0, and their correct answer is
+    seated at column 0 - which does not parse under the open `for`. Measured on
+    the real pool: 3 of 30 non-first chunks, and on `frequency` a correct
+    submission came back `incorrect`/`syntax_error` with an attempt consumed.
+
+    So the fault is in the DECOMPOSITION, not in the student and not in the
+    seating - there is no depth that would have been right. run_phase1 gates on
+    this at generation and drops such decompositions from the pool at serve
+    time, which is the only repair that does not cost a student anything."""
+    lines = [ln for ln in _expand(code) if ln.strip()]
+    if not lines:
+        return True
+    return _leading(lines[0]) == base_indent(code)
+
+
 def align_to_chunk(code: str, chunk: dict) -> str:
     """Re-seat a submission at the depth of the chunk it answers.
 
@@ -126,6 +161,25 @@ if __name__ == "__main__":
     # Nothing in, nothing out - the blank-answer check downstream still fires.
     assert align_to_chunk("   \n  ", chunk) == ""
     assert align_to_chunk("", {}) == ""
+
+    # ── seatable: one depth for the whole chunk, or none at all ──────────
+    # A uniformly indented chunk IS seatable - that is the case above, and the
+    # one this module exists for.
+    assert is_seatable("    n //= 10")
+    assert is_seatable("    while n:\n        n -= 1")
+    assert is_seatable("counts = {}\nfor char in txt:")
+    assert is_seatable("") and is_seatable("\n  \n")
+    # ...but one that starts inside a block and then leaves it is NOT. All three
+    # of these are real, from the decomposition pool, and each convicted a
+    # correct answer.
+    assert not is_seatable("    return True\nexcept (ValueError, TypeError):\n"
+                           "        return False")
+    assert not is_seatable("    else:\n        try:\n            float(word)\n"
+                           "        except ValueError:\n            return None\n"
+                           "return ' '.join(out)")
+    assert not is_seatable("    if char.isalpha():\n"
+                           "        counts[char] = counts.get(char, 0) + 1\n"
+                           "return counts")
     # Editor newlines around the answer are dropped, not carried into the body.
     assert align_to_chunk("\n\nn //= 10\n\n", chunk) == "    n //= 10"
     # ...but a blank line INSIDE the answer is kept, so the shape is preserved.

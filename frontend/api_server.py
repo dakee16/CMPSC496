@@ -729,7 +729,8 @@ def grade_chunk_route(req: ChunkRequest, request: Request):
                 "deterministic": result.deterministic,
                 "reason": result.student_reason, "divergent": result.divergent},
             accept_code=accept_code, provenance=provenance,
-            consume_attempt=result.consume_attempt)
+            consume_attempt=result.consume_attempt,
+            covers_chunks=result.covers_chunks)
     except SessionError as e:
         # Same reasoning as the grader failure above: the CAS lost, nothing was
         # recorded, so the reservation must not outlive the attempt.

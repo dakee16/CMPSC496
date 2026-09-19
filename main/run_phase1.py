@@ -14,7 +14,8 @@ from tests.sandbox import get_oracle_tests, passes_tests
 from .context import (build_program, header_of, solution_body,
                       surrounding_class)
 from .identity import content_hash, get_resolved_entry
-from .gates import assert_serveable, check_necessity, check_prompts
+from .gates import (assert_serveable, check_necessity, check_prompts,
+                    shape_failures)
 from .prompts import DECOMPOSE_SYSTEM, EVAL_SYSTEM, CHUNK_DECOMPOSE_SYSTEM
 
 
@@ -405,6 +406,26 @@ def decompose_into_chunks(problem: dict, max_tries: int = 5) -> dict:
 
         code = assemble_references(problem, header, chunks)
         print(f"\n  🔍 ASSEMBLED attempt {attempt}:\n{code}\n  ---")
+
+        # SHAPE FIRST, and before the oracle runs: a split a student cannot be
+        # asked for is worthless however well its references compute, and this
+        # costs nothing. Retried with feedback rather than refused, because the
+        # fix - move the boundary to where the block closes - is exactly the
+        # kind of change another attempt can make. See gates.shape_failures for
+        # the two faults and the submissions that motivated them.
+        shape = shape_failures(problem, header, chunks)
+        if shape:
+            print(f"  📐 Shape gate: fail - {shape[0]}")
+            last_reason = f"shape gate - {shape[0]}"
+            feedback = ("Assembled body:\n" + code + "\n\nThis split cannot be "
+                        "ANSWERED, whatever the code does:\n  - "
+                        + "\n  - ".join(shape)
+                        + "\n\nRe-split at a boundary where every chunk closes "
+                          "the blocks it opens, so each chunk stands alone at "
+                          "one indentation and every partial stack is a valid "
+                          "program.")
+            continue
+
         report = _gate_code(code, problem)
         print(f"  🔍 FAILURES: {report.get('failures', [])}\n")
 
@@ -667,8 +688,27 @@ def get_chunk_decomposition(problem: dict) -> dict:
                         f"after exhausting fresh generation, the pool, and "
                         f"the best-effort fallback ({e}).") from e
 
-    chosen = random.choice(entries)
-    print(f"  🎲 Served pooled decomposition for {slug} (pool size: {len(entries)})")
+    # SHAPE-FILTER BEFORE CHOOSING. Entries written before the shape gate
+    # existed were never checked against it, and 4 of the 22 in the real pool
+    # fail: each one convicts a student who copies the reference verbatim. The
+    # filter is pure AST work with no oracle run, so screening the whole pool
+    # costs nothing, and dropping a bad entry is strictly better than serving
+    # it or than raising at the boundary and 500-ing the student.
+    usable = [e for e in entries
+              if not shape_failures(problem, e.get("header", ""),
+                                    _deserialize(e)["chunks"])]
+    if not usable:
+        print(f"  🧹 All {len(entries)} pooled decomposition(s) for {slug} fail "
+              f"the shape gate; generating fresh.")
+        fresh = decompose_into_chunks(problem)
+        pool[key] = entries + [_serialize(fresh)]
+        _save_pool(pool)
+        return fresh
+    if len(usable) < len(entries):
+        print(f"  🧹 Skipped {len(entries) - len(usable)} un-answerable pooled "
+              f"decomposition(s) for {slug}.")
+    chosen = random.choice(usable)
+    print(f"  🎲 Served pooled decomposition for {slug} (pool size: {len(usable)})")
     # Pooled entries were gated when written, but the oracle may have changed
     # since. Re-checking at the boundary is the point of having one.
     return assert_serveable(problem, _deserialize(chosen))

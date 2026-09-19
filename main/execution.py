@@ -111,6 +111,42 @@ def check_policy(code: str) -> None:
             raise PolicyViolation("that attribute isn't allowed here")
 
 
+# ONE DEFINITION, TWO USES, for the same reason pyvalue.SOURCE is shared.
+# The child compares in-process (it must - a 7MB result cannot cross the
+# IPC boundary) and main/mutation.py compares in the parent when it decides
+# whether a mutant was killed. As two separate functions they DRIFTED, and
+# the drift is what made stack-push ungradeable: see the docstring below.
+_NORM_SRC = r'''
+def norm(x):
+    """Put a value on the same footing as a STORED expected value.
+
+    Expected values crossed pyvalue.mt_lit on their way into the oracle cache,
+    and mt_lit has no literal form for an arbitrary object, so it writes
+    repr(str(v)) - a Node came back out as the STRING 'Node(5)'. Comparison then
+    put a live Node beside that string and they never matched.
+
+    Measured on the real stack-push oracle: 2 of its 15 tests read x.top, whose
+    value is a Node, so the TEACHER'S OWN implementation scored 13/15 and the
+    problem was ungradeable for everybody. Mutation testing could not see it
+    either - those two tests were unkillable, so they made the oracle look
+    weaker rather than making the bug visible.
+
+    Anything mt_lit would have stringified is stringified here too."""
+    if isinstance(x, (list, tuple)):
+        return [norm(i) for i in x]
+    if isinstance(x, dict):
+        return {norm(k): norm(v) for k, v in x.items()}
+    if isinstance(x, (set, frozenset)):
+        return {norm(i) for i in x}
+    if x is None or isinstance(x, (bool, int, float, str)):
+        return x
+    return str(x)
+'''
+
+exec(_NORM_SRC, globals())          # parent-side norm, same definition
+_norm = norm                        # the name main/mutation.py imports
+
+
 # Child-process harness. Mirrors the trusted harness's entry resolution so a
 # student candidate and the reference resolve the same function, but adds
 # resource limits and output caps.
@@ -120,7 +156,7 @@ def check_policy(code: str) -> None:
 # it wrote 2019 and every correct solution raised KeyError. The encoder is
 # prepended from main/pyvalue.py - it cannot be imported here, because this runs
 # under `-I`, which strips the script directory from sys.path.
-_STUDENT_HARNESS = _PYVALUE_SRC + r'''
+_STUDENT_HARNESS = _PYVALUE_SRC + _NORM_SRC + r'''
 import ast as _ast, json, re, sys, os
 try:
     import resource
@@ -153,11 +189,6 @@ def resolve_entry(ns, entry_name, helpers=()):
     funcs = [v for k, v in ns.items()
              if not k.startswith("__") and callable(v) and hasattr(v, "__code__")]
     return funcs[-1] if funcs else None
-
-def norm(x):
-    if isinstance(x, (list, tuple)):
-        return [norm(i) for i in x]
-    return x
 
 def brief(v, cap=160):
     """Bounded diagnostic: never ship the whole value back to the parent."""
@@ -229,9 +260,24 @@ main()
 def _sanitized_env() -> dict:
     """A minimal environment. Critically, this does NOT inherit the parent's
     variables, so .env secrets (SUPABASE_KEY, OPENAI_API_KEY) are unreachable
-    from student code."""
+    from student code.
+
+    PYTHONHASHSEED IS PINNED, and that is a correctness fix rather than a
+    hardening one. Python randomizes string hashing per process, so set and
+    dict iteration order changes between runs of the SAME program: six runs of
+    `list(set(txt.split()))` produced six different orderings. Two things break
+    on that. An oracle whose expected value came from one such run fails a
+    correct solution on the next - a flaky verdict that looks exactly like a
+    student bug. And main/bridge.py compares captured variable values across
+    two processes, so an unpinned seed makes a correct student's state never
+    match the reference's.
+
+    Zero rather than a random constant: the value has to be the same in every
+    process that will ever be compared, including oracle generation months
+    earlier, so it cannot be drawn at runtime."""
     return {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8",
-            "PYTHONIOENCODING": "utf-8", "HOME": "/nonexistent"}
+            "PYTHONIOENCODING": "utf-8", "HOME": "/nonexistent",
+            "PYTHONHASHSEED": "0"}
 
 
 def run_student_code(code: str, inputs: list, entry_name: str | None = None,
@@ -258,8 +304,20 @@ def run_student_code(code: str, inputs: list, entry_name: str | None = None,
             f.write(_dumps({"code": code, "inputs": inputs,
                             "entry_name": entry_name, "tests": tests,
                             "mem": _MEM_BYTES, "cpu": _CPU_SECONDS}))
+        # -P -s -S, NOT -I. `-I` is `-E -P -s` together, and the `-E` half makes
+        # the interpreter ignore every PYTHON* variable - including
+        # PYTHONHASHSEED, which _sanitized_env pins for the correctness reason
+        # documented there. Under -I the pin was silently a no-op: six runs of
+        # one correct program still produced six different set orderings.
+        #
+        # Dropping -E costs nothing HERE, and only here, because the child's
+        # environment is not inherited - it is the dict _sanitized_env builds,
+        # holding five variables and no secrets. -E exists to defend against a
+        # hostile ambient environment; there isn't one to defend against.
+        # -P (no cwd on sys.path) and -s (no user site-packages) are the halves
+        # that actually isolate, and both are kept.
         proc = subprocess.run(
-            [sys.executable, "-I", "-S", "-c", _STUDENT_HARNESS, payload_path],
+            [sys.executable, "-P", "-s", "-S", "-c", _STUDENT_HARNESS, payload_path],
             capture_output=True, text=True, timeout=timeout,
             cwd=workdir, env=_sanitized_env(), stdin=subprocess.DEVNULL)
     except subprocess.TimeoutExpired:
@@ -306,12 +364,6 @@ def run_student_code(code: str, inputs: list, entry_name: str | None = None,
     return "harness_error", [], f"unknown status {st!r}"
 
 
-def _norm(x):
-    if isinstance(x, (list, tuple)):
-        return [_norm(i) for i in x]
-    return x
-
-
 def classify_run(code: str, tests: list, entry_name: str | None = None,
                  timeout: float = _DEFAULT_TIMEOUT) -> ExecutionResult:
     """Run untrusted code against oracle tests and return a CLASSIFIED result.
@@ -347,3 +399,49 @@ def classify_run(code: str, tests: list, entry_name: str | None = None,
     return ExecutionResult(
         outcome="runtime_error" if d.get("raised") else "wrong_output",
         passed=passed, total=total, failures=failures[:5])
+
+
+if __name__ == "__main__":
+    # Self-check.  python -m main.execution
+    # Real subprocesses, no model, no oracle cache.
+
+    # ── the sandbox is deterministic across processes ─────────────────────
+    # PYTHONHASHSEED randomises set and dict iteration order per process, so
+    # two runs of ONE correct program disagreed and an oracle built from the
+    # first failed the second. Pinning it only works because the interpreter is
+    # launched with -P -s -S rather than -I: `-I` implies `-E`, which makes
+    # every PYTHON* variable - including the pin - a silent no-op.
+    _code = "def f(t):\n    return {'w': list(set(t.split()))}"
+    _seen = {repr(run_student_code(_code, [["the cat sat on the mat by a door"]],
+                                   entry_name="f")[1]) for _ in range(6)}
+    assert len(_seen) == 1, f"set order varies across processes: {_seen}"
+
+    # ...and dropping -E must not have opened the sandbox up.
+    _t = [{"input": [1], "expected": 1}]
+    for _src, _why in (
+            ("import os\ndef f(x):\n    return 1", "a banned import"),
+            ("def f(x):\n    return open('/etc/passwd')", "open()"),
+            ("import main.grading\ndef f(x):\n    return 1", "the app's own package"),
+            ("def f(x):\n    return eval('1')", "eval")):
+        assert classify_run(_src, _t, entry_name="f").outcome == "policy_violation", _why
+    assert classify_run("def f(x):\n    return x", _t, entry_name="f").outcome == "pass"
+
+    # ── an object is compared the way it was STORED ───────────────────────
+    # mt_lit has no literal form for an arbitrary object, so an expected value
+    # that is one was written as repr(str(v)) and read back as a STRING. The
+    # live object was then compared against that string and never matched: on
+    # the real stack-push oracle the teacher's own implementation scored 13/15,
+    # and the two tests were unkillable, so mutation testing never saw it.
+    class _N:
+        def __repr__(self):
+            return "Node(5)"
+    assert _norm(_N()) == "Node(5)"
+    assert _norm([1, _N()]) == [1, "Node(5)"]
+    assert _norm({"a": _N()}) == {"a": "Node(5)"}
+    # Values that DO have a literal form are untouched - including the ones
+    # pyvalue.py exists to preserve.
+    for _v in (0, 1.5, True, False, None, "s", [1, 2], {2019: 1}, {1, 2}):
+        assert _norm(_v) == _v, _v
+    assert _norm((1, 2)) == [1, 2], "a tuple is stored as a list"
+
+    print("execution.py self-check OK")

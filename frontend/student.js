@@ -1448,11 +1448,17 @@ function openReview(i){
   }
   reviewIdx = i;
   const c = chunks[i] || {};
+  const how = accepted[i].how;
+  const label = how === "revealed" ? "shown to you"
+              : how === "covered" ? "covered by an earlier step" : "your answer";
   $("stepCount").innerHTML = `Step ${i + 1} of ${chunks.length}`
-    + ` <span class="pill ${accepted[i].how === "revealed" ? "warn" : "ok"}">`
-    + `${accepted[i].how === "revealed" ? "shown to you" : "your answer"}</span>`;
+    + ` <span class="pill ${how === "revealed" ? "warn" : "ok"}">${label}</span>`;
   $("prompt").textContent = c.prompt || "";
-  $("reviewCode").textContent = accepted[i].code;
+  // A covered step has no code of its own - the student wrote it as part of an
+  // earlier answer - so say that rather than showing them an empty box.
+  $("reviewCode").textContent = how === "covered"
+    ? "You already wrote this as part of an earlier step."
+    : accepted[i].code;
   setReviewMode(true);
   renderStepper();
   $("msg").innerHTML = "";
@@ -1628,6 +1634,17 @@ $("submit").onclick = async () => {
     accepted[idx] = {code: alignToStep(code, (chunks[idx] || {}).indent), how: "own"};
     clearDraft();                    // it is an answer now, not a draft
     const completedIndex = idx;
+    // ONE ANSWER CAN SETTLE MORE THAN ONE STEP. A student who wrote the next
+    // step's work inside this one has already done it, so the server advances
+    // past both (main/bridge.find reports how far their code reached). Filling
+    // the steps it covered keeps this array in step with the server's index -
+    // left as holes, the progress bar read "1 / 3" while the server was on
+    // step 3, and the stepper called a finished step "not started yet".
+    // Their code is stored ONCE, against the step they typed it into: repeating
+    // it here would draw their loop twice in the context pane.
+    for (let i = completedIndex + 1; i < res.index; i++){
+      accepted[i] = {code: "", how: "covered"};
+    }
     idx = res.index;
     if (res.completed) return finish(res);
     pauseAfterStep(completedIndex);

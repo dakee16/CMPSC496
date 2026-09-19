@@ -244,6 +244,14 @@ def assert_serveable(problem: dict, decomposition: dict) -> dict:
             f"'{slug}' has chunk(s) with a do-nothing reference: {', '.join(noop)}. "
             f"A chunk that does nothing can never be load-bearing.")
 
+    # (c2) Answerable at all - see shape_failures. Checked before necessity
+    #      because it is free and because a decomposition a student cannot
+    #      answer is not worth running an oracle over.
+    shape = shape_failures(problem, header, chunks)
+    if shape:
+        raise DecompositionUnavailableError(
+            f"'{slug}' cannot be answered as split:\n  - " + "\n  - ".join(shape))
+
     # (d) Necessity. Its own statuses carry the right exception type.
     nec = check_necessity(header, chunks, problem)
     if nec["status"] == "oracle_not_strong":
@@ -254,6 +262,65 @@ def assert_serveable(problem: dict, decomposition: dict) -> dict:
         raise DecompositionUnavailableError(nec["summary"])
 
     return decomposition
+
+
+def shape_failures(problem: dict, header: str, chunks: list) -> list[str]:
+    """Ways a decomposition is un-ANSWERABLE, whatever its references compute.
+
+    Every other gate here asks whether the reference code is right. This one
+    asks whether a student can be asked for it at all, which the full-assembly
+    gate structurally cannot see: it compiles the chunks STACKED, and both
+    faults below live in a single chunk or a partial stack.
+
+    A. UN-SEATABLE (see indent.is_seatable). The chunk begins inside a block its
+       predecessor opened and then leaves that block. No flat answer expresses
+       that, base_indent reads the shallowest line, and the student's correct
+       code is seated where it does not parse.
+
+    B. UN-RUNNABLE PREFIX. Grading a non-final chunk first compiles the accepted
+       steps plus this one on their own (grading.grade_submission's probe), so
+       every prefix has to be a valid program. A decomposition that ends a chunk
+       on `try:` with the `except` in the NEXT chunk assembles perfectly and is
+       still ungradeable: the student submits the teacher's own text for step 1
+       and is told their code does not parse.
+
+    Both were measured on the real pool rather than imagined - 3 of 22
+    decompositions were un-seatable, and BOTH `_isNumber` splits had an
+    un-runnable prefix. Each produced `incorrect` plus a consumed attempt on
+    code copied verbatim from the reference.
+
+    Returns a list of human-readable failures - empty when the decomposition is
+    answerable. Never raises: callers decide whether to retry or to refuse."""
+    from .context import build_program
+    from .indent import is_seatable
+
+    out = []
+    refs = [(getattr(c, "reference", "") or "") for c in chunks]
+    for i, ref in enumerate(refs):
+        step = getattr(chunks[i], "step_id", f"Part {i + 1}")
+        if not is_seatable(ref):
+            out.append(
+                f"{step} starts inside a block and then leaves it, so there is "
+                f"no single indentation a student's answer could be seated at. "
+                f"Split where the block closes, or keep the whole block in one "
+                f"chunk.")
+    # Every PREFIX must be a program, not just the finished stack. The last one
+    # is the full assembly, which _gate_code already runs.
+    for i in range(len(refs) - 1):
+        body = "\n".join(r.rstrip() for r in refs[:i + 1] if r.strip())
+        if not body.strip():
+            continue
+        try:
+            compile(build_program(problem, body, header), "<prefix>", "exec")
+        except SyntaxError as e:
+            step = getattr(chunks[i], "step_id", f"Part {i + 1}")
+            out.append(
+                f"steps up to and including {step} do not form a valid program "
+                f"on their own ({e.msg}). A student is graded on that partial "
+                f"program, so every chunk must close whatever it opens.")
+        except Exception:
+            pass                        # not a shape fault; other gates own it
+    return out
 
 
 def _knock_out(chunk):

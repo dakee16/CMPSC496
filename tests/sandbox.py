@@ -121,11 +121,16 @@ def run_solution(code: str, inputs: list, entry_name: str | None = None,
         return {"ok": False, "error": "unparseable harness output: " + proc.stdout[:200]}
 
 
-def _norm(x):
-    """Tuples and lists compare equal (JSON round-trips tuples to lists)."""
-    if isinstance(x, (list, tuple)):
-        return [_norm(i) for i in x]
-    return x
+# THE SAME COMPARISON THE GRADER USES, imported rather than restated. There
+# were three copies of this - here, inside main/execution.py's child harness,
+# and in its parent - and they drifted: the child's did not stringify an object
+# the way pyvalue.mt_lit had already stringified the stored expected value, so
+# stack-push scored 13/15 for the teacher's own implementation and was
+# ungradeable for everyone. This copy never saw the bug, because results reach
+# it AFTER crossing mt_lit, so an object is already a string by then - which is
+# exactly how the two behaviours could disagree for so long without anything
+# failing loudly. Verified a no-op over all 356 cached oracle values.
+from main.execution import _norm  # noqa: E402
 
 
 def passes_tests(code: str, tests: list, entry_name: str | None = None,
