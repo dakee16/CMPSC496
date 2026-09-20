@@ -1084,6 +1084,23 @@ async function start(p){
   // database, so the browser never holds it.
   // Restore reads and session creation are independent; overlap the requests.
   const savedWork=fetch(`${API}/history/${encodeURIComponent(p.slug)}`).catch(()=>null);
+  // OPENING CAN NOW TAKE A WHILE, AND THE SPINNER'S SENTENCE STOPS BEING TRUE.
+  // "Looking for your earlier work" is accurate for about a second; after that
+  // the wait is the server building this problem's steps, and when the student
+  // planned a different approach from the teacher's it is rebuilding the whole
+  // roadmap around theirs - a solution proposal, a decomposition, and every
+  // gate (main/reroute.py). That is tens of seconds, and a stale sentence in
+  // front of it reads as a hang.
+  //
+  // The page cannot know which of those is happening - the server decides, and
+  // only says so in the response - so the wording says what is true either way
+  // and stops claiming to be doing the thing it has finished.
+  const waitNote = setTimeout(() => {
+    const line = $("clog") && $("clog").querySelector(".restoring span:last-child");
+    if (line) line.textContent =
+      "Setting up the steps for this problem… this takes longer the first "
+      + "time, and longer again if your approach differs from ours.";
+  }, 4000);
   let r;
   try {
     r = await fetch(`${API}/decompose_chunks`, {
@@ -1093,7 +1110,8 @@ async function start(p){
       body: JSON.stringify({slug: p.slug, title: p.title,
                             description: p.description})
     });
-  } catch { if (opening === workspaceEpoch) return failStart("Could not reach the server."); else return; }
+  } catch { clearTimeout(waitNote); if (opening === workspaceEpoch) return failStart("Could not reach the server."); else return; }
+  clearTimeout(waitNote);
   if (opening !== workspaceEpoch) return;
   if (!r.ok) return failStart("This problem could not be started. Try another one.");
 
@@ -1627,7 +1645,12 @@ $("submit").onclick = async () => {
   if (grading !== workspaceEpoch) return;
 
   // Covers the OpenAI outage case. The server guarantees no attempt was spent.
-  if (res.verdict === "indeterminate") return show("warn", res.reason);
+  // An indeterminate verdict that came with a QUESTION is handled further down,
+  // where the two ways forward are offered. Without this the bare reason - "we
+  // could not confirm this step" - would win, which is the shrug the diagnosis
+  // exists to replace.
+  if (res.verdict === "indeterminate" && !(res.needs_diagnosis && res.diagnosis))
+    return show("warn", res.reason);
 
   if (res.verdict === "correct") {
     // Store it the way the server did, not the way it was typed.
@@ -1659,6 +1682,45 @@ $("submit").onclick = async () => {
     if (res.completed) return finish(res);
     pauseAfterStep(completedIndex);
     show("warn", res.reason + "\n\nReview the shown answer below, then continue when you’re ready.");
+    return;
+  }
+  // COULD NOT CONFIRM -> PAUSE AND ASK, rather than let them carry on.
+  //
+  // This verdict costs no attempt and does not advance the step, so without
+  // stopping here a student whose code IS wrong would resubmit into the same
+  // wall indefinitely - "we could not confirm this" over and over with nothing
+  // to act on. The question is built from a real input their own code was run
+  // on (main/diagnose.py), so there is always something concrete to do next.
+  //
+  // The editor stays usable: this is a prompt to look again, not a lock-out,
+  // and the two buttons are the two honest ways forward.
+  if (res.needs_diagnosis && res.diagnosis){
+    show("warn", res.diagnosis,
+         '<div class="diagnosis-actions">'
+         + '<button type="button" id="diagFix">'
+         + 'I see it — let me fix my code</button>'
+         + '<button type="button" id="diagExplain" class="ghost">'
+         + 'My approach is different — let me explain</button></div>');
+    const fix = $("diagFix"), explain = $("diagExplain");
+    if (fix) fix.onclick = () => {
+      $("msg").innerHTML = "";
+      if (editor) editor.focus();
+    };
+    // Hands them to the tutor with the opening already typed, so they are not
+    // made to restate the situation. The tutor is where a different approach
+    // gets discussed; the grader has no opinion about approaches.
+    if (explain) explain.onclick = () => {
+      $("msg").innerHTML = "";
+      setTutorOpen(true);
+      const box = $("cinput");
+      if (box){
+        box.value = "My approach is different from the one you expected. "
+                  + "Here is what I am doing and why: ";
+        box.focus();
+        box.setSelectionRange(box.value.length, box.value.length);
+        box.dispatchEvent(new Event("input"));   // keep the counter honest
+      }
+    };
     return;
   }
   // A wrong answer now comes with the case that caught it, folded away. Closed

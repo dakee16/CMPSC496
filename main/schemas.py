@@ -113,4 +113,15 @@ class GradeResult(BaseModel):
     covers_chunks: int = 1
     # Infrastructure failure must not cost the student an attempt.
     consume_attempt: bool = True
+    # Execution looked at this and could not confirm it - as opposed to our
+    # machinery having fallen over, which is `tier == "system"` and is not the
+    # student's business. True means the coding step should PAUSE and the tutor
+    # should ask about it, because an indeterminate verdict does not advance the
+    # session: without this the student is left repeating a step nobody named a
+    # problem with. Never affects the verdict or the attempt count.
+    needs_diagnosis: bool = False
+    # The tutor's question, built around a real input their code was run on.
+    # See main/diagnose.py - execution chooses the example, a model only writes
+    # the sentence, and neither can convict.
+    diagnosis: Optional[str] = None
     execution_outcome: Optional[ExecutionOutcome] = None

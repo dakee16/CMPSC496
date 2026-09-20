@@ -933,6 +933,27 @@ def _tier4(problem, chunk, upto, student_code, why, evidence, corr=None) -> Grad
                f"judge_{a_cat or 'agreed'}", deterministic=False)
 
 
+def _with_diagnosis(result, problem, chunk, header, chunks, idx, upto,
+                    student_code, tests, entry, ambient):
+    """`result` plus a question built on a real input, when one can be found.
+
+    Defensive end to end: diagnosis is help, and help must never be able to
+    change a verdict or take down a grading response. Anything that goes wrong
+    here leaves the result exactly as it arrived - the student still gets their
+    indeterminate, still spends no attempt, and simply gets no question."""
+    try:
+        from . import diagnose
+        example = diagnose.counterexample(problem, header, chunks, idx, upto,
+                                          tests, entry, ambient)
+        if example is None:
+            return result
+        msg = diagnose.question(problem, chunk, student_code, example)
+    except Exception:
+        return result
+    return result.model_copy(update={"needs_diagnosis": True, "diagnosis": msg}) \
+        if hasattr(result, "model_copy") else result
+
+
 # ── the state machine ────────────────────────────────────────────────────
 
 def grade_submission(session: dict, student_code: str,
@@ -1089,8 +1110,24 @@ def grade_submission(session: dict, student_code: str,
                    "bridged_pass", execution_outcome="pass",
                    divergent=True, covers_chunks=covers)
 
-    return _tier3(problem, session, chunk, header, prefix, student_code, upto,
-                  ref_tail, tests, entry, res, corr)
+    result = _tier3(problem, session, chunk, header, prefix, student_code, upto,
+                    ref_tail, tests, entry, res, corr)
+    # ── COULD NOT CONFIRM -> ASK, rather than leave them on a step nobody
+    #    named a problem with. An indeterminate verdict does not advance the
+    #    session, so every tier being acquit-only would otherwise strand a
+    #    student who IS wrong: no verdict and no way forward, which is worse
+    #    than the false conviction that discipline removed.
+    #
+    #    Only when execution actually looked. `tier == "system"` is our
+    #    machinery failing - a provider outage, a broken harness - and a
+    #    counterexample drawn from that would be inventing a problem in the
+    #    student's code to explain one in ours.
+    if result.verdict == "indeterminate" and result.tier != "system":
+        result = _with_diagnosis(result, problem, chunk, header, chunks, idx,
+                                 upto, student_code, tests, entry,
+                                 set(resolved["params"]) | _header_params(header)
+                                 | _module_names(problem, header) | _SAFE_BUILTINS)
+    return result
 
 
 def _tier3(problem, session, chunk, header, prefix, student_code, upto,

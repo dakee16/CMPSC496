@@ -80,6 +80,18 @@ const server = http.createServer((req,res) => {
     const page=await context.newPage();
     page.on('pageerror',e=>errors.push(e.message));
     const screenshot=async name=>{if(output){fs.mkdirSync(output,{recursive:true});await page.screenshot({path:path.join(output,name+'.png'),fullPage:true});}};
+    // THE THEME CONTROL IS NOT ON THIS PAGE ANY MORE. It lives in the Settings
+    // panel (frontend/onboarding.js), and only login.html still carries an
+    // inline [data-theme-control]. This suite was written against two buttons
+    // labelled "Switch to dark/light mode" that no longer exist anywhere.
+    // Driving Theme directly is what the toggle itself does - see ui.js.
+    // `Theme` in ui.js is a module-level const, not on window, so this does
+    // what Theme.set does: persist the preference and stamp <html data-theme>,
+    // which is what tokens.css keys the palette off.
+    const setTheme=async v=>{await page.evaluate(t=>{
+      try{localStorage.setItem('mt.theme',t);}catch{}
+      document.documentElement.dataset.theme=t;
+    },v);};
     const noOverflow=async(label)=>assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),label+' has horizontal page overflow');
     await page.goto(base+'/student.html');
     await page.locator('#assignments .rowitem').first().waitFor();
@@ -99,16 +111,29 @@ const server = http.createServer((req,res) => {
     assert.equal(await page.locator('#statement code').count(),4); // 3 inline identifiers + example
     assert.equal(await page.locator('.studio-brief #stepper').count(),0);
     assert.equal(await page.locator('.studio-work #stepper').count(),1);
-    assert(await page.locator('.studio-brief').evaluate(el=>el.offsetWidth>=800));
+    // #problemPaper, not `.studio-brief`: the inline "Full file" card
+    // (#filePaper) carries the same class, so the bare selector matches two
+    // elements and Playwright refuses to guess. What this checks is that THE
+    // QUESTION gets the wide column.
+    assert(await page.locator('#problemPaper').evaluate(el=>el.offsetWidth>=800));
+    // A RESUME WITH AN APPROVED PLAN LANDS ON CODE, not on "Question & plan".
+    // That is deliberate - see workspace.js `resumeStage`: every return trip
+    // used to start with a click on "Code" that the page could make itself.
+    // This fixture's /history/ says design_approved, so it is a resume.
+    assert.equal(await page.locator('#stageCode').isVisible(),true,
+      'A resumed, already-approved problem opens straight on Code');
+    assert.equal(await page.locator('#chatcol').isVisible(),true);
+    // Step back to the question to check how the READ stage renders.
+    await page.locator('[data-stage="read"]').first().click();
+    await page.waitForFunction(()=>!document.querySelector('#stageRead').hidden);
     assert.equal(await page.locator('#stageRead').isVisible(),true);
     assert.equal(await page.locator('#stageCode').isVisible(),false);
-    assert.equal(await page.locator('#chatcol').isVisible(),true);
     await screenshot('acadia-question-read-light');
-    await page.getByRole('button',{name:'Switch to dark mode',exact:true}).click();
+    await setTheme('dark');
     await screenshot('acadia-question-read-dark');
-    await page.getByRole('button',{name:'Switch to light mode',exact:true}).click();
-    await page.locator('#planContinue').click();
-    await page.locator('#stageCode').waitFor();
+    await setTheme('light');
+    await page.locator('[data-stage="code"]').first().click();
+    await page.waitForFunction(()=>!document.querySelector('#stageCode').hidden);
     assert.equal(await page.locator('#codeQuestion #problemPaper').isVisible(),true,
       'Coding keeps the question on top of the editor');
     assert.equal(await page.locator('#statement').isVisible(),false,'…minimised, so the editor keeps the height');
@@ -116,7 +141,7 @@ const server = http.createServer((req,res) => {
     await noOverflow('Desktop light');
     await page.evaluate(()=>editor.setValue('    previous_year = year - 1\n    previous_year_records = d[previous_year]\n    new_dict = {}'));
     await screenshot('acadia-workspace-light');
-    await page.getByRole('button',{name:'Switch to dark mode',exact:true}).click();
+    await setTheme('dark');
     await screenshot('acadia-workspace-dark');
     assert.equal(await page.locator('html').getAttribute('data-theme'),'dark');
     const colors=await page.locator('.CodeMirror').evaluate(el=>({bg:getComputedStyle(el).backgroundColor,color:getComputedStyle(el).color}));
@@ -140,7 +165,7 @@ const server = http.createServer((req,res) => {
     await page.locator('#backToNow').click();
     assert.equal(await page.evaluate(()=>editor.getValue()),'    draft = 1');
     assert.match(await page.locator('#stepCount').textContent(),/Step 2 of 3/);
-    await page.getByRole('button',{name:'Switch to light mode',exact:true}).click();
+    await setTheme('light');
     for(const width of [1440,1366,1024,950,768,390]){
       await page.setViewportSize({width,height:900});
       await noOverflow('Width '+width);
@@ -229,16 +254,16 @@ const server = http.createServer((req,res) => {
         assert(Math.abs(alignment.label-alignment.value)<1,'Metric label and value share a left edge');
       }
       await screenshot('acadia-'+name+'-light');
-      await page.getByRole('button',{name:'Switch to dark mode',exact:true}).click();
+      await setTheme('dark');
       await noOverflow(name+' dark');
-      await page.getByRole('button',{name:'Switch to light mode',exact:true}).click();
+      await setTheme('light');
     }
     loggedIn=false;
     await page.goto(base+'/login.html');
     const note=await page.locator('.auth-note').evaluate(el=>{const s=getComputedStyle(el);return {left:s.paddingLeft,right:s.paddingRight,border:s.borderLeftWidth,bg:s.backgroundColor};});
     assert.deepEqual(note,{left:'0px',right:'0px',border:'0px',bg:'rgba(0, 0, 0, 0)'});
     await screenshot('acadia-login-light');
-    await page.getByRole('button',{name:'Switch to dark mode',exact:true}).click();
+    await setTheme('dark');
     await page.reload();
     assert.equal(await page.locator('html').getAttribute('data-theme'),'dark');
     await screenshot('acadia-login-dark');

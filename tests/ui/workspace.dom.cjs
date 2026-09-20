@@ -43,7 +43,7 @@ const graph = {nodes:[{id:'n0',kind:'start',label:'Read records'},{id:'n1',kind:
       else if(route==='/design_review/plan'||route==='/design_review') data={approved,reply:approved?'Your approach is approved.':'Explain how you will preserve the earlier records.',plan_graph:graph};
       else if(route==='/grade_chunk'){
         const index=JSON.parse(init.body).expected_index;
-        data=verdict==='correct'?{verdict:'correct',reason:'This step passes.',index:index+1,completed:index===1,solved_independently:true}:verdict==='indeterminate'?{verdict:'indeterminate',reason:'The grader is temporarily unavailable.'}:{verdict:'incorrect',reason:'Try the empty-input case.',failing_cases:['employee_update({})\n\nexpected: {}\nyou gave: None','employee_update({2019: {}})\n\nit raised: KeyError(2018)'],failed_total:5,attempts:1};
+        data=verdict==='correct'?{verdict:'correct',reason:'This step passes.',index:index+1,completed:index===1,solved_independently:true}:verdict==='indeterminate'?{verdict:'indeterminate',reason:'The grader is temporarily unavailable.'}:verdict==='diagnosis'?{verdict:'indeterminate',reason:'We could not confirm this step.',needs_diagnosis:true,diagnosis:"Try your code on this input: 'aab'. After your step, `seen` is {'a', 'b'}. "+'Does that give the next step everything it needs?'}:{verdict:'incorrect',reason:'Try the empty-input case.',failing_cases:['employee_update({})\n\nexpected: {}\nyou gave: None','employee_update({2019: {}})\n\nit raised: KeyError(2018)'],failed_total:5,attempts:1};
       }
       else if(route==='/mark_solved') data={ok:true};
       else if(route==='/graphs'){status=comparisonFailure?503:200;data={plan:graph,code:graph,comparison:{similarity:1,notes:['The structure matches.']}};}
@@ -165,6 +165,32 @@ const graph = {nodes:[{id:'n0',kind:'start',label:'Read records'},{id:'n1',kind:
     assert.equal(value,'    draft = records.copy()');
     verdict='indeterminate';await doc.querySelector('#submit').onclick();
     assert.equal(value,'    draft = records.copy()');
+
+    // COULD NOT CONFIRM -> the page pauses and ASKS, instead of letting them
+    // resubmit into the same wall. The verdict costs no attempt and does not
+    // advance the step, so without this a student whose code IS wrong is left
+    // with nothing to act on. See main/diagnose.py.
+    value='    seen = set(records)';
+    verdict='diagnosis';await doc.querySelector('#submit').onclick();
+    assert(doc.querySelector('#msg .banner').textContent.includes("'aab'"),
+      'The measured input is what they are asked to trace');
+    assert(doc.querySelector('#msg .banner').textContent.includes('`seen`'),
+      'Their OWN variable is shown back to them');
+    assert(doc.querySelector('#diagFix'),'A way back to the editor');
+    assert(doc.querySelector('#diagExplain'),'A way to say the approach differs');
+    // A prompt, not a lock-out: the editor stays live and the draft survives.
+    assert.notEqual(options.readOnly,'nocursor','The editor must stay usable');
+    assert.equal(value,'    seen = set(records)','Their draft survives the prompt');
+    doc.querySelector('#diagFix').click();
+    assert.equal(doc.querySelector('#msg').innerHTML,'','Dismissing clears the prompt');
+    value='    seen = set(records.keys())';
+    verdict='diagnosis';await doc.querySelector('#submit').onclick();
+    doc.querySelector('#diagExplain').click();
+    assert(doc.querySelector('#cinput').value.includes('approach is different'),
+      'Explaining opens the tutor with the opening already typed');
+    doc.querySelector('#cinput').value='';
+    // Put the draft back the way the rest of this file expects to find it.
+    value='    draft = records.copy()';
     verdict='correct';await doc.querySelector('#submit').onclick();
     assert.equal(doc.querySelector('#reviewBox').hidden,false);
     assert(doc.querySelector('#backToNow').textContent.includes('Continue to step 2'));

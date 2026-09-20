@@ -610,3 +610,9 @@ body.in-studio .page{padding:calc(var(--header-height) + 28px) 24px 40px;max-wid
   .sumrow{flex-wrap:wrap;gap:14px}.sumrow .sumlab{white-space:normal}.sumrow .bar{flex-basis:100%}
   #restartBtn{margin-left:0!important}.io{align-items:flex-start}
 }
+
+/* The two ways forward after a step we could not confirm. Not a lock-out: the
+   editor stays live behind this, because the message is a prompt to look again
+   rather than a verdict. See main/diagnose.py. */
+.diagnosis-actions{display:flex; gap:8px; flex-wrap:wrap; margin-top:10px}
+.diagnosis-actions button{flex:0 1 auto}

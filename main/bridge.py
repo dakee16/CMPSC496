@@ -55,17 +55,37 @@ FOUR THINGS THAT BREAK NAIVE VALUE MATCHING, all found by testing:
     frames: factorial(3) came back {'sub': {'sub': {'sub': 1}}} instead of 2.
     Recursive submissions are refused here rather than mis-measured.
 
-SCOPE. Plain-function problems only. A METHOD's state lives partly in `self`
-across a whole recorded call sequence, and its entry point is the injected
-driver rather than the method, so the boundary is not one dictionary of locals.
-is_applicable() declines those, and the caller falls through to the tiers below
-exactly as it does today - a false "cannot verify", which costs a student
-nothing, rather than a measurement that might not mean what it says.
+SCOPE. Plain functions AND methods. A method looked out of reach at first - its
+state lives partly in `self` across a whole recorded call sequence, and its
+entry point is the injected driver rather than the method itself, so there is no
+single dictionary of locals at the boundary. Both facts are true and neither
+turned out to matter. The capture is appended to the METHOD body, so the driver
+records one snapshot per CALL and a signature is taken over (input, call) pairs
+instead of over inputs; `self` is the same object on both sides and so never
+needs bridging at all, leaving only locals to match. `owners` carries each
+position back to the input that produced it, for callers that need to talk about
+an input rather than a call.
+
+A method's snapshot leaves OUT OF BAND - appended to a module-level list, with
+the driver shadowed by a wrapper that returns it - rather than on the method's
+return value. Hijacking the return worked for most methods and was fatal for the
+ones whose return type is contractual: `__len__` must return a non-negative int,
+so handed a dict it raised on every call and the signature came back unbound at
+every position, which does not read as a broken probe but as a student whose
+variables hold nothing. A slot is claimed on ENTRY and filled on EXIT, so a call
+that returns before the boundary - `pop` on an empty stack - still occupies a
+position and the two sides stay in step.
+
+What IS still declined: recursion, in either form - `factorial(n - 1)` or
+`self.push(value)` - because the capture would then read an inner frame rather
+than the boundary, and `from x import *`, because the probe cannot enumerate
+what is in scope. Declining is free: the caller falls through to the tiers
+below, which is a false "cannot verify" and costs a student nothing.
 """
 import ast
 import itertools
 
-from .context import build_program, is_method
+from .context import SEQ_ENTRY, build_program, is_method
 from .execution import run_student_code
 
 # How many candidate assignments may be tried before giving up. Each one is a
@@ -286,15 +306,27 @@ def _all_stores(nodes) -> set:
 
 
 def calls(body: str, name: str) -> bool:
-    """Does this body call `name`? Used only to detect recursion."""
+    """Does this body call `name`? Used only to detect recursion.
+
+    BOTH call shapes, because a method recurses through an attribute:
+    `factorial(n - 1)` is a Name, `self.push(value)` is an Attribute, and
+    matching only the first let a recursive method through to a capture that
+    would have read an inner frame."""
     if not name:
         return False
     try:
         t = _tree(body)
     except SyntaxError:
         return False
-    return any(isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
-               and n.func.id == name for n in ast.walk(t))
+    for n in ast.walk(t):
+        if not isinstance(n, ast.Call):
+            continue
+        f = n.func
+        if isinstance(f, ast.Name) and f.id == name:
+            return True
+        if isinstance(f, ast.Attribute) and f.attr == name:
+            return True
+    return False
 
 
 def has_star_import(body: str) -> bool:
@@ -309,34 +341,122 @@ def has_star_import(body: str) -> bool:
 def is_applicable(problem: dict, entry: str, bodies: list) -> bool:
     """Can value-matching say anything trustworthy about this submission?
 
-    Declines a METHOD (state spans `self` and a whole call sequence, and the
-    entry point is the injected driver, so there is no single boundary
-    dictionary), anything RECURSIVE (the capture would read an inner frame),
-    and anything importing * (the probe cannot enumerate what is in scope).
-    Declining is free: the caller falls through to the tiers below."""
-    if is_method(problem):
-        return False
-    return not any(calls(b, entry) or has_star_import(b) for b in bodies if b)
+    Declines anything RECURSIVE (the capture would read an inner frame instead
+    of the boundary: factorial(3) came back {'sub': {'sub': {'sub': 1}}}) and
+    anything importing * (the probe cannot enumerate what is in scope).
+
+    A METHOD IS FINE, which it was not at first. The objection was that its
+    state spans `self` across a whole recorded call sequence and its entry point
+    is the injected driver rather than the method - so there is no single
+    boundary dictionary. Both are true and neither matters: the capture is
+    appended to the METHOD body, so the driver records one snapshot per CALL,
+    and the signature is simply taken over (input, call) pairs instead of over
+    inputs. `self` needs no bridging at all - it is the same object on both
+    sides, and only LOCALS can differ in name."""
+    for b in bodies:
+        if b and (calls(b, entry) or has_star_import(b)):
+            return False
+        # A method's own name is not `entry` (that is the driver), so recursion
+        # inside one has to be looked for separately.
+        if b and is_method(problem) and calls(b, _method_name(problem)):
+            return False
+    return True
 
 
-def _capture_program(problem: dict, header: str, body: str, names: list) -> str:
+def _method_name(problem: dict) -> str:
+    """The name of the method being written, or "" for a plain function."""
+    for line in reversed((problem.get("context_prefix") or "").splitlines()):
+        s = line.strip()
+        if s.startswith(("def ", "async def ")):
+            return s.split("(")[0].split()[-1]
+    return ""
+
+
+def loop_targets(body: str) -> set:
+    """Names bound only as a loop or comprehension variable.
+
+    Not state a student would describe as theirs - `ch` in `for ch in txt` is
+    machinery, and showing it back to them beside their real variables is noise.
+    main/diagnose.py uses this to decide what is worth putting on screen."""
+    try:
+        t = _tree(body)
+    except SyntaxError:
+        return set()
+    out = set(_comprehension_vars(t))
+    for n in ast.walk(t):
+        if isinstance(n, (ast.For, ast.AsyncFor)):
+            out |= _targets(n.target)
+    return out - (stores(body) - out)
+
+
+def _capture_program(problem: dict, header: str, body: str, names: list,
+                     human: bool = False) -> str:
     """`body`, then a guarded snapshot of `names`, as a runnable program.
 
     Each name is captured in its OWN try/except. A single shared try would let
     one unbound loop variable - on the empty-string input, say - discard the
     whole snapshot, which is how this was first written and why every signature
     came back empty."""
+    # `human` swaps the structural encoding for plain repr. The encoding exists
+    # to make two PROCESSES comparable; it is unreadable to a person, and a
+    # student shown {'t': 'dict', 'v': [("'a'", '1')]} has been handed noise
+    # instead of their own {'a': 1}. Matching uses the encoded form, the tutor
+    # uses this one, and neither is asked to do the other's job.
+    enc = "repr({n})" if human else "_mt_state({n})"
     lines = [f"{CAPTURE_KEY} = {{}}"]
     for n in sorted(names):
-        lines.append(f"try:\n    {CAPTURE_KEY}[{n!r}] = _mt_state({n})\n"
+        lines.append(f"try:\n    {CAPTURE_KEY}[{n!r}] = " + enc.format(n=n) + "\n"
                      f"except Exception:\n    {CAPTURE_KEY}[{n!r}] = {UNBOUND!r}")
-    lines.append(f"return {{{CAPTURE_KEY!r}: {CAPTURE_KEY}}}")
-    full = (body.rstrip() + "\n" if body.strip() else "") + "\n".join(lines)
-    return _ENCODER + "\n" + build_program(problem, full, header)
+
+    if not is_method(problem):
+        lines.append(f"return {{{CAPTURE_KEY!r}: {CAPTURE_KEY}}}")
+        full = (body.rstrip() + "\n" if body.strip() else "") + "\n".join(lines)
+        return _ENCODER + "\n" + build_program(problem, full, header)
+
+    # A METHOD SENDS ITS SNAPSHOT OUT OF BAND, and does not touch its own return
+    # value. Hijacking the return worked for most methods and was fatal for the
+    # ones whose return type is contractual: `__len__` must return a
+    # non-negative int, so handed a dict it raised on EVERY call and the
+    # signature came back unbound at every position - which does not read as a
+    # broken probe, it reads as a student whose variables hold nothing.
+    #
+    # Appending to a module-level list instead leaves the method's real
+    # behaviour completely intact, which also means the rest of the recorded
+    # call sequence behaves as it actually would. The driver is then shadowed by
+    # a wrapper that runs the original and hands back the log. Redefining it is
+    # safe: `_mt_run_calls` is skipped by the AST policy by MODULE-LEVEL name
+    # (execution._policed_nodes), and this definition is module-level, so the
+    # wrapper is exempt exactly as the original is.
+    # A SLOT IS CLAIMED ON ENTRY AND FILLED ON EXIT, so a call that returns
+    # before the boundary still occupies a position. Appending only at the end
+    # would silently shorten the log for whichever side returned early - `pop`
+    # on an empty stack does exactly that - and the two signatures would then be
+    # compared out of step, matching one call against another.
+    lines.append(f"_mt_log[-1] = {{{CAPTURE_KEY!r}: {CAPTURE_KEY}}}")
+    full = ("_mt_log.append(None)\n"
+            + (body.rstrip() + "\n" if body.strip() else "")
+            + "\n".join(lines))
+    wrapper = f'''
+
+_mt_inner = {SEQ_ENTRY}
+
+
+def {SEQ_ENTRY}(calls):
+    """Replay the sequence for its side effects, then return what was seen."""
+    del _mt_log[:]
+    try:
+        _mt_inner(calls)
+    except Exception:
+        pass
+    return list(_mt_log)
+'''
+    return (_ENCODER + "\n_mt_log = []\n"
+            + build_program(problem, full, header) + wrapper)
 
 
 def capture(problem: dict, header: str, body: str, names: list,
-            inputs: list, entry: str) -> dict | None:
+            inputs: list, entry: str, human: bool = False,
+            with_owners: bool = False):
     """{name: value-signature across every input}, or None if unusable.
 
     A signature is the tuple of that name's encoded value on each input, so two
@@ -344,19 +464,46 @@ def capture(problem: dict, header: str, body: str, names: list,
     on which the body returned early contributes the returned value instead,
     which keeps a partial match from looking total."""
     if not names:
-        return {}
+        return ({}, []) if with_owners else {}
     status, results, _ = run_student_code(
-        _capture_program(problem, header, body, names), inputs, entry_name=entry)
+        _capture_program(problem, header, body, names, human), inputs,
+        entry_name=entry)
     if status != "ok" or len(results) != len(inputs):
-        return None
-    per_input = []
-    for r in results:
-        if isinstance(r, dict) and CAPTURE_KEY in r:
-            per_input.append(r[CAPTURE_KEY])
+        return (None, []) if with_owners else None
+    # A METHOD yields one snapshot per CALL, not one per input: the driver
+    # replays a recorded sequence against a single instance and returns the list
+    # of per-call results, so the capture appears wherever that method was
+    # called. Flattening those into the same position list makes a method's
+    # signature the same kind of object as a function's - a tuple compared
+    # element by element - and the alignment holds because both sides replay the
+    # identical sequence. A position where the method was not called, or where
+    # the body returned before reaching the end, records None on BOTH sides.
+    # `owners[p]` is the index of the input that produced signature position p.
+    # For a function that is the identity; for a method one input contributes as
+    # many positions as it has calls, so anything wanting to talk about an INPUT
+    # - main/diagnose.py picking a counterexample - needs the map rather than
+    # assuming position == input.
+    per_input, owners = [], []
+    for idx_in, r in enumerate(results):
+        if isinstance(r, list):
+            for x in r:
+                per_input.append(x[CAPTURE_KEY] if isinstance(x, dict)
+                                 and CAPTURE_KEY in x else None)
+                owners.append(idx_in)
+        elif isinstance(r, dict) and CAPTURE_KEY in r:
+            per_input.append(r[CAPTURE_KEY]); owners.append(idx_in)
         else:
-            per_input.append(None)          # returned before reaching the end
-    return {n: tuple(repr((row or {}).get(n, UNBOUND)) for row in per_input)
-            for n in names}
+            per_input.append(None); owners.append(idx_in)   # returned early
+    # In human mode the child already returned repr(value), so re-repring it
+    # here would show a student their dict wrapped in quotes. Matching needs the
+    # extra repr to make the encoded structures comparable as text.
+    if human:
+        sig = {n: tuple((row or {}).get(n, UNBOUND) for row in per_input)
+               for n in names}
+    else:
+        sig = {n: tuple(repr((row or {}).get(n, UNBOUND)) for row in per_input)
+               for n in names}
+    return (sig, owners) if with_owners else sig
 
 
 def _candidates(ref_sig: dict, stu_sig: dict) -> dict:
@@ -574,9 +721,45 @@ if __name__ == "__main__":
     #    {'sub': {'sub': {'sub': 1}}} - an inner frame, not the boundary state.
     assert not is_applicable({"slug": "f"}, "factorial",
                              ["sub = factorial(n - 1)"])
-    # 4. A METHOD is out of scope: its state spans `self` and a call sequence.
-    assert not is_applicable({"slug": "m", "context_prefix": "class S:\n    def f(self):\n"},
-                             "f", ["x = 1"])
+    # 4. A METHOD IS IN SCOPE. The capture is appended to the method body, so
+    #    the driver records one snapshot per CALL and the signature is taken
+    #    over (input, call) pairs. `self` never needs bridging - it is the same
+    #    object on both sides - so only locals are matched.
+    _meth = {"slug": "m", "group_title": "S", "context_indent": 8,
+             "context_suffix": "\n",
+             "context_prefix": "class Node:\n    def __init__(self, v):\n"
+                               "        self.value = v\n        self.next = None\n\n"
+                               "class S:\n    def __init__(self):\n"
+                               "        self.top = None\n\n"
+                               "    def push(self, value):\n",
+             "solution": "pass"}
+    assert is_applicable(_meth, "_mt_run_calls", ["n = Node(value)"])
+    # A DUNDER WITH A RETURN-TYPE CONTRACT IS FINE NOW. It was not when the
+    # snapshot rode out on the return value: `__len__` must return a
+    # non-negative int, so handed a dict it raised on every call and the
+    # signature came back unbound everywhere - which reads as "this student's
+    # variables hold nothing", the most dangerous shape of wrong answer this
+    # module could produce. The method's own return value is untouched today.
+    _dunder = {**_meth, "context_prefix":
+               _meth["context_prefix"].replace("def push(self, value):",
+                                               "def __len__(self):")}
+    assert _method_name(_dunder) == "__len__"
+    assert is_applicable(_dunder, "_mt_run_calls", ["count = 0"])
+    # ...but recursion inside one is still refused, and a method's own name is
+    #    not the entry point, so it has to be looked for separately.
+    assert _method_name(_meth) == "push", _method_name(_meth)
+    assert not is_applicable(_meth, "_mt_run_calls", ["self.push(value)"])
+
+    _mrefs = ["node = Node(value)\nnode.next = self.top", "self.top = node"]
+    _mch = [{"reference": r} for r in _mrefs]
+    _mtests = [{"input": [[["new"], ["push", 2], ["push", 4]]],
+                "expected": [None, None, None]}]
+    # A renamed LOCAL inside a method bridges exactly as one in a function does.
+    _mgot = find(_meth, "def push(self, value):", _mch, 0,
+                 "n = Node(value)\nn.next = self.top", _mtests,
+                 "_mt_run_calls", {"self", "value", "Node", "S"})
+    assert _mgot and _mgot["mapping"] == {"node": "n"}, _mgot
+
     # ...and an ordinary plain function is in scope.
     assert is_applicable(P, E, ["counts = {}"])
 

@@ -316,6 +316,37 @@ def save_graph(client, student_id: str | None, slug: str, kind: str,
 
 # ── reading it back ──────────────────────────────────────────────────────
 
+def latest_plan_graph(client, student_id: str | None, slug: str) -> dict | None:
+    """This student's most recent PLAN graph for one problem, or None.
+
+    The counterpart to save_graph. main/reroute.py reads it to decide whose
+    roadmap a session should get - the teacher's or one rebuilt around the
+    approach this student actually described.
+
+    Returns None on every failure, and callers must treat None as "use the
+    teacher's route". That keeps rule 2 of this module intact: nothing here is
+    allowed to break the thing it records. An unauthenticated caller, a missing
+    table (migrations/004_archive.sql never run), an outage - all of them mean
+    the ordinary roadmap, which is what every student got before this existed.
+    """
+    if not client or not student_id or not slug:
+        return None
+    try:
+        rows = (client.table("mt_graphs")
+                .select("graph, created_at")
+                .eq("student_id", student_id).eq("slug", slug).eq("kind", "plan")
+                .order("created_at", desc=True).limit(1).execute().data)
+    except Exception:
+        return None
+    graph = (rows or [{}])[0].get("graph")
+    if isinstance(graph, str):                   # jsonb can come back as text
+        try:
+            graph = json.loads(graph)
+        except Exception:
+            return None
+    return graph if isinstance(graph, dict) and graph.get("nodes") else None
+
+
 def student_history(client, student_id: str, slug: str | None = None) -> dict:
     """Everything recorded for one student, for the teacher view.
 

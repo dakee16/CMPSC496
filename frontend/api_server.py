@@ -436,7 +436,43 @@ def decompose_chunks_route(req: DecomposeRequest, request: Request):
             # session you get back, never what you are allowed to see.
             return _gate_steps(claims["sub"], req.slug, public_session(resumed))
 
-        result = get_chunk_decomposition(problem)
+        # ── WHOSE ROADMAP? ──
+        # The steps are cut from the TEACHER'S solution, so a student who
+        # planned recursion and is handed a loop's roadmap is asked, step by
+        # step, for code they never meant to write - and every tier in
+        # grading.py will correctly decline to confirm any of it. Their plan was
+        # approved and then stopped mattering.
+        #
+        # main/reroute.py rebuilds the roadmap in THEIR shape when the two
+        # differ, and the rebuilt one only ships if it passes the same gates as
+        # the teacher's: the real oracle at 100%, assembly, necessity, and
+        # answerability. If it cannot, they keep the teacher's route and the
+        # ordinary tiers - which is exactly today's behaviour, so every failure
+        # here is a no-op rather than a worse outcome.
+        result = None
+        from main.archive import latest_plan_graph
+
+        plan = latest_plan_graph(get_supabase() if current_student(request)
+                                 else None, current_student(request), req.slug)
+        if plan:
+            from main import reroute
+            # reroute.effective_header, NOT header_of: the latter returns "" for
+            # a plain function by design, and an empty header makes the oracle
+            # gate inside build() test whatever the model named its function
+            # rather than the student's. Measured - it passed a 0/10 body 10/10.
+            header = reroute.effective_header(problem)
+            if not reroute.follows_reference(problem, header, plan):
+                try:
+                    result = reroute.build(problem, header, plan)
+                    print(f"  🧭 Rebuilt the roadmap for {req.slug} around this "
+                          f"student's own plan ({len(result['chunks'])} steps).")
+                except reroute.RouteUnavailable as e:
+                    print(f"  🧭 Kept the reference roadmap for {req.slug}: {e.reason}")
+                except Exception as e:      # never let this break an opening
+                    print(f"  🧭 Reroute errored for {req.slug}, keeping the "
+                          f"reference roadmap: {e!r}")
+        if result is None:
+            result = get_chunk_decomposition(problem)
         # Register a server-owned session. From here the browser never sees a
         # reference, the solution, or oracle data again.
         # Identity is bound ONCE, here, from the signed cookie - so every later
@@ -785,6 +821,14 @@ def grade_chunk_route(req: ChunkRequest, request: Request):
             "idempotent_replay": state.get("idempotent_replay", False)}
     if reveal_ref is not None:
         body["revealed_reference"] = reveal_ref     # only ever at the limit
+    # Execution looked at this step and could not confirm it, so the page pauses
+    # the editor and shows the question instead of letting them carry on. Safe
+    # to send: main/diagnose.py builds it from THEIR OWN measured values and
+    # runs the tutor's answer-leak guard over the sentence. It carries no
+    # verdict and costs no attempt - `attempts` above is unchanged.
+    if result.needs_diagnosis and result.diagnosis:
+        body["needs_diagnosis"] = True
+        body["diagnosis"] = result.diagnosis
     # The failing cases, already rendered for a human, capped at
     # grading.MAX_SHOWN_CASES. The exception to "no failures": the suite stays
     # hidden, but a student told only "wrong on at least one case" has been
