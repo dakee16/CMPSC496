@@ -28,6 +28,7 @@ work out for themselves. They are shown THEIR OWN state, which they could have
 printed, and asked what it does not let them do.
 """
 import json
+import re
 
 from . import bridge
 from .ollama_client import TUTOR_MODEL, chat
@@ -81,6 +82,39 @@ def _degenerate(encoded: str) -> bool:
     return ("'v': []" in e or "'f': []" in e
             or e in ("''", '""', "None", "0", "0.0", "False",
                      repr(bridge.UNBOUND), f"'{bridge.UNBOUND}'"))
+
+
+# NOTHING INTERNAL REACHES A SCREEN. Two things did, both measured live off one
+# submission: `running is __mt_unbound__` and `tally is <function
+# frequency.<locals>.tally at 0x1055189a0>`.
+#
+# UNBOUND is bridge's marker for "this name does not exist at the boundary" - a
+# fact about our probe, not a value anyone can read - and _candidates already
+# holds that an absence is not a value, so an absent name is DROPPED here rather
+# than rendered. An address is stripped rather than dropped: the object is real
+# and worth showing, and `<Node object>` says the same thing while staying the
+# same sentence twice, which a 0x address does not.
+_ADDRESS = re.compile(r" at 0x[0-9a-fA-F]+")
+
+
+# A DEFINITION IS NOT STATE. `def tally(...)` binds `tally` in the student's own
+# scope, so bridge.stores is right to report it - but "after your step, `tally`
+# is <function tally>" is not a value anyone traces, and it crowds out the
+# variable that is. Same judgement loop_targets already makes about `ch`.
+#
+# ponytail: matched on the repr, because the capture crosses a process boundary
+# as text and the child sends nothing else. Upgrade to a type tag in
+# bridge._capture_program if this ever has to tell more kinds apart.
+_NOT_STATE = ("<function", "<class", "<bound method", "<built-in",
+              "<module", "<method")
+
+
+def _readable(value: str) -> str | None:
+    """A captured value as a student may see it, or None if they may not."""
+    v = (value or "").strip()
+    if not v or v == bridge.UNBOUND or v.startswith(_NOT_STATE):
+        return None
+    return _ADDRESS.sub("", v)
 
 
 def _size(inp) -> int:
@@ -177,10 +211,24 @@ def counterexample(problem: dict, header: str, chunks: list, idx: int,
     # has been handed our internals instead of their own {'a': 1}.
     human = bridge.capture(problem, header, upto, stu_names, [inputs[pick]],
                            entry, human=True) or {}
-    shown = [(n, (human.get(n) or ("?",))[0]) for n in stu_names][:MAX_SHOWN_NAMES]
+    # FILTERED BEFORE CAPPED, so an unshowable name cannot use up one of the
+    # four slots and push a real one off the end. A name with nothing readable
+    # behind it is dropped entirely - see _readable - and if that leaves nothing,
+    # there is no honest example to build, which is the same answer this
+    # function already gives a student who bound nothing.
+    shown = []
+    for n in stu_names:
+        v = _readable((human.get(n) or ("",))[0])
+        if v is None:
+            continue
+        shown.append({"name": n, "value": v})
+        if len(shown) >= MAX_SHOWN_NAMES:
+            break
+    if not shown:
+        return None
     return {"input": inputs[pick],
             "input_repr": ", ".join(repr(a) for a in inputs[pick]),
-            "student_state": [{"name": n, "value": v} for n, v in shown]}
+            "student_state": shown}
 
 
 # The model is told what it may talk about and, more importantly, what it may
@@ -319,6 +367,38 @@ if __name__ == "__main__":
     # Their own state, and nothing of ours.
     assert [f["name"] for f in ex["student_state"]] == ["unique"], ex
     assert "counts" not in json.dumps(ex), "the reference's names must not leak"
+
+    # ── NO INTERNAL VALUE REACHES A STUDENT ──────────────────────────────
+    # Both of these were on screen, from one submission. `running` and `c` are
+    # locals of the student's own HELPER, which the outer frame never binds, so
+    # they came back as the probe's UNBOUND marker; `tally` is the helper
+    # itself, whose repr carries an address that differs every run.
+    _helper = ("def tally(s):\n"
+               "    running = 0\n"
+               "    for c in s:\n"
+               "        running += 1\n"
+               "    return running\n"
+               "size = tally(txt)")
+    _hex = counterexample(P, H, CH, 0, _helper, T, E, AMB)
+    assert _hex is not None, "a helper-using submission is still diagnosable"
+    _blob = json.dumps(_hex)
+    assert bridge.UNBOUND not in _blob, _blob
+    assert " at 0x" not in _blob, _blob
+    # ...and the helper's locals are not the student's state at all - they
+    # belong to another scope (bridge.stores), so they are never offered.
+    assert [f["name"] for f in _hex["student_state"]] == ["size"], _hex
+    assert bridge.UNBOUND not in _fallback(_hex)
+
+    # An object with no __repr__ keeps its class and loses its address, so the
+    # same submission twice produces the same sentence twice.
+    assert _readable("<Node object at 0x104e37770>") == "<Node object>"
+    assert _readable(bridge.UNBOUND) is None
+    # A definition is not state, however readable its repr is made.
+    assert _readable("<function f at 0xdeadbeef>") is None
+    assert _readable("<class 'Node'>") is None
+    assert _readable("") is None and _readable("   ") is None
+    # A value that carries no address is untouched - the common case.
+    assert _readable("{'a': 2}") == "{'a': 2}"
 
     # ── a prescribed fix is refused in CODE, not asked against ───────────
     # Every sentence below came back from the real model with the system prompt

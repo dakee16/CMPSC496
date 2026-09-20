@@ -758,12 +758,38 @@ def grade_chunk_route(req: ChunkRequest, request: Request):
         reveal_ref = session["chunks"][session["index"]].get("reference", "")
         accept_code, provenance = reveal_ref, "revealed_reference"
 
+    # ── WHAT THE STUDENT WAS SHOWN IS PART OF THE RECORD ─────────────────
+    #
+    # This dict becomes submissions.result_json, and result_json is the WHOLE
+    # answer to a repeat: stored_result() above and begin_submission()'s replay
+    # both hand it back verbatim, and the submission id is a hash of the code
+    # (frontend/student.js), so resubmitting the same answer never reaches the
+    # grader a second time. Anything missing from here therefore does not
+    # degrade on the second try - it DISAPPEARS.
+    #
+    # It did. The diagnosis and its two recovery buttons were attached to `body`
+    # below, after this call, so the first submission got a question built on
+    # the student's own measured values and the identical second one got the
+    # bare "We could not confirm this step" with nothing to click - the exact
+    # shrug main/diagnose.py exists to replace. The failing cases and a revealed
+    # reference had the same hole.
+    #
+    # Recorded once, here, and read back out of `state` when the response is
+    # assembled, so the fresh path and the replay path cannot drift apart again.
+    graded = {"verdict": result.verdict, "tier": result.tier,
+              "deterministic": result.deterministic,
+              "reason": result.student_reason, "divergent": result.divergent}
+    if result.needs_diagnosis and result.diagnosis:
+        graded["needs_diagnosis"] = True
+        graded["diagnosis"] = result.diagnosis
+    if result.failing_cases:
+        graded["failing_cases"] = result.failing_cases
+        graded["failed_total"] = result.failed_total
+    if reveal_ref is not None:
+        graded["revealed_reference"] = reveal_ref     # only ever at the limit
     try:
         state = commit_outcome(
-            req.session_id, req.submission_id, session["revision"], {
-                "verdict": result.verdict, "tier": result.tier,
-                "deterministic": result.deterministic,
-                "reason": result.student_reason, "divergent": result.divergent},
+            req.session_id, req.submission_id, session["revision"], graded,
             accept_code=accept_code, provenance=provenance,
             consume_attempt=result.consume_attempt,
             covers_chunks=result.covers_chunks)
@@ -819,29 +845,31 @@ def grade_chunk_route(req: ChunkRequest, request: Request):
             "solved_independently": state["solved_independently"],
             "total_chunks": state["total_chunks"],
             "idempotent_replay": state.get("idempotent_replay", False)}
-    if reveal_ref is not None:
-        body["revealed_reference"] = reveal_ref     # only ever at the limit
-    # Execution looked at this step and could not confirm it, so the page pauses
-    # the editor and shows the question instead of letting them carry on. Safe
-    # to send: main/diagnose.py builds it from THEIR OWN measured values and
-    # runs the tutor's answer-leak guard over the sentence. It carries no
-    # verdict and costs no attempt - `attempts` above is unchanged.
-    if result.needs_diagnosis and result.diagnosis:
-        body["needs_diagnosis"] = True
-        body["diagnosis"] = result.diagnosis
-    # The failing cases, already rendered for a human, capped at
-    # grading.MAX_SHOWN_CASES. The exception to "no failures": the suite stays
-    # hidden, but a student told only "wrong on at least one case" has been
-    # given a shrug, not a hint. The page keeps them behind a disclosure they
-    # have to open.
+    # COPIED FROM THE RECORD, NOT REBUILT FROM `result`. These are the optional,
+    # student-visible parts of a verdict, and they used to be assembled here
+    # from the live GradeResult - which exists only on the path that actually
+    # graded. A replay has `state` and no `result`, so it silently sent a
+    # verdict with its evidence stripped off. Reading both paths out of the same
+    # committed row is what keeps them identical.
     #
-    # `failed_total` rides along because it is NOT len(failing_cases) - the
-    # sandbox caps what it reports, so the page would otherwise say "3 cases"
-    # over a submission that failed seven. Only the COUNT crosses; how many
-    # tests exist, and which passed, do not.
-    if result.failing_cases:
-        body["failing_cases"] = result.failing_cases
-        body["failed_total"] = result.failed_total
+    #   needs_diagnosis/diagnosis  execution looked and could not confirm, so
+    #     the page pauses and shows the question instead of letting them carry
+    #     on. Safe to send: main/diagnose.py builds it from THEIR OWN measured
+    #     values and runs the tutor's answer-leak guard over the sentence. It
+    #     carries no verdict and costs no attempt.
+    #   failing_cases/failed_total  rendered cases, capped at
+    #     grading.MAX_SHOWN_CASES, behind a disclosure the student opens. The
+    #     one exception to "no failures cross the boundary": told only "wrong on
+    #     at least one case" they have been handed a shrug, not a hint.
+    #     `failed_total` rides along because it is NOT len(failing_cases) - the
+    #     sandbox caps what it reports, so the page would otherwise say "3
+    #     cases" over a submission that failed seven. Only the COUNT crosses;
+    #     how many tests exist, and which passed, do not.
+    #   revealed_reference  only ever at the attempt limit.
+    for key in ("needs_diagnosis", "diagnosis", "failing_cases",
+                "failed_total", "revealed_reference"):
+        if key in state:
+            body[key] = state[key]
     return body
 
 

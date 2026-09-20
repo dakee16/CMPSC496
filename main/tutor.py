@@ -615,6 +615,140 @@ def _strip_code(text: str) -> str:
     return "\n".join(l for k, l in enumerate(lines) if k not in drop).strip()
 
 
+# ── TWO THINGS A REPLY MAY NOT SAY, CHECKED IN CODE ──────────────────────
+#
+# Both are forbidden by _HELPER_MODE in plain words, and both arrived anyway,
+# from the live model, over an approved design. Same lesson _scrub,
+# _strip_code, _no_praise and main/diagnose._prescribes_a_fix each learned
+# separately: an instruction to a model is a request it may decline, so the rule
+# that holds is the one written as a function.
+#
+# They cut at SENTENCE granularity rather than replacing the turn. A helper-mode
+# reply is usually several sentences and only one of them is the problem;
+# throwing the turn away would cost the student the help that was fine.
+
+def _sentences(text: str) -> list[str]:
+    """`text` split into sentences, keeping their punctuation and their order."""
+    return [s for s in re.split(r"(?<=[.!?])\s+|\n+", text or "") if s.strip()]
+
+
+# Clause boundaries INSIDE a sentence. The leak does not always start one:
+# "Look at what happens when the letter is already in there - increment the
+# count if the letter already exists" opens with exactly the pointing-at-a-line
+# move rule 2 allows and hands over the operation after the dash. Detection is
+# per clause; the CUT is still the whole sentence, because removing a trailing
+# clause leaves a sentence hanging on its own dash.
+_CLAUSE = re.compile(r"\s+[-–—]\s+|;\s*")
+
+# Verbs naming an OPERATION ON THE STUDENT'S DATA. One of these in the
+# imperative is their line written out in English, which rule 1 names directly
+# ("the same thing written in ... English sentences").
+#
+# Deliberately ABSENT: every attention verb - look, check, trace, compare, read,
+# run, print, try, think, notice, follow, tell, walk. Those are how a tutor
+# points at a line without saying what to put on it, and _HELPER_MODE rule 2
+# exists to permit exactly that. A guard that ate them would leave the tutor
+# with nothing it is allowed to say.
+_EDIT_VERBS = frozenset("""
+increment decrement append add insert store save initialise initialize
+assign return replace swap sort reverse split join count track accumulate
+update remove delete pop push convert wrap loop iterate put change build
+create make subtract multiply divide reset clear extend prepend
+""".split())
+
+# Words that may stand in front of an imperative without making it something
+# else. ADVERBS AND CONJUNCTIONS ONLY.
+#
+# Determiners and subjects are pointedly NOT here, and that is the whole
+# difference between a prescription and an observation: "increment the count"
+# is an instruction, "your loop only ever sees the first character" is the
+# symptom rule 2 exists to let the tutor name. Both contain a word from
+# _EDIT_VERBS; only one of them is in imperative position. Letting "your"
+# through as a lead word flagged the second, which would have cut the most
+# useful sentence a helper-mode tutor can write.
+#
+# "you should" / "you need to" / "instead of" are not lost by this - they are
+# in diagnose's patterns already, and _prescribes_a_fix runs those first.
+_LEAD_WORDS = frozenset("""
+then next now just simply first second finally so also and but or please
+""".split())
+
+
+def _prescribes_a_fix(text: str) -> bool:
+    """Does this turn tell the student what to DO to their code?
+
+    TWO SHAPES, measured separately. main/diagnose.py's patterns catch the fix
+    wearing a question mark - "how can you ... instead of ..." - and are reused
+    here rather than restated, so the two screens cannot drift apart. This adds
+    the bare IMPERATIVE, which is how it arrives in helper mode:
+
+        "increment the count if the letter already exists"
+
+    names the corrective operation outright. _scrub does not see it (no fence),
+    _strip_code does not see it (prose, parses as nothing), and diagnose's own
+    patterns do not see it (it asks nothing). It is what a student was handed by
+    a tutor that had, in the same breath, refused to write code."""
+    from .diagnose import _prescribes_a_fix as _question_shaped
+    if _question_shaped(text):
+        return True
+    for clause in _CLAUSE.split(text or ""):
+        for w in re.findall(r"[a-z']+", clause.lower())[:3]:
+            if w in _EDIT_VERBS:
+                return True
+            if w not in _LEAD_WORDS:
+                break
+    return False
+
+
+# A CLAIM THE TUTOR CANNOT HAVE CHECKED. reply() is handed the current step's
+# PROMPT and nothing else - no session, no index, no verdict, no oracle - so it
+# cannot know whether a step has been accepted, and it is not the thing that
+# accepts one. Only /grade_chunk moves a session on.
+#
+# Live: "That looks right, so you can proceed to step 2" while the server was
+# still on step 1. The student believed it; the page did not move.
+#
+# Not a wording problem and not fixable by asking the prompt again: the
+# information is ABSENT, so every sentence of this shape is invented whatever it
+# says. The word "step" (or "the next one") is required on purpose - without it
+# "continue to the next item in the list" is caught, and that is ordinary talk
+# about a loop.
+_CLAIMS_TRANSITION = re.compile(
+    r"\b(?:proceed|move\s+on|moving\s+on|go\s+ahead|continue|advance)\b"
+    r"[^.!?]{0,30}\bstep\b"
+    r"|\b(?:move|moving|go|going|on)\s+(?:on\s+)?to\s+the\s+next\s+one\b"
+    r"|\bon\s+to\s+the\s+next\s+step\b"
+    r"|\b(?:this|that|your|the\s+(?:first|second|third|last|current))\s+step\s+"
+    r"is\s+(?:now\s+)?(?:done|complete|completed|finished|correct|right|good|"
+    r"passed|behind\s+you)\b"
+    r"|\bstep\s*\d+\s+is\s+(?:now\s+)?(?:done|complete|completed|finished)\b"
+    r"|\byou(?:'ve|\s+have|\s+can\s+now|\s+may\s+now)?\s*"
+    r"(?:finished|completed|passed|unlocked)\s+(?:this\s+step|step\s*\d+)\b",
+    re.I)
+
+
+def _claims_a_transition(text: str) -> bool:
+    """Does this turn announce a step change only the server can make?"""
+    return bool(_CLAIMS_TRANSITION.search(text or ""))
+
+
+def _drop_sentences(text: str, unsafe) -> str:
+    """`text` with every sentence `unsafe` objects to removed."""
+    return " ".join(s.strip() for s in _sentences(text)
+                    if not unsafe(s)).strip()
+
+
+# THE FLOOR UNDER HELPER MODE, for the same reason _FALLBACK below is the floor
+# under the planning half: a guard that cuts can cut everything, and an empty
+# bubble is worse than no guard at all. It was "Ask me whenever you get stuck.",
+# which is what to say when the model returned nothing - a reply that was
+# stripped for prescribing a fix is a student who asked something real and must
+# not be met with a shrug. Asks for the one thing that makes the next turn
+# answerable without disclosing anything.
+_HELPER_FALLBACK = ("Which line are you looking at, and what did you expect it "
+                    "to do differently from what it does?")
+
+
 # The four points of WORKABLE_PLAN, in the order the prompt asks for them.
 _RUBRIC = ("state", "processing", "result", "edges")
 
@@ -988,8 +1122,18 @@ def reply(problem: dict, history: list[dict],
         # No fork here. They are implementing an APPROVED design; offering to
         # "try something else" now would invite them to abandon the plan the
         # reviewer already walked through and passed.
-        return {"reply": _strip_code(_scrub(text))
-                         or "Ask me whenever you get stuck.",
+        #
+        # THE FOUR GUARDS, IN WIDENING ORDER. _scrub takes fenced code,
+        # _strip_code takes bare code that parses, _prescribes_a_fix takes the
+        # operation written out in English, _claims_a_transition takes the step
+        # change only /grade_chunk can make. The last two are new, and this is
+        # the path that needed them: helper mode was running the first two
+        # alone, which is why "increment the count if the letter already exists"
+        # and "you can proceed to step 2" both reached a student intact.
+        guarded = _strip_code(_scrub(text))
+        guarded = _drop_sentences(guarded, _prescribes_a_fix)
+        guarded = _drop_sentences(guarded, _claims_a_transition)
+        return {"reply": guarded or _HELPER_FALLBACK,
                 "ready": True, "offtrack": False, "offtrack_reason": "",
                 "questions_asked": asked,
                 "min_questions": MIN_PROBING_QUESTIONS}
@@ -1198,6 +1342,19 @@ def reply(problem: dict, history: list[dict],
         text, ready, offtrack, offtrack_diag = (unparsed or "").strip(), False, False, ""
 
     guarded = _strip_code(_scrub(text))
+    # NO MESSAGE MAY CLAIM A TRANSITION THE SERVER HAS NOT MADE, and that holds
+    # on both halves of this function: the planning tutor knows even less about
+    # the session than the helper does - there are no steps yet at all - so a
+    # sentence about proceeding to step 2 is invented here too. The existing
+    # "did a guard take the question with it" check below catches the case where
+    # this empties the reply.
+    #
+    # _prescribes_a_fix is NOT applied here, deliberately. There is no code yet,
+    # so there is no corrective operation to disclose, and the planning
+    # questions are supposed to say "how do you go through the input" - which is
+    # _FALLBACK["processing"] verbatim and is caught by diagnose's patterns.
+    # Applying it would strip this module's own fallback questions.
+    guarded = _drop_sentences(guarded, _claims_a_transition)
     # Only while they are still held - see _no_praise. A release is MEANT to say
     # the plan is workable.
     if not ready:
@@ -1308,6 +1465,94 @@ if __name__ == "__main__":
         "three+ unresolved rounds must point somewhere past this loop"
     assert "SECOND time" not in _src and "office hours" not in _src.lower(), \
         "escalation text must live in _redirect_question only, not reply()"
+
+    # ── the operation is not the tutor's to name ─────────────────────────
+    # The first of these is verbatim from a live helper-mode reply, sent by a
+    # tutor that had just refused to write code. _scrub and _strip_code both
+    # pass it: there is no fence and it parses as nothing.
+    for _fix in (
+            "Look at what happens when the letter is already in there - "
+            "increment the count if the letter already exists.",
+            "Add the letter to the dictionary the first time you see it.",
+            "Then return the total once the loop finishes.",
+            "You should keep a running count.",
+            "Instead of a set, store each letter with a number.",
+            "Initialize it to an empty one before the loop."):
+        assert m._prescribes_a_fix(_fix), _fix
+        assert m._strip_code(m._scrub(_fix)) == _fix, \
+            "the OLD guards let it through - that is why this one exists"
+    # ...and rule 2's own examples survive. Naming the symptom and pointing at a
+    # line is the job; a guard that ate these would leave nothing to say.
+    for _ok_line in (
+            "That branch never runs when the list is empty.",
+            "The value you print is the one from the previous pass.",
+            "Look at the line where you build your result - what is in it the "
+            "second time round?",
+            "Check what your loop variable holds on the last pass.",
+            "Trace it by hand on 'aab' and tell me what you get.",
+            "What did you expect that line to do?",
+            "Your error says the name is not defined - where is it bound?"):
+        assert not m._prescribes_a_fix(_ok_line), _ok_line
+
+    # ── no message may claim a transition the server has not made ────────
+    # reply() has no session, no index and no verdict, so every one of these is
+    # invented. The first is verbatim: the page was still on step 1.
+    for _claim in (
+            "That looks right, so you can proceed to step 2.",
+            "Nice - this step is done. Move on to the next step.",
+            "Step 1 is complete, so go ahead to step 2 now.",
+            "You have finished this step.",
+            "Great, that step is correct - on to the next one."):
+        assert m._claims_a_transition(_claim), _claim
+    # ...and ordinary talk about a loop, or about the step they are ON, is not
+    # a transition claim. "next" alone must not trip this.
+    for _not_claim in (
+            "Continue to the next item in the list and see what happens.",
+            "What does your loop do on the next character?",
+            "This step asks you to count the letters - what have you got so far?",
+            "Move the check inside the loop and run it again in your head.",
+            "The next value it reads is the one you just overwrote."):
+        assert not m._claims_a_transition(_not_claim), _not_claim
+
+    # The cut is per SENTENCE: the good half of a turn survives the bad half.
+    _mixed = ("Your loop only ever sees the first character. "
+              "Increment the count each time instead. "
+              "What does that tell you about where the loop ends?")
+    _cut = m._drop_sentences(_mixed, m._prescribes_a_fix)
+    assert "Increment" not in _cut and "only ever sees" in _cut and "?" in _cut, _cut
+
+    # THE FLOOR. A turn that is nothing but a prescription is cut to nothing,
+    # and an empty bubble is not an answer - helper mode must still ask
+    # something, and the something must not prescribe or claim a transition.
+    assert m._drop_sentences("Just append it to the list.",
+                             m._prescribes_a_fix) == ""
+    assert m._HELPER_FALLBACK and "?" in m._HELPER_FALLBACK
+    assert not m._prescribes_a_fix(m._HELPER_FALLBACK)
+    assert not m._claims_a_transition(m._HELPER_FALLBACK)
+    # ...and the planning half's own fallbacks survive the guard it is given.
+    # _prescribes_a_fix is deliberately NOT applied there: _FALLBACK
+    # ["processing"] opens "How do you go through the input", which diagnose's
+    # question-shaped patterns catch by design.
+    for _q in m._FALLBACK.values():
+        assert not m._claims_a_transition(_q), _q
+    assert m._prescribes_a_fix(m._FALLBACK["processing"]), \
+        "if this ever stops being true the comment in reply() is stale"
+
+    # BOTH output paths of reply() are guarded, not just the one that was
+    # reported. Helper mode gets both checks; the planning half gets the
+    # transition check, for the reason stated beside it.
+    _reply_src = inspect.getsource(m.reply)
+    _helper_half = _reply_src.split("if design_ok:")[1].split("# A NEW CONTAINER")[0]
+    assert "_prescribes_a_fix" in _helper_half and "_claims_a_transition" in _helper_half, \
+        "helper mode must run both new guards"
+    _planning_half = _reply_src.split("# A NEW CONTAINER")[1]
+    assert "_drop_sentences(guarded, _claims_a_transition)" in _planning_half, \
+        "the planning half must run the transition guard too - it knows even " \
+        "less about the session than the helper does"
+    assert "_drop_sentences(guarded, _prescribes_a_fix)" not in _planning_half, \
+        "...and must NOT run the prescription guard: _FALLBACK['processing'] " \
+        "is caught by diagnose's patterns, so this would strip the module's " \
+        "own questions"
 
     for name, prompt in (("socratic", m._SYSTEM), ("helper", m._HELPER_MODE)):
         assert "THE TEST" in prompt, f"{name} lost the paste-check"

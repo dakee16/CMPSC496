@@ -1649,8 +1649,14 @@ $("submit").onclick = async () => {
   // where the two ways forward are offered. Without this the bare reason - "we
   // could not confirm this step" - would win, which is the shrug the diagnosis
   // exists to replace.
+  // ...and the cases ride along when the server sent any. The adapted tier
+  // returns `indeterminate` WITH failing cases (grading.py's
+  // adapted_evidence_only): showing the evidence without convicting on it is
+  // the whole point of that tier, and this branch dropped it on the floor
+  // while the reason sentence said "the case below is worth tracing by hand".
+  // The promise and the thing promised are now made in the same place.
   if (res.verdict === "indeterminate" && !(res.needs_diagnosis && res.diagnosis))
-    return show("warn", res.reason);
+    return show("warn", res.reason, failingCasesHTML(res));
 
   if (res.verdict === "correct") {
     // Store it the way the server did, not the way it was typed.
@@ -1695,8 +1701,12 @@ $("submit").onclick = async () => {
   // The editor stays usable: this is a prompt to look again, not a lock-out,
   // and the two buttons are the two honest ways forward.
   if (res.needs_diagnosis && res.diagnosis){
+    // The cases come FIRST, before the two buttons: a diagnosis that arrived
+    // with evidence attached (the adapted tier can produce both) is asking
+    // them to look at something, and the something has to be on screen.
     show("warn", res.diagnosis,
-         '<div class="diagnosis-actions">'
+         failingCasesHTML(res)
+         + '<div class="diagnosis-actions">'
          + '<button type="button" id="diagFix">'
          + 'I see it — let me fix my code</button>'
          + '<button type="button" id="diagExplain" class="ghost">'

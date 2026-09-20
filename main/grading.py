@@ -1223,13 +1223,26 @@ def _tier3(problem, session, chunk, header, prefix, student_code, upto,
             shown = failing_cases(problem, tests, cand.failures)
             _trace(trace.record_adapter, corr, GRADING_MODEL, attempt, "evidence_only")
             _trace(trace.record_route, corr, "execution-adapted", "indeterminate")
+            # THE SENTENCE IS DERIVED FROM THE EVIDENCE, NEVER WRITTEN BESIDE
+            # IT. failing_cases() SKIPS any case it cannot render - a failure
+            # carrying no usable index, an input whose rendering raises - and it
+            # may skip every one of them. This message promised "the case below"
+            # either way, so a student was told to trace a case that was never
+            # sent: the worst version of this text, because it reads as the page
+            # having dropped the one useful thing in it. One name for the rule
+            # this broke - never promise evidence that is not there - and the
+            # promise is now a function of `shown` rather than a constant.
             return _remember(_ok(
                 "indeterminate", "execution-adapted",
                 "We ran your step together with the rest of the solution and the "
                 "finished answer came out wrong on at least one case. We can't "
                 "be certain the fault is in this step, so your attempt was not "
-                "used - but the case below is worth tracing by hand.",
-                "adapted_evidence_only", deterministic=False,
+                "used"
+                + (" - but the case below is worth tracing by hand." if shown
+                   else ". Try your step on a small input of your own and check "
+                        "what it hands on to the rest of the solution."),
+                "adapted_evidence_only" if shown else "adapted_evidence_unrenderable",
+                deterministic=False,
                 consume_attempt=False, execution_outcome="wrong_output",
                 failures=cand.failures, failing_cases=shown,
                 failed_total=_failed_total(cand, len(shown))))
@@ -1384,6 +1397,26 @@ if __name__ == "__main__":
     assert all("expected:" in c and "you gave:" in c for c in shown), shown
     assert failing_cases(_p, _tests, _fails, limit=1) == shown[:1]
     assert failing_cases(_p, _tests, []) == []
+    # A failure the renderer cannot place is SKIPPED, so the list can come back
+    # empty even though the run reported failures. That is what made the
+    # adapted tier promise "the case below" over nothing at all.
+    assert failing_cases(_p, _tests, [{"index": None, "error": "boom"}]) == []
+    assert failing_cases(_p, _tests, [{"index": 99, "error": "boom"}]) == []
+
+    # ── never promise evidence that is not there ─────────────────────────
+    # The sentence is derived from `shown`, so the two cannot disagree. Checked
+    # on the source because reaching this branch for real needs a model, an
+    # oracle and four subprocesses; what must hold is that neither wording is a
+    # constant sitting next to the other.
+    import inspect as _inspect
+    _t3 = _inspect.getsource(_tier3)
+    _promise = "the case below is worth tracing by hand"
+    assert _promise in _t3, "the with-evidence wording is gone"
+    _line = next(l for l in _t3.splitlines() if _promise in l)
+    assert "if shown" in _line, \
+        "the promise must be conditional on the cases actually existing"
+    assert '"adapted_evidence_only" if shown' in _t3, \
+        "the two outcomes must be distinguishable in telemetry"
     # An index the suite does not have is skipped, not raised on, and must not
     # cost the student the cases that WOULD have told them something.
     assert len(failing_cases(_p, _tests, [{"index": 99}] + _fails)) == MAX_SHOWN_CASES

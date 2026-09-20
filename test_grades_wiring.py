@@ -192,3 +192,103 @@ def test_finishing_records_the_kind_of_finish_it_actually_was():
     js = _student_js()
     fn = js.split("async function finish(")[1].split("\n}")[0]
     assert "res.solved_independently ? SOLVED : ASSISTED" in fn
+
+
+# ── a repeat of the same answer must not be a worse answer ───────────────
+#
+# The submission id is a hash of the code (frontend/student.js), so resubmitting
+# an identical answer is answered from submissions.result_json and never reaches
+# the grader again. Anything the route attached to its RESPONSE rather than to
+# that row therefore vanished on the second try: a diagnosis built on the
+# student's own measured values degraded into the bare "we could not confirm
+# this step", and the two recovery buttons it drives went with it.
+
+def test_the_route_records_what_the_student_was_shown():
+    """The evidence goes into the committed row, not just onto the response."""
+    route = _api_src().split("def grade_chunk_route")[1].split("\n@app.")[0]
+    committed = route.split("state = commit_outcome(")[0].split("graded = {")[1]
+    for field in ("needs_diagnosis", "diagnosis", "failing_cases",
+                  "failed_total", "revealed_reference"):
+        assert field in committed, \
+            f"{field} is not persisted, so a replay loses it"
+    assert "commit_outcome(\n            req.session_id, req.submission_id," \
+           " session[\"revision\"], graded," in route, \
+        "the committed dict must be the one that carries the evidence"
+
+
+def test_the_response_is_read_back_out_of_the_record():
+    """Both paths build the same body. A replay has `state` and no `result`, so
+    anything still read off `result` here is a field the replay cannot have."""
+    route = _api_src().split("def grade_chunk_route")[1].split("\n@app.")[0]
+    tail = route[route.index('body = {"verdict"'):]
+    assert "state[key]" in tail, "the optional fields must come from the record"
+    for field in ("needs_diagnosis", "diagnosis", "failing_cases",
+                  "failed_total", "revealed_reference"):
+        assert f"result.{field}" not in tail, \
+            f"{field} is still read off the live GradeResult, which a replay " \
+            f"does not have"
+
+
+def test_an_identical_resubmission_keeps_its_diagnosis(tmp_path):
+    """End to end through the real store: what was committed comes back."""
+    import types
+
+    from main.sessions import (begin_submission, commit_outcome,
+                               create_session, stored_result)
+
+    db = str(tmp_path / "sessions.sqlite3")
+    n = lambda **kw: types.SimpleNamespace(**kw)
+    opened = create_session(
+        {"slug": "frequency", "title": "Frequency", "description": "d",
+         "solution": "def frequency(txt):\n    return {}"},
+        {"header": "def frequency(txt):",
+         "chunks": [n(step_id="Part 1", prompt="count them",
+                      expected_type="code", reference="counts = {}"),
+                    n(step_id="Part 2", prompt="return them",
+                      expected_type="code", reference="return counts")]},
+        "hash-frequency", student_id="student-1", db_path=db)
+    sid = opened["session_id"]
+
+    graded = {
+        "verdict": "indeterminate", "tier": "execution-adapted",
+        "deterministic": False, "divergent": False,
+        "reason": "We could not confirm this step.",
+        "needs_diagnosis": True,
+        "diagnosis": "For 'aab', your step leaves `unique` holding {'a', 'b'}. "
+                     "What does that tell you about the text it came from?",
+        "failing_cases": ["frequency('aab')\n\nexpected: {'a': 2, 'b': 1}"],
+        "failed_total": 4,
+    }
+    prior, session = begin_submission(sid, "sub-abc123", db_path=db)
+    assert prior is None
+    # An indeterminate verdict accepts nothing and spends no attempt.
+    commit_outcome(sid, "sub-abc123", session["revision"], graded,
+                   consume_attempt=False, db_path=db)
+
+    replay = stored_result(sid, "sub-abc123", db_path=db)
+    assert replay["idempotent_replay"] is True
+    assert replay["needs_diagnosis"] is True
+    assert replay["diagnosis"] == graded["diagnosis"]
+    assert replay["failing_cases"] == graded["failing_cases"]
+    assert replay["failed_total"] == 4
+    # ...and the replay still costs nothing and moves nothing.
+    assert replay["index"] == 0 and replay["attempts"] == 0
+
+    # begin_submission takes the same route for a concurrent twin.
+    again, _ = begin_submission(sid, "sub-abc123", db_path=db)
+    assert again["diagnosis"] == graded["diagnosis"]
+
+
+def test_the_page_shows_the_cases_on_an_indeterminate_verdict():
+    """grading.adapted_evidence_only returns `indeterminate` WITH cases, and
+    says "the case below is worth tracing by hand". The branch that renders it
+    dropped them, so the sentence pointed at nothing."""
+    js = _student_js()
+    generic = next(l for l in js.splitlines()
+                   if 'res.verdict === "indeterminate"' in l and "needs_diagnosis" in l)
+    after = js[js.index(generic):]
+    assert "failingCasesHTML(res)" in after.split("\n")[1], \
+        "the bare indeterminate branch must pass the cases through"
+    diag = js.split("if (res.needs_diagnosis && res.diagnosis){")[1][:400]
+    assert "failingCasesHTML(res)" in diag, \
+        "a diagnosis that arrived with evidence must show the evidence"

@@ -158,20 +158,52 @@ def _tree(body: str):
     return ast.parse("def _mt_w():\n" + _indent(body or "pass"))
 
 
+def _own_scope(nodes):
+    """Every node in `nodes`, WITHOUT descending into a nested def or class.
+
+    A nested `def` binds its NAME in this scope and its locals in a different
+    one, so the two must not be collected together. The def/class node itself is
+    still yielded - the caller wants `.name` - but its body belongs to another
+    scope and is not walked."""
+    for n in nodes:
+        yield n
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            continue
+        yield from _own_scope(ast.iter_child_nodes(n))
+
+
 def stores(body: str) -> set:
-    """Names this body binds."""
+    """Names this body binds AT ITS OWN SCOPE.
+
+    SCOPE-AWARE, which it was not. `ast.walk` descends into a nested `def`, so a
+    student who wrote a helper had that helper's LOCALS collected as their own
+    state. Measured live on a step whose body was
+
+        def tally(s):
+            running = 0
+            for c in s:
+                running += 1
+            return running
+        size = tally(txt)
+
+    which came back {'c', 'running', 'size', 'tally'}. `running` and `c` live in
+    tally's frame and do not exist at this boundary at all, so the capture
+    appended to the OUTER body recorded them as UNBOUND - and main/diagnose.py
+    put `running is __mt_unbound__` in front of the student as their own state.
+    Two visible defects from one miscollection, which is why the fix is here
+    rather than at either screen.
+
+    The synthetic `_mt_w` wrapper _tree adds needs no special case now: the walk
+    starts inside its body, so its name is never in reach."""
     try:
         t = _tree(body)
     except SyntaxError:
         return set()
-    out = {n.id for n in ast.walk(t)
-           if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store)}
-    for n in ast.walk(t):
-        # `_mt_w` is the synthetic wrapper _tree adds so a body holding `return`
-        # parses at all. It is not the student's, and letting it through made it
-        # a candidate for every bridge.
-        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) \
-                and n.name != "_mt_w":
+    out = set()
+    for n in _own_scope(t.body[0].body):
+        if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store):
+            out.add(n.id)
+        elif isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
             out.add(n.name)
     return out
 
@@ -625,6 +657,26 @@ if __name__ == "__main__":
 
     # ── pure AST helpers ────────────────────────────────────────────────
     assert stores("a = 1\nfor b in x:\n    pass") == {"a", "b"}
+    # A NESTED DEF IS A DIFFERENT SCOPE. Its name is bound here; its locals are
+    # not, and collecting them made diagnose show a helper's `running` as the
+    # student's own variable - holding UNBOUND, because the outer frame never
+    # had it. Both of those reached a student's screen.
+    _helper = ("def tally(s):\n"
+               "    running = 0\n"
+               "    for c in s:\n"
+               "        running += 1\n"
+               "    return running\n"
+               "size = tally(txt)")
+    assert stores(_helper) == {"tally", "size"}, stores(_helper)
+    # A class body is a scope too, and its methods are scopes inside that.
+    assert stores("class Box:\n    n = 0\n\n"
+                  "    def put(self, v):\n        self.v = v\n"
+                  "b = Box()") == {"Box", "b"}
+    # ...and the ordinary case is unchanged: a comprehension and a `with` are
+    # NOT separate scopes for this purpose, and a lambda binds only its name.
+    assert stores("out = [y for y in xs]") == {"out", "y"}
+    assert stores("with open(p) as fh:\n    data = fh.read()") == {"fh", "data"}
+    assert stores("f = lambda q: q + 1") == {"f"}
     # AugAssign is a READ as well as a write - the bug that hides an accumulator
     assert "total" in free_names("total += n")
     # Read on the loop test, written in the body: `lo` must still be free, or a
