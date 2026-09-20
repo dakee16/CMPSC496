@@ -65,6 +65,24 @@ ALLOWED_EMAILS = frozenset(
     for e in os.environ.get("MICROTUTOR_ALLOWED_EMAILS", "").split(",")
     if e.strip())
 
+# Addresses whose account is created as an INSTRUCTOR rather than a student.
+# Same shape and same trust level as the roster above: server-side config, set
+# by whoever controls the .env, never anything a client can influence.
+#
+# THIS DOES NOT REOPEN THE DOOR register() WARNS ABOUT. What that warning is
+# about is a role the CALLER supplies - "a self-service role field would let
+# anyone on the VPN grant themselves the assignment-upload screen". An address
+# here was chosen by the same person who chose the roster, before the account
+# existed, and a request cannot add itself to it.
+#
+# It exists because the alternative is worse in practice: an instructor has to
+# register, wait for somebody to run SQL by hand, and sign in again before they
+# can see their own class. Four of them arrived at once with no accounts yet.
+INSTRUCTOR_EMAILS = frozenset(
+    e.strip().lower()
+    for e in os.environ.get("MICROTUTOR_INSTRUCTOR_EMAILS", "").split(",")
+    if e.strip())
+
 SESSION_SECRET = os.environ.get("MICROTUTOR_SESSION_SECRET", "").strip()
 SESSION_COOKIE = "microtutor_session"
 SESSION_HOURS = 12          # a class day; long enough to not re-login mid-lab
@@ -125,6 +143,17 @@ def normalize_username(username: str) -> str:
     runs on BOTH registration and login, which is what lets the lookup stay a
     plain equality test instead of a case-insensitive pattern match."""
     return (username or "").strip().lower()
+
+
+def initial_role(username: str) -> str:
+    """The role a NEW account is created with.
+
+    Student unless the address is on INSTRUCTOR_EMAILS. Read from the server's
+    own configuration at registration time - never from the request - so this
+    is the same kind of decision as being on the roster at all, made by the
+    same person, before the account exists."""
+    return ("teacher" if normalize_username(username) in INSTRUCTOR_EMAILS
+            else "student")
 
 
 def is_allowed(username: str) -> bool:
@@ -296,9 +325,12 @@ def register_student(sb, username: str, password: str,
                      first_name: str = "", last_name: str = "") -> Dict[str, Any]:
     """Create an account and return the row. Raises AuthError on any refusal.
 
-    Role is NOT a parameter. Every account is created as a student and an
-    instructor is promoted by hand in SQL; a self-service role field would let
-    anyone on the VPN grant themselves the assignment-upload screen.
+    ROLE IS NOT A PARAMETER, and that is the point: a self-service role field
+    would let anyone on the VPN grant themselves the assignment-upload screen.
+    It comes from initial_role(), which reads the server's own
+    MICROTUTOR_INSTRUCTOR_EMAILS - a list chosen by whoever controls the .env,
+    before the account existed, and one a request cannot add itself to. Anyone
+    not on it is a student and is still promoted by hand in SQL.
 
     The name IS a parameter, and required: it is the only thing that lets an
     instructor read their grade sheet as a class list rather than a column of
@@ -324,7 +356,7 @@ def register_student(sb, username: str, password: str,
         rows = sb.table("students").insert(
             {"username": username, "password_hash": pw_hash,
              "first_name": first, "last_name": last,
-             "role": "student"}).execute().data
+             "role": initial_role(username)}).execute().data
     except Exception as e:
         # Only a UNIQUE violation is "already exists". Reporting every failed
         # insert that way is how a missing `role` column - the state this is in
@@ -452,6 +484,24 @@ if __name__ == "__main__":
     # empty made the self-check fail wherever the feature was actually in use.
     m.ALLOWED_EMAILS = frozenset()
     assert m.is_allowed("anyone@psu.edu"), "no roster must admit the domain"
+
+    # ── who arrives as an instructor ─────────────────────────────────────
+    # Same trust level as the roster: server-side config, never the request.
+    # Four instructors arrived at once with no accounts, and the alternative
+    # was register -> wait for hand-written SQL -> sign in again.
+    _real_staff = m.INSTRUCTOR_EMAILS
+    try:
+        m.INSTRUCTOR_EMAILS = frozenset()
+        assert m.initial_role("prof@psu.edu") == "student", \
+            "with no list configured, nobody is staff"
+        m.INSTRUCTOR_EMAILS = frozenset({"xmt5028@psu.edu", "gxc249@psu.edu"})
+        assert m.initial_role("xmt5028@psu.edu") == "teacher"
+        assert m.initial_role("  XMT5028@PSU.edu  ") == "teacher", \
+            "the same normalisation as every other address"
+        assert m.initial_role("abs7800@psu.edu") == "student", \
+            "a student on the roster is still a student"
+    finally:
+        m.INSTRUCTOR_EMAILS = _real_staff
     m.ALLOWED_EMAILS = frozenset({"prof@psu.edu", "demo@gmail.com"})
     try:
         assert m.is_allowed("  PROF@PSU.edu  "), "the roster is case-sensitive"
