@@ -10,3 +10,6 @@ migrations/
 
 # runtime grading session store
 data/grading_sessions.sqlite3*
+
+# model-call traces (main/trace.py), rotated in place
+data/model_trace.jsonl*

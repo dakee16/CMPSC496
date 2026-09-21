@@ -580,6 +580,77 @@ def commit_outcome(session_id: str, submission_id: str, revision: int, result: d
         conn.close()
 
 
+def reopen_step(session_id: str, index: int,
+                db_path: str | None = None) -> dict:
+    """Put a student back on a step of their own that was already accepted.
+
+    WHY THIS EXISTS. A step was accepted, the student then found a bug in it,
+    and there was no way back to it: the only route to changing an earlier
+    answer was Start over, which gives up the whole problem. "Accepted, and
+    therefore unreachable" is the one state a student cannot work around from
+    the page, and it pushes them into a restart they did not want.
+
+    WHAT IT DROPS, AND WHY IT HAS TO. The steps AFTER `index` leave the accepted
+    prefix, because that prefix is exactly what they were graded against:
+    main/grading.py stitches the student's accepted code onto the teacher's
+    remaining reference and runs the result, so an acceptance that rested on
+    code which has since changed has stopped being evidence about anything.
+    Keeping them would mean a later step certified against a step that no
+    longer exists in that form.
+
+    NOTHING IS LOST. No submission row is touched, so the instructor's
+    transcript still holds every version (main/archive.py), and the dropped
+    code is RETURNED so the page can hand it straight back as a draft - a
+    student reworking step 1 should not have to retype step 2 from memory.
+
+    CREDIT ALREADY EARNED IS NOT WITHDRAWN. main/grades.tally reads a step as
+    solved when ANY submission for it came back correct, so reworking a step
+    adds attempts to the record and never subtracts a grade. Same rule the rest
+    of the archive follows: a student who went round twice is the finding.
+
+    Refuses anything but an ACTIVE session and an index genuinely behind the
+    current one. A finished problem is Start over's business - un-completing a
+    session would have to unpick the solved flag and the reflection stage with
+    it - and "reopening" the step already open would drop nothing and reset an
+    attempt count for free."""
+    conn = _connect(db_path)
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        r = conn.execute("SELECT * FROM sessions WHERE session_id=?",
+                         (session_id,)).fetchone()
+        if r is None:
+            conn.execute("ROLLBACK")
+            raise SessionError("Unknown session.", "session_not_found")
+        s = _row_to_session(r)
+        if s["state"] != "active":
+            conn.execute("ROLLBACK")
+            raise SessionError("This problem is already finished - use Start "
+                               "over to work it again.", "session_inactive")
+        if not 0 <= index < s["index"]:
+            conn.execute("ROLLBACK")
+            raise SessionError("That step is not one you have already "
+                               "finished.", "step_not_reopenable")
+        dropped = [{"index": index + n, "code": a.get("code") or ""}
+                   for n, a in enumerate(s["accepted"][index:])]
+        # attempts belong to the step being worked, and this is a different one.
+        conn.execute(
+            "UPDATE sessions SET idx=?, accepted_json=?, attempts=0,"
+            " updated_at=?, revision=revision+1 WHERE session_id=?",
+            (index, json.dumps(list(s["accepted"])[:index]), _now(), session_id))
+        conn.execute("COMMIT")
+    except SessionError:
+        raise
+    except Exception:
+        try: conn.execute("ROLLBACK")
+        except Exception: pass
+        raise
+    finally:
+        conn.close()
+    return {"index": index, "attempts": 0, "assisted": bool(s["assisted"]),
+            "completed": False, "total_chunks": len(s["chunks"]),
+            "dropped": dropped}
+
+
 def apply_outcome(session_id: str, submission_id: str, result: dict, **kw) -> dict:
     """Back-compat shim: reserve then commit in one call."""
     db_path = kw.pop("db_path", None)

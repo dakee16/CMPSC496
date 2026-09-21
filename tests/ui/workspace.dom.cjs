@@ -47,6 +47,7 @@ const graph = {nodes:[{id:'n0',kind:'start',label:'Read records'},{id:'n1',kind:
       }
       else if(route==='/mark_solved') data={ok:true};
       else if(route==='/graphs'){status=comparisonFailure?503:200;data={plan:graph,code:graph,comparison:{similarity:1,notes:['The structure matches.']}};}
+      else if(route==='/reopen_step') data={index:JSON.parse(init.body).index,attempts:0,completed:false,total_chunks:steps.length,dropped:[{index:0,code:'    draft = records.copy()'}]};
       else if(route.endsWith('/restart')) data={ok:true};
       else throw new Error('Unexpected request: '+route);
       return new window.Response(JSON.stringify(data),{status,headers:{'Content-Type':'application/json'}});
@@ -195,8 +196,40 @@ const graph = {nodes:[{id:'n0',kind:'start',label:'Read records'},{id:'n1',kind:
     assert.equal(doc.querySelector('#reviewBox').hidden,false);
     assert(doc.querySelector('#backToNow').textContent.includes('Continue to step 2'));
     assert(doc.querySelector('#reviewCode').textContent.includes('records.copy()'));
+    // BACK TO AN ACCEPTED STEP. Freezing accepted code is right - it is what
+    // every later step was graded against - but having no way to reopen it
+    // left a student who spotted a bug in step 1 with only Start over, which
+    // gives up the whole problem. The server owns the state change; the page
+    // leaves review mode and hands their own answer back to edit.
+    assert.equal(doc.querySelector('#reworkStep').hidden,false,
+      'Their own accepted step can be reopened');
+    doc.querySelector('#reworkStep').click();await tick();
+    assert(calls.some(c=>c.route==='/reopen_step'),'the server decides, not the page');
+    assert.equal(doc.querySelector('#reviewBox').hidden,true,'review mode closes');
+    assert(value.includes('records.copy()'),
+      'with the answer they came back to edit already in the editor');
+    assert(doc.querySelector('#msg').textContent.includes('back on step 1'));
+    // Re-accepted, which is where the rest of this file expects to be.
+    await doc.querySelector('#submit').onclick();
+    assert.equal(doc.querySelector('#reviewBox').hidden,false);
     doc.querySelector('#backToNow').click();
     assert.equal(value,'    ','Continuing must start a new draft, not repeat the submitted answer');
+    // AND WITHOUT THE REVIEW DETOUR. On step 2, with step 1 accepted, the way
+    // back to step 1 sits under the code it would change - reaching it through
+    // a finished step's pill means knowing that pill is a button.
+    assert.equal(doc.querySelector('#editEarlier').hidden,false,
+      'a finished step is reachable while still solving the next one');
+    assert.deepEqual([...doc.querySelectorAll('#editEarlier [data-edit]')]
+      .map(b=>b.textContent),['Step 1'],'their own answers, and only those');
+    doc.querySelector('#editEarlier [data-edit]').click();await tick();
+    assert(doc.querySelector('#msg').textContent.includes('back on step 1'));
+    assert.equal(doc.querySelector('#editEarlier').hidden,true,
+      'and with nothing accepted behind it, the row goes away');
+    // Re-accepted, back to where the rest of this file expects to be.
+    value='    draft = records.copy()';
+    await doc.querySelector('#submit').onclick();
+    doc.querySelector('#backToNow').click();
+    assert.equal(value,'    ');
     value='    return updated';comparisonFailure=true;
     await doc.querySelector('#submit').onclick();
     assert.deepEqual(visibleStage(),['stageCode'],'Completion waits for the student to open Reflect');
@@ -282,7 +315,7 @@ const graph = {nodes:[{id:'n0',kind:'start',label:'Read records'},{id:'n1',kind:
     const ids=[...doc.querySelectorAll('[id]')].map(el=>el.id);
     assert.equal(new Set(ids).size,ids.length,'No duplicate IDs');
     assert(calls.some(c=>c.route==='/design_review')&&calls.some(c=>c.route==='/design_review/plan'));
-    console.log('PASS: Question+Plan → Code → Reflect; the question rides every stage; persistent tutor; inline references keep code/chat available; both planning methods; approval gates; draft/chat/file preservation; keyboard resizing; replies preserve editor focus; paced steps; grading errors; comparison retry; restart; loading failures; restored work.');
+    console.log('PASS: Question+Plan → Code → Reflect; the question rides every stage; persistent tutor; inline references keep code/chat available; both planning methods; approval gates; draft/chat/file preservation; keyboard resizing; replies preserve editor focus; paced steps; grading errors; comparison retry; reopening an accepted step; restart; loading failures; restored work.');
     console.log('DOM behavior only. Browser layout and real CodeMirror still require Chromium.');
   } finally {await window.happyDOM.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});

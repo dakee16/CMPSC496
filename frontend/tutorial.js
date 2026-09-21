@@ -283,7 +283,7 @@
       +'<div id="quizBox">'+quiz.map(q=>
         '<fieldset class="tutorial-choices quiz" data-quiz="'+q.key+'"><legend>'+esc(q.legend)+'</legend>'
         +q.options.map(([value,label])=>'<label><input type="radio" name="'+q.key+'" value="'+esc(value)+'"'
-          +(picked[q.key]===value?' checked':'')+'><span>'+esc(label)+'</span></label>').join("")
+          +'><span>'+esc(label)+'</span></label>').join("")
         +'<p class="quiz-why" role="status" aria-live="polite"></p></fieldset>').join("")+'</div>'
       +'<div class="practice-completion"><strong>That is the tour.</strong>'
       +'<p>Open <strong>My assignments</strong> when you are ready. If something here does not match what you see, trust the real page - and ask your instructor.</p></div>'
@@ -325,7 +325,17 @@
         why.textContent=q.why[value]||"";
         why.className="quiz-why "+(value===q.right?"ok":"no");
       };
-      if(picked[q.key])show(picked[q.key]);
+      // REPLAY THE PICK, not just its explanation. Every move re-renders the
+      // chapter from one string that was built before anything was answered,
+      // so the radio arrives unchecked however the question was answered - and
+      // an explanation reading "Right." under four blank options is a page
+      // that has lost track of what the student did. The `why` alone used to
+      // come back; the dot has to come with it.
+      if(picked[q.key]){
+        const chosen=field.querySelector('input[value="'+picked[q.key]+'"]');
+        if(chosen)chosen.checked=true;
+        show(picked[q.key]);
+      }
       field.querySelectorAll("input").forEach(el=>el.onchange=()=>show(el.value));
     });
   }

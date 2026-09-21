@@ -112,6 +112,15 @@
   .ctxCode .cHead{color:var(--accent-ink)}
 
 
+  /* A way back into a step that is already accepted, kept beside the code it
+     would change rather than behind the stepper. */
+  .editEarlier{display:flex; align-items:center; gap:6px; flex-wrap:wrap;
+               padding:7px var(--s3); border-top:1px solid var(--glass-line);
+               background:var(--surface)}
+  .editEarlier .lab{font-size:.75rem; color:var(--text-subtle)}
+  .editEarlier .chip{min-height:28px; padding:4px 9px; font-size:.75rem;
+                     border-color:var(--border)}
+
   .codestack .editorWrap{position:relative; border-top:1px solid var(--glass-line)}
   .codestack .CodeMirror{border:0; border-radius:0; background:transparent !important;
                          min-height:150px; padding:2px 0}

@@ -208,6 +208,14 @@ class ReplanRequest(BaseModel):
     description: str
     accepted_steps: list[dict]
 
+class ReopenRequest(BaseModel, extra="forbid"):
+    """A step the student wants back. Only an opaque session id and an index:
+    which steps exist, what was accepted for them and whether that index is
+    behind the current one are all decided server-side."""
+    session_id: str
+    index: int
+
+
 class ChunkRequest(BaseModel, extra="forbid"):
     """The client is NOT authoritative. It may send only an opaque session id,
     a stable submission id, its code, and (optionally) the index it believes it
@@ -452,8 +460,26 @@ def decompose_chunks_route(req: DecomposeRequest, request: Request):
         result = None
         from main.archive import latest_plan_graph
 
-        plan = latest_plan_graph(get_supabase() if current_student(request)
-                                 else None, current_student(request), req.slug)
+        # ONLY A PLAN FROM THE RUN THEY ARE IN NOW. mt_graphs is append-only,
+        # so before this the roadmap for a fresh run was still being chosen by
+        # the plan from a run the student had pressed Start over on - and that
+        # choice is not free: it spends a proposal, a decomposition and every
+        # gate on each open, before any session exists to remember it. The same
+        # marker the chat, the designs and the solved flag are already cut at.
+        #
+        # Unreadable marker -> no plan -> the teacher's roadmap. Not knowing
+        # which run a plan belongs to is exactly when rerouting on it is wrong.
+        _student = current_student(request)
+        _sb = get_supabase() if _student else None
+        plan = None
+        if _sb and _student:
+            try:
+                plan = latest_plan_graph(
+                    _sb, _student, req.slug,
+                    since=_restart_marker(_sb, _student, req.slug))
+            except Exception as e:
+                print(f"  🧭 Could not place {req.slug}'s plan in a run, "
+                      f"keeping the reference roadmap: {e!r}")
         if plan:
             from main import reroute
             # reroute.effective_header, NOT header_of: the latter returns "" for
@@ -871,6 +897,35 @@ def grade_chunk_route(req: ChunkRequest, request: Request):
         if key in state:
             body[key] = state[key]
     return body
+
+
+@app.post("/reopen_step")
+def reopen_step_route(req: ReopenRequest, request: Request):
+    """Go back to an earlier step of the caller's OWN session and rework it.
+
+    Reported from testing: a student passed step 1, then found a bug in it, and
+    the only way back was Start over - which retires the whole problem. The
+    editor freezing accepted work is right (it is what later steps were graded
+    against), but having no way to reopen it is not.
+
+    All of the state change is main/sessions.reopen_step; this route does what
+    /grade_chunk does around it - proves ownership, enforces the design gate,
+    and maps a refusal onto a status code. It grades nothing, so no verdict and
+    no attempt can come out of it, and the only code it returns is the
+    student's own."""
+    from main.sessions import SessionError, reopen_step
+
+    claims, snap = _owned_session(request, req.session_id)
+    if not _design_approved(claims["sub"], snap.get("slug", "")):
+        raise HTTPException(status_code=403, detail={
+            "reason_code": "design_not_approved",
+            "message": "Submit your plan for review before writing code."})
+    try:
+        state = reopen_step(req.session_id, int(req.index))
+    except SessionError as e:
+        raise HTTPException(status_code=409, detail={
+            "reason_code": e.reason_code, "message": str(e)})
+    return state
 
 
 # ── playground (read-only showcase) ───────────────────────────────────────

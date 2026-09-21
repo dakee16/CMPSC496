@@ -68,31 +68,89 @@ const tick=()=>new Promise(r=>setTimeout(r,30));
     assert.equal(returning.sessionStorage.getItem("microtutor.session"),null,"session copy is cleared");
     const w=await make("tutorial.html?return=student.html"),doc=w.document;
     const next=()=>doc.querySelector("#tutorialNext").click();
-    const radio=(name,value)=>doc.querySelector('input[name="'+name+'"][value="'+value+'"]').click();
-    // THE TOUR TEACHES THE PRODUCT, not factorial. Each step corrects one
-    // belief a new student arrives with, and a wrong pick has to say which.
-    next();assert(doc.querySelector("#tutorialFeedback").textContent.includes("Pick one"));
-    radio("first","code");next();
-    assert(doc.querySelector("#tutorialFeedback").textContent.includes("locked"),
-      "the plan gate is the point of step 1");
-    radio("first","plan");next();
+    const rail=()=>[...doc.querySelectorAll("[data-tutorial-step]")];
+    const at=()=>doc.querySelector("#tutorialPosition").textContent;
+    // A choice's handler is onchange, and a synthetic click does not reliably
+    // fire one, so the change is dispatched too. The handlers are idempotent,
+    // so a DOM that fires both is not a different test.
+    const pick=(name,value)=>{
+      const el=doc.querySelector('input[name="'+name+'"][value="'+value+'"]');
+      el.click();el.checked=true;
+      el.dispatchEvent(new w.Event("change",{bubbles:true}));
+      return el;
+    };
+    const whyFor=key=>doc.querySelector('[data-quiz="'+key+'"] .quiz-why');
 
-    // Picking the workable plan draws the flowchart the page would have drawn.
-    assert(!doc.querySelector("#practicePlanGraph svg"),"nothing drawn before a choice");
-    radio("plan","thin");
-    assert(!doc.querySelector("#practicePlanGraph svg"),"a thin plan draws nothing");
-    next();assert(doc.querySelector("#tutorialFeedback").textContent.includes("counted"));
-    radio("plan","full");assert(doc.querySelector("#practicePlanGraph svg"),"the plan is drawn");
+    // NOTHING GATES, which is the rule the rewrite was built on. The previous
+    // tour refused to advance until you picked the right radio, so the first
+    // thing a brand-new student met was a quiz about a product they had not
+    // seen yet. Continue continues with nothing picked.
+    assert.equal(rail().length,6,"one rail tab per chapter");
+    assert.equal(at(),"Chapter 1 of 6");
+    assert(doc.querySelector("#tutorialBack").hidden,"nowhere to go back to yet");
     next();
+    assert.equal(at(),"Chapter 2 of 6","Continue needs no answer");
+    assert(!doc.querySelector("#tutorialBack").hidden);
+    // ...and the rail is a rail, not a ladder: any chapter, at any time.
+    rail()[5].click();
+    assert.equal(at(),"Chapter 6 of 6","the rail jumps straight to the end");
+    assert.equal(doc.querySelector("#tutorialNext").textContent,"Finish tour \u2192");
+    assert.equal(rail()[5].getAttribute("aria-current"),"step");
+    assert(rail()[0].classList.contains("complete"),"chapters behind you read as done");
 
-    radio("wrong","reveal");next();
-    assert(doc.querySelector("#tutorialFeedback").textContent.includes("never"),
+    // THE PLAN CHAPTER DRAWS THE REAL THING - renderGraph, the same drawing
+    // main/graphs.py feeds on the live page - and a thin plan draws nothing,
+    // which is the lesson rather than a missing feature.
+    rail()[2].click();
+    assert(!doc.querySelector("#practicePlanGraph svg"),"nothing drawn before a choice");
+    pick("planDemo","thin");
+    assert(!doc.querySelector("#practicePlanGraph svg"),"a thin plan draws nothing");
+    assert.equal(doc.querySelector("#planDemoWhy").className,"quiz-why no");
+    assert(doc.querySelector("#planDemoWhy").textContent.includes("draws nothing"));
+    pick("planDemo","full");
+    assert(doc.querySelector("#practicePlanGraph svg"),"the workable plan is drawn");
+    assert.equal(doc.querySelector("#planDemoWhy").className,"quiz-why ok");
+
+    // THE CHECK COSTS NOTHING: a wrong pick explains itself and blocks nobody.
+    // The four beliefs it corrects are the four the product rests on.
+    rail()[5].click();
+    assert.equal(whyFor("first").textContent,"","nothing is said before a pick");
+    pick("first","code");
+    assert(whyFor("first").textContent.includes("locked"),"the plan gate is the point of stage 1");
+    assert.equal(whyFor("first").className,"quiz-why no");
+    pick("first","plan");
+    assert.equal(whyFor("first").className,"quiz-why ok");
+    pick("plan","fail");
+    assert(whyFor("plan").textContent.includes("rebuilt"),"a different approach gets its own steps");
+    pick("wrong","reveal");
+    assert(whyFor("wrong").textContent.startsWith("Never"),
       "nothing is ever revealed, and the tour has to say so");
-    radio("wrong","retry");next();
+    pick("saved","lost");
+    assert(whyFor("saved").textContent.includes("saved"));
+    // An answer survives leaving the chapter and coming back. Every move
+    // re-renders the chapter from scratch, so without this a student who went
+    // back to re-read one thing would find four questions blank again.
+    rail()[0].click();rail()[5].click();
+    assert(doc.querySelector('input[name="wrong"][value="reveal"]').checked);
+    assert(whyFor("wrong").textContent.startsWith("Never"),"and its answer is still there");
 
-    radio("saved","lost");next();
-    assert(doc.querySelector("#tutorialFeedback").textContent.includes("saved"));
-    radio("saved","kept");next();await tick();
+    // THE ONE PROMISE THE TOUR MAY NOT BREAK. sessions.MAX_ATTEMPTS is None
+    // and no tier reveals a reference, so a tour that hinted at a reveal or at
+    // running out of tries would be teaching a product we do not ship.
+    rail()[3].click();
+    const codeChapter=doc.querySelector("#tutorialExercise").textContent;
+    assert(codeChapter.includes("The answer is never shown to you"),codeChapter.slice(0,120));
+    assert(/no attempt limit/i.test(codeChapter),"and no limit to run out of");
+
+    // Mocks are scenery: hidden from assistive tech, and nothing inside them
+    // is tabbable, so a keyboard user does not walk through screenshots.
+    const mocks=[...doc.querySelectorAll(".mock")];
+    assert(mocks.length&&mocks.every(m=>m.getAttribute("aria-hidden")==="true"),
+      "every mock is aria-hidden");
+    assert.equal(doc.querySelectorAll(".mock button,.mock a,.mock input,.mock [tabindex]").length,0,
+      "and holds nothing focusable");
+
+    rail()[5].click();next();await tick();
     assert.equal(w.location.pathname,"/student.html","Finish closes sample");
     const marker=Object.keys(w.localStorage).find(k=>k.startsWith("acadia.tutorial"));
     assert.equal(JSON.parse(w.localStorage.getItem(marker)).status,"completed");
@@ -109,6 +167,6 @@ const tick=()=>new Promise(r=>setTimeout(r,30));
     const account=c=>c.url.endsWith("/auth/name")||c.url.endsWith("/logout");
     assert(calls.every(c=>account(c)||(c.method==="GET"&&c.url.includes("/auth/me"))),
       "Tutorial never creates a real session or grade");
-    console.log("PASS: first-visit detection, account/browser memory, Settings replay, the four product-tour gates (plan lock, workable plan, never revealed, work is saved), automatic exit, role-aware navigation, and zero course writes.");
+    console.log("PASS: first-visit detection, account/browser memory, Settings replay, six ungated chapters reachable from the rail, Continue without an answer, the real plan flowchart (thin draws nothing), the four self-check corrections with answers that persist across chapters, the never-revealed promise in the copy, inert mocks, automatic exit, role-aware navigation, and zero course writes.");
   }finally{for(const w of windows)await w.happyDOM.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

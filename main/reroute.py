@@ -40,6 +40,7 @@ either fails the oracle and is thrown away, or passes it and is therefore
 correct regardless of how faithfully it read them.
 """
 import json
+import time
 
 from .gates import shape_failures
 from .ollama_client import GRADING_MODEL, chat
@@ -95,6 +96,54 @@ def follows_reference(problem: dict, header: str, graph: dict) -> bool:
         # looked like a divergent student.
         return True
     return yours == mine
+
+
+# HOW LONG ONE OPEN MAY SPEND HERE. build()'s own docstring has always said
+# the honest failure should be fast rather than a long spinner ending in the
+# same sentence - and the code did not hold to it: three attempts of a proposal
+# plus a five-try decomposition is up to EIGHTEEN sequential model calls, which
+# measured at minutes on one student's click. Nothing else cuts it off either;
+# there is no timeout in Caddy or uvicorn, so the browser simply span.
+#
+# Checked between attempts, so the true ceiling is this plus the attempt in
+# flight. The inner decomposer also gets fewer tries than its own default,
+# because its retries are the bulk of those eighteen calls.
+BUDGET_SECONDS = 60.0
+DECOMPOSE_TRIES = 2
+
+# A FAILURE IS REMEMBERED, so one slow open is not every open. What a reroute
+# attempt depends on is this problem and the SHAPE of the plan, and all the
+# expensive work happens BEFORE a session exists - so nothing downstream
+# recorded that it had already been tried, and every reopen paid for it again.
+# That is what turned one Start over into a multi-minute wait on every later
+# open of the same problem.
+#
+# Failures only, and only ones our own machinery did not cause: a SUCCESS ends
+# in a session that reopening resumes instead of coming back here, and a model
+# outage is not a fact about this plan (see the transient flag in build). The
+# consequence of a remembered failure is that the student keeps the teacher's
+# roadmap, which is exactly the behaviour before any of this existed.
+# Bounded, and in-process is sufficient - one uvicorn worker, see start.sh.
+_NO_ROUTE: dict[tuple, str] = {}
+_NO_ROUTE_LIMIT = 512
+
+
+def _route_key(problem: dict, graph: dict):
+    """What a reroute outcome depends on, or None when it cannot be keyed."""
+    try:
+        from .graphs import _signature
+        from .identity import content_hash
+        return (content_hash(problem), tuple(_signature(graph or {})))
+    except Exception:
+        return None
+
+
+def _remember_no_route(key, reason: str) -> None:
+    if key is None:
+        return
+    if len(_NO_ROUTE) >= _NO_ROUTE_LIMIT:
+        _NO_ROUTE.clear()           # cheap bound; correctness never depends
+    _NO_ROUTE[key] = reason
 
 
 class RouteUnavailable(Exception):
@@ -224,7 +273,7 @@ def propose_solution(problem: dict, header: str, graph: dict,
 
 
 def build(problem: dict, header: str, graph: dict, chat_log: list | None = None,
-          max_tries: int = 3):
+          max_tries: int = 3, budget_seconds: float = BUDGET_SECONDS):
     """A gated decomposition following the student's plan.
 
     Raises RouteUnavailable if none can be produced. Every attempt is checked by
@@ -238,13 +287,22 @@ def build(problem: dict, header: str, graph: dict, chat_log: list | None = None,
     `max_tries` is small on purpose. This runs while a student waits, and each
     attempt is a solution proposal plus a full decomposition with its own
     internal retries - so the honest failure is fast rather than a long spinner
-    ending in the same sentence."""
+    ending in the same sentence. `budget_seconds` is what makes that true: the
+    count alone bounded the number of model calls at eighteen and their wall
+    clock at nothing. A failure is remembered (_NO_ROUTE) so the next open of
+    the same problem with the same plan shape is free."""
     # Local imports: run_phase1 imports gates, and this module is imported from
     # the route layer, so top-level imports here would close a cycle.
     from .context import build_program
     from .run_phase1 import decompose_into_chunks
     from tests.sandbox import get_oracle_tests, passes_tests
     from .identity import get_resolved_entry
+
+    # ALREADY KNOWN NOT TO WORK? Checked before the oracle read, which is the
+    # first thing here that costs anything.
+    key = _route_key(problem, graph)
+    if key is not None and key in _NO_ROUTE:
+        raise RouteUnavailable(f"{_NO_ROUTE[key]} (already tried)")
 
     tests = get_oracle_tests(problem)
     if not tests:
@@ -255,12 +313,22 @@ def build(problem: dict, header: str, graph: dict, chat_log: list | None = None,
     # name its function.
     header = effective_header(problem)
 
-    last = "no attempt completed"
+    last, transient = "no attempt completed", False
+    deadline = time.monotonic() + budget_seconds
     for attempt in range(1, max_tries + 1):
+        # BETWEEN ATTEMPTS, not inside one: an attempt that has already paid
+        # for a proposal may as well finish and be gated.
+        if time.monotonic() >= deadline:
+            last = f"ran out of time after {attempt - 1} attempt(s): {last}"
+            break
         try:
             body = propose_solution(problem, header, graph, chat_log)
         except Exception as e:
-            last = f"proposal failed: {e!r}"[:200]
+            # OUR trouble, not this plan's: a provider outage says nothing
+            # about whether this approach can be cut into steps, so it must not
+            # be the reason a student is pinned to the teacher's roadmap for
+            # the rest of the process's life.
+            last, transient = f"proposal failed: {e!r}"[:200], True
             continue
         if not body.strip():
             last = "proposal was empty"
@@ -283,8 +351,9 @@ def build(problem: dict, header: str, graph: dict, chat_log: list | None = None,
         # is what makes this their route rather than the teacher's: the
         # decomposer splits the code it is given.
         try:
-            decomp = decompose_into_chunks({**problem, "solution":
-                                            build_program(problem, body, header)})
+            decomp = decompose_into_chunks(
+                {**problem, "solution": build_program(problem, body, header)},
+                max_tries=DECOMPOSE_TRIES)
         except Exception as e:
             last = f"could not be split into steps: {e!r}"[:200]
             continue
@@ -299,6 +368,8 @@ def build(problem: dict, header: str, graph: dict, chat_log: list | None = None,
             continue
         return decomp
 
+    if not transient:
+        _remember_no_route(key, last)
     raise RouteUnavailable(last)
 
 

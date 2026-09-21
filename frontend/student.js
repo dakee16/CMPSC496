@@ -1477,6 +1477,11 @@ function openReview(i){
   $("reviewCode").textContent = how === "covered"
     ? "You already wrote this as part of an earlier step."
     : accepted[i].code;
+  // REWORKING IS OFFERED FOR THEIR OWN ANSWERS ONLY. A revealed step is not
+  // theirs to edit, and a covered one has no code of its own - reopening the
+  // step that covered it is the same action, one pill to the left.
+  const rework = $("reworkStep");
+  if (rework) rework.hidden = how !== "own" || i >= idx;
   setReviewMode(true);
   renderStepper();
   $("msg").innerHTML = "";
@@ -1484,6 +1489,85 @@ function openReview(i){
   $("stepHistory").open = false;
   $("backToNow").textContent = idx < chunks.length ? "Back to the current step" : "Back to your completed code";
   $("backToNow").focus();
+}
+
+/* BACK TO A STEP THAT WAS ALREADY ACCEPTED.
+
+   A student passed step 1, found a bug in it, and had nowhere to go: accepted
+   code is frozen, and the only way to change it was Start over - the whole
+   problem, plan and chat included. The freeze is right (the accepted prefix is
+   what every later step was graded against), so this does not unfreeze
+   anything; it asks the SERVER to put them back on that step, which drops the
+   steps after it for the same reason they were frozen in the first place.
+
+   The dropped answers come back with the response and are kept as drafts, so
+   reworking step 1 never costs them the step 2 they had already written.
+
+   REACHED FROM TWO PLACES, and the second one is the point. Review mode has the
+   button, but getting there means knowing that a finished step pill is a
+   button - so the row under the frozen listing offers the same thing where the
+   student is already looking: at step 1's code, while writing step 2. */
+async function reworkStep(i, btn){
+  if (i === null || i === undefined || !sessionId) return;
+  if (btn) setBusy(btn, true, "Opening that step\u2026");
+  try {
+    const r = await fetch(`${API}/reopen_step`, {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({session_id: sessionId, index: i})
+    });
+    if (!r.ok){
+      let m = "That step could not be reopened. Reload and try again.";
+      try { m = (await r.json()).detail.message || m; } catch (e) {}
+      return toast(m, "bad");
+    }
+    const state = await r.json();
+    // Their later answers, held where the editor will offer them back.
+    for (const d of (state.dropped || [])){
+      if (d.index === i || !d.code) continue;
+      try { sessionStorage.setItem(`${DRAFT_PREFIX}${openProblem.slug}:${d.index}`,
+                                   d.code); } catch (e) {}
+    }
+    const own = (accepted[i] || {}).code || "";
+    accepted = accepted.slice(0, i);
+    idx = Number(state.index);
+    reviewIdx = null;
+    reviewDraft = null;
+    setReviewMode(false);
+    render();
+    // render() reseeds from the draft for this step; the answer they came back
+    // to edit is what they expect to see, so it wins.
+    if (editor && own){ editor.setValue(own); editor.focus(); }
+    applyTutorGate();
+    $("attempts").textContent = "";
+    show("info", state.total_chunks - idx > 1
+      ? `You are back on step ${idx + 1}. The steps after it are open again - `
+        + `what you had written for them is kept as a draft.`
+      : `You are back on step ${idx + 1}.`);
+  } catch (e) {
+    toast("Could not reach the server. Nothing was changed.", "bad");
+  } finally {
+    if (btn) setBusy(btn, false);
+  }
+}
+
+/* The row under the frozen code: one button per step the student answered
+   themselves, so changing an earlier answer is one click from the code it
+   changes. Lives inside #codestack, which review mode hides wholesale - so
+   there is never a second way in on a screen that has its own. */
+function renderEditEarlier(){
+  const row = $("editEarlier");
+  if (!row) return;
+  const mine = accepted
+    .map((a, i) => ({a, i}))
+    .filter(x => x.a && x.a.how === "own" && (x.a.code || "").trim());
+  row.hidden = !mine.length;
+  if (row.hidden){ row.innerHTML = ""; return; }
+  row.innerHTML = '<span class="lab">Change an earlier step:</span>'
+    + mine.map(x => `<button type="button" class="chip" data-edit="${x.i}"`
+        + ` title="Reopen step ${x.i + 1}. Steps after it open again too - what`
+        + ` you wrote for them is kept as a draft.">Step ${x.i + 1}</button>`).join("");
+  row.querySelectorAll("[data-edit]").forEach(b =>
+    b.onclick = () => reworkStep(+b.dataset.edit, b));
 }
 
 function leaveReview(){
@@ -1519,6 +1603,7 @@ function render(){
   $("attempts").textContent = "";
 
   const shown = renderContext();
+  renderEditEarlier();
   if (editor) {
     // Numbering continues from the frozen part, so the editor is line N+1 of
     // the same function rather than line 1 of a detached box.
@@ -2239,6 +2324,8 @@ $("optimizeTry").addEventListener("click", () => {
     + `directly instead?`);
 });
 document.querySelectorAll("[data-restart]").forEach(b => b.addEventListener("click", openRestart));
+$("reworkStep").addEventListener("click",
+  () => reworkStep(reviewIdx, $("reworkStep")));
 $("restartNo").addEventListener("click", closeRestart);
 $("restartYes").addEventListener("click", doRestart);
 // Backdrop click or Escape dismisses it: a destructive dialog must be easy to

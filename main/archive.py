@@ -316,12 +316,23 @@ def save_graph(client, student_id: str | None, slug: str, kind: str,
 
 # ── reading it back ──────────────────────────────────────────────────────
 
-def latest_plan_graph(client, student_id: str | None, slug: str) -> dict | None:
+def latest_plan_graph(client, student_id: str | None, slug: str,
+                      since: str = "") -> dict | None:
     """This student's most recent PLAN graph for one problem, or None.
 
     The counterpart to save_graph. main/reroute.py reads it to decide whose
     roadmap a session should get - the teacher's or one rebuilt around the
     approach this student actually described.
+
+    `since` IS WHERE THIS STUDENT'S HISTORY BEGINS - the restart marker written
+    by /problems/{slug}/restart. This table is append-only on purpose, so
+    without it a plan from a run the student has already discarded still chose
+    the roadmap for their fresh one. Wrong twice over: Start over promises them
+    an empty plan, and selecting a rebuilt roadmap is not free - it spends a
+    model proposal, a whole decomposition and every gate, before a session
+    exists to remember that it happened. The chat, the designs and the solved
+    flag all cut their history at this marker; this was the fourth reader of it
+    and the only one that did not.
 
     Returns None on every failure, and callers must treat None as "use the
     teacher's route". That keeps rule 2 of this module intact: nothing here is
@@ -332,10 +343,12 @@ def latest_plan_graph(client, student_id: str | None, slug: str) -> dict | None:
     if not client or not student_id or not slug:
         return None
     try:
-        rows = (client.table("mt_graphs")
-                .select("graph, created_at")
-                .eq("student_id", student_id).eq("slug", slug).eq("kind", "plan")
-                .order("created_at", desc=True).limit(1).execute().data)
+        q = (client.table("mt_graphs")
+             .select("graph, created_at")
+             .eq("student_id", student_id).eq("slug", slug).eq("kind", "plan"))
+        if since:
+            q = q.gt("created_at", since)
+        rows = q.order("created_at", desc=True).limit(1).execute().data
     except Exception:
         return None
     graph = (rows or [{}])[0].get("graph")

@@ -22,6 +22,7 @@ services:
       MICROTUTOR_ORACLE_CACHE: /data/oracles/tests_cache.json
       MICROTUTOR_TRANSCRIPTS: /data/transcripts.json
       MICROTUTOR_CHUNK_POOL: /data/chunk_pool.json
+      MICROTUTOR_TRACE_FILE: /data/model_trace.jsonl
       PORT: "8000"
     volumes:
       - microtutor-data:/data
