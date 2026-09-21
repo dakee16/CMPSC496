@@ -1056,6 +1056,37 @@ def grade_submission(session: dict, student_code: str,
                    failures=res.failures, failing_cases=shown,
                    failed_total=_failed_total(res, len(shown)))
 
+    # ── ALREADY FINISHED? - student code only, no borrowed tail ──
+    # A student who arrives with the whole solution wrote it into step 1, was
+    # told "correct", and was then asked for step 2 - which their own code
+    # already contained. Answering `pass` there produced "Solved. Nice work."
+    # Being walked through a step you have visibly already answered teaches
+    # nothing and reads as the grader not following along.
+    #
+    # THE SAME ORACLE THE LAST CHUNK USES, on the same student-only code, so
+    # this is the final check arriving early rather than a new kind of
+    # judgement. Nothing is borrowed: if their code needs the teacher's tail to
+    # pass, it does not pass here and the normal flow continues below.
+    #
+    # A FAILURE HERE IS NOT A VERDICT. Most non-final steps will fail it, for
+    # the ordinary reason that they are not finished - that is what `continue`
+    # means, and reading it as anything else would convict every correct
+    # partial answer. It can only ever end the problem early, never end it
+    # badly.
+    #
+    # No extra gate is needed for "they must have planned first": the editor is
+    # locked until the design gate passes (api_server._design_approved), so
+    # every submission that reaches here has already been through it.
+    whole = classify_run(_assemble(problem, header, upto), tests, entry_name=entry)
+    if whole.outcome == "pass":
+        _trace(trace.record_route, corr, "execution-final", "correct",
+               early=True, covers=len(chunks) - idx)
+        return _ok("correct", "execution-final",
+                   "Correct - and that completes the whole problem. The rest of "
+                   "the steps are already answered by what you wrote.",
+                   "final_pass_early", execution_outcome="pass",
+                   covers_chunks=len(chunks) - idx)
+
     # ── NON-LAST - trusted reference tail ──
     ref_tail = "\n".join((chunks[j].get("reference") or "")
                          for j in range(idx + 1, len(chunks)))
@@ -1569,6 +1600,32 @@ if __name__ == "__main__":
     _w = grade_submission(_fsess, "new_dict = []", oracle_loader=_fl)
     assert _w.verdict != "incorrect", _w.verdict
     assert _w.consume_attempt is False, "a bridge that is not found costs nothing"
+
+    # ── A FINISHED SOLUTION ENDS THE PROBLEM, WHATEVER STEP IT ARRIVES AT ──
+    # Live, a student wrote the whole of `frequency` into step 1, was told
+    # "correct", and was then asked for step 2 - which their own code already
+    # contained. Answering `pass` there produced "Solved. Nice work."
+    _whole = ("from collections import Counter\n"
+              "q = dict(Counter(c for c in txt.lower() if c.isalpha()))\n"
+              "return q")
+    _w = grade_submission(_fsess, _whole, oracle_loader=_fl)
+    assert _w.verdict == "correct" and _w.tier == "execution-final", _w
+    assert _w.reason_code == "final_pass_early", _w.reason_code
+    assert _w.covers_chunks == len(_frefs), _w.covers_chunks
+    # Nothing is borrowed: the same student-only oracle the LAST chunk runs.
+    # So a partial answer cannot trip it, however correct that answer is...
+    assert grade_submission(_fsess, _frefs[0],
+                            oracle_loader=_fl).tier == "execution-reference"
+    # ...and neither `return {}` nor a helper that is never called may COMPLETE
+    # the problem. Note what is NOT asserted: that they are rejected. In this
+    # fixture chunk 0 is `counts = {}`, so a student who writes `q = {}` beside
+    # a dead helper really has answered it, and the bridge accepting that is
+    # correct - dead code is not a fault. The claim here is only that neither
+    # ends the problem early.
+    for _partial in ("return {}", "def helper(s):\n    return {}\nq = {}"):
+        _p = grade_submission(_fsess, _partial, oracle_loader=_fl)
+        assert _p.reason_code != "final_pass_early", (_partial, _p.reason_code)
+        assert _p.verdict != "incorrect", "an unfinished step is not a conviction"
 
     # ── A JUDGE MAY ACQUIT, NEVER CONVICT ────────────────────────────────
     # Live, a student's step 1 on `frequency` was failed with "the code

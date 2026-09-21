@@ -105,7 +105,20 @@ UNBOUND = "__mt_unbound__"
 # Injected at MODULE level of the probe program, so it is exempt from the AST
 # policy the same way context.SEQ_ENTRY is - see execution._policed_nodes. It
 # uses only dir/getattr/type/sorted/repr, none of which the policy bans.
-_ENCODER = '''
+# How much of one snapshot the encoder may look at. Reading an object means
+# running code somebody else wrote - see the FENCE note in _mt_state - so every
+# dimension of the walk is bounded rather than trusted.
+ENCODE_DEPTH = 12          # nesting levels
+ENCODE_FIELDS = 24         # public attributes read off ONE object
+ENCODE_ITEMS = 500         # elements of one list/set/dict
+ENCODE_BUDGET = 5000       # total values touched, across the whole snapshot
+
+_ENCODER = f'''
+_MT_DEPTH, _MT_FIELDS, _MT_ITEMS = {ENCODE_DEPTH}, {ENCODE_FIELDS}, {ENCODE_ITEMS}
+_MT_BUDGET = {ENCODE_BUDGET}
+_mt_budget = [_MT_BUDGET]
+''' + '''
+
 def _mt_state(v, _d=0, _seen=None):
     """A value as address-free, order-stable, structural text.
 
@@ -114,10 +127,47 @@ def _mt_state(v, _d=0, _seen=None):
     not exist. Objects become their class name plus their public non-callable
     attributes, so two Nodes holding the same numbers compare equal even though
     their addresses never will. Cycles - `node.next = node` - terminate on an
-    identity set, and a property that raises is recorded as unreadable rather
-    than taking the whole snapshot down."""
-    if _d > 12:
+    identity set.
+
+    THE FENCE. Describing an object means asking it about itself, and in a
+    course where students define classes that means running their code: a
+    property, a __dir__, a __getattr__ can all do work, raise, take forever, or
+    change the object while it is being read. The alternative that was proposed
+    - only describe classes on an approved list - fails in the worst possible
+    direction, because an unlisted class then describes as NOTHING, every value
+    of that type compares equal to every other, and bridging silently stops
+    working for a whole family of problems with no visible cause. So the walk
+    stays general and every dimension of it is bounded instead:
+
+        depth      _MT_DEPTH      nesting
+        breadth    _MT_FIELDS     attributes read off one object
+                   _MT_ITEMS      elements of one collection
+        total      _mt_budget     values touched across the snapshot
+
+    Exhausting any of them yields a marker, never a partial value that could be
+    mistaken for a real one: "<budget>" is not equal to anything, so a truncated
+    snapshot fails to match and the caller falls through to "cannot verify".
+    That is the safe direction - see the module docstring on why declining is
+    free.
+
+    TWO THINGS THAT ARE ALREADY TRUE AND DO THE HEAVY LIFTING. A property that
+    loops forever is killed by the sandbox's own wall-clock and CPU limits
+    (main/execution.py), which this probe runs under exactly as student code
+    does. And a property that MUTATES what it reads cannot corrupt a verdict,
+    because the probe is a separate subprocess from the graded run - the object
+    it damages is thrown away with the process."""
+    if _d == 0:
+        # PER VALUE, not per process. A budget that drained across the whole
+        # snapshot would make one name's description depend on how expensive
+        # the names before it were - and the reference capture and the student
+        # capture read different names, so they would deplete differently and
+        # disagree for a reason that has nothing to do with the student.
+        _mt_budget[0] = _MT_BUDGET
+    if _d > _MT_DEPTH:
         return "<deep>"
+    if _mt_budget[0] <= 0:
+        return "<budget>"
+    _mt_budget[0] -= 1
     if _seen is None:
         _seen = frozenset()
     if v is None or isinstance(v, (bool, int, float, str, bytes)):
@@ -126,17 +176,29 @@ def _mt_state(v, _d=0, _seen=None):
         return "<cycle>"
     _seen = _seen | {id(v)}
     if isinstance(v, (list, tuple)):
-        inner = [_mt_state(x, _d + 1, _seen) for x in v]
-        return {"t": type(v).__name__, "v": inner}
+        out = [_mt_state(x, _d + 1, _seen) for x in v[:_MT_ITEMS]]
+        if len(v) > _MT_ITEMS:
+            out.append("<more>")
+        return {"t": type(v).__name__, "v": out}
     if isinstance(v, (set, frozenset)):
-        return {"t": "set", "v": sorted(repr(_mt_state(x, _d + 1, _seen)) for x in v)}
+        items = sorted(repr(_mt_state(x, _d + 1, _seen))
+                       for x in list(v)[:_MT_ITEMS])
+        if len(v) > _MT_ITEMS:
+            items.append("<more>")
+        return {"t": "set", "v": items}
     if isinstance(v, dict):
-        return {"t": "dict", "v": sorted(
-            (repr(k), repr(_mt_state(x, _d + 1, _seen))) for k, x in v.items())}
+        items = sorted((repr(k), repr(_mt_state(x, _d + 1, _seen)))
+                       for k, x in list(v.items())[:_MT_ITEMS])
+        if len(v) > _MT_ITEMS:
+            items.append(("<more>", "<more>"))
+        return {"t": "dict", "v": items}
+    # dir() itself runs __dir__, so even listing the names is the object's code.
+    try:
+        names = sorted(a for a in dir(v) if not a.startswith("_"))
+    except Exception:
+        return {"t": type(v).__name__, "f": "<unreadable>"}
     fields = []
-    for a in sorted(dir(v)):
-        if a.startswith("_"):
-            continue
+    for a in names[:_MT_FIELDS]:
         try:
             x = getattr(v, a)
         except Exception:
@@ -145,6 +207,8 @@ def _mt_state(v, _d=0, _seen=None):
         if callable(x):
             continue
         fields.append((a, repr(_mt_state(x, _d + 1, _seen))))
+    if len(names) > _MT_FIELDS:
+        fields.append(("<more>", "<more>"))
     return {"t": type(v).__name__, "f": fields}
 '''
 
