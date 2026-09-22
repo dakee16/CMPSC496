@@ -203,10 +203,11 @@ class EvaluateRequest(BaseModel):
     answer: str
     context: str = ""
 
-class ReplanRequest(BaseModel):
+class ReplanRequest(BaseModel, extra="forbid"):
+    """Only a slug. Which problem, whose plan, which session and whether the
+    design was approved are all decided server-side - the browser is not
+    authoritative about any of them."""
     slug: str
-    description: str
-    accepted_steps: list[dict]
 
 class ReopenRequest(BaseModel, extra="forbid"):
     """A step the student wants back. Only an opaque session id and an index:
@@ -348,16 +349,175 @@ def evaluate(req: EvaluateRequest):
         "message": "This endpoint has been retired; use /grade_chunk."})
 
 
+def _server_problem(slug: str, title: str | None = None,
+                    description: str | None = None) -> dict:
+    """The problem as the SERVER knows it - solution, context and all.
+
+    THE GROUND TRUTH IS THE SERVER'S, ALWAYS. A `solution` in the request used
+    to be honoured here for "uploads that carry it"; uploads have gone through
+    /teacher/assignments for a long time and the student page has never sent
+    the field. What was left was an open door: any signed-in student could POST
+    an unknown slug plus a solution of their own and make the server run the
+    whole preparation pipeline on it - oracle generation, mutation testing,
+    decomposition. Measured at ten seconds of paid model work per request,
+    uncached (content_hash moves with the payload), unthrottled, ending in a
+    500. Nothing from the caller reaches the solution now; an unknown slug
+    costs one SELECT.
+
+    The module a METHOD lives in is loaded here too, server-side and never from
+    the request: context_prefix holds the teacher's implementations of the
+    class's other methods, so a browser allowed to supply it is a browser that
+    can read it back.
+
+    ONE COPY, because two routes need exactly this and a second inline copy is
+    how `_norm` drifted into three versions that disagreed. Raises 404 for a
+    slug with no solution behind it."""
+    from main.run_phase1 import load_problems
+    from main.sessions import CONTEXT_FIELDS
+
+    problem = {"slug": slug, "title": title or slug, "description": description}
+    full = next((p for p in load_problems(limit=500)
+                 if p.get("slug") == slug), None)
+    problem["solution"] = (full.get("solution") or "").strip() if full else ""
+    if not problem["solution"]:
+        raise HTTPException(status_code=404, detail={
+            "reason_code": "problem_not_found",
+            "message": f"Unknown problem '{slug}'."})
+
+    ctx = get_supabase().table("problems").select(
+        "context, title, description").eq("slug", slug).limit(1).execute().data
+    if ctx:
+        # THE DESCRIPTION IS PART OF THE ORACLE CACHE KEY (identity.py:56) and
+        # was being taken from the REQUEST, which makes the key depend on a
+        # client value: a stale tab, or a description edited in the database
+        # after a page load, moves the key and the problem answers
+        # "oracle_missing" for a reason nothing on screen can explain.
+        if ctx[0].get("description") is not None:
+            problem["description"] = ctx[0]["description"]
+        if ctx[0].get("title"):
+            problem["title"] = ctx[0]["title"]
+        if isinstance(ctx[0].get("context"), dict):
+            problem.update({k: v for k, v in ctx[0]["context"].items()
+                            if k in CONTEXT_FIELDS})
+    return problem
+
+
 @app.post("/replan")
-def replan(req: ReplanRequest):
-    """DISABLED. This route served ungated material: it built a problem dict
-    with no solution, so get_oracle_tests() returned [] and replan_from_prefix()
-    accepted status "skipped" as success - no oracle-strength check and no
-    necessity gate. It is closed rather than left open while it is rebuilt
-    behind the same serve boundary as /decompose_chunks."""
-    raise HTTPException(status_code=410, detail={
-        "reason_code": "replan_disabled",
-        "message": "Replanning is temporarily unavailable."})
+def replan(req: ReplanRequest, request: Request):
+    """WHOSE ROADMAP? - asked at the only moment the answer can be known.
+
+    This route was disabled (410) for serving ungated material: it built a
+    problem dict with no solution, so get_oracle_tests() returned [] and
+    replan_from_prefix() took status "skipped" for success - no oracle-strength
+    check, no necessity gate. It is rebuilt here behind the same boundary as
+    /decompose_chunks, which is what that note said had to happen first: the
+    rebuilt roadmap comes from main/reroute.build, which ships nothing that has
+    not scored 100% on the REAL oracle and passed assembly, necessity and shape.
+
+    WHY IT HAS TO BE A SEPARATE STEP, AND WHY HERE. The roadmap used to be
+    chosen inside /decompose_chunks, which the page calls from start(p) - the
+    instant the student clicks into the problem, BEFORE they have written a
+    plan. So latest_plan_graph() found nothing, the teacher's roadmap was
+    taken, and the session was created. The student then planned, was approved,
+    and openGate() called loadSteps(), which only fetches the PROMPTS of the
+    session that already exists. Nothing ever looked at the roadmap again - and
+    could not have: find_resumable() returns early on a later /decompose_chunks
+    by design, because a resumed session must keep its own chunks. Measured:
+    zero model calls on the first open and zero after the plan was written. The
+    reroute was unreachable for a first-time student, and no amount of
+    sharpening follows_reference() would have helped, because it was never
+    called with a plan in hand.
+
+    Approval is the first moment a plan EXISTS, and the student has written no
+    code yet - so there are no accepted steps to lose and the session can be
+    replaced outright. That is what makes this the safe place for it.
+
+    THE REVIEWER IS STILL SOLUTION-BLIND. /design_review/plan cannot see the
+    teacher's answer and cannot be influenced by it; a reviewer holding one
+    answer rejects the others. This route DOES see the solution, and in
+    exchange it never speaks to the student and can never reject a plan: its
+    only power is to choose which roadmap gets built. That division is the
+    whole design, and running it after approval rather than inside it is what
+    keeps the two apart.
+
+    EVERY FAILURE IS A NO-OP. No plan, a plan that follows the teacher's route,
+    a rebuild that cannot clear the gates, an outage - all return
+    rerouted=false and leave the session exactly as /decompose_chunks made it,
+    which is today's behaviour. It can only ever improve on that."""
+    claims = require_student(request)
+    if not _design_approved(claims["sub"], req.slug):
+        raise HTTPException(status_code=403, detail={
+            "reason_code": "design_not_approved",
+            "message": "Submit your plan for review first."})
+
+    from main import reroute
+    from main.archive import latest_plan_graph
+    from main.identity import content_hash
+    from main.sessions import abandon_active, create_session, find_resumable
+
+    quiet = {"rerouted": False}
+    try:
+        problem = _server_problem(req.slug)
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"  🧭 /replan could not load {req.slug}: {e!r}")
+        return quiet
+
+    try:
+        current = find_resumable(claims["sub"], content_hash(problem))
+        # ONLY BEFORE THEY HAVE WRITTEN ANYTHING. Replacing the roadmap under a
+        # student who has accepted steps would retire the session those steps
+        # live in, and they were graded against chunks that are about to stop
+        # existing. That case needs the answers carried forward as drafts and
+        # is deliberately not attempted here.
+        if current is None or current.get("index"):
+            return quiet
+
+        sb = get_supabase()
+        plan = latest_plan_graph(sb, claims["sub"], req.slug,
+                                 since=_restart_marker(sb, claims["sub"], req.slug))
+        if not plan:
+            return quiet
+        # reroute.effective_header, NOT header_of: the latter returns "" for a
+        # plain function by design, and an empty header makes the oracle gate
+        # inside build() test whatever the model named its function rather than
+        # the student's. Measured - it passed a 0/10 body as 10/10.
+        header = reroute.effective_header(problem)
+        if reroute.follows_reference(problem, header, plan):
+            return quiet
+        result = reroute.build(problem, header, plan)
+    except reroute.RouteUnavailable as e:
+        print(f"  🧭 Kept the reference roadmap for {req.slug}: {e.reason}")
+        return quiet
+    except Exception as e:
+        print(f"  🧭 /replan errored for {req.slug}, keeping the reference "
+              f"roadmap: {e!r}")
+        return quiet
+
+    # The rebuild cleared every gate, so it replaces the roadmap. Retire first:
+    # two live sessions for one problem would leave find_resumable picking
+    # between them on the next open.
+    try:
+        abandon_active(claims["sub"], req.slug)
+        public = create_session(problem, result, content_hash(problem),
+                                student_id=claims["sub"])
+        from main.archive import save_session_start
+        save_session_start(sb, claims["sub"],
+                           {**public, "slug": req.slug,
+                            "content_hash": content_hash(problem)})
+    except Exception as e:
+        # The old session is already retired at this point, so say nothing
+        # happened and let the page reopen the problem - /decompose_chunks
+        # issues a fresh one on the teacher's roadmap, which is where they
+        # would have been anyway.
+        print(f"  🧭 /replan could not seat the rebuilt roadmap for "
+              f"{req.slug}: {e!r}")
+        return quiet
+
+    print(f"  🧭 Rebuilt the roadmap for {req.slug} around this student's own "
+          f"plan ({len(result['chunks'])} steps).")
+    return {"rerouted": True, **_gate_steps(claims["sub"], req.slug, public)}
 
 
 @app.post("/decompose_chunks")
@@ -370,52 +530,7 @@ def decompose_chunks_route(req: DecomposeRequest, request: Request):
                 "reason_code": "assignment_unavailable",
                 "message": "Your instructor has paused this assignment."})
 
-        problem = {"slug": req.slug, "title": req.title or req.slug,
-                   "description": req.description}
-
-        # THE GROUND TRUTH IS THE SERVER'S, ALWAYS. `req.solution` used to be
-        # honoured here for "uploads that carry it in the request" - but uploads
-        # have gone through /teacher/assignments for a long time and the student
-        # page has never sent the field. What was left was an open door: any
-        # signed-in student could POST a slug that does not exist plus a
-        # solution of their own and make the server run the whole preparation
-        # pipeline on it - oracle generation, mutation testing, decomposition.
-        # Measured at ten seconds of paid model work per request, uncached
-        # (content_hash changes with the payload), unthrottled, and it ended in
-        # a 500. The field is ignored now; an unknown slug costs one SELECT.
-        from main.run_phase1 import load_problems
-        problems = load_problems(limit=500)
-        full = next((p for p in problems if p.get("slug") == req.slug), None)
-        problem["solution"] = (full.get("solution") or "").strip() if full else ""
-
-        if not problem["solution"]:
-            raise HTTPException(status_code=404, detail={
-                "reason_code": "problem_not_found",
-                "message": f"Unknown problem '{req.slug}'."})
-
-        # The module a METHOD lives in is loaded here, server-side, and never
-        # taken from the request. context_prefix contains the teacher's
-        # implementations of the class's other methods, so a browser allowed to
-        # supply it is a browser that can read it back.
-        from main.sessions import CONTEXT_FIELDS
-        ctx = get_supabase().table("problems").select(
-            "context, title, description").eq(
-            "slug", req.slug).limit(1).execute().data
-        if ctx:
-            # THE DESCRIPTION IS PART OF THE ORACLE CACHE KEY (identity.py:56),
-            # and it was being taken from the REQUEST. That makes the key depend
-            # on a client value: a stale tab, or a description edited in the
-            # database after a page load, moves the key, and the problem answers
-            # "oracle_missing" for a reason nothing on screen can explain.
-            # Verified a no-op on the current data - all 11 hash identically
-            # either way - so this closes the hole without moving any key.
-            if ctx[0].get("description") is not None:
-                problem["description"] = ctx[0]["description"]
-            if ctx[0].get("title"):
-                problem["title"] = ctx[0]["title"]
-            if isinstance(ctx[0].get("context"), dict):
-                problem.update({k: v for k, v in ctx[0]["context"].items()
-                                if k in CONTEXT_FIELDS})
+        problem = _server_problem(req.slug, req.title, req.description)
 
         # RESUME BEFORE DECOMPOSING. A student who answered two of three steps
         # and closed the tab used to come back to an empty editor on step 1 - a
@@ -458,8 +573,7 @@ def decompose_chunks_route(req: DecomposeRequest, request: Request):
         # ordinary tiers - which is exactly today's behaviour, so every failure
         # here is a no-op rather than a worse outcome.
         result = None
-        from main.archive import latest_plan_graph
-
+        
         # ONLY A PLAN FROM THE RUN THEY ARE IN NOW. mt_graphs is append-only,
         # so before this the roadmap for a fresh run was still being chosen by
         # the plan from a run the student had pressed Start over on - and that
@@ -469,6 +583,7 @@ def decompose_chunks_route(req: DecomposeRequest, request: Request):
         #
         # Unreadable marker -> no plan -> the teacher's roadmap. Not knowing
         # which run a plan belongs to is exactly when rerouting on it is wrong.
+        from main.archive import latest_plan_graph
         _student = current_student(request)
         _sb = get_supabase() if _student else None
         plan = None

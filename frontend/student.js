@@ -91,9 +91,65 @@ function openGate(){
   }
   markUnlocked("Design accepted. The editor is unlocked for this problem.");
   freezePlan();
-  loadSteps();          // the prompts were withheld until this moment
+  chooseRoadmap();      // ...and the steps they get are decided HERE
   toast("Design accepted - the editor is unlocked.", "ok");
   workspaceSync();
+}
+
+/* WHOSE ROADMAP? Asked once, here, at the only moment the answer can be known.
+
+   The steps are cut from the teacher's solution, so a student who planned a
+   different approach is asked step by step for code they never meant to write.
+   main/reroute.py rebuilds the roadmap around their plan instead - but it was
+   being consulted inside /decompose_chunks, which this page calls from start(p)
+   the instant they click into the problem, BEFORE any plan exists. It found
+   nothing, took the teacher's roadmap, and created the session; by the time the
+   plan was written and approved, nothing looked at the roadmap again. Measured
+   on the real routes: zero model calls on the first open, zero after planning.
+
+   Approval is the first moment the plan exists AND the last moment no code has
+   been written, which is what makes replacing the session safe here.
+
+   Every failure is a no-op: no plan, a plan that follows the teacher's route, a
+   rebuild that cannot clear the oracle and the gates, an outage, an unreachable
+   server - all of them leave the session exactly as it was and fall through to
+   loadSteps(), which is what used to happen unconditionally. */
+async function chooseRoadmap(){
+  const mine = workspaceEpoch;
+  // REBUILDING IS SLOW - a solution proposal plus a full decomposition, up to a
+  // minute (main/reroute.BUDGET_SECONDS) - and it now sits in front of a screen
+  // that has always been instant. Same sentence the opening spinner learned to
+  // use, and true whichever way this goes.
+  const slow = setTimeout(() => {
+    if (mine === workspaceEpoch) markUnlocked("Setting up the steps for this "
+      + "problem\u2026 this takes longer if your approach differs from ours.");
+  }, 4000);
+  let res = null;
+  try {
+    const r = await fetch(`${API}/replan`, {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({slug: openProblem.slug})
+    });
+    if (r.ok) res = await r.json();
+  } catch (e) { /* the roadmap they already have is a fine answer */ }
+  clearTimeout(slow);
+  if (mine !== workspaceEpoch) return;      // another problem is open now
+
+  if (res && res.rerouted && res.session_id){
+    // A NEW SESSION, adopted whole. The old one is already retired server-side,
+    // so keeping its id here is what produces "That session belongs to someone
+    // else" two clicks later. Nothing of theirs is lost: this runs before any
+    // code is written, and the server refuses to reroute a session that has
+    // accepted steps.
+    sessionId = res.session_id;
+    chunks = res.chunks || chunks;
+    idx = 0;
+    accepted = [];
+    markUnlocked("These steps follow the approach you described.");
+  } else {
+    markUnlocked("Design accepted. The editor is unlocked for this problem.");
+  }
+  loadSteps();          // the prompts were withheld until this moment
 }
 
 /* Fetch the step prompts, which the server withholds until the design is
@@ -1727,8 +1783,39 @@ $("submit").onclick = async () => {
   setBusy(btn, false);
 
   if (!r.ok) {
-    let m = "Something went wrong. Your attempt was not used.";
-    try { const j = await r.json(); if (j.detail && j.detail.message) m = j.detail.message; } catch {}
+    let m = "Something went wrong. Your attempt was not used.", why = "";
+    try {
+      const j = await r.json();
+      if (j.detail && j.detail.message) m = j.detail.message;
+      if (j.detail && j.detail.reason_code) why = j.detail.reason_code;
+    } catch {}
+    // A DEAD SESSION IS RECOVERABLE, AND THE PAGE USED TO ACT AS IF IT WERE
+    // NOT. Reported from testing: "That session belongs to someone else."
+    // appeared over the editor with no way out - the message was shown and
+    // that was the end of it, for every failure alike. It is what the server
+    // says when the session id this page is holding was opened under a
+    // DIFFERENT sign-in (the cookie changed; `sessionId` in this tab did not),
+    // and the ownership check itself is right: without it one student could
+    // submit against another's session and spend their attempts.
+    //
+    // But the answer to "this id is not yours" is to get the one that is,
+    // which is exactly what reopening the problem does - it resumes their own
+    // session with their accepted steps intact (main/sessions.find_resumable).
+    // Their code is not touched here, and saveDraft keeps it for the reopen.
+    if (why === "not_your_session" || why === "session_not_found"
+        || why === "session_inactive") {
+      saveDraft();
+      show("warn", m + " Reopen the problem to pick up where you left off - "
+                 + "your code is kept.",
+           '<div class="diagnosis-actions"><button type="button" id="sessionReopen">'
+           + 'Reopen this problem</button></div>');
+      const again = $("sessionReopen");
+      if (again) again.onclick = () => {
+        setBusy(again, true, "Reopening\u2026");
+        start(openProblem);
+      };
+      return;
+    }
     return show("warn", m);
   }
 
@@ -1815,8 +1902,23 @@ $("submit").onclick = async () => {
       setTutorOpen(true);
       const box = $("cinput");
       if (box){
-        box.value = "My approach is different from the one you expected. "
-                  + "Here is what I am doing and why: ";
+        // DO NOT MAKE THEM TYPE IT TWICE. Reported from testing: a student who
+        // had already described their whole approach in this chat - and been
+        // answered on it - was handed "Here is what I am doing and why: " and
+        // an empty box, so they pasted the lot again. The tutor is sent a
+        // 60-turn window of this very conversation (see sendToTutor), so
+        // everything they wrote is already in front of it; asking them to
+        // restate it is asking them to repeat themselves to someone holding
+        // the transcript. Only when there is genuinely nothing to point at
+        // does the opener ask for the description.
+        const said = chatLog.some(m => m && m.role === "user"
+                                    && (m.content || "").trim());
+        box.value = said
+          ? "My approach is different from the one you expected. I have "
+          + "already described it earlier in this conversation - please go "
+          + "by that. "
+          : "My approach is different from the one you expected. "
+          + "Here is what I am doing and why: ";
         box.focus();
         box.setSelectionRange(box.value.length, box.value.length);
         box.dispatchEvent(new Event("input"));   // keep the counter honest

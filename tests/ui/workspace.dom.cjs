@@ -21,6 +21,11 @@ const graph = {nodes:[{id:'n0',kind:'start',label:'Read records'},{id:'n1',kind:
   // A resumed session's own shape, when a case needs one (accepted prefix,
   // where the student had got to, and however many steps that implies).
   let resumeSteps=null, resumeAccepted=null, resumeIndex=null;
+  // A session-level refusal from /grade_chunk (403/404), as opposed to a verdict.
+  let gradeRefusal=null;
+  // What /replan answers when the plan is approved: the teacher's roadmap
+  // stands (null), or one rebuilt around this student's own approach.
+  let replanAnswer=null;
   let approved = false, stepFailure = false, comparisonFailure = false, openingFailure = false, verdict = 'incorrect', history = {found:false}, session = 0;
   try {
     doc.write(read('student.html').replace(/<script\b[^>]*>[\s\S]*?<\/script>/g,''));
@@ -28,7 +33,7 @@ const graph = {nodes:[{id:'n0',kind:'start',label:'Read records'},{id:'n1',kind:
     window.CodeMirror = {fromTextArea:() => {
       editorCreations++;
       const input = doc.createElement('textarea'); input.id='qaEditorInput'; doc.querySelector('#editorWrap').append(input);
-      return {setOption:(k,v)=>options[k]=v,setSize:()=>{},on:()=>{},refresh:()=>{},focus:()=>{focusCalls++;input.focus();},setCursor:()=>{},getGutterElement:()=>({offsetWidth:32}),getValue:()=>value,setValue:v=>value=v,listSelections:()=>selections,setSelections:v=>selections=v};
+      return {setOption:(k,v)=>options[k]=v,setSize:()=>{},on:()=>{},refresh:()=>{},focus:()=>{focusCalls++;input.focus();},setCursor:()=>{},getGutterElement:()=>({offsetWidth:32}),getValue:()=>value,setValue:v=>value=v,listSelections:()=>selections,setSelections:v=>selections=v,lineCount:()=>value.split('\n').length,getLine:n=>value.split('\n')[n]||''};
     }};
     window.fetch = async (url, init={}) => {
       const route = new URL(url,'http://localhost').pathname;
@@ -45,9 +50,12 @@ const graph = {nodes:[{id:'n0',kind:'start',label:'Read records'},{id:'n1',kind:
       else if(route==='/plan_graph') data=graph;
       else if(route==='/design_review/plan'||route==='/design_review') data={approved,reply:approved?'Your approach is approved.':'Explain how you will preserve the earlier records.',plan_graph:graph};
       else if(route==='/grade_chunk'){
+        if(gradeRefusal){status=gradeRefusal.status;data={detail:gradeRefusal.detail};
+          return new window.Response(JSON.stringify(data),{status,headers:{'Content-Type':'application/json'}});}
         const index=JSON.parse(init.body).expected_index;
         data=verdict==='correct'?{verdict:'correct',reason:'This step passes.',index:index+1,completed:index===1,solved_independently:true}:verdict==='indeterminate'?{verdict:'indeterminate',reason:'The grader is temporarily unavailable.'}:verdict==='diagnosis'?{verdict:'indeterminate',reason:'We could not confirm this step.',needs_diagnosis:true,diagnosis:"Try your code on this input: 'aab'. After your step, `seen` is {'a', 'b'}. "+'Does that give the next step everything it needs?'}:{verdict:'incorrect',reason:'Try the empty-input case.',failing_cases:['employee_update({})\n\nexpected: {}\nyou gave: None','employee_update({2019: {}})\n\nit raised: KeyError(2018)'],failed_total:5,attempts:1};
       }
+      else if(route==='/replan') data=replanAnswer||{rerouted:false};
       else if(route==='/mark_solved') data={ok:true};
       else if(route==='/graphs'){status=comparisonFailure?503:200;data={plan:graph,code:graph,comparison:{similarity:1,notes:['The structure matches.']}};}
       else if(route==='/reopen_step') data={index:JSON.parse(init.body).index,attempts:0,completed:false,total_chunks:steps.length,dropped:[{index:0,code:'    draft = records.copy()'}]};
@@ -96,7 +104,17 @@ const graph = {nodes:[{id:'n0',kind:'start',label:'Read records'},{id:'n1',kind:
     assert.equal(doc.querySelector('#tabCode').getAttribute('aria-disabled'),'true');
     assert(doc.querySelector('#designMsg').textContent.includes('preserve'));
     approved=true;
+    // WHOSE ROADMAP? is asked HERE, once, and nowhere else. It used to be
+    // decided inside /decompose_chunks, which start(p) calls the moment a
+    // student clicks into a problem - before any plan exists - so the teacher's
+    // roadmap was taken and the session created, and nothing looked again.
+    // Approval is the first moment the plan exists and the last moment no code
+    // has been written.
     await window.submitPlanGraph(); await tick();
+    assert(calls.some(c=>c.route==='/replan'),'the roadmap is chosen at approval');
+    // Nothing was rebuilt, so the session and the steps stand as they were.
+    assert(doc.querySelector('#codeOrientation').textContent.includes('unlocked'),
+      doc.querySelector('#codeOrientation').textContent);
     assert.deepEqual(visibleStage(),['stageRead'],'Approval must not force a stage change');
     assert.equal(doc.querySelector('#planApproved').hidden,false);
     assert.equal(doc.querySelector('#tabCode').getAttribute('aria-disabled'),'false');
@@ -192,6 +210,27 @@ const graph = {nodes:[{id:'n0',kind:'start',label:'Read records'},{id:'n1',kind:
     doc.querySelector('#diagExplain').click();
     assert(doc.querySelector('#cinput').value.includes('approach is different'),
       'Explaining opens the tutor with the opening already typed');
+    // THEY HAVE ALREADY TALKED TO THE TUTOR BY NOW, so the opener points at
+    // that conversation instead of demanding it again. Reported from testing:
+    // a student who had explained their whole approach in this chat, and been
+    // answered on it, was handed an empty box and pasted the lot again - to a
+    // tutor that is sent this very conversation (sendToTutor's TUTOR_WINDOW)
+    // and already had every word of it.
+    assert(doc.querySelector('#cinput').value.includes('already described it earlier'),
+      doc.querySelector('#cinput').value);
+    assert(!doc.querySelector('#cinput').value.includes('Here is what I am doing'),
+      'it must not ask them to restate what the tutor is already holding');
+    // With nothing said yet there is nothing to point at, so it does ask.
+    // (Clicking Explain clears #msg, so the prompt has to be raised again.)
+    const saidSoFar=window.inspect('chatLog.splice(0, chatLog.length)');
+    const draftHeld=value;          // raising the prompt again must not cost the draft
+    doc.querySelector('#cinput').value='';
+    verdict='diagnosis';await doc.querySelector('#submit').onclick();
+    doc.querySelector('#diagExplain').click();
+    assert(doc.querySelector('#cinput').value.includes('Here is what I am doing'),
+      doc.querySelector('#cinput').value);
+    window.inspect('chatLog').push(...saidSoFar);
+    value=draftHeld;
     doc.querySelector('#cinput').value='';
     // Put the draft back the way the rest of this file expects to find it.
     value='    draft = records.copy()';
@@ -316,6 +355,49 @@ const graph = {nodes:[{id:'n0',kind:'start',label:'Read records'},{id:'n1',kind:
       'the step they did write is still reopenable');
     doc.querySelector('#backToNow').click();
     resumeSteps=resumeAccepted=resumeIndex=null;
+
+    // A REBUILT ROADMAP IS ADOPTED WHOLE, session and all. The server retires
+    // the old session when it seats a rebuilt one, so keeping its id here is
+    // exactly what produces "That session belongs to someone else" two clicks
+    // later. Nothing of theirs is lost: this only runs before any code exists,
+    // and the server refuses to reroute a session that has accepted steps.
+    replanAnswer={rerouted:true,session_id:'sess-rebuilt',total_chunks:2,
+                  chunks:[{prompt:'Count each value.',indent:0},
+                          {prompt:'Hand it back.',indent:0}]};
+    approved=true;
+    await window.start(problem);await tick();
+    await window.submitPlanGraph();await tick();
+    assert.equal(window.inspect('sessionId'),'sess-rebuilt',
+      'the page must move to the session the rebuilt roadmap lives in');
+    assert.equal(window.inspect('idx'),0);
+    assert.equal(window.inspect('accepted.length'),0,'a rebuilt roadmap starts clean');
+    // ...and it SAYS so, neutrally. It never offers a choice and never says a
+    // different approach existed: a student told "ours differs from yours"
+    // conforms out of caution, which is the opposite of the point.
+    const said=doc.querySelector('#codeOrientation').textContent;
+    assert(said.includes('follow the approach you described'),said);
+    assert(!/teacher|expected|different|instead/i.test(said),said);
+    replanAnswer=null;
+
+    // A SESSION THAT IS NOT OURS IS NOT A DEAD END. Reported from testing:
+    // "That session belongs to someone else." appeared over the editor with no
+    // way out, because every !r.ok was shown and nothing more. The ownership
+    // check is right - without it one student could submit against another's
+    // session and spend their attempts - but the answer to "this id is not
+    // yours" is to go and get the one that is, which reopening does.
+    gradeRefusal={status:403,detail:{reason_code:'not_your_session',
+                                     message:'That session belongs to someone else.'}};
+    value='    draft = records.copy()';   // there has to be an answer to submit
+    await doc.querySelector('#submit').onclick();await tick();
+    assert(doc.querySelector('#msg .banner').textContent.includes('Reopen the problem'),
+      doc.querySelector('#msg .banner').textContent);
+    const reopenBtn=doc.querySelector('#sessionReopen');
+    assert(reopenBtn,'a refused session must offer a way back');
+    gradeRefusal=null;
+    const callsBefore=calls.length;
+    reopenBtn.click();await tick();
+    assert(calls.slice(callsBefore).some(c=>c.route==='/decompose_chunks'),
+      'and the way back actually reopens the problem');
 
     // A problem that is ALREADY SOLVED opens on the congratulations stage, not
     // back in the working screen with an unlocked editor and nothing to do.
