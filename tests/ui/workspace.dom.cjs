@@ -18,6 +18,9 @@ const graph = {nodes:[{id:'n0',kind:'start',label:'Read records'},{id:'n1',kind:
   let value = '', selections = [], editorCreations = 0, focusCalls = 0;
   const options = {}, calls = [];
   let historyGate=null, historyFailure=false;
+  // A resumed session's own shape, when a case needs one (accepted prefix,
+  // where the student had got to, and however many steps that implies).
+  let resumeSteps=null, resumeAccepted=null, resumeIndex=null;
   let approved = false, stepFailure = false, comparisonFailure = false, openingFailure = false, verdict = 'incorrect', history = {found:false}, session = 0;
   try {
     doc.write(read('student.html').replace(/<script\b[^>]*>[\s\S]*?<\/script>/g,''));
@@ -35,9 +38,9 @@ const graph = {nodes:[{id:'n0',kind:'start',label:'Read records'},{id:'n1',kind:
       else if(route==='/assignments') data={assignments:[]};
       else if(route==='/solved') data={slugs:[]};
       else if(route==='/student/progress') data={problems:[]};
-      else if(route==='/decompose_chunks'){status=openingFailure?503:200;data={session_id:'s'+(++session),header:'def employee_update(records):',chunks:steps.map(s=>({...s,prompt:''}))};}
+      else if(route==='/decompose_chunks'){status=openingFailure?503:200;data={session_id:'s'+(++session),header:'def employee_update(records):',chunks:(resumeSteps||steps).map(s=>({...s,prompt:''}))};if(resumeAccepted)data={...data,resumed:true,accepted:resumeAccepted,index:resumeIndex,total_chunks:(resumeSteps||steps).length};}
       else if(route.startsWith('/history/')){if(historyGate)await historyGate;if(historyFailure)status=503;data=history;}
-      else if(route.startsWith('/session_steps/')){status=stepFailure?503:200;data={chunks:steps};}
+      else if(route.startsWith('/session_steps/')){status=stepFailure?503:200;data={chunks:resumeSteps||steps};}
       else if(route==='/tutor_chat') data={reply:'What changes from one year to the next?',ready:true,offtrack:true};
       else if(route==='/plan_graph') data=graph;
       else if(route==='/design_review/plan'||route==='/design_review') data={approved,reply:approved?'Your approach is approved.':'Explain how you will preserve the earlier records.',plan_graph:graph};
@@ -282,6 +285,37 @@ const graph = {nodes:[{id:'n0',kind:'start',label:'Read records'},{id:'n1',kind:
     assert(doc.querySelector('#reflectSummary').textContent.includes('previous attempt'));
     assert.equal(doc.querySelector('#reflectionCodeDetails').hidden,true,'Historical graphs cannot claim a new completed function');
     assert.equal(doc.querySelectorAll('#clog').length,1);
+
+    // A COVERED STEP, AFTER A RELOAD. One submission can answer more than one
+    // step, and main/sessions.commit_outcome records the code against the FIRST
+    // of them and the rest as empty. public_session used to report those extra
+    // steps as "own", and the page flattened anything non-revealed to "own" on
+    // top of that - so a resumed covered step reviewed as a BLANK panel headed
+    // "your answer" and offered Rework, which drops back to a step whose code is
+    // already in the frozen prefix above it: nothing to write there, and a blank
+    // submission grades incorrect. In-session this was always right; only the
+    // resumed view lost it, so it took a reload to see.
+    resumeSteps=[{prompt:'Read the previous records.',indent:0},
+                 {prompt:'Copy them forward.',indent:0},
+                 {prompt:'Return the updated records.',indent:0}];
+    resumeAccepted=[{code:'    draft = records.copy()',how:'own'},
+                    {code:'',how:'covered'}];
+    resumeIndex=2;
+    await window.start(problem);await tick();
+    const coveredPill=doc.querySelectorAll('#stepper .steppill')[1];
+    assert.equal(coveredPill.tagName.toLowerCase(),'button','a finished step is reachable');
+    coveredPill.click();await tick();
+    assert(doc.querySelector('#reviewCode').textContent.includes('already wrote this'),
+      'a covered step explains itself instead of showing a blank answer');
+    assert.equal(doc.querySelector('#reworkStep').hidden,true,
+      'and offers no Rework, because there is no answer of their own to rework');
+    // Their own step next to it still does offer it.
+    doc.querySelectorAll('#stepper .steppill')[0].click();await tick();
+    assert(doc.querySelector('#reviewCode').textContent.includes('records.copy()'));
+    assert.equal(doc.querySelector('#reworkStep').hidden,false,
+      'the step they did write is still reopenable');
+    doc.querySelector('#backToNow').click();
+    resumeSteps=resumeAccepted=resumeIndex=null;
 
     // A problem that is ALREADY SOLVED opens on the congratulations stage, not
     // back in the working screen with an unlocked editor and nothing to do.

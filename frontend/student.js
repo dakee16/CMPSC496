@@ -1123,8 +1123,14 @@ async function start(p){
   // safe to put back precisely because it is the SAME session that graded it -
   // see main/sessions.find_resumable. A fresh session sends neither field and
   // these stay at the empty values set above.
+  // `how` is carried through as the server sends it, "covered" included. It
+  // used to be flattened to "own" here, which made a resumed covered step
+  // review as a blank panel headed "your answer" and offer Rework - a step with
+  // nothing to write in it, because the code that answered it is in the frozen
+  // prefix above. Anything unrecognised still reads as their own work.
   accepted = (d.accepted || []).map(a => ({code: a.code || "",
-                                           how: a.how === "revealed" ? "revealed" : "own"}));
+                                           how: a.how === "revealed" ? "revealed"
+                                              : a.how === "covered" ? "covered" : "own"}));
   idx = Math.min(Math.max(Number(d.index) || 0, 0), chunks.length);
   $("msg").innerHTML = "";
   ensureEditor();

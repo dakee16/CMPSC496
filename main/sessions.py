@@ -255,10 +255,30 @@ def public_session(session: dict) -> dict:
             "index": session["index"],
             "resumed": True,
             "accepted": [{"code": a.get("code", ""),
-                          "how": ("revealed"
-                                  if a.get("provenance") == "revealed_reference"
-                                  else "own")}
+                          "how": _how(a)}
                          for a in session.get("accepted") or []]}
+
+
+def _how(a: dict) -> str:
+    """How this step came to be accepted, for the page to label it with.
+
+    THREE CASES, not two. A COVERED step is one that a single submission
+    answered along with an earlier one (commit_outcome records the code against
+    the FIRST step and the rest as empty, so the prefix still reassembles to
+    exactly what the student wrote). Collapsing it into "own" was lossy in a way
+    the page acted on: on a resume it reviewed as a BLANK panel headed "your
+    answer", and it offered Rework - which drops back to a step whose code is
+    sitting in the frozen prefix above it, so there is nothing to write there
+    and a blank submission is graded incorrect. In-session the page had this
+    right all along ("covered by an earlier step", no Rework); only the resumed
+    view lost it.
+
+    Empty code identifies a covered step on its own: a blank answer is
+    blank_answer -> incorrect and never reaches accepted, and a revealed step
+    carries the reference text."""
+    if a.get("provenance") == "revealed_reference":
+        return "revealed"
+    return "own" if (a.get("code") or "").strip() else "covered"
 
 
 def public_chunks(chunks: list[dict]) -> list[dict]:
@@ -841,6 +861,22 @@ if __name__ == "__main__":
     finished = session_snapshot(sid, db_path=db)
     assert finished["state"] == "completed"
     assert public_session(finished)["accepted"][1]["how"] == "revealed"
+
+    # A COVERED step is labelled as one too. One submission can answer more than
+    # one step (covers_chunks), and those extra steps are recorded with empty
+    # code - so reporting them as "own" told the page they were the student's
+    # own answer. On a resume it then reviewed a covered step as a BLANK panel
+    # headed "your answer" and offered to reopen it, which drops back to a step
+    # whose code is already sitting in the frozen prefix: nothing to write, and
+    # a blank submission grades incorrect. In-session the page had this right;
+    # only this view lost it.
+    cov = create_session(prob, decomp, HASH, student_id="student-covered",
+                         db_path=db)["session_id"]
+    done, row = begin_submission(cov, "sub-c", db_path=db)
+    commit_outcome(cov, "sub-c", row["revision"], {"verdict": "correct"},
+                   accept_code="counts = {}", covers_chunks=2, db_path=db)
+    hows = [a["how"] for a in public_session(session_snapshot(cov, db_path=db))["accepted"]]
+    assert hows == ["own", "covered"], hows
 
     # An EXPIRED session is not resumable either - the reference it was
     # decomposed from may have moved on since.

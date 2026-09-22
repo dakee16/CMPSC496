@@ -1,0 +1,16 @@
+# Tools needed to RUN THE TESTS, and nothing else.
+#
+# Kept separate from requirements.txt on purpose: that file is what the
+# Dockerfile installs to build the live server, and the server has no use for a
+# test runner. Anything added here stays off the machine that runs student code.
+#
+#   pip install -r requirements.txt -r requirements-dev.txt
+#
+# WHY THIS FILE EXISTS. The eight root-level test_*.py files are pytest suites -
+# they use fixtures and pytest.raises, so `python test_foo.py` cannot run them,
+# it just raises ModuleNotFoundError. pytest was never written down anywhere, so
+# whether those tests could run at all depended on whose laptop you were on:
+# they ran for the person who wrote them and silently could not be run by
+# anyone else. Everything else the tests need (httpx, for FastAPI's TestClient)
+# is already a runtime dependency in requirements.txt.
+pytest==9.1.1

@@ -13,3 +13,7 @@ data/grading_sessions.sqlite3*
 
 # model-call traces (main/trace.py), rotated in place
 data/model_trace.jsonl*
+
+# The teacher's HW3 solutions. Tests read it (test_oracle_blocks.py,
+# test_grades_wiring.py) and skip when it is absent - it must never be committed.
+assignment_hw3.py

@@ -449,6 +449,83 @@ def _module_names(problem: dict, header: str = "") -> set:
     return out
 
 
+def _header_name(header: str) -> str:
+    """The name on the def line the student is writing under, or ""."""
+    try:
+        tree = ast.parse((header or "").strip() + "\n    pass")
+    except SyntaxError:
+        return ""
+    fn = tree.body[0] if tree.body else None
+    return fn.name if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)) else ""
+
+
+def _has_no_statements(student_code: str) -> bool:
+    """Their answer is comments and nothing else.
+
+    Comments are not run, so this is an empty answer wearing the shape of a
+    full one - and the blank check above cannot see it, because the text is not
+    blank. It then behaves exactly like the `def` line bug reported on
+    2026-09-22: nothing executes, nothing binds, no tier can attribute
+    anything, and it reaches the judges - which cannot convict - so the student
+    is told "we could not confirm this step" about an answer that contains no
+    code to confirm.
+
+    Sound without any reference: a submission with no statements cannot be a
+    correct answer to a coding step, whatever the reference says. Parsed with a
+    sentinel appended because a body of pure comments raises IndentationError
+    on its own rather than parsing to something empty.
+
+    Deliberately narrow: a docstring, a `pass`, or an `if` whose body never
+    runs are all STATEMENTS and are left to the tiers below. Only the genuinely
+    statement-free answer is named here."""
+    try:
+        tree = ast.parse("def _w():\n" + _indent(student_code) + "\n    pass")
+    except SyntaxError:
+        return False             # does not parse: _syntax_message's business
+    fn = tree.body[0] if tree.body else None
+    if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        return False
+    return len(fn.body) == 1     # the sentinel, and nothing of their own
+
+
+def _redefines_enclosing(student_code: str, header: str) -> str | None:
+    """They typed the `def` line again, inside the body it already opened.
+
+    REPORTED BY A REAL STUDENT (2026-09-22, _isNumber): the editor shows
+    `def _isNumber(self, txt):` as a frozen first line and the box below it is
+    the BODY, but writing a whole function is what you do everywhere else in
+    Python, so they wrote `def _isNumber(txt):` again and indented their work
+    under it. Nothing then runs: the body's only statement defines an inner
+    function that is never called, so the method binds nothing and returns None.
+
+    That is invisible to every tier below. It parses, it violates no policy,
+    its names are all in scope (the inner def rebinds the parameters), and no
+    value can be matched because none was produced - so it fell through the
+    deterministic tiers to the LLM judges, which cannot convict, and came back
+    "We could not confirm this step." Measured: their logic was RIGHT - the same
+    body without the def line grades `correct` at execution-reference. They spent
+    twenty minutes on a line the page could have named instantly.
+
+    ONLY AN EXACT REDEFINITION OF THE ENCLOSING FUNCTION. A nested helper under
+    any other name is legitimate Python and is left alone, and recursion is a
+    Call rather than a FunctionDef, so a recursive answer never matches here -
+    that distinction matters, recursion has been false-convicted before."""
+    name = _header_name(header)
+    if not name:
+        return None                  # no def line to repeat
+    try:
+        tree = ast.parse("def _w():\n" + _indent(student_code))
+    except SyntaxError:
+        return None                  # a parse error is _syntax_message's business
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == name:
+            return (f"The `def {name}(...)` line is already written for you - it is "
+                    f"the first line shown above the box. This step is the code that "
+                    f"goes INSIDE it, so write just those lines and leave the `def` "
+                    f"line out.")
+    return None
+
+
 def _header_params(header: str) -> set:
     """Parameter names of the def line the STUDENT is actually writing under.
 
@@ -1018,6 +1095,21 @@ def grade_submission(session: dict, student_code: str,
                                    problem, prefix, student_code),
                    "syntax_error")
 
+    # ── COMMENTS ARE NOT CODE. Same dead end as the gate below, from the other
+    #    direction: text that is not blank but runs nothing. ──
+    if _has_no_statements(student_code):
+        return _ok("incorrect", "syntax",
+                   "There is no code in this answer - comments and blank lines "
+                   "are not run, so there is nothing here to answer the step yet.",
+                   "comments_only")
+
+    # ── THE DEF LINE IS ALREADY THERE. Static, deterministic, no reference and
+    #    no model - and it has to run BEFORE the scope gate, because an inner
+    #    def rebinds the parameters and so looks perfectly in scope. ──
+    redefined = _redefines_enclosing(student_code, header)
+    if redefined is not None:
+        return _ok("incorrect", "syntax", redefined, "redefined_function")
+
     # ── SCOPE GATE - names the step READS must already exist. Deterministic,
     #    runs before any execution tier or LLM. Catches the wrong parameter
     #    name / typo that would otherwise crash and be excused as our fault. ──
@@ -1038,6 +1130,14 @@ def grade_submission(session: dict, student_code: str,
     if is_last:
         res = classify_run(_assemble(problem, header, upto), tests, entry_name=entry)
         if res.outcome == "pass":
+            # TRACED LIKE EVERY OTHER ACQUITTAL. This is the ordinary way a
+            # problem finishes and it recorded nothing, while llm-judge
+            # acquittals always recorded - so a tier census read off the trace
+            # showed the judges as a far larger share of `correct` than they
+            # are. That census is what decides whether tier 4 can be deleted,
+            # so under-counting the deterministic tiers argues the wrong way.
+            _trace(trace.record_route, corr, "execution-final", "correct",
+                   early=False)
             return _ok("correct", "execution-final",
                        "Correct - your full solution passes every test.",
                        "final_pass", execution_outcome="pass",
@@ -1100,12 +1200,13 @@ def grade_submission(session: dict, student_code: str,
         ref_tail = "\n".join(hoisted) + "\n" + ref_tail
     res = classify_run(_assemble(problem, header, upto, ref_tail), tests, entry_name=entry)
     if res.outcome == "pass":
-        if hoisted:
-            # Same verdict, same tier, still deterministic - no model is
-            # consulted anywhere on this path. Tagged only so telemetry can
-            # count how often the ordering difference is real.
-            _trace(trace.record_route, corr, "execution-reference", "correct",
-                   hoisted=hoisted)
+        # ALWAYS, not just when something was hoisted. `hoisted` stays on the
+        # event so telemetry can still count how often the ordering difference
+        # is real, but gating the whole event on it meant the commonest
+        # acquittal of all was invisible - see the note on execution-final
+        # above. No model is consulted on this path either way.
+        _trace(trace.record_route, corr, "execution-reference", "correct",
+               hoisted=hoisted or [])
         return _ok("correct", "execution-reference",
                    "Correct - your step works with the rest of the solution.",
                    "reference_pass_hoisted" if hoisted else "reference_pass",
@@ -1673,5 +1774,56 @@ if __name__ == "__main__":
     import inspect as _inspect
     assert "PRIMARY JUDGMENT" not in _inspect.getsource(_tier4), \
         "the second judge must not be anchored on the first"
+
+    # ── THEY TYPED THE def LINE AGAIN ───────────────────────────────────
+    # Reported by a real student on _isNumber: the frozen first line already
+    # says `def _isNumber(self, txt):` and the box below it is the BODY, but
+    # writing a whole function is the habit, so they wrote the def again and
+    # indented their work under it. Nothing ran, every deterministic tier let it
+    # through, and the LLM judges - which cannot convict - answered "we could
+    # not confirm this step". Their logic was RIGHT: the same body without the
+    # def line grades correct at execution-reference.
+    _H = "def _isNumber(self, txt):"
+    _caught = [
+        ("def _isNumber(txt):\n    return True", _H),
+        # ...even nested inside a block, which is how it looks once indented.
+        ("if txt:\n    def _isNumber(t):\n        return True", _H),
+        ("def frequency(txt):\n    return {}", "def frequency(txt):"),
+    ]
+    for code, header in _caught:
+        assert _redefines_enclosing(code, header) is not None, code
+
+    # ONLY an exact redefinition of the enclosing function. Everything here is
+    # ordinary Python and must pass untouched - especially RECURSION, which
+    # calls the name but never redefines it, and which this grader has
+    # false-convicted before by a different route.
+    _clean = [
+        ("if n <= 1:\n    return 1\nreturn factorial(n - 1) * n", "def factorial(n):"),
+        ("def _digits(s):\n    return s.isdigit()\nanswer = _digits(txt)", _H),
+        ("answer = txt.strip().isdigit()", _H),
+        ("f = lambda x: x.isdigit()\nanswer = f(txt)", _H),
+        ("", _H),
+        ("def _isNumber(txt:", _H),        # unparseable: _syntax_message's job
+        ("def _isNumber(txt):\n    return True", ""),   # no def line to repeat
+    ]
+    for code, header in _clean:
+        assert _redefines_enclosing(code, header) is None, code
+
+    # ── COMMENTS ARE NOT CODE ───────────────────────────────────────────
+    # The same dead end as the def-line bug, from the other direction: text
+    # that is not blank but runs nothing, so no tier can attribute anything and
+    # the judges - which cannot convict - answer "we could not confirm this".
+    for _code in ("# work out whether it is a number\n# then save the answer",
+                  "   \n  \n"):
+        assert _has_no_statements(_code), repr(_code)
+    # Anything that IS a statement belongs to the tiers below, including ones
+    # that happen to do nothing at runtime - those are not empty answers.
+    for _code in ("# decide\nis_number = txt.isdigit()",
+                  '\'\'\'decide if it is a number\'\'\'',
+                  "pass",
+                  "if False:\n    is_number = True",
+                  "is_number = True",
+                  "if x"):                      # unparseable: _syntax_message's
+        assert not _has_no_statements(_code), repr(_code)
 
     print("grading.py scope-gate self-check OK")
