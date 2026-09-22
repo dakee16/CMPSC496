@@ -2,8 +2,24 @@
 
 Use each student's latest session for each problem. Restarts must not leave
 abandoned sessions on the follow-up list. Older work stays in the transcript.
+
+WHAT A TEACHER NEEDS TO ACT ON A "MAY NEED HELP". "Check step 3" and "your
+solution gives the wrong answer on at least one case" told them something was
+wrong and nothing they could use: not what step 3 asked, and not what the
+student wrote. So each unresolved step now carries both - the step's own
+PROMPT, and the CODE of the attempt that failed.
+
+The prompt is read from the student's own grading session, never from the
+problem: decompositions differ between students (a pooled candidate, or a
+roadmap rebuilt around their plan - main/reroute.py), so "step 3" is a
+different question for different people and a problem-wide prompt would be
+wrong for some of them.
+
+What still never leaves: the teacher's reference solution, and any code
+belonging to a step the student has since got right. The route is
+teacher-only (api_server.teacher_dashboard -> require_teacher).
 """
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import datetime, timezone
 
 from .auth import full_name
@@ -11,7 +27,26 @@ from .grades import percent
 from .student_progress import _at, _pages
 
 
-def dashboard_snapshot(client, assignment_id=None):
+# Long enough for any step a student is asked for; short enough that one
+# pasted file cannot make the dashboard payload unbounded.
+MAX_CODE_CHARS = 4000
+
+
+def _session_prompts(session_id):
+    """Step prompts for one grading session, from the server's own store.
+
+    Every session row is kept (nothing in main/sessions.py deletes one), so
+    this works for finished and expired sessions too. Anything unreadable is
+    an empty list, and the page falls back to the step number alone."""
+    try:
+        from .sessions import session_snapshot
+        snap = session_snapshot(session_id)
+        return [c.get("prompt") or "" for c in (snap or {}).get("chunks") or []]
+    except Exception:
+        return []
+
+
+def dashboard_snapshot(client, assignment_id=None, prompts_for=_session_prompts):
     assignments = [a for a in _pages(lambda: client.table("assignments").select(
         "id, name, published").order("id")) if a.get("published", True) is not False]
     if assignment_id and assignment_id not in {str(a["id"]) for a in assignments}:
@@ -35,7 +70,8 @@ def dashboard_snapshot(client, assignment_id=None):
             "session_id, student_id, slug, started_at, completed_at, solved_independently")
             .in_("slug", batch).order("session_id")))
         submissions.extend(_pages(lambda: client.table("mt_submissions").select(
-            "id, session_id, student_id, slug, chunk_index, verdict, tier, reason, created_at")
+            "id, session_id, student_id, slug, chunk_index, verdict, tier, reason, code,"
+            " created_at")
             .in_("slug", batch).order("id")))
 
     def timestamp(value):
@@ -72,11 +108,19 @@ def dashboard_snapshot(client, assignment_id=None):
         if row.get("verdict") in ("correct", "incorrect") and row.get("chunk_index", -1) >= 0:
             student["steps"][int(row["chunk_index"])].append(row)
 
+    prompt_cache = {}
+
+    def prompt(session_id, index):
+        if session_id not in prompt_cache:
+            prompt_cache[session_id] = prompts_for(session_id)
+        found = prompt_cache[session_id]
+        return found[index] if 0 <= index < len(found) else ""
+
     results, active, needs_help = [], set(), set()
     indeterminate = 0
     for problem in problems:
         attempted, struggled, pending = set(), set(), set()
-        steps, follow_up = {}, []
+        steps, follow_up, asked = {}, [], defaultdict(Counter)
         visits = by_problem[problem["slug"]]
         active.update(visits)
         for student_id, work in visits.items():
@@ -89,6 +133,9 @@ def dashboard_snapshot(client, assignment_id=None):
                 stat = steps.setdefault(index, {"number": index + 1, "attempted": 0,
                                                 "needs_help": 0, "recovered": 0})
                 stat["attempted"] += 1
+                asked_here = prompt(session["session_id"], index)
+                if asked_here:
+                    asked[index][asked_here] += 1
                 wrong = [r for r in records if r["verdict"] == "incorrect"]
                 if not wrong:
                     continue
@@ -100,14 +147,24 @@ def dashboard_snapshot(client, assignment_id=None):
                     last = max(wrong, key=lambda r: (timestamp(r.get("created_at")), int(r["id"])))
                     unresolved.append({"number": index + 1, "reason": (last.get("reason") or
                         "An incorrect answer was recorded without further feedback.")[:500],
-                        "tier": last.get("tier"), "at": last.get("created_at")})
+                        "tier": last.get("tier"), "at": last.get("created_at"),
+                        "prompt": asked_here,
+                        # The attempt that FAILED, not their latest keystrokes:
+                        # it is the code the feedback above is about.
+                        "code": (last.get("code") or "")[:MAX_CODE_CHARS]})
             if unresolved:
                 pending.add(student_id)
                 recent = max(unresolved, key=lambda r: timestamp(r["at"]))
                 follow_up.append({"student_id": student_id, "name": roster[student_id],
                     "steps": sorted(s["number"] for s in unresolved),
-                    "reason": recent["reason"], "last_activity": recent["at"]})
+                    "reason": recent["reason"], "last_activity": recent["at"],
+                    "details": [{k: s[k] for k in ("number", "prompt", "reason", "code", "at")}
+                                for s in sorted(unresolved, key=lambda s: s["number"])]})
         needs_help.update(pending)
+        for index, stat in steps.items():
+            common = asked[index].most_common(1)
+            stat["prompt"] = common[0][0] if common else ""
+            stat["prompt_varies"] = len(asked[index]) > 1
         results.append({**problem, "opened": len(visits), "attempted": len(attempted),
             "needs_help": len(pending), "recovered": len(struggled - pending),
             "difficulty_percent": percent(len(struggled), len(attempted)),

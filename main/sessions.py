@@ -112,6 +112,16 @@ def _connect(db_path: str | None = None) -> sqlite3.Connection:
         conn.execute("ALTER TABLE sessions ADD COLUMN context_json TEXT")
     except sqlite3.OperationalError:
         pass                                    # already there
+    # RETIRED FROM RESUMING, which is not the same as abandoned. Start over has
+    # to stop a FINISHED session coming back when the problem is reopened, but
+    # its `completed` state is what completed_answers() builds the student's
+    # downloadable file from - flipping it to abandoned would take a finished
+    # problem out of their file just because they chose to try it again.
+    try:
+        conn.execute("ALTER TABLE sessions ADD COLUMN retired INTEGER NOT NULL"
+                     " DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass                                    # already there
     # Idempotency is persisted per (session, submission) rather than only
     # remembering the latest submission - a retry of an older id must still
     # replay its own stored result instead of being graded again.
@@ -180,9 +190,23 @@ def find_resumable(student_id: str | None, content_hash: str,
     whose chunks were decomposed from the old text would put a student back to
     work on a question that no longer exists.
 
-    Newest first, and only ACTIVE and unexpired - a completed problem starts
-    over, which is what reopening one has always meant. Never raises: failing to
-    find a session to resume must fall through to making a new one, not error."""
+    Newest first, ACTIVE or COMPLETED, and never a retired one. Both halves of
+    that changed, for one reported reason: the chat came back on reopen and the
+    code did not.
+
+      * COMPLETED. A finished problem used to open on a fresh session, so the
+        code stage was empty while the conversation about that very code sat
+        restored beside it. Its own session is now handed back, finished, and
+        a step can be reopened from there (reopen_step) or the whole thing
+        started over.
+      * EXPIRY IS NOT A REASON TO LOSE WORK. The 12-hour TTL meant a student
+        who came back the next day to a half-done problem found step 1 and an
+        empty editor. Resuming refreshes the expiry instead. The content hash is
+        what stops a session resuming into an EDITED problem, and it still does.
+
+    Retired sessions - the ones Start over put behind the student - are never
+    resumed. Never raises: failing to find a session to resume must fall
+    through to making a new one, not error."""
     if not student_id:
         return None
     try:
@@ -192,13 +216,28 @@ def find_resumable(student_id: str | None, content_hash: str,
     try:
         r = conn.execute(
             "SELECT * FROM sessions WHERE student_id=? AND content_hash=?"
-            " AND state='active' AND expires_at > ? ORDER BY created_at DESC"
-            " LIMIT 1", (student_id, content_hash, _now())).fetchone()
+            " AND state IN ('active','completed') AND retired=0"
+            # created_at is second-precision; rowid is insertion order, so two
+            # sessions opened in the same second still resolve to the newer.
+            " ORDER BY created_at DESC, rowid DESC LIMIT 1",
+            (student_id, content_hash)).fetchone()
+        if r is not None and r["state"] == "active":
+            # Grading refuses an expired session (load_session), so a resumed
+            # one has to be live again before the student can submit into it.
+            conn.execute("UPDATE sessions SET expires_at=? WHERE session_id=?",
+                         (_expiry(), r["session_id"]))
+            r = conn.execute("SELECT * FROM sessions WHERE session_id=?",
+                             (r["session_id"],)).fetchone()
     except Exception:
         return None
     finally:
         conn.close()
     return _row_to_session(r) if r is not None else None
+
+
+def _expiry() -> str:
+    return (datetime.now(timezone.utc) + timedelta(hours=SESSION_TTL_HOURS)
+            ).isoformat(timespec="seconds")
 
 
 def abandon_active(student_id: str | None, slug: str,
@@ -232,6 +271,14 @@ def abandon_active(student_id: str | None, slug: str,
         cur = conn.execute(
             "UPDATE sessions SET state='abandoned', updated_at=? WHERE"
             " student_id=? AND slug=? AND state='active'",
+            (_now(), student_id, slug))
+        # A FINISHED session is retired from resuming, not abandoned: now that
+        # find_resumable hands finished problems back, Start over would
+        # otherwise reopen straight onto the run it was meant to leave - and
+        # its `completed` state is what the student's downloadable file reads.
+        conn.execute(
+            "UPDATE sessions SET retired=1, updated_at=? WHERE"
+            " student_id=? AND slug=? AND state='completed'",
             (_now(), student_id, slug))
         return cur.rowcount or 0
     except Exception:
@@ -628,10 +675,16 @@ def reopen_step(session_id: str, index: int,
     adds attempts to the record and never subtracts a grade. Same rule the rest
     of the archive follows: a student who went round twice is the finding.
 
-    Refuses anything but an ACTIVE session and an index genuinely behind the
-    current one. A finished problem is Start over's business - un-completing a
-    session would have to unpick the solved flag and the reflection stage with
-    it - and "reopening" the step already open would drop nothing and reset an
+    A FINISHED PROBLEM IS REOPENED AS A COPY. Its completed session is what
+    the student's downloadable file is built from (completed_answers), so it is
+    left completed and only retired from resuming; a new active session carries
+    the same steps with the prefix cut at `index`, and the result names it in
+    `session_id` so the page switches over. Un-completing in place would have
+    taken a finished problem out of their file the moment they looked back at
+    one step of it.
+
+    Refuses an abandoned session and an index not genuinely behind the current
+    one - "reopening" the step already open would drop nothing and reset an
     attempt count for free."""
     conn = _connect(db_path)
     try:
@@ -642,21 +695,39 @@ def reopen_step(session_id: str, index: int,
             conn.execute("ROLLBACK")
             raise SessionError("Unknown session.", "session_not_found")
         s = _row_to_session(r)
-        if s["state"] != "active":
+        if s["state"] not in ("active", "completed"):
             conn.execute("ROLLBACK")
-            raise SessionError("This problem is already finished - use Start "
-                               "over to work it again.", "session_inactive")
+            raise SessionError("This session is no longer active - reload the "
+                               "problem to continue.", "session_inactive")
         if not 0 <= index < s["index"]:
             conn.execute("ROLLBACK")
             raise SessionError("That step is not one you have already "
                                "finished.", "step_not_reopenable")
         dropped = [{"index": index + n, "code": a.get("code") or ""}
                    for n, a in enumerate(s["accepted"][index:])]
-        # attempts belong to the step being worked, and this is a different one.
-        conn.execute(
-            "UPDATE sessions SET idx=?, accepted_json=?, attempts=0,"
-            " updated_at=?, revision=revision+1 WHERE session_id=?",
-            (index, json.dumps(list(s["accepted"])[:index]), _now(), session_id))
+        kept = json.dumps(list(s["accepted"])[:index])
+        target = session_id
+        if s["state"] == "completed":
+            target = secrets.token_urlsafe(32)
+            conn.execute(
+                "INSERT INTO sessions (session_id, student_id, slug, content_hash,"
+                " decomposition_id, solution, description, title, header,"
+                " chunks_json, idx, accepted_json, attempts, assisted, state,"
+                " created_at, updated_at, expires_at, revision, context_json)"
+                " SELECT ?, student_id, slug, content_hash, decomposition_id,"
+                " solution, description, title, header, chunks_json, ?, ?, 0,"
+                " assisted, 'active', ?, ?, ?, 0, context_json"
+                " FROM sessions WHERE session_id=?",
+                (target, index, kept, _now(), _now(), _expiry(), session_id))
+            conn.execute("UPDATE sessions SET retired=1, updated_at=?"
+                         " WHERE session_id=?", (_now(), session_id))
+        else:
+            # attempts belong to the step being worked, and this is another one.
+            conn.execute(
+                "UPDATE sessions SET idx=?, accepted_json=?, attempts=0,"
+                " expires_at=?, updated_at=?, revision=revision+1"
+                " WHERE session_id=?",
+                (index, kept, _expiry(), _now(), session_id))
         conn.execute("COMMIT")
     except SessionError:
         raise
@@ -666,9 +737,10 @@ def reopen_step(session_id: str, index: int,
         raise
     finally:
         conn.close()
-    return {"index": index, "attempts": 0, "assisted": bool(s["assisted"]),
-            "completed": False, "total_chunks": len(s["chunks"]),
-            "dropped": dropped}
+    return {"session_id": target, "copied_from": session_id if target != session_id
+            else None, "index": index, "attempts": 0,
+            "assisted": bool(s["assisted"]), "completed": False,
+            "total_chunks": len(s["chunks"]), "dropped": dropped}
 
 
 def apply_outcome(session_id: str, submission_id: str, result: dict, **kw) -> dict:
@@ -854,10 +926,15 @@ if __name__ == "__main__":
                    accept_code="return {}", provenance="revealed_reference",
                    db_path=db)
 
-    # That was the last chunk, so the session COMPLETED - and a finished problem
-    # starts over, which is what reopening one has always meant.
-    assert find_resumable(WHO, HASH, db_path=db) is None, \
-        "a completed problem must not resume into its own finished session"
+    # That was the last chunk, so the session COMPLETED - and reopening a
+    # finished problem now hands it BACK, finished, code and all. It used to
+    # issue a fresh session, so the chat about this code came back beside an
+    # empty editor.
+    again = find_resumable(WHO, HASH, db_path=db)
+    assert again is not None and again["session_id"] == sid, again
+    assert again["state"] == "completed" and again["index"] == 2
+    assert [a["code"] for a in public_session(again)["accepted"]] == \
+        ["counts = {}", "return {}"]
     finished = session_snapshot(sid, db_path=db)
     assert finished["state"] == "completed"
     assert public_session(finished)["accepted"][1]["how"] == "revealed"
@@ -878,8 +955,10 @@ if __name__ == "__main__":
     hows = [a["how"] for a in public_session(session_snapshot(cov, db_path=db))["accepted"]]
     assert hows == ["own", "covered"], hows
 
-    # An EXPIRED session is not resumable either - the reference it was
-    # decomposed from may have moved on since.
+    # AN EXPIRED SESSION IS RESUMED, and made live again. The 12-hour TTL was
+    # losing a half-done problem overnight. Its stated reason - the reference
+    # may have moved on - is the content hash's job, and the hash still does it:
+    # "hash-something-else" above resumes nothing.
     stale = create_session(prob, decomp, HASH, student_id=WHO, db_path=db)
     conn = _connect(db)
     try:
@@ -887,21 +966,30 @@ if __name__ == "__main__":
                      ("2000-01-01T00:00:00+00:00", stale["session_id"]))
     finally:
         conn.close()
-    assert find_resumable(WHO, HASH, db_path=db) is None
+    revived = find_resumable(WHO, HASH, db_path=db)
+    assert revived["session_id"] == stale["session_id"], "newest wins, expired or not"
+    assert revived["expires_at"] > _now(), "resuming must make it gradeable again"
+    load_session(stale["session_id"], db_path=db)      # would raise if still expired
 
     # ── restart really restarts ───────────────────────────────────────────
     # Resume made this route load-bearing: without it "start over" empties the
     # chat and then hands the student their old steps back.
     fresh = create_session(prob, decomp, HASH, student_id=WHO, db_path=db)
     assert find_resumable(WHO, HASH, db_path=db)["session_id"] == fresh["session_id"]
-    # Two rows go: the live one and the expired-but-still-'active' one above.
-    # Retiring a session that has aged out is harmless and keeps the table
-    # honest about what is still in play.
+    # Two rows go: the live one and the revived one above.
     assert abandon_active(WHO, "invert", db_path=db) == 2
+    # ...and the FINISHED one is retired from resuming too. Without that, now
+    # that finished problems resume, Start over would reopen straight onto the
+    # run it exists to leave.
     assert find_resumable(WHO, HASH, db_path=db) is None, \
-        "start over left the old session resumable"
-    # The row survives - an instructor's transcript is built from these.
+        "start over left an old session resumable"
+    # The rows survive - an instructor's transcript is built from these - and
+    # the finished one stays COMPLETED, because the student's downloadable file
+    # (completed_answers) is built from exactly that state.
     assert session_snapshot(fresh["session_id"], db_path=db)["state"] == "abandoned"
+    assert session_snapshot(sid, db_path=db)["state"] == "completed"
+    assert "invert" in completed_answers(WHO, ["invert"], db_path=db), \
+        "Start over took a finished problem out of the student's file"
     # Nobody else's work is touched, and a second press is a no-op.
     assert abandon_active(WHO, "invert", db_path=db) == 0
     assert abandon_active("student-2", "invert", db_path=db) == 0

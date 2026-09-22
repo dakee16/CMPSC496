@@ -43,9 +43,17 @@ const fixture={
   try{
     const dashboard=await make('dashboard.html');const doc=dashboard.document;
     assert.equal(doc.querySelector('[data-nav="Dashboard"]').getAttribute('aria-current'),'page');
-    assert.equal(doc.querySelectorAll('.hnav a').length,3);
+    assert.equal(doc.querySelectorAll('.hnav a').length,2,'Dashboard and My assignments; no grades tab');
+    assert.equal(doc.querySelector('[data-nav="Grades"]'),null);
     assert.equal(doc.querySelectorAll('.activity-day').length,7);
-    assert.equal(doc.querySelectorAll('.dash-metric').length,4);
+    assert.equal(doc.querySelectorAll('.dash-metric').length,3);
+    // NO SCORE REACHES A STUDENT. This is not the course's LMS, and a number
+    // here that disagreed with the one there would be theirs to sort out.
+    // Progress counts stay (1 / 4 problems); percentages and credit do not.
+    const shown=doc.querySelector('#insights').textContent;
+    assert(!/%/.test(shown),'a percentage reached the student dashboard: '+shown.match(/.{20}%/));
+    assert(!/credit|grade/i.test(shown),'credit or grade wording on the student dashboard');
+    assert.equal(doc.querySelectorAll('a[href*="student-grades"]').length,0);
     assert.equal(doc.querySelectorAll('.assignment-progress-item').length,2);
     assert.equal(doc.querySelectorAll('#insights img').length,0,'Titles are escaped');
     const continueLink=new URL(doc.querySelector('.learning-hero .action-link').href);
@@ -64,41 +72,18 @@ const fixture={
     fail=false;await dashboard.loadStudentProgress(true);
     assert.equal(doc.querySelector('#progressNotice').textContent,'');
 
-    const grades=await make('student-grades.html');const g=grades.document;
-    assert.equal(g.querySelector('[data-nav="Grades"]').getAttribute('aria-current'),'page');
-    assert.equal(g.querySelector('.grade-total-number').textContent,'50%');
-    assert.equal(g.querySelectorAll('[data-grade-detail]').length,4);
-    const toggle=g.querySelector('[data-grade-detail]');toggle.click();
-    assert.equal(toggle.getAttribute('aria-expanded'),'true');
-    assert.equal(g.getElementById(toggle.getAttribute('aria-controls')).hidden,false);
-    assert.equal(g.getElementById(toggle.getAttribute('aria-controls')).querySelectorAll('.step-result').length,3);
-    toggle.click();assert.equal(toggle.getAttribute('aria-expanded'),'false');
-    g.querySelector('#gradeAssignment').value='lab2';g.querySelector('#gradeAssignment').dispatchEvent(new grades.Event('change'));
-    assert.equal(g.querySelectorAll('[data-grade-detail]').length,2);
-    assert.equal(g.querySelector('.grade-total-number').textContent,'0%');
-    assert([...g.querySelectorAll('.grade-score')].some(el=>el.textContent==='-'),'Unknown denominator remains ungraded');
-    g.querySelector('#gradeSearch').value='missing';g.querySelector('#gradeSearch').dispatchEvent(new grades.Event('input'));
-    assert(g.querySelector('#gradeResults').textContent.includes('No problems match'));
-    g.querySelector('#clearGradeFilters').click();
-    assert.equal(g.querySelectorAll('[data-grade-detail]').length,4);
-    g.querySelector('#gradeStatus').value='progress';g.querySelector('#gradeStatus').dispatchEvent(new grades.Event('change'));
-    assert.equal(g.querySelectorAll('[data-grade-detail]').length,1);
-    assert(g.querySelector('#gradeResults').textContent.includes('Employee Update'));
-    const scoped=await make('student-grades.html',fixture,'?assignment=lab1');
-    assert.equal(scoped.document.querySelectorAll('[data-grade-detail]').length,2);
-
+    // Everything done: the hero sends them to their assignments, not to grades.
     const empty=structuredClone(fixture);
-    empty.assignments=[];empty.problems=[];empty.recent=[];empty.next_up=[];
-    empty.summary=Object.fromEntries(Object.keys(empty.summary).map(k=>[k,0]));empty.summary.percent=null;empty.summary.completion_percent=null;
-    empty.activity=empty.activity.map(d=>({...d,submissions:0,passed:0,active:false}));
-    const blank=await make('student-grades.html',empty);
-    assert(blank.document.querySelector('#gradeResults').textContent.includes('No grades yet'));
-    assert.equal(blank.document.querySelector('.grade-total-number').textContent,'-');
+    empty.next_up=[];empty.problems=empty.problems.map(p=>({...p,status:'solved'}));
+    const finished=await make('dashboard.html',empty);
+    const hero=finished.document.querySelector('.learning-hero .action-link');
+    assert.equal(new URL(hero.href).pathname,'/student.html');
+    assert(!/grade/i.test(finished.document.querySelector('.learning-hero').textContent));
     fail=true;const unavailable=await make('dashboard.html');
     assert(unavailable.document.querySelector('#retryProgress'));
     assert.equal(unavailable.document.querySelector('.dash-metric'),null,'Unavailable is not zero progress');
     fail=false;unavailable.document.querySelector('#retryProgress').click();await wait();
-    assert.equal(unavailable.document.querySelectorAll('.dash-metric').length,4);
+    assert.equal(unavailable.document.querySelectorAll('.dash-metric').length,3);
 
     // Exercise a real dashboard deep link through student.js's loader.
     const study=new Window({url:'http://localhost/student.html?assignment=lab1&problem=employee-update',width:1600,height:1000,settings:{enableJavaScriptEvaluation:true,disableJavaScriptFileLoading:true,disableCSSFileLoading:true,suppressInsecureJavaScriptEnvironmentWarning:true}});
@@ -125,7 +110,7 @@ const fixture={
     assert.equal(study.document.querySelector('#cSolve').hidden,false);
     assert.equal(study.document.querySelector('#editorWrap').hidden,true,'Deep links preserve the design gate');
     assert.equal(study.document.querySelectorAll('#assignments .rowitem').length,1,'Unpublished assignments stay out of the student list');
-    console.log('PASS: student navigation, dashboard metrics/activity, grade filters/details, theme toggle, safe titles, empty/error/retry states, and problem deep links with design gate.');
+    console.log('PASS: student navigation, dashboard metrics/activity with no score or grade shown, theme toggle, safe titles, empty/error/retry states, and problem deep links with design gate.');
     console.log('DOM checks do not verify browser layout or screenshots.');
   }finally{for(const window of windows)await window.happyDOM.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});

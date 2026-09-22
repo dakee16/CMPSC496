@@ -28,7 +28,8 @@ def db():
         "mt_submissions": [{"id": i, "session_id": student, "student_id": student,
                             "slug": slug, "chunk_index": step, "verdict": verdict,
                             "reason": "Check the empty input.", "tier": "execution-final",
-                            "code": "PRIVATE_CODE", "created_at": f"2026-09-15T12:{i:02}:00Z"}
+                            "code": f"CODE_{student}_{step}_{i}",
+                            "created_at": f"2026-09-15T12:{i:02}:00Z"}
                            for i, (student, slug, step, verdict) in enumerate([
                                ("alice", "invert", 0, "incorrect"),
                                ("alice", "invert", 0, "incorrect"),
@@ -43,8 +44,16 @@ def db():
     })
 
 
+# Each student's own step prompts. Alice and Bob were served DIFFERENT
+# decompositions of the same problem, which is real (pooled candidates, or a
+# roadmap rebuilt around a student's plan).
+PROMPTS = {"alice": ["Build the inverted mapping", "Hand the mapping back"],
+           "bob": ["Collect the values first", "Hand the mapping back"],
+           "cara": ["Build the inverted mapping", "Hand the mapping back"]}
+
+
 def test_students_not_retries_define_difficulty_and_recovery(db):
-    result = dashboard_snapshot(db)
+    result = dashboard_snapshot(db, prompts_for=lambda sid: PROMPTS.get(sid, []))
     p = result["problems"][0]
     assert p["slug"] == "invert"
     assert (p["attempted"], p["needs_help"], p["recovered"], p["difficulty_percent"]) == (3, 1, 1, 67)
@@ -53,9 +62,41 @@ def test_students_not_retries_define_difficulty_and_recovery(db):
     assert p["follow_up"][0]["name"] == "Alice Student"
     assert result["summary"] == {"students": 4, "active": 4, "needs_help": 1,
         "problems": 3, "attempted_problems": 1, "indeterminate": 1}
-    assert "SECRET" not in str(result) and "PRIVATE_CODE" not in str(result)
     assert {p["slug"] for p in result["problems"]} == {"invert", "count", "sum"}
-    assert all("solution" not in fields and "code" not in fields for _, fields, _ in db.queries)
+
+    # THE TEACHER CAN NOW SEE WHAT TO DISCUSS: what each step asked, and the
+    # code of the attempt that failed - "Check step 1" alone was a shrug.
+    details = p["follow_up"][0]["details"]
+    assert [(d["number"], d["prompt"]) for d in details] == [
+        (1, "Build the inverted mapping"), (2, "Hand the mapping back")]
+    # The attempt that FAILED LAST for that step, which is what the feedback
+    # beside it is about - not an earlier one, and not a later correct one.
+    assert [d["code"] for d in details] == ["CODE_alice_0_1", "CODE_alice_1_2"]
+    assert all(d["reason"] == "Check the empty input." for d in details)
+
+    # The class-wide list names the step by what MOST students were asked, and
+    # says when that varied.
+    first = next(s for s in p["steps"] if s["number"] == 1)
+    assert first["prompt"] == "Build the inverted mapping" and first["prompt_varies"]
+    second = next(s for s in p["steps"] if s["number"] == 2)
+    assert second["prompt"] == "Hand the mapping back" and not second["prompt_varies"]
+
+    # WHAT STILL NEVER LEAVES: the teacher's reference, code for a step the
+    # student has since got right (Bob recovered), and anyone off the roster.
+    text = str(result)
+    assert "SECRET" not in text
+    assert "CODE_bob" not in text and "CODE_cara" not in text
+    assert "CODE_teacher" not in text
+    assert all("solution" not in fields for _, fields, _ in db.queries)
+
+
+def test_an_unreadable_session_falls_back_to_the_step_number(db):
+    """No prompt is not an error: the page shows "Step N" as before."""
+    def broken(_sid):
+        return []
+    p = dashboard_snapshot(db, prompts_for=broken)["problems"][0]
+    assert all(d["prompt"] == "" for d in p["follow_up"][0]["details"])
+    assert all(s["prompt"] == "" and not s["prompt_varies"] for s in p["steps"])
 
 
 def test_restart_drops_abandoned_session_and_missing_start_keeps_submissions(db):

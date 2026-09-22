@@ -1040,6 +1040,21 @@ def reopen_step_route(req: ReopenRequest, request: Request):
     except SessionError as e:
         raise HTTPException(status_code=409, detail={
             "reason_code": e.reason_code, "message": str(e)})
+    # A FINISHED problem is reopened as a new session (see reopen_step), and a
+    # session the archive never heard of is invisible to the grade sheet -
+    # step_counts reads its denominator from mt_sessions. Same write, and same
+    # best-effort rule, as opening a problem.
+    if state.get("copied_from"):
+        try:
+            from main.archive import save_session_start
+            from main.sessions import public_session, session_snapshot
+            copy = session_snapshot(state["session_id"])
+            save_session_start(get_supabase(), claims["sub"],
+                               {**public_session(copy), "slug": copy["slug"],
+                                "content_hash": copy["content_hash"],
+                                "chunks": copy["chunks"]})
+        except Exception as e:
+            print(f"  \u26a0\ufe0f  archive start for reopened copy failed: {e!r}"[:200])
     return state
 
 

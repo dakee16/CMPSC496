@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs'), path = require('node:path');
 const {pathToFileURL} = require('node:url');
-const root = path.resolve('/Users/sanangoel/Desktop/SUMMER_RESEARCH/CMPSC496/frontend');
+const root = path.resolve(__dirname, '../../frontend');
 const read = n => fs.readFileSync(path.join(root, n), 'utf8');
 const tick = () => new Promise(r => setTimeout(r, 40));
 const problem = {slug:'frequency', title:'Frequency', description:'Count letters.'};

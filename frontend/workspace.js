@@ -323,12 +323,12 @@ function failedWorkspace(message){
 
 function completeWorkspace(){
   workspaceComplete = true;
-  $("reflectTitle").textContent = "Congratulations — you solved it.";
-  const own = accepted.filter(step => step && step.how === "own").length;
-  $("reflectSummary").textContent = `${own} of ${chunks.length} steps passed in this attempt. Take a moment to see how your thinking became code.`;
+  $("reflectTitle").textContent = "Congratulations, you solved it.";
+  // No "N of M steps passed": that is this problem's score, and scores are
+  // the course LMS's to report (see the student nav in ui.js).
+  $("reflectSummary").textContent = "You worked all the way through it. Take a moment to see how your thinking became code.";
   $("reflectionCode").textContent = $("ctxCode").textContent;
   $("reflectionCodeDetails").hidden = false;
-  $("reflectionGrades").href = "student-grades.html" + (openAssign ? `?assignment=${encodeURIComponent(openAssign.id)}` : "");
   $("comparisonStatus").textContent = "Preparing your plan and code comparison…";
   workspaceSync();
 }
@@ -342,23 +342,24 @@ function completeWorkspace(){
    makes that stage reachable; it is also simply true. */
 function solvedEarlier(){
   workspaceComplete = true;
-  $("reflectTitle").textContent = "Congratulations — you solved it.";
-  $("reflectSummary").textContent = "You have already worked all the way through this problem. Start it over to practise it again from the first step, or move on to the next one.";
-  // Nothing was typed in THIS sitting, so there is no completed function to
-  // disclose - an empty <pre> under "Your completed function" reads as lost
-  // work. comparisonReady() re-decides this by the same rule if one arrives.
+  $("reflectTitle").textContent = "Congratulations, you solved it.";
+  $("reflectSummary").textContent = "You have already worked all the way through this problem. Reopen a step in the Code stage to change it, start it over to practise it from the first step, or move on to the next one.";
+  // Their finished session comes back with the problem now, so the function
+  // they wrote is on hand even though nothing was typed in THIS sitting. Only
+  // shown when there is code in it: an empty <pre> under "Your completed
+  // function" reads as lost work. comparisonReady() re-decides by the same rule.
+  if (accepted.some(a => a && (a.code || "").trim()))
+    $("reflectionCode").textContent = $("ctxCode").textContent;
   $("reflectionCodeDetails").hidden = !$("reflectionCode").textContent.trim();
-  $("reflectionGrades").href = "student-grades.html" + (openAssign ? `?assignment=${encodeURIComponent(openAssign.id)}` : "");
   workspaceSync();
 }
 
 function comparisonReady(restored = false){
   workspaceComparison = true;
   $("comparisonStatus").textContent = "";
-  $("reflectionGrades").href = "student-grades.html" + (openAssign ? `?assignment=${encodeURIComponent(openAssign.id)}` : "");
   if (restored && !workspaceComplete){
     $("reflectTitle").textContent = "A look at your earlier work.";
-    $("reflectSummary").textContent = "This comparison is from your previous attempt. The Code stage begins a new set of steps; your recorded grades stay available in My grades.";
+    $("reflectSummary").textContent = "This comparison is from your previous attempt. Your finished code is in the Code stage, where any step can be reopened.";
     $("reflectionCodeDetails").hidden = true;
   } else $("reflectionCodeDetails").hidden = !$("reflectionCode").textContent.trim();
   workspaceSync();

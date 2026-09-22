@@ -23,6 +23,7 @@ const graph = {nodes:[{id:'n0',kind:'start',label:'Read records'},{id:'n1',kind:
   let resumeSteps=null, resumeAccepted=null, resumeIndex=null;
   // A session-level refusal from /grade_chunk (403/404), as opposed to a verdict.
   let gradeRefusal=null;
+  let reopenCopy=null;
   // What /replan answers when the plan is approved: the teacher's roadmap
   // stands (null), or one rebuilt around this student's own approach.
   let replanAnswer=null;
@@ -58,7 +59,7 @@ const graph = {nodes:[{id:'n0',kind:'start',label:'Read records'},{id:'n1',kind:
       else if(route==='/replan') data=replanAnswer||{rerouted:false};
       else if(route==='/mark_solved') data={ok:true};
       else if(route==='/graphs'){status=comparisonFailure?503:200;data={plan:graph,code:graph,comparison:{similarity:1,notes:['The structure matches.']}};}
-      else if(route==='/reopen_step') data={index:JSON.parse(init.body).index,attempts:0,completed:false,total_chunks:steps.length,dropped:[{index:0,code:'    draft = records.copy()'}]};
+      else if(route==='/reopen_step') data={index:JSON.parse(init.body).index,attempts:0,completed:false,total_chunks:steps.length,dropped:[{index:0,code:'    draft = records.copy()'}],...(reopenCopy?{session_id:reopenCopy,copied_from:'finished-run'}:{})};
       else if(route.endsWith('/restart')) data={ok:true};
       else throw new Error('Unexpected request: '+route);
       return new window.Response(JSON.stringify(data),{status,headers:{'Content-Type':'application/json'}});
@@ -278,7 +279,11 @@ const graph = {nodes:[{id:'n0',kind:'start',label:'Read records'},{id:'n1',kind:
     assert.equal(doc.querySelector('#finishReview').hidden,false);
     doc.querySelector('#finishReview').click();
     assert.deepEqual(visibleStage(),['stageReflect']);
-    assert(doc.querySelector('#reflectSummary').textContent.includes('2 of 2'));
+    // No per-problem score: "2 of 2 steps passed" is a grade, and grades are
+    // the course LMS's to report (the student nav in ui.js says why).
+    assert(!/\d+ of \d+|%/.test(doc.querySelector('#reflectSummary').textContent),
+      'a score reached the Reflect stage');
+    assert(!doc.querySelector('#reflectionGrades'),'no link to a grades page');
     assert(doc.querySelector('#reflectionCode').textContent.includes('return updated'));
     assert(doc.querySelector('#comparisonStatus button'));
     comparisonFailure=false;doc.querySelector('#comparisonStatus button').click();await tick();
@@ -431,7 +436,35 @@ const graph = {nodes:[{id:'n0',kind:'start',label:'Read records'},{id:'n1',kind:
     const ids=[...doc.querySelectorAll('[id]')].map(el=>el.id);
     assert.equal(new Set(ids).size,ids.length,'No duplicate IDs');
     assert(calls.some(c=>c.route==='/design_review')&&calls.some(c=>c.route==='/design_review/plan'));
-    console.log('PASS: Question+Plan → Code → Reflect; the question rides every stage; persistent tutor; inline references keep code/chat available; both planning methods; approval gates; draft/chat/file preservation; keyboard resizing; replies preserve editor focus; paced steps; grading errors; comparison retry; reopening an accepted step; restart; loading failures; restored work.');
+    // A FINISHED PROBLEM REOPENS WITH ITS CODE. It used to open on a fresh
+    // session, so the chat about this function came back beside an empty
+    // editor on step 1. Its own finished session comes back now, and the code
+    // stage shows what they wrote - read-only, with every step offered back.
+    resumeAccepted=[{code:'draft = records.copy()',how:'own'},{code:'return updated',how:'own'}];
+    resumeIndex=steps.length;
+    const finishedCalls=calls.length;
+    await window.start(problem);await tick();
+    assert(doc.querySelector('#ctxCode').textContent.includes('records.copy()')&&
+      doc.querySelector('#ctxCode').textContent.includes('return updated'),
+      'their finished code is in the coding block');
+    assert.equal(doc.querySelector('#editorWrap').hidden,true,'no step left to type into');
+    assert.equal(doc.querySelector('#submit').style.display,'none');
+    assert(doc.querySelector('#msg').textContent.includes('You finished this problem'));
+    assert.deepEqual([...doc.querySelectorAll('#editEarlier [data-edit]')].map(b=>b.textContent),
+      ['Step 1','Step 2'],'every step can be reopened from here');
+    // Opening a finished problem is not finishing it again.
+    assert(!calls.slice(finishedCalls).some(c=>c.route==='/mark_solved'),
+      'reopening re-marked the problem solved');
+    // Reworking a finished problem follows the COPY the server makes, and the
+    // page becomes a working page again.
+    reopenCopy='copy-of-finished';
+    doc.querySelector('#editEarlier [data-edit]').click();await tick();
+    assert.equal(window.inspect('sessionId'),'copy-of-finished','later grades go to the copy');
+    assert.equal(doc.querySelector('#editorWrap').hidden,false);
+    assert.notEqual(doc.querySelector('#submit').style.display,'none');
+    assert(value.includes('records.copy()'),'with the step they chose back in the editor');
+    resumeAccepted=resumeIndex=reopenCopy=null;
+    console.log('PASS: Question+Plan → Code → Reflect; the question rides every stage; persistent tutor; inline references keep code/chat available; both planning methods; approval gates; draft/chat/file preservation; keyboard resizing; replies preserve editor focus; paced steps; grading errors; comparison retry; reopening an accepted step; a finished problem reopening with its code; restart; loading failures; restored work.');
     console.log('DOM behavior only. Browser layout and real CodeMirror still require Chromium.');
   } finally {await window.happyDOM.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});

@@ -171,6 +171,9 @@ async function loadSteps(){
       stepPromptsPending = false;
       $("msg").replaceChildren();
       render();
+      // A finished session stays a finished view: render() alone would put a
+      // step-less editor back in front of the code they already completed.
+      if (chunks.length && idx >= chunks.length) showFinished();
       applyTutorGate();
     } else throw new Error("Steps unavailable");
   } catch (e) {
@@ -328,7 +331,7 @@ const DESIGN_MAX = 10 * 1024 * 1024;
 
 function designMsg(kind, text){
   $("designMsg").innerHTML = text
-    ? `<div class="banner pre ${kind}">${esc(text)}</div>` : "";
+    ? `<div class="banner pre ${kind}">${esc(undash(text))}</div>` : "";
 }
 
 function clearDesign(){
@@ -1191,7 +1194,8 @@ async function start(p){
   $("msg").innerHTML = "";
   ensureEditor();
   render();
-  if (idx > 0) show("ok", idx === 1
+  if (chunks.length && idx >= chunks.length) showFinished();
+  else if (idx > 0) show("ok", idx === 1
     ? "Picking up where you left off - your first step is already in."
     : `Picking up where you left off - your first ${idx} steps are already in.`);
   applyTutorGate();
@@ -1303,7 +1307,7 @@ async function restoreHistory(p,request){
     if (h.solved) solvedEarlier();
     resumeStage = h.solved ? "reflect" : "code";
     markUnlocked(h.solved
-      ? "You solved this before. The editor is unlocked - the steps start again from the top."
+      ? "You solved this before. Your code is in the Code stage, where any step can be reopened."
       : "Your design was accepted earlier. The editor is unlocked for this problem.");
     loadSteps();      // reopening an unlocked problem gets its steps back too
     // An approved plan stays approved, so it stays fixed across sessions too.
@@ -1533,7 +1537,7 @@ function openReview(i){
               : how === "covered" ? "covered by an earlier step" : "your answer";
   $("stepCount").innerHTML = `Step ${i + 1} of ${chunks.length}`
     + ` <span class="pill ${how === "revealed" ? "warn" : "ok"}">${label}</span>`;
-  $("prompt").textContent = c.prompt || "";
+  $("prompt").textContent = undash(c.prompt || "");
   // A covered step has no code of its own - the student wrote it as part of an
   // earlier answer - so say that rather than showing them an empty box.
   $("reviewCode").textContent = how === "covered"
@@ -1590,8 +1594,17 @@ async function reworkStep(i, btn){
                                    d.code); } catch (e) {}
     }
     const own = (accepted[i] || {}).code || "";
+    // A FINISHED problem is reopened as a new session (the finished one stays
+    // in the student's file), so the page has to follow it there - every later
+    // submission is graded against this id.
+    if (state.session_id) sessionId = state.session_id;
     accepted = accepted.slice(0, i);
     idx = Number(state.index);
+    // ...and it is a problem being worked again, not a finished one.
+    $("editorWrap").hidden = false;
+    $("submit").style.display = "";
+    $("ctx").style.maxHeight = "";
+    if (workspaceComplete){ workspaceComplete = false; workspaceSync(); }
     reviewIdx = null;
     reviewDraft = null;
     setReviewMode(false);
@@ -1610,6 +1623,27 @@ async function reworkStep(i, btn){
   } finally {
     if (btn) setBusy(btn, false);
   }
+}
+
+/* A FINISHED PROBLEM, REOPENED. Its own session comes back now
+   (sessions.find_resumable), so the code stage shows the function they wrote
+   instead of an empty step 1 beside a restored conversation about that code.
+   This is the view finish() leaves behind, WITHOUT finish()'s side effects:
+   nothing is marked solved again and no comparison is re-run for a problem
+   that was only opened. Every step is offered back in the row under the code,
+   and Start over is where it always was. */
+function showFinished(){
+  $("prompt").textContent = "";
+  $("editorWrap").hidden = true;
+  $("submit").style.display = "none";
+  $("ctx").style.maxHeight = "none";
+  renderContext();
+  renderEditEarlier();
+  // Said here rather than by the caller: loadSteps() re-renders and clears the
+  // message area when the step prompts arrive, so a notice posted once by
+  // start() was wiped before anyone read it.
+  show("ok", "You finished this problem. Your code is below - choose a step "
+    + "under it to change that step, or use Start over for a clean run.");
 }
 
 /* The row under the frozen code: one button per step the student answered
@@ -1661,7 +1695,7 @@ function render(){
     ? (idx < chunks.length ? `Step ${idx + 1} of ${chunks.length}`
                            : `All ${chunks.length} steps complete`)
     : "";
-  $("prompt").textContent = cur ? cur.prompt : "";
+  $("prompt").textContent = cur ? undash(cur.prompt) : "";
   $("attempts").textContent = "";
 
   const shown = renderContext();
@@ -1724,7 +1758,7 @@ function alignToStep(code, columns){
 function show(kind, text, extra){
   const ok = $("designOK");
   if (ok) ok.remove();
-  $("msg").innerHTML = `<div class="banner pre ${kind}">${esc(text)}</div>` + (extra || "");
+  $("msg").innerHTML = `<div class="banner pre ${kind}">${esc(undash(text))}</div>` + (extra || "");
 }
 
 /* A short stable digest of a submission, so retrying the same answer reuses its
@@ -1886,9 +1920,9 @@ $("submit").onclick = async () => {
          failingCasesHTML(res)
          + '<div class="diagnosis-actions">'
          + '<button type="button" id="diagFix">'
-         + 'I see it — let me fix my code</button>'
+         + 'I see it, let me fix my code</button>'
          + '<button type="button" id="diagExplain" class="ghost">'
-         + 'My approach is different — let me explain</button></div>');
+         + 'My approach is different, let me explain</button></div>');
     const fix = $("diagFix"), explain = $("diagExplain");
     if (fix) fix.onclick = () => {
       $("msg").innerHTML = "";
@@ -2040,7 +2074,9 @@ function bubble(who, text, when){
   b.className = "bub " + who;
   const body = document.createElement("div");
   body.className = "btext learning-text";
-  renderLearningText(body, text);
+  // The tutor's words lose their dashes (see undash in ui.js); a student's own
+  // message is shown exactly as they typed it.
+  renderLearningText(body, who === "me" ? text : undash(text));
   // Who and when. Faded until hover, but always in the accessibility tree, so
   // the log reads as a conversation rather than a wall of alternating text.
   const meta = document.createElement("span");

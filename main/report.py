@@ -24,6 +24,7 @@ report rather than as zero, absent, or a guess - see _MISSING. What ACADIA does
 not capture today is listed once, honestly, in the completeness section.
 """
 from datetime import datetime, timezone
+import re
 from html import escape
 
 from .grades import (assignment_problems, percent, render_graph, step_counts,
@@ -55,6 +56,18 @@ NOT_CAPTURED = [
 
 def _esc(text) -> str:
     return escape("" if text is None else str(text), quote=True)
+
+
+def _undash(text) -> str:
+    """No em or en dashes in what the report shows - the same rule, and the same
+    replacements, as frontend/ui.js `undash`. Model-written text (tutor turns,
+    grading reasons) is where they come from; the student's own words and code
+    are never rewritten."""
+    s = "" if text is None else str(text)
+    s = re.sub(r"\s*\u2014\s*|\s+\u2013\s+", ", ", s)
+    s = s.replace("\u2013", "-")
+    s = re.sub(r",\s*([,.;:!?)])", r"\1", s)
+    return re.sub(r"(?m)^,\s*", "", s)
 
 
 def _when(iso: str | None) -> str:
@@ -278,7 +291,7 @@ def _credit(t: dict) -> str:
 
 def _messages(rows: list[dict]) -> str:
     if not rows:
-        return f"<p>{_MISSING} &mdash; no conversation was captured.</p>"
+        return f"<p>{_MISSING}: no conversation was captured.</p>"
     out = []
     for m in rows:
         student = m.get("role") == "user"
@@ -287,13 +300,13 @@ def _messages(rows: list[dict]) -> str:
             f'<div class="msg {"student" if student else "tutor"}">'
             f'<div class="who">{who} &middot; {_esc(m.get("phase") or "")} '
             f'&middot; {_when(m.get("created_at"))}</div>'
-            f'<div class="body">{_esc(m.get("content"))}</div></div>')
+            f'<div class="body">{_esc(m.get("content") if student else _undash(m.get("content")))}</div></div>')
     return "".join(out)
 
 
 def _submissions(rows: list[dict]) -> str:
     if not rows:
-        return f"<p>{_MISSING} &mdash; no code was submitted.</p>"
+        return f"<p>{_MISSING}: no code was submitted.</p>"
     out = []
     for r in rows:
         step = int(r.get("chunk_index") or 0) + 1
@@ -310,13 +323,13 @@ def _submissions(rows: list[dict]) -> str:
             + f'<pre>{_esc(r.get("code")) or _MISSING}</pre>')
         if r.get("reason"):
             out.append(f'<p><strong>Feedback shown to the student:</strong> '
-                       f'{_esc(r["reason"])}</p>')
+                       f'{_esc(_undash(r["reason"]))}</p>')
     return "".join(out)
 
 
 def _designs(rows: list[dict]) -> str:
     if not rows:
-        return f"<p>{_MISSING} &mdash; no plan was uploaded as a picture.</p>"
+        return f"<p>{_MISSING}: no plan was uploaded as a picture.</p>"
     out = []
     for d in rows:
         ok = "approved" if d.get("approved") else "not approved"
@@ -336,13 +349,13 @@ def _graphs(graphs: dict) -> str:
         if not g:
             return f"<h4>{label}</h4><p>{_MISSING}</p>"
         return f"<h4>{label}</h4><pre>{_esc(render_graph(g))}</pre>"
-    return one("plan", "Plan graph &mdash; what they said they would do") \
-        + one("code", "Code graph &mdash; what they wrote")
+    return one("plan", "Plan graph: what they said they would do") \
+        + one("code", "Code graph: what they wrote")
 
 
 def _attempts_table(sessions: list[dict]) -> str:
     if not sessions:
-        return f"<p>{_MISSING} &mdash; this problem was never opened.</p>"
+        return f"<p>{_MISSING}: this problem was never opened.</p>"
     rows = []
     for i, s in enumerate(sessions, 1):
         end = ("Completed" if s.get("completed_at") else "Not finished")
@@ -397,7 +410,7 @@ def _completeness(record: dict) -> str:
         "<h2>Export completeness</h2>"
         "<p>Everything below came from one read of the record at the generation "
         "time in the header. “Not recorded” means the evidence was never "
-        "captured &mdash; it is not a claim that nothing happened.</p>"
+        "captured; it is not a claim that nothing happened.</p>"
         "<table><thead><tr><th>Included records</th><th class='n'>Count</th>"
         "</tr></thead><tbody>" + rows + "</tbody></table>"
         "<h3>Not captured by ACADIA today</h3>"
@@ -421,7 +434,7 @@ def render_html(record: dict, mode: str = "student") -> tuple[str, str]:
     if mode == "class":
         body = _class_body(record)
         title = f"Class learning record - {aname}"
-        heading = f"Class learning record &mdash; {_esc(aname)}"
+        heading = f"Class learning record: {_esc(aname)}"
         sub = (f"Assignment: {_esc(aname)} &middot; Students: "
                f"{len(record['students'])} &middot; Generated: {when}")
         fname = f"ACADIA_Class_{_slugify(aname)}_{stamp}.html"
@@ -429,7 +442,7 @@ def render_html(record: dict, mode: str = "student") -> tuple[str, str]:
         s = record["students"][0]
         body = _student_body(record, s, with_context=True)
         title = f"Student learning record - {s['name']}"
-        heading = f"Student learning record &mdash; {_esc(s['name'])}"
+        heading = f"Student learning record: {_esc(s['name'])}"
         sub = (f"{_esc(s['student'].get('username'))} &middot; Assignment: "
                f"{_esc(aname)} &middot; Generated: {when}")
         fname = f"ACADIA_Student_{_slugify(s['name'])}_{stamp}.html"
@@ -483,7 +496,7 @@ def _student_body(record: dict, s: dict, with_context: bool) -> str:
         out.append(f"<h2>Problem {i}: {_esc(p.get('title') or p['slug'])}</h2>")
         if with_context:
             out.append(_problem_context(p))
-        out.append("<details open><summary>Full record &mdash; "
+        out.append("<details open><summary>Full record: "
                    f"{len(r['sessions'])} attempt(s), {len(r['submissions'])} "
                    f"submission(s), {len(r['messages'])} message(s)</summary>"
                    f"<div class='inner'>{_problem_evidence(r)}</div></details>")
@@ -550,7 +563,7 @@ def _class_body(record: dict) -> str:
             if r is None:
                 continue
             out.append(
-                f"<details><summary>{_esc(s['name'])} &mdash; "
+                f"<details><summary>{_esc(s['name'])}: "
                 f"{len(r['sessions'])} attempt(s), {len(r['submissions'])} "
                 f"submission(s)</summary><div class='inner'>"
                 f"{_problem_evidence(r)}</div></details>")

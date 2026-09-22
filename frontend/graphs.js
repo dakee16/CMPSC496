@@ -88,7 +88,7 @@ function gMetrics(graph){
   const lines = Object.create(null);
   let widest = 0, tallest = 1;
   graph.nodes.forEach(n => {
-    const ls = gWrapLabel(n.label);
+    const ls = gWrapLabel(typeof undash === "function" ? undash(n.label) : n.label);
     lines[n.id] = ls;
     tallest = Math.max(tallest, ls.length);
     ls.forEach(l => { widest = Math.max(widest, l.length); });
@@ -251,7 +251,7 @@ function gLayout(graph,W,H){
     r.points.push([dx,b.y]);
     r.path=r.points.map(([x,y],i)=>(i?"L ":"M ")+x+" "+y).join(" ");
     if(edge.label){
-      const label=String(edge.label),short=label.length>22?label.slice(0,21)+"…":label,width=short.length*6.5+14;
+      const label=typeof undash==="function"?undash(edge.label):String(edge.label),short=label.length>22?label.slice(0,21)+"…":label,width=short.length*6.5+14;
       // ON THE LINE IT NAMES, never merely near it. Placing the label from the
       // port/lane geometry put it in the GAP between the two edges leaving one
       // node: on the nested-loop fixture all three "repeat" labels landed

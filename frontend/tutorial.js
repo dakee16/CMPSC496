@@ -123,18 +123,16 @@
         ["You move forward, not around","Stages unlock in order. You can always go back to an earlier one to re-read your question or your plan."],
         ["A tutor sits on the right the whole time","It asks you questions about your thinking. It has never been shown the solution, so it could not give it to you even if you talked it into trying."]])
       +'<h3>Where everything lives</h3>'
-      +'<p>Four places, and that is the whole site:</p>'
+      +'<p>Three places, and that is the whole site:</p>'
       +mock("The sidebar, on every page",
         '<div class="mock-nav"><div class="mock-brand"><i>◆</i><span>ACADIA<em>LEARNING STUDIO</em></span></div>'
         +'<div class="mock-navlabel">WORKSPACE</div>'
         +'<div class="mock-navitem on"><i>▦</i>Dashboard</div>'
         +'<div class="mock-navitem"><i>▤</i>My assignments</div>'
-        +'<div class="mock-navitem"><i>▧</i>My grades</div>'
         +'<div class="mock-navfoot"><i>●</i><span>Your name<em>Account ▾</em></span></div></div>')
       +notes([
         ["Dashboard","Where you land. Your progress, and the problem to pick back up."],
         ["My assignments","Everything published to you, and the way in to any problem."],
-        ["My grades","Step-by-step credit for what you have solved, as your instructor sees it."],
         ["Account ▾ → Settings","Your name, light or dark, and <strong>Retake tutorial</strong> - this page is always here."]])
   },
   {
@@ -234,7 +232,7 @@
         +'<span class="mock-sub">Attempt 3. Keep going - take as many as you need.</span></div>'
         +'<div class="mock-verdict ask">✦ Your code ran. With <code>{‘a’: 1, ‘b’: 1}</code> it returns <code>{1: ‘b’}</code>. Walk me through what you expected there.</div>')
       +notes([
-        ["Right","The step closes and the next one opens. That credit is recorded the moment it happens."],
+        ["Right","The step closes and the next one opens. It is saved the moment it happens."],
         ["Wrong","You are told which cases failed and you go again. There is no attempt limit, and the attempt counter is there to tell you so."],
         ["Not sure","Sometimes it cannot decide, and rather than guess it asks you about something your own code actually did. Answering is not an attempt and cannot count against you."]])
       +'<p class="aside-note"><strong>The answer is never shown to you.</strong> Not after three tries, not after thirty, not at the end. There is no limit to run out of and no reveal waiting behind it - being stuck is where the learning is, so the site will not end it for you. What it will do is keep asking better questions.</p>'
@@ -242,7 +240,7 @@
   {
     tab:"3 · Reflect",
     eyebrow:"5 · STAGE THREE",
-    title:"Reflect, and where the credit goes.",
+    title:"Reflect, and going back.",
     coach:'<p>The last stage is not admin. It puts the plan you wrote in stage 1 next to the code you ended up with, and the gap between them is usually where the interesting bug was.</p>'
       +'<p>Nothing needs saving, ever. Every accepted step, every message and every version of your plan is recorded as you go.</p>',
     body:
@@ -255,11 +253,10 @@
         ["Your plan vs. your code, side by side","Two flowcharts of the same solution: the one you described, and the one you wrote. Where they differ is what you learned on the way."],
         ["Your completed function","Expandable, in full, whenever you want it back."],
         ["Next problem →","Straight on to the next one in the assignment, without going back to the list."]])
-      +'<h3>Your grades</h3>'
-      +'<p><strong>My grades</strong> shows the credit recorded for you: per problem, per step, as it happened. Two things worth knowing about it:</p>'
+      +'<h3>Going back</h3>'
+      +'<p>Finished is not frozen. Two ways to work a problem again:</p>'
       +rules([
-        ["Credit is per step, not per problem","A problem you half-finished is not a zero. The steps you got are yours."],
-        ["Attempts do not reduce it","Taking eleven tries on a step and getting it is worth what taking one try is worth."],
+        ["Change an earlier step","Pick it under your code, even on a problem you have finished. The steps after it open again, and what you wrote for them is kept as a draft."],
         ["Start over does not erase anything","It gives you a clean run at a problem. Your earlier attempt stays in your instructor’s record alongside the new one."]])
       +'<p class="aside-note">Close the tab mid-problem and nothing is lost. Reopening it puts you back on the step you had reached, with your accepted steps, your plan and your whole conversation still there.</p>'
   },
@@ -277,7 +274,7 @@
         ["Your approach is allowed to be yours","A workable plan that differs from your instructor’s gets its own steps, checked against the same tests."],
         ["Nothing is ever revealed","No attempt limit, no answer at the end of one. Wrong means failing cases and another go."],
         ["Everything is saved as it happens","No submit button for the assignment, nothing to hand in, nothing lost by closing the tab."],
-        ["Credit is per step","Partial work counts, and the number of tries never costs you anything."]])
+        ["You can always go back","Reopen any step you have finished, even on a completed problem. Your code comes back with it."]])
       +'<h3>Check yourself</h3>'
       +'<p>Four questions. Nothing is recorded and nothing is blocked - picking a wrong one just tells you why it is wrong.</p>'
       +'<div id="quizBox">'+quiz.map(q=>

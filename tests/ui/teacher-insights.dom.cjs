@@ -87,13 +87,35 @@ const wait=()=>new Promise(r=>setTimeout(r,30));
     assert.equal(doc.querySelectorAll('[data-insight-problem]').length,6);
     setFail(false);doc.querySelector('#retryInsights').click();await wait();
     assert.equal(doc.querySelector('#insightNotice').textContent,'');
+    // WHAT A TEACHER CAN ACT ON: the step named by what it asked, and the code
+    // the student submitted for it, not just "Check step 2".
+    doc.querySelector('[data-insight-problem]').click();
+    const firstStudent=doc.querySelector('.insight-students details');
+    firstStudent.open=true;
+    assert.match(firstStudent.textContent,/Step 2: Return the value on top/);
+    assert.equal(firstStudent.querySelector('pre.student-code').textContent,
+      'if self.top is None:\n    return None\nreturn self.top','their code, verbatim');
+    assert.match(doc.querySelector('.insight-steps').textContent,/Step 2: Return the value on top/);
+    assert.match(doc.querySelector('.insight-steps').textContent,/Worded differently for some students/);
+    // An older snapshot with no details still shows the one-line feedback.
+    const legacy=fixture();legacy.problems.forEach(p=>p.follow_up.forEach(s=>delete s.details));
+    setData(legacy);doc.querySelector('#insightAssignment').value='';
+    doc.querySelector('#insightAssignment').dispatchEvent(new w.Event('change'));await wait();
+    doc.querySelector('[data-insight-problem]').click();
+    assert.match(doc.querySelector('.student-feedback').textContent,/Feedback to discuss/);
     const unsafe=fixture();unsafe.problems[0].title='<img src=x onerror=alert(1)>';
     unsafe.problems[0].follow_up[0].reason='<script>alert(1)</script>';
+    // Student code is the most attacker-shaped text on this page.
+    unsafe.problems[0].follow_up[0].details[0].code='<img src=x onerror=alert(2)><script>alert(3)</script>';
+    unsafe.problems[0].follow_up[0].details[0].prompt='<img src=x onerror=alert(4)>';
+    unsafe.problems[0].steps[0].prompt='<script>alert(5)</script>';
     setData(unsafe);doc.querySelector('#insightAssignment').value='';
     doc.querySelector('#insightAssignment').dispatchEvent(new w.Event('change'));await wait();
     assert.equal(doc.querySelector('#insightAssignment').value,'');
     doc.querySelector('[data-insight-problem]').click();
+    doc.querySelectorAll('.insight-students details').forEach(x=>x.open=true);
     assert.equal(doc.querySelectorAll('#classInsights img, #classInsights script').length,0);
+    assert.match(doc.querySelector('pre.student-code').textContent,/<img src=x/,'shown as text, not run');
     assert.match(doc.querySelector('#insightDetailTitle').textContent,/<img/);
     const empty=fixture();empty.problems=[];empty.assignments=[];
     empty.summary={students:0,active:0,needs_help:0,problems:0,attempted_problems:0,indeterminate:0};

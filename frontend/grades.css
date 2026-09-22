@@ -16,14 +16,18 @@ td.colName{color:var(--text);font-weight:500}td.colMail{font-size:12px;overflow-
 .results-head{display:flex;align-items:center;gap:12px;padding:26px 24px 0}
 .results-head h2{padding:0;flex:1}
 td.gradeOpen{cursor:pointer;border-radius:8px}
-td.gradeOpen:hover,td.gradeOpen:focus-visible{background:var(--surface-2,#f4efe8);
+/* Tokens with no fallback on purpose: --surface-2 was never defined, so its
+   light-cream fallback painted this cell in BOTH themes - a pale block with
+   dark-theme text on it. A missing token should look broken in development,
+   not quietly pick one theme. */
+td.gradeOpen:hover,td.gradeOpen:focus-visible{background:var(--surface-hover);
   outline:2px solid var(--accent,#c2603f);outline-offset:-2px}
 body.reportOpen{overflow:hidden}
 .reportOverlay{position:fixed;inset:0;z-index:80;background:var(--bg,#fbf7f1);
   display:flex;flex-direction:column}
 .reportOverlay[hidden]{display:none}
 .reportBar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
-  padding:10px 16px;border-bottom:1px solid var(--line,#e2d8cc);
+  padding:10px 16px;border-bottom:1px solid var(--border);
   background:var(--surface,#fff)}
 .reportGrow{flex:1}
 .reportBar button{min-height:34px;padding:7px 12px;font-size:13px}

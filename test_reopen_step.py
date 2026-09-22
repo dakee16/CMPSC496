@@ -95,15 +95,38 @@ def test_a_step_you_have_not_reached_is_not_reopenable(live):
     assert sessions.load_session(live.sid, live.db)["index"] == 2, "a refusal moved it"
 
 
-def test_a_finished_problem_is_start_overs_business(live):
-    """Un-completing a session would have to unpick the solved flag and the
-    reflection stage with it, so a completed one is refused by name."""
+def test_a_finished_problem_is_reopened_as_a_copy(live):
+    """A finished problem's step can be reworked too - but its completed session
+    is what the student's downloadable file is built from, so it is left
+    completed and a NEW active session carries the work forward."""
     sub = "sub-last"
     sessions.begin_submission(live.sid, sub, live.db)
     s = sessions.load_session(live.sid, live.db)
     sessions.commit_outcome(live.sid, sub, s["revision"], {"verdict": "correct"},
                             accept_code="return counts", db_path=live.db)
     assert sessions.session_snapshot(live.sid, live.db)["state"] == "completed"
+
+    state = sessions.reopen_step(live.sid, 1, db_path=live.db)
+
+    new_sid = state["session_id"]
+    assert new_sid != live.sid and state["copied_from"] == live.sid
+    copy = sessions.load_session(new_sid, live.db)          # active, gradeable
+    assert copy["index"] == 1
+    assert [a["code"] for a in copy["accepted"]] == ["counts = {}"]
+    assert [d["code"] for d in state["dropped"]] == ["for ch in txt:\n    pass",
+                                                     "return counts"]
+    # The finished run is untouched, and still in the student's file...
+    original = sessions.session_snapshot(live.sid, live.db)
+    assert original["state"] == "completed" and len(original["accepted"]) == 3
+    assert "frequency" in sessions.completed_answers("student-1", ["frequency"],
+                                                     db_path=live.db)
+    # ...but reopening the problem now lands on the copy, not the finished run.
+    assert sessions.find_resumable("student-1", "hash-1",
+                                   db_path=live.db)["session_id"] == new_sid
+
+
+def test_an_abandoned_session_cannot_be_reopened(live):
+    sessions.abandon_active("student-1", "frequency", db_path=live.db)
     with pytest.raises(sessions.SessionError) as e:
         sessions.reopen_step(live.sid, 0, db_path=live.db)
     assert e.value.reason_code == "session_inactive"

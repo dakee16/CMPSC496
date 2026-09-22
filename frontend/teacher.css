@@ -58,6 +58,10 @@ button.insight-bar-row[aria-expanded="true"]{background:var(--accent-tint);borde
 .student-feedback p{font-size:14px;line-height:1.75;margin:0;color:var(--text)}
 .student-feedback .feedback-label{font-size:12px;color:var(--text-muted);margin:0 0 6px}
 .student-feedback .insight-link{margin-top:10px}
+.step-feedback+.step-feedback{margin-top:14px;padding-top:14px;border-top:1px solid var(--border)}
+.step-feedback .feedback-label+p{margin-bottom:8px}
+.student-code{margin:0;max-height:260px;overflow:auto;font-size:13px;line-height:1.55;white-space:pre}
+.insight-steps .step-varies{font-size:12px;color:var(--text-subtle)}
 .insight-clear{padding:18px;background:var(--success-bg);border-radius:8px;font-size:14px;line-height:1.7;color:var(--success)}
 .insight-method{margin-top:24px;padding:0 4px;max-width:85ch;color:var(--text-muted);font-size:13px;line-height:1.8}
 .insight-method summary{font-size:13px;font-weight:500}

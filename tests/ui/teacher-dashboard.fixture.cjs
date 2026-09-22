@@ -15,9 +15,13 @@ const problems = [
 ].map(([slug,title,assignment_id,attempted,needs_help,recovered])=>({
   slug,title,assignment_id,opened:attempted,attempted,needs_help,recovered,
   difficulty_percent:Math.round((needs_help+recovered)/attempted*100),
-  steps:[{number:2,attempted,needs_help,recovered}, {number:1,attempted,needs_help:0,recovered:2}],
-  follow_up:names.slice(0,needs_help).map((name,i)=>({student_id:'student-'+i,name,steps:[2],
-    reason:i%2?'Your solution runs but gives the wrong answer on at least one case.':'Your step runs, but the finished solution gives the wrong answer.',last_activity:'2026-09-16T12:00:00Z'}))
+  steps:[{number:2,attempted,needs_help,recovered,prompt:'Return the value on top',prompt_varies:true},
+         {number:1,attempted,needs_help:0,recovered:2,prompt:'Handle an empty stack',prompt_varies:false}],
+  follow_up:names.slice(0,needs_help).map((name,i)=>{
+    const reason=i%2?'Your solution runs but gives the wrong answer on at least one case.':'Your step runs, but the finished solution gives the wrong answer.';
+    return {student_id:'student-'+i,name,steps:[2],reason,last_activity:'2026-09-16T12:00:00Z',
+      details:[{number:2,prompt:'Return the value on top',reason,
+                code:'if self.top is None:\n    return None\nreturn self.top',at:'2026-09-16T12:00:00Z'}]};})
 }));
 module.exports = (assignment_id=null) => {
   const selected=problems.filter(p=>!assignment_id||p.assignment_id===assignment_id);

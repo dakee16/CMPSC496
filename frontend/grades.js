@@ -143,7 +143,7 @@ async function loadGrades(force=false){
   const show = r => openReport(
     `${API}/teacher/assignments/${encodeURIComponent(id)}/report/${
       encodeURIComponent(r.student_id)}`,
-    `${r.name} — learning record`, `ACADIA_${r.name}.html`);
+    `Learning record for ${r.name}`, `ACADIA_${r.name}.html`);
   $("body").querySelectorAll('[data-act="dl"]').forEach(b => {
     const r = ROWS.find(x => x.student_id === b.closest("tr").dataset.id);
     b.onclick = () => show(r);

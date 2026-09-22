@@ -12,6 +12,20 @@
   const assignmentName = p => snapshot.assignments.find(a => String(a.id) === String(p.assignment_id))?.name || "Assignment";
   const gradeLink = p => `grades.html?assignment=${encodeURIComponent(p.assignment_id)}`;
 
+  // What a teacher needs to act on a "may need help": which step (by what it
+  // ASKED, since step numbers mean different questions for different
+  // students), what the student was told, and the code that earned that answer.
+  // Older snapshots have no `details`; they keep the one-line summary.
+  function feedback(s) {
+    const items = s.details && s.details.length ? s.details : null;
+    if (!items) return `<p class="feedback-label">Feedback to discuss</p><p>${esc(undash(s.reason))}</p>`;
+    return items.map(d => `<div class="step-feedback">
+        <p class="feedback-label">Step ${d.number}${d.prompt ? `: ${esc(undash(d.prompt))}` : ""}</p>
+        <p>${esc(undash(d.reason))}</p>
+        ${d.code ? `<p class="feedback-label">What they submitted</p><pre class="code student-code">${esc(d.code)}</pre>` : ""}
+      </div>`).join("");
+  }
+
   function detail(p) {
     if (!p) return "";
     const difficult = p.steps.filter(s => s.needs_help);
@@ -19,13 +33,13 @@
       <div class="insight-detail-head"><div><p class="eyebrow">A closer look</p><h3 id="insightDetailTitle" tabindex="-1">${esc(p.title || p.slug)}</h3><p class="hint">${esc(assignmentName(p))}</p></div><button class="ghost" id="closeInsightDetail" type="button">Close details</button></div>
       <div class="insight-detail-grid"><div><h4>Where are they getting stuck?</h4>
         <p class="insight-explanation">Students write their solution one small step at a time. These steps still have incorrect answers.</p>
-        ${difficult.length ? `<ol class="insight-steps">${difficult.map(s => `<li><span class="step-number" aria-hidden="true">${s.number}</span><div><strong>Step ${s.number}</strong><span>${count(s.needs_help)} may need help</span></div></li>`).join("")}</ol>` : `<p class="insight-clear">No uncorrected answers in the saved work.</p>`}
+        ${difficult.length ? `<ol class="insight-steps">${difficult.map(s => `<li><span class="step-number" aria-hidden="true">${s.number}</span><div><strong>Step ${s.number}${s.prompt ? `: ${esc(undash(s.prompt))}` : ""}</strong>${s.prompt_varies ? `<span class="step-varies">Worded differently for some students</span>` : ""}<span>${count(s.needs_help)} may need help</span></div></li>`).join("")}</ol>` : `<p class="insight-clear">No uncorrected answers in the saved work.</p>`}
         ${p.recovered ? `<p class="insight-recovery">${count(p.recovered)} corrected their earlier mistakes.</p>` : ""}
         <p class="insight-footnote">Students may use different approaches, so the same step number can cover different code.</p>
         <a class="insight-link" href="${gradeLink(p)}">View grades for this assignment <span aria-hidden="true">↗</span></a>
       </div><div><h4>Who may need help?</h4>
         <p class="insight-explanation">Choose a student to see feedback you can discuss with them.</p>
-        ${p.follow_up.length ? `<ul class="insight-students">${p.follow_up.map(s => `<li><details><summary><strong>${esc(s.name)}</strong><span>Check step${s.steps.length === 1 ? "" : "s"} ${s.steps.join(", ")}</span></summary><div class="student-feedback"><p class="feedback-label">Feedback to discuss</p><p>${esc(s.reason)}</p><a class="insight-link" href="${API}/teacher/assignments/${encodeURIComponent(p.assignment_id)}/transcript/${encodeURIComponent(s.student_id)}" download>Download this student’s work <span aria-hidden="true">↓</span></a></div></details></li>`).join("")}</ul>` : `<p class="insight-clear">No students to follow up with on this problem. They may still have unfinished work.</p>`}
+        ${p.follow_up.length ? `<ul class="insight-students">${p.follow_up.map(s => `<li><details><summary><strong>${esc(s.name)}</strong><span>Check step${s.steps.length === 1 ? "" : "s"} ${s.steps.join(", ")}</span></summary><div class="student-feedback">${feedback(s)}<a class="insight-link" href="${API}/teacher/assignments/${encodeURIComponent(p.assignment_id)}/transcript/${encodeURIComponent(s.student_id)}" download>Download this student’s work <span aria-hidden="true">↓</span></a></div></details></li>`).join("")}</ul>` : `<p class="insight-clear">No students to follow up with on this problem. They may still have unfinished work.</p>`}
       </div></div>
     </section>`;
   }

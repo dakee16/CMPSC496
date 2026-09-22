@@ -262,6 +262,20 @@ const initials = n => (n || "?").trim().split(/\s+/).slice(0, 2)
 const esc = s => String(s == null ? "" : s)
   .replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
+/* NO EM OR EN DASHES ON THE PAGE. The site's own copy is written without them;
+   MODEL-written text - tutor replies, diagnoses, design feedback, step prompts,
+   plan labels - is not, and telling a model not to use them is a request it
+   can decline. So it is enforced where the text is DRAWN, which also covers a
+   conversation replayed from the archive. A spaced dash is a pause and becomes
+   a comma, as does an unspaced em dash joining two clauses; an en dash inside
+   a range ("1-3") becomes a hyphen. Applied to model text only - never to
+   what a student typed, and never to code. */
+const undash = s => String(s == null ? "" : s)
+  .replace(/\s*\u2014\s*|\s+\u2013\s+/g, ", ")
+  .replace(/\u2013/g, "-")
+  .replace(/,\s*([,.;:!?)])/g, "$1")
+  .replace(/^,\s*/gm, "");
+
 /* Shared app header: brand and portal, navigation, appearance and account.
 
    ONE header for every authenticated page. `variant` ("student" | "instructor")
@@ -323,8 +337,10 @@ function mountHeader({active = "", wide = false, variant = "", crumbs = null} = 
       + navItem("Grades","grades.html","chart","Grades")
       + navItem("Playground","playground.html","lab","Playground")
     : navItem("Dashboard",roleHome,"grid","Dashboard","homeBtn")
-      + navItem("My assignments","student.html","book","Assignments")
-      + navItem("My grades","student-grades.html","chart","Grades");
+      + navItem("My assignments","student.html","book","Assignments");
+  // NO GRADES TAB FOR STUDENTS. This is not the course's LMS, and a number
+  // here that disagrees with the one there is a conflict the student then has
+  // to take to their instructor. Instructors keep Grades above.
   const switcher = s && s.role === "teacher"
     ? `<a class="viewas" href="${role === "instructor" ? "dashboard.html" : "teacher.html"}"
         title="View as ${role === "instructor" ? "student" : "instructor"}"
