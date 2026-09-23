@@ -513,6 +513,30 @@ def replan(req: ReplanRequest, request: Request):
               f"roadmap: {e!r}")
         return quiet
 
+    # A REBUILD THAT LANDS ON THE SAME ROADMAP IS NOT A REROUTE. Found by an
+    # audit: a student planned the ordinary count-based approach, was approved,
+    # and then wrote a nested-scan step instead. The CODE check correctly saw
+    # the divergence - but a rebuild is built from their PLAN, and their plan
+    # was the count-based one, so what came back was the roadmap they already
+    # had. Swapping the session for that costs them their step numbering and
+    # buys nothing, and session churn is exactly where "That session belongs to
+    # someone else" came from.
+    #
+    # Compared on the step PROMPTS: two decompositions of the same solution
+    # shape ask for the same things in the same order, and the prompts are what
+    # the student actually sees change.
+    try:
+        before = [c.get("step_id", "") + "|" + (c.get("prompt") or "")
+                  for c in (current.get("chunks") or [])]
+        after = [getattr(c, "step_id", "") + "|" + (getattr(c, "prompt", "") or "")
+                 for c in (result.get("chunks") or [])]
+        if before and before == after:
+            print(f"  🧭 Rebuilt roadmap for {req.slug} is the one they already "
+                  f"have; left the session alone.")
+            return quiet
+    except Exception:
+        pass            # cannot compare -> fall through and seat it as before
+
     # The rebuild cleared every gate, so it replaces the roadmap. Retire first:
     # two live sessions for one problem would leave find_resumable picking
     # between them on the next open.

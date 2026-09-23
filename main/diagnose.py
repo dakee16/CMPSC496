@@ -71,6 +71,44 @@ def _prescribes_a_fix(message: str) -> bool:
     return any(p in low for p in _PRESCRIBES)
 
 
+# A SECOND THING THE MODEL DOES THAT _PRESCRIBES CANNOT SEE: telling the student
+# what the task REQUIRES. Caught live on `invert`, verbatim:
+#
+#   "...This suggests you are identifying values that appear exactly once.
+#    However, THE TASK IS TO count how many times each value appears, not just
+#    identify unique ones."
+#
+# The student's approach was CORRECT - the same code, planned up front, solves
+# the problem and was accepted in another run. So this sentence told them a
+# working approach was the wrong one, and named the teacher's method as the
+# required one. That is the rule-D violation in its most damaging form: not a
+# stray "our version" in a template, but the tutor asserting an algorithm.
+#
+# It names no structure, so _handed_over cannot see it, and it prescribes no
+# edit, so _prescribes_a_fix cannot either. It asserts what the EXERCISE is.
+#
+# Over-inclusive on purpose, exactly as _PRESCRIBES is: a false positive costs a
+# fallback to our own deterministic question, a false negative tells a student
+# their working idea is not allowed. The fallback is never run through this - it
+# is what this returns TO.
+_IMPOSES_A_METHOD = re.compile(
+    r"\bthe (?:task|step|goal|problem|exercise|question) (?:is|was) to\b"
+    r"|\b(?:the|this) (?:task|step|exercise) (?:requires|require|asks for|"
+    r"wants|needs) (?:you )?(?:to\b|a\b|an\b)"
+    r"|\byou (?:are|were) (?:supposed|meant|expected|required) to\b"
+    r"|\b(?:correct|right|intended|expected|required|proper) "
+    r"(?:approach|method|way|implementation|solution|algorithm)\b"
+    r"|\bnot just (?:identify|identifying|find|finding|check|checking|get|"
+    r"getting|list|listing)\b"
+    r"|\bwhat (?:the )?(?:task|step|exercise) (?:wants|needs|asks)\b",
+    re.I)
+
+
+def _imposes_a_method(message: str) -> bool:
+    """Does this sentence assert which approach the exercise demands?"""
+    return bool(_IMPOSES_A_METHOD.search(message or ""))
+
+
 def _degenerate(encoded: str) -> bool:
     """Is this captured value empty, absent, or zero-ish?
 
@@ -343,7 +381,7 @@ def question(problem: dict, chunk: dict, student_code: str,
     allowed = _structures(f"{problem.get('description') or ''} "
                           f"{chunk.get('prompt') or ''} {student_code}")
     if (_handed_over(msg, allowed) or _strip_code(msg) != msg
-            or _prescribes_a_fix(msg)):
+            or _prescribes_a_fix(msg) or _imposes_a_method(msg)):
         return _fallback(example)
     return msg
 
@@ -451,6 +489,34 @@ if __name__ == "__main__":
             "you about the text it came from?",
             "After your code runs on 'aab', what is in `unique`?"):
         assert not _prescribes_a_fix(_good), _good
+
+    # ── AND IT MAY NOT SAY WHICH APPROACH THE EXERCISE DEMANDS ───────────
+    # Caught live on `invert`, in a run where the SAME code - planned up front -
+    # was accepted and solved the problem. So this told a student their working
+    # idea was the wrong one and named the teacher's method as the required one.
+    for _bad in (
+            "With the input {'single': 42}, your code produces unique_values = "
+            "[42]. This suggests you are identifying values that appear exactly "
+            "once. However, the task is to count how many times each value "
+            "appears, not just identify unique ones.",
+            "The task is to count each value.",
+            "This step requires a dictionary of counts.",
+            "You are supposed to keep a running total.",
+            "The correct approach here is to use a counter.",
+            "That is not what the step wants."):
+        assert _imposes_a_method(_bad), _bad
+    # The model's OTHER question from the same run is fine and must survive: it
+    # reports their value and asks what it gives them, naming no method.
+    for _good in (
+            "With the input {'single': 42}, your code produces unique_values as "
+            "[42]. This shows that your code identifies 42 as appearing exactly "
+            "once. How does this help you determine which values are "
+            "unambiguous for the next step?",
+            "Your step leaves `seen` holding {'a', 'b'}. What does that tell "
+            "you about the text it came from?"):
+        assert not _imposes_a_method(_good), _good
+    # ...and so must our own fallback, which is what this guard returns TO.
+    assert not _imposes_a_method(_fallback(ex)), _fallback(ex)
 
     # The fallback is usable on its own - it is what a model outage falls to.
     fb = _fallback(ex)
