@@ -239,19 +239,18 @@ const server = http.createServer((req,res) => {
     }
     await page.setViewportSize({width:1600,height:1000});
     role='teacher';
-    for(const name of ['teacher','teacher-assignments','grades','playground']){
+    for(const name of ['teacher','teacher-review','teacher-assignments','grades','playground']){
       await page.goto(base+'/'+name+'.html');
       await page.waitForFunction(()=>!document.querySelector('.skelRow'));
       assert.match(await page.title(),/ACADIA/);
       assert(!(await page.locator('body').innerText()).includes('MicroTutor'));
       await noOverflow(name);
       if(name==='teacher'){
-        await page.locator('.insight-bar-row').first().waitFor();
-        const alignment=await page.locator('.insight-bar-count').first().evaluate(el=>{
-          const label=el.querySelector('strong').getBoundingClientRect(),value=el.querySelector('small').getBoundingClientRect();
-          return {label:label.left,value:value.left};
-        });
-        assert(Math.abs(alignment.label-alignment.value)<1,'Metric label and value share a left edge');
+        await page.locator('.problem-tile').first().waitFor();
+        // A tile's name, assignment, count and footer share one left edge.
+        const edges=await page.locator('.problem-tile').first().evaluate(el=>
+          ['.tile-name','.tile-assignment','.tile-count','.tile-foot'].map(s=>el.querySelector(s).getBoundingClientRect().left));
+        assert(edges.every(x=>Math.abs(x-edges[0])<1),'Tile text shares a left edge: '+edges);
       }
       await screenshot('acadia-'+name+'-light');
       await setTheme('dark');

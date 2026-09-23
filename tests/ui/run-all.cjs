@@ -19,6 +19,7 @@ const SUITES = [
   'acadia.dom.cjs',
   'student-insights.dom.cjs',
   'teacher-insights.dom.cjs',
+  'teacher-review.dom.cjs',
   'workspace.dom.cjs',
   'navigation-cache.cjs',
   'tutorial.dom.cjs',

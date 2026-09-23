@@ -44,79 +44,43 @@ const wait=()=>new Promise(r=>setTimeout(r,30));
     assert.equal(paths.includes('/assignment_template'),false);
     assert.equal(doc.querySelector('[data-nav="Home"]').getAttribute('aria-current'),'page');
     assert.equal(doc.querySelector('[data-nav="Assignments"]').getAttribute('href'),'teacher-assignments.html');
-    assert.equal(doc.querySelectorAll('[data-insight-problem]').length,6);
-    assert.equal(doc.querySelector('#insightFocus').hidden,true,'Detailed records start out of view');
-    assert.match(doc.querySelector('#chartExplanation').textContent,/incorrect answer and hasn’t corrected it yet/);
-    assert.match(doc.querySelector('.insight-bar-count').textContent,/8 students may need help/);
-    assert.match(doc.querySelector('.insight-bar-count').textContent,/16 students tried this problem/);
-    assert.equal(doc.querySelectorAll('.insight-track i').length,6,'Each bar shows only one measure');
+    // ONE SQUARE TILE PER PROBLEM, each a LINK to that problem's own page.
+    const tried=fixture().problems.filter(p=>p.attempted);
+    const tiles=[...doc.querySelectorAll('.problem-tile')];
+    assert.equal(tiles.length,tried.length,'every problem students tried has a tile');
+    assert.equal(tiles[0].tagName,'A','a tile is a link, so it opens a page');
+    const href=new URL(tiles[0].href);
+    assert.equal(href.pathname,'/teacher-review.html');
+    assert.equal(href.searchParams.get('slug'),tried[0].slug);
+    assert.equal(href.searchParams.get('assignment'),tried[0].assignment_id);
+    assert.match(tiles[0].textContent,new RegExp(tried[0].title));
+    assert.match(tiles[0].querySelector('.tile-count').textContent,/8\s*students need help/);
+    // Highlighted exactly while someone has an open issue - and the count says
+    // so in text, so colour is never the only signal.
+    tried.forEach((p,i)=>assert.equal(tiles[i].classList.contains('needs-attention'),p.needs_help>0,p.slug));
+    assert(tiles.some(t=>!t.classList.contains('needs-attention')),'a problem with nothing open stays plain');
+    // What was removed stays removed: the suggestion box, the bars, the
+    // panel that unfolded under the list.
+    for(const gone of ['.insight-takeaway','#reviewPriority','.insight-track','#insightFocus','#showAllInsights'])
+      assert.equal(doc.querySelector(gone),null,gone+' is gone');
+    assert.match(doc.querySelector('#chartExplanation').textContent,/haven’t corrected yet/);
     assert.equal(requests[0].options.cache,'no-store');
-    doc.querySelector('[data-insight-problem]').click();
-    assert.equal(doc.querySelector('#insightDetailTitle').textContent,'Invert a dictionary');
-    assert.equal(doc.querySelectorAll('.insight-students li').length,8);
-    assert.equal(doc.querySelector('.insight-students details').open,false);
-    doc.querySelector('.insight-students summary').click();
-    assert.equal(doc.querySelector('.insight-students details').open,true);
-    assert.equal(new URL(doc.querySelector('.insight-detail-grid a').href).searchParams.get('assignment'),'lab1');
-    const second=doc.querySelectorAll('[data-insight-problem]')[1];
-    second.focus();second.click();
-    assert.equal(doc.activeElement.id,'insightDetailTitle','Opening details moves focus to the selected problem');
-    assert.equal(second.getAttribute('aria-expanded'),'true');
-    assert.equal(doc.querySelector('#insightDetailTitle').textContent,'Evaluate postfix expressions');
-    doc.querySelector('#closeInsightDetail').click();
-    assert.equal(doc.querySelector('#insightFocus').hidden,true);
-    assert.equal(doc.activeElement,second,'Closing details returns focus to the problem');
-    assert.equal(second.getAttribute('aria-expanded'),'false');
-    doc.querySelector('#showAllInsights').click();
-    assert.equal(doc.querySelectorAll('[data-insight-problem]').length,8);
-    doc.querySelectorAll('[data-insight-problem]')[7].click();
-    doc.querySelector('#showAllInsights').click();
-    doc.querySelector('#closeInsightDetail').click();
-    assert.equal(doc.activeElement.id,'showAllInsights','A hidden chart row returns focus to Show all');
-    doc.querySelector('#reviewPriority').click();
-    assert.equal(doc.activeElement.id,'insightDetailTitle');
+
     doc.querySelector('#insightAssignment').value='hw3';
     doc.querySelector('#insightAssignment').dispatchEvent(new w.Event('change'));await wait();
-    assert.equal(doc.querySelectorAll('[data-insight-problem]').length,6);
+    assert.equal(doc.querySelectorAll('.problem-tile').length,fixture('hw3').problems.filter(p=>p.attempted).length);
     assert.equal(requests.at(-1).url.searchParams.get('assignment_id'),'hw3');
-    assert.equal(doc.querySelector('#insightFocus').hidden,true,'Changing assignment closes old problem details');
-    doc.querySelector('#reviewPriority').click();
-    assert.equal(doc.querySelector('#insightDetailTitle').textContent,'Evaluate postfix expressions');
     setFail(true);doc.querySelector('#refreshInsights').click();await wait();
     assert.match(doc.querySelector('#insightNotice').textContent,/last successful update/);
-    assert.equal(doc.querySelectorAll('[data-insight-problem]').length,6);
+    assert(doc.querySelectorAll('.problem-tile').length>0,'the last good tiles stay up');
     setFail(false);doc.querySelector('#retryInsights').click();await wait();
     assert.equal(doc.querySelector('#insightNotice').textContent,'');
-    // WHAT A TEACHER CAN ACT ON: the step named by what it asked, and the code
-    // the student submitted for it, not just "Check step 2".
-    doc.querySelector('[data-insight-problem]').click();
-    const firstStudent=doc.querySelector('.insight-students details');
-    firstStudent.open=true;
-    assert.match(firstStudent.textContent,/Step 2: Return the value on top/);
-    assert.equal(firstStudent.querySelector('pre.student-code').textContent,
-      'if self.top is None:\n    return None\nreturn self.top','their code, verbatim');
-    assert.match(doc.querySelector('.insight-steps').textContent,/Step 2: Return the value on top/);
-    assert.match(doc.querySelector('.insight-steps').textContent,/Worded differently for some students/);
-    // An older snapshot with no details still shows the one-line feedback.
-    const legacy=fixture();legacy.problems.forEach(p=>p.follow_up.forEach(s=>delete s.details));
-    setData(legacy);doc.querySelector('#insightAssignment').value='';
-    doc.querySelector('#insightAssignment').dispatchEvent(new w.Event('change'));await wait();
-    doc.querySelector('[data-insight-problem]').click();
-    assert.match(doc.querySelector('.student-feedback').textContent,/Feedback to discuss/);
+
     const unsafe=fixture();unsafe.problems[0].title='<img src=x onerror=alert(1)>';
-    unsafe.problems[0].follow_up[0].reason='<script>alert(1)</script>';
-    // Student code is the most attacker-shaped text on this page.
-    unsafe.problems[0].follow_up[0].details[0].code='<img src=x onerror=alert(2)><script>alert(3)</script>';
-    unsafe.problems[0].follow_up[0].details[0].prompt='<img src=x onerror=alert(4)>';
-    unsafe.problems[0].steps[0].prompt='<script>alert(5)</script>';
     setData(unsafe);doc.querySelector('#insightAssignment').value='';
     doc.querySelector('#insightAssignment').dispatchEvent(new w.Event('change'));await wait();
-    assert.equal(doc.querySelector('#insightAssignment').value,'');
-    doc.querySelector('[data-insight-problem]').click();
-    doc.querySelectorAll('.insight-students details').forEach(x=>x.open=true);
     assert.equal(doc.querySelectorAll('#classInsights img, #classInsights script').length,0);
-    assert.match(doc.querySelector('pre.student-code').textContent,/<img src=x/,'shown as text, not run');
-    assert.match(doc.querySelector('#insightDetailTitle').textContent,/<img/);
+    assert.match(doc.querySelector('.problem-tile').textContent,/<img/,'shown as text, not run');
     const empty=fixture();empty.problems=[];empty.assignments=[];
     empty.summary={students:0,active:0,needs_help:0,problems:0,attempted_problems:0,indeterminate:0};
     const blank=await make(empty);
@@ -127,12 +91,12 @@ const wait=()=>new Promise(r=>setTimeout(r,30));
     assert.match(bad.doc.querySelector('#insightNotice').textContent,/temporarily unavailable/);
     bad.setFail(false);bad.doc.querySelector('#retryInsights').click();await wait();
     assert.equal(bad.doc.querySelectorAll('.insight-board').length,1);
+    // Every issue seen: every tile back to normal.
     const clear=fixture();clear.summary.needs_help=0;
-    clear.problems.forEach(p=>{p.needs_help=0;p.follow_up=[];p.steps.forEach(s=>s.needs_help=0);});
+    clear.problems.forEach(p=>{p.needs_help=0;p.seen=p.follow_up.length;p.follow_up.forEach(s=>s.seen=true);});
     const caughtUp=await make(clear);
-    assert.match(caughtUp.doc.querySelector('#teachingSuggestion').textContent,/No uncorrected answers/);
-    assert.equal(caughtUp.doc.querySelector('#reviewPriority'),null);
-    assert([...caughtUp.doc.querySelectorAll('.insight-track i')].every(bar=>bar.style.width==='0%'));
+    assert.equal(caughtUp.doc.querySelectorAll('.needs-attention').length,0);
+    assert.match(caughtUp.doc.querySelector('.problem-tile .tile-count').textContent,/0\s*students need help/);
     const grades=await make(fixture(),false,'grades.html');
     assert.equal(grades.doc.querySelector('#pick').value,'hw3','Gradebook opens the assignment from the dashboard link');
     const assignments=await make(fixture(),false,'teacher-assignments.html');
@@ -145,6 +109,6 @@ const wait=()=>new Promise(r=>setTimeout(r,30));
     assert.equal(assignments.doc.querySelector('#uploadDrawer').open,true);
     assignments.doc.querySelector('#closeUpload').click();
     assert.equal(assignments.doc.querySelector('#uploadDrawer').open,false);
-    console.log('PASS: teacher chart, drill-down, filters, errors, separate assignment navigation, library and upload drawer.');
+    console.log('PASS: teacher problem tiles linking to their review pages, attention highlighting and the seen count, filters, errors, separate assignment navigation, library and upload drawer.');
   }finally{for(const w of windows)await w.happyDOM.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

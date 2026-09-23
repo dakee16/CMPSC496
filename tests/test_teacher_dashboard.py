@@ -148,3 +148,135 @@ def test_real_route_requires_teacher_and_does_not_cache(db, monkeypatch):
     response = client.get("/teacher/dashboard")
     assert response.status_code == 503 and "PRIVATE DATABASE DETAILS" not in response.text
     assert "summary" not in response.json()
+
+
+# ── the review page and "Issue seen" ─────────────────────────────────────
+# Every test here writes to the server's own SQLite store (the seen marks, and
+# the grading session the review is rebuilt from), so it is pointed at a temp
+# file - never at the real data/grading_sessions.sqlite3.
+@pytest.fixture(autouse=True)
+def _temp_store(tmp_path, monkeypatch):
+    monkeypatch.setenv("MICROTUTOR_SESSION_DB", str(tmp_path / "store.sqlite3"))
+
+
+def test_issue_seen_clears_the_counter_until_the_next_mistake(db):
+    from main.teacher_dashboard import mark_seen
+    p = dashboard_snapshot(db)["problems"][0]
+    assert p["needs_help"] == 1 and p["seen"] == 0
+
+    mark_seen("alice", "invert")
+    p = dashboard_snapshot(db)["problems"][0]
+    # Out of the counter - so the tile stops asking for attention...
+    assert p["needs_help"] == 0 and p["seen"] == 1
+    assert dashboard_snapshot(db)["summary"]["needs_help"] == 0
+    # ...but still listed, marked, so the instructor can find them again.
+    alice = p["follow_up"][0]
+    assert alice["name"] == "Alice Student" and alice["seen"] is True
+    # Seen is not the same as recovered: Alice has not corrected anything.
+    assert p["recovered"] == 1                     # still only Bob
+
+    # A NEW mistake after it was marked brings her back.
+    db.data["mt_submissions"].append({"id": 99, "session_id": "alice",
+        "student_id": "alice", "slug": "invert", "chunk_index": 1,
+        "verdict": "incorrect", "reason": "Still wrong.", "code": "x",
+        "created_at": "2999-01-01T00:00:00Z"})
+    p = dashboard_snapshot(db)["problems"][0]
+    assert p["needs_help"] == 1 and p["follow_up"][0]["seen"] is False
+
+    mark_seen("alice", "invert", seen=False)       # and it can be undone
+    assert dashboard_snapshot(db)["problems"][0]["follow_up"][0]["seen"] is False
+
+
+def test_the_review_rebuilds_the_function_and_marks_the_failing_step(tmp_path):
+    """What an instructor needs in one place: the step, what it asked, what
+    the student was told, the cases it failed on, the function up to that
+    step, and every attempt. Built from a REAL grading session."""
+    import types
+    from main import sessions
+    from main.teacher_dashboard import review_detail
+
+    chunks = [types.SimpleNamespace(step_id="Part 1", prompt="Walk every pair",
+                                    expected_type="code",
+                                    reference="inverted = {}\nfor k, v in d.items():"),
+              types.SimpleNamespace(step_id="Part 2", prompt="Swap each pair",
+                                    expected_type="code",
+                                    reference="    inverted[v] = k"),
+              types.SimpleNamespace(step_id="Part 3", prompt="Hand it back",
+                                    expected_type="code", reference="return inverted")]
+    sid = sessions.create_session(
+        {"slug": "invert", "title": "Invert", "description": "Invert a dict.",
+         "solution": "SECRET_SOLUTION"},
+        {"header": "def invert(d):", "chunks": chunks}, "h", student_id="alice")["session_id"]
+    sessions.begin_submission(sid, "s1")
+    s = sessions.load_session(sid)
+    sessions.commit_outcome(sid, "s1", s["revision"], {"verdict": "correct"},
+                            accept_code="inverted = {}\nfor k, v in d.items():")
+    sessions.begin_submission(sid, "s2")
+    s = sessions.load_session(sid)
+    sessions.commit_outcome(sid, "s2", s["revision"], {
+        "verdict": "incorrect", "reason": "Your step runs but the answer is wrong.",
+        "failing_cases": ["invert({1: 2})\n\nexpected: {2: 1}\nyou gave: {1: 2}"],
+        "failed_total": 3})
+
+    data = DB({
+        "problems": [{"slug": "invert", "title": "Invert", "assignment_id": "a",
+                      "solution": "SECRET_SOLUTION"}],
+        "students": [{"id": "alice", "username": "a@psu.edu", "first_name": "Alice",
+                      "last_name": "Student", "role": "student"}],
+        "assignments": [{"id": "a", "name": "Dictionaries"}],
+        "mt_sessions": [{"session_id": sid, "student_id": "alice", "slug": "invert",
+                         "started_at": "2026-09-15T12:00:00Z"}],
+        "mt_submissions": [
+            {"id": 1, "session_id": sid, "student_id": "alice", "slug": "invert",
+             "chunk_index": 0, "verdict": "correct", "reason": "ok",
+             "code": "inverted = {}\nfor k, v in d.items():",
+             "created_at": "2026-09-15T12:01:00Z"},
+            {"id": 2, "session_id": sid, "student_id": "alice", "slug": "invert",
+             "chunk_index": 1, "verdict": "incorrect", "reason": "First try wrong.",
+             "code": "inverted[k] = v", "created_at": "2026-09-15T12:02:00Z"},
+            {"id": 3, "session_id": sid, "student_id": "alice", "slug": "invert",
+             "chunk_index": 1, "verdict": "incorrect",
+             "reason": "Your step runs but the answer is wrong.",
+             # Typed FLAT, as students do; graded seated inside the loop.
+             "code": "inverted[k] = k", "created_at": "2026-09-15T12:03:00Z"}]})
+
+    r = review_detail(data, "invert", "alice")
+    assert (r["name"], r["title"], r["assignment"]) == ("Alice Student", "Invert", "Dictionaries")
+    assert r["header"] == "def invert(d):" and r["total_steps"] == 3
+    assert r["open_steps"] == [2]
+    # The function as it stood when step 2 failed: step 1, accepted.
+    assert r["prefix"] == [{"number": 1, "prompt": "Walk every pair",
+                            "code": "inverted = {}\nfor k, v in d.items():"}]
+    step = r["step"]
+    assert (step["number"], step["prompt"]) == (2, "Swap each pair")
+    # The LAST failing attempt, re-seated where the grader put it.
+    assert step["code"] == "    inverted[k] = k"
+    assert step["failing_cases"] == ["invert({1: 2})\n\nexpected: {2: 1}\nyou gave: {1: 2}"]
+    assert step["failed_total"] == 3
+    assert [a["reason"] for a in step["attempts"]] == [
+        "First try wrong.", "Your step runs but the answer is wrong."]
+    assert r["seen"] is False
+    # Never the teacher's reference, and never a chunk's reference code.
+    assert "SECRET_SOLUTION" not in str(r) and "return inverted" not in str(r)
+
+
+def test_review_and_seen_routes_are_teacher_only(db, monkeypatch):
+    monkeypatch.setattr(api_server, "_SB", db)
+    monkeypatch.setattr(auth, "SESSION_SECRET", "teacher-dashboard-test-only")
+    monkeypatch.setattr(auth, "ALLOWED_EMAILS", set())
+    client = TestClient(api_server.app)
+    body = {"slug": "invert", "student_id": "alice", "seen": True}
+    assert client.get("/teacher/review?slug=invert&student_id=alice").status_code == 401
+    assert client.post("/teacher/issues/seen", json=body).status_code == 401
+    client.cookies.set(auth.SESSION_COOKIE, auth.issue_session(
+        {"id": "s", "username": "s@psu.edu", "role": "student"}))
+    assert client.get("/teacher/review?slug=invert&student_id=alice").status_code == 403
+    assert client.post("/teacher/issues/seen", json=body).status_code == 403
+    client.cookies.set(auth.SESSION_COOKIE, auth.issue_session(
+        {"id": "t", "username": "t@psu.edu", "role": "teacher"}))
+    r = client.get("/teacher/review?slug=invert&student_id=alice")
+    assert r.status_code == 200 and r.headers["cache-control"] == "private, no-store"
+    assert r.json()["step"]["number"] == 2          # alice's latest open step
+    assert client.post("/teacher/issues/seen", json=body).json()["seen"] is True
+    assert client.get("/teacher/dashboard").json()["problems"][0]["needs_help"] == 0
+    assert client.get("/teacher/review?slug=nope&student_id=alice").status_code == 404

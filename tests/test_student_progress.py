@@ -38,6 +38,10 @@ class Table:
         self.bounds = first, last
         return self
 
+    def limit(self, count):
+        self.bounds = 0, count - 1
+        return self
+
     def execute(self):
         self.db.queries.append((self.name, self.fields, self.filters))
         rows = [r for r in self.db.data.get(self.name, []) if all(

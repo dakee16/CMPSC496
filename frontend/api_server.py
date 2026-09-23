@@ -1998,6 +1998,45 @@ def teacher_dashboard(request: Request, assignment_id: str | None = None):
     return JSONResponse(data, headers={"Cache-Control": "private, no-store"})
 
 
+class SeenRequest(BaseModel, extra="forbid"):
+    slug: str
+    student_id: str
+    seen: bool = True
+
+
+@app.get("/teacher/review")
+def teacher_review(request: Request, slug: str, student_id: str, step: int | None = None):
+    """One student's open issue on one problem, for the instructor's review page:
+    the step, what it asked, what the student was told, the cases it failed on,
+    their function up to that step and every attempt at it. Read-only."""
+    from main.teacher_dashboard import review_detail
+
+    require_teacher(request)
+    try:
+        data = review_detail(get_supabase(), slug, student_id, step)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("Teacher review could not be loaded")
+        raise HTTPException(status_code=503, detail={
+            "message": "This student's work could not be loaded. Try again."}) from None
+    if data is None:
+        raise HTTPException(status_code=404, detail={
+            "message": "No saved work for this student on this problem."})
+    return JSONResponse(data, headers={"Cache-Control": "private, no-store"})
+
+
+@app.post("/teacher/issues/seen")
+def teacher_issue_seen(req: SeenRequest, request: Request):
+    """Mark a student's open issue on a problem as seen, or undo that. It drops
+    out of the problem's counter until the student gets something wrong again
+    (main/teacher_dashboard.py - the mark is a timestamp, not a flag)."""
+    from main.teacher_dashboard import mark_seen
+
+    require_teacher(request)
+    return {"slug": req.slug, "student_id": req.student_id,
+            "seen": mark_seen(req.student_id, req.slug, req.seen)}
+
+
 @app.get("/teacher/assignments/{assignment_id}/grades")
 def teacher_grades(assignment_id: str, request: Request):
     """The grade sheet for one assignment: every student, one row each.
