@@ -204,10 +204,15 @@ class EvaluateRequest(BaseModel):
     context: str = ""
 
 class ReplanRequest(BaseModel, extra="forbid"):
-    """Only a slug. Which problem, whose plan, which session and whether the
-    design was approved are all decided server-side - the browser is not
-    authoritative about any of them."""
+    """A slug, and optionally the answer that could not be confirmed.
+
+    Which problem, whose plan, which session, which step they are on and
+    whether the design was approved are all decided server-side - the browser
+    is not authoritative about any of them. `code` is evidence, not
+    instruction: it is compared against the step's own reference and can only
+    ever make a rebuild be ATTEMPTED, never accepted."""
     slug: str
+    code: str | None = None
 
 class ReopenRequest(BaseModel, extra="forbid"):
     """A step the student wants back. Only an opaque session id and an index:
@@ -466,12 +471,7 @@ def replan(req: ReplanRequest, request: Request):
 
     try:
         current = find_resumable(claims["sub"], content_hash(problem))
-        # ONLY BEFORE THEY HAVE WRITTEN ANYTHING. Replacing the roadmap under a
-        # student who has accepted steps would retire the session those steps
-        # live in, and they were graded against chunks that are about to stop
-        # existing. That case needs the answers carried forward as drafts and
-        # is deliberately not attempted here.
-        if current is None or current.get("index"):
+        if current is None:
             return quiet
 
         sb = get_supabase()
@@ -484,7 +484,25 @@ def replan(req: ReplanRequest, request: Request):
         # inside build() test whatever the model named its function rather than
         # the student's. Measured - it passed a 0/10 body as 10/10.
         header = reroute.effective_header(problem)
-        if reroute.follows_reference(problem, header, plan):
+
+        # TWO WAYS TO BE DIVERGENT, and the second is the reliable one.
+        #
+        # The plan is prose, so follows_reference() has to stay a floor:
+        # measured on a real plan, the student wrote "scan the list and count"
+        # where their own code went on to have THREE loops. It catches a plan
+        # that is plainly a different shape and misses a terse one.
+        #
+        # `code` closes that gap. It is sent only when grading COULD NOT CONFIRM
+        # the step - never after an acceptance - and "could not confirm" already
+        # means no tier could attribute anything, which is the state a genuinely
+        # different approach produces. Comparing it to that step's own reference
+        # is like with like, so it can be strict where the plan check cannot.
+        diverged = not reroute.follows_reference(problem, header, plan)
+        if not diverged and req.code:
+            diverged = reroute.diverges_from_roadmap(
+                current.get("chunks") or [], current.get("index") or 0,
+                req.code, header)
+        if not diverged:
             return quiet
         result = reroute.build(problem, header, plan)
     except reroute.RouteUnavailable as e:
@@ -499,6 +517,17 @@ def replan(req: ReplanRequest, request: Request):
     # two live sessions for one problem would leave find_resumable picking
     # between them on the next open.
     try:
+        # WHAT THEY HAD ALREADY WRITTEN COMES WITH THEM. The steps they had
+        # accepted were graded against chunks that are about to stop existing,
+        # so they cannot be carried as ACCEPTED - but the code is theirs and
+        # retyping it is not a thing to ask. It goes back as a draft, and
+        # bridge.find then reports how far it reaches: one submission can
+        # answer several of the new steps at once (commit_outcome's
+        # covers_chunks), so the work is re-earned in a click rather than lost.
+        # Credit already recorded is untouched either way - grades.tally counts
+        # a step solved if ANY submission for it came back correct.
+        carried = "\n".join(a.get("code") or ""
+                            for a in (current.get("accepted") or [])).strip()
         abandon_active(claims["sub"], req.slug)
         public = create_session(problem, result, content_hash(problem),
                                 student_id=claims["sub"])
@@ -517,7 +546,8 @@ def replan(req: ReplanRequest, request: Request):
 
     print(f"  🧭 Rebuilt the roadmap for {req.slug} around this student's own "
           f"plan ({len(result['chunks'])} steps).")
-    return {"rerouted": True, **_gate_steps(claims["sub"], req.slug, public)}
+    return {"rerouted": True, "carried": carried,
+            **_gate_steps(claims["sub"], req.slug, public)}
 
 
 @app.post("/decompose_chunks")

@@ -732,6 +732,40 @@ def _claims_a_transition(text: str) -> bool:
     return bool(_CLAIMS_TRANSITION.search(text or ""))
 
 
+# ...AND THE SAME MISTAKE ONE GATE EARLIER. _CLAIMS_TRANSITION only fires when
+# "go ahead" lands within thirty characters of the word "step", so "Go ahead and
+# implement it." sailed through - which an audit caught the planning tutor
+# saying while the code stage was still LOCKED, immediately before the page
+# added "Sounds like you have a plan. Put it forward and I will check it
+# properly". Two instructions, contradicting each other, at the moment the
+# student is deciding what to do next.
+#
+# The planning half is by definition the half where the editor is shut, and that
+# holds even when the tutor RELEASES them: `ready` earns them the invitation to
+# submit the plan, never the editor.
+#
+# Targets permission and instruction, never a question. "How would you implement
+# the counting?" is the planning tutor doing its job and must survive; "you can
+# start coding" is a promise it cannot keep.
+_CLAIMS_CODING_OPEN = re.compile(
+    r"\b(?:go\s+ahead|feel\s+free)\b[^.!?]{0,40}"
+    r"\b(?:implement|cod(?:e|ing)|writ(?:e|ing))\b"
+    r"|\byou\s+(?:can|may|could|should)\s+(?:now\s+)?(?:go\s+ahead\s+and\s+)?"
+    r"(?:start\s+|begin\s+)?(?:implement|cod(?:e|ing)|writ(?:e|ing))\b"
+    r"|\b(?:time|ready)\s+to\s+(?:start\s+|begin\s+)?"
+    r"(?:implement|cod(?:e|ing)|writ(?:e|ing))\b"
+    r"|\b(?:let\'?s|now)\s+(?:start\s+|begin\s+)?"
+    r"(?:implement(?:ing)?|cod(?:e|ing))\b"
+    r"|\bstart\s+(?:implementing|coding|writing\s+(?:the\s+)?code)\b"
+    r"|\bimplement\s+(?:your|the|this)\s+plan\b",
+    re.I)
+
+
+def _claims_coding_is_open(text: str) -> bool:
+    """Does this turn tell them to start writing code the gate has not opened?"""
+    return bool(_CLAIMS_CODING_OPEN.search(text or ""))
+
+
 def _drop_sentences(text: str, unsafe) -> str:
     """`text` with every sentence `unsafe` objects to removed."""
     return " ".join(s.strip() for s in _sentences(text)
@@ -1355,6 +1389,11 @@ def reply(problem: dict, history: list[dict],
     # _FALLBACK["processing"] verbatim and is caught by diagnose's patterns.
     # Applying it would strip this module's own fallback questions.
     guarded = _drop_sentences(guarded, _claims_a_transition)
+    # ...and nothing in THIS half may send them to an editor that is shut. Only
+    # the planning half gets this: in helper mode above the design has been
+    # reviewed and the editor really is open, so "go ahead and implement it" is
+    # true there and cutting it would be the bug.
+    guarded = _drop_sentences(guarded, _claims_coding_is_open)
     # Only while they are still held - see _no_praise. A release is MEANT to say
     # the plan is workable.
     if not ready:
@@ -1553,6 +1592,31 @@ if __name__ == "__main__":
         "...and must NOT run the prescription guard: _FALLBACK['processing'] " \
         "is caught by diagnose's patterns, so this would strip the module's " \
         "own questions"
+    # ── AND MUST NOT SEND THEM TO A LOCKED EDITOR ────────────────────────
+    # An audit caught the planning tutor saying "Go ahead and implement it."
+    # while the code stage was shut, right before the page said "Put it forward
+    # and I will check it properly". _CLAIMS_TRANSITION missed it because that
+    # pattern needs "go ahead" within thirty characters of the word "step".
+    assert "_drop_sentences(guarded, _claims_coding_is_open)" in _planning_half, \
+        "the planning half must not tell them to start writing code"
+    assert "_claims_coding_is_open" not in _helper_half, \
+        "...and helper mode must NOT run it: there the design IS reviewed and " \
+        "the editor IS open, so 'go ahead and implement it' is simply true"
+    for _t in ("Go ahead and implement it.",
+               "Go ahead and start coding your solution. Good luck!",
+               "You can now start coding.",
+               "Time to implement your plan.",
+               "Start writing the code for this.",
+               "Implement your plan and see what happens."):
+        assert _claims_coding_is_open(_t), _t
+    # Permission and instruction only - a planning QUESTION about implementing
+    # is the tutor doing its job, and cutting those would gut the half.
+    for _t in ("How would you implement the counting?",
+               "What code would you write to keep track of that?",
+               "Your plan says you will count each value - where does it start?",
+               "Which values does the next part need you to have kept?",
+               "Sounds like you have a plan. What happens on an empty dictionary?"):
+        assert not _claims_coding_is_open(_t), _t
 
     for name, prompt in (("socratic", m._SYSTEM), ("helper", m._HELPER_MODE)):
         assert "THE TEST" in prompt, f"{name} lost the paste-check"

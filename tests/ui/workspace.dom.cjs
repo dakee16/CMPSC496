@@ -208,9 +208,18 @@ const graph = {nodes:[{id:'n0',kind:'start',label:'Read records'},{id:'n1',kind:
     assert.equal(doc.querySelector('#msg').innerHTML,'','Dismissing clears the prompt');
     value='    seen = set(records.keys())';
     verdict='diagnosis';await doc.querySelector('#submit').onclick();
+    // The LABEL may not name an approach for theirs to differ from either.
+    assert(!/different/i.test(doc.querySelector('#diagExplain').textContent),
+      doc.querySelector('#diagExplain').textContent);
     doc.querySelector('#diagExplain').click();
-    assert(doc.querySelector('#cinput').value.includes('approach is different'),
+    assert(doc.querySelector('#cinput').value.includes('explain my approach'),
       'Explaining opens the tutor with the opening already typed');
+    // ...and it never names an approach for theirs to differ FROM. This drafted
+    // "My approach is different from the one you expected" until an audit
+    // caught it: the page putting words in the student's mouth that tell them a
+    // preferred answer exists.
+    assert(!/you expected|differs? from ours|our version/i.test(
+      doc.querySelector('#cinput').value), doc.querySelector('#cinput').value);
     // THEY HAVE ALREADY TALKED TO THE TUTOR BY NOW, so the opener points at
     // that conversation instead of demanding it again. Reported from testing:
     // a student who had explained their whole approach in this chat, and been
@@ -383,6 +392,35 @@ const graph = {nodes:[{id:'n0',kind:'start',label:'Read records'},{id:'n1',kind:
     assert(said.includes('follow the approach you described'),said);
     assert(!/teacher|expected|different|instead/i.test(said),said);
     replanAnswer=null;
+
+    // THE ROUTER CAN ALSO FIRE FROM THE CODING STAGE, on what they WROTE.
+    // A plan is prose and prose is lossy, so the plan-time check is a floor:
+    // a student whose plan reads like the teacher's can still write something
+    // genuinely different, which is what happened on `invert`. This asks only
+    // after grading COULD NOT CONFIRM the step - never after an acceptance,
+    // because a correct answer can be a different shape too.
+    approved=true;
+    await window.start(problem);await tick();
+    await window.submitPlanGraph();await tick();
+    doc.querySelector('#planContinue').click();
+    value='    seen = [x for x in records]';
+    replanAnswer={rerouted:true,session_id:'sess-from-code',total_chunks:2,
+                  carried:'    draft = records.copy()',
+                  chunks:[{prompt:'Gather them.',indent:0},
+                          {prompt:'Hand it back.',indent:0}]};
+    verdict='diagnosis';await doc.querySelector('#submit').onclick();
+    await tick();await tick();await tick();   // replan, then render, then loadSteps
+    const sent=calls.filter(c=>c.route==='/replan').pop();
+    assert(sent&&JSON.parse(sent.body).code,'their code is what it asks about');
+    assert.equal(window.inspect('sessionId'),'sess-from-code');
+    assert(doc.querySelector('#msg').textContent.includes('follow the approach you described'),
+      'msg was: '+JSON.stringify(doc.querySelector('#msg').textContent));
+    // Work already accepted comes WITH them - it was graded against steps that
+    // no longer exist, so it cannot stay accepted, but it is still their code.
+    assert(value.includes('records.copy()'),'carried work is put back in the editor: '+value);
+    assert(value.includes('seen = '),'...alongside what they were working on: '+value);
+    assert.equal(window.inspect('accepted.length'),0);
+    replanAnswer=null;verdict='incorrect';
 
     // A SESSION THAT IS NOT OURS IS NOT A DEAD END. Reported from testing:
     // "That session belongs to someone else." appeared over the editor with no

@@ -86,16 +86,89 @@ def follows_reference(problem: dict, header: str, graph: dict) -> bool:
     # whether they loop, whether they branch, and whether they return - so
     # recursion planned against a loop shows up as a missing `loop`, which is
     # precisely the case this exists for.
-    flow = {"loop", "branch", "return"}
-    mine, yours = set(ours) & flow, set(theirs) & flow
-    if not mine or not yours:
+    flow = ("loop", "branch", "return")
+    if not (set(ours) & set(flow)) or not (set(theirs) & set(flow)):
         # Nothing to compare. A solution that does not parse comes back as a
         # single `step` node labelled "does not parse yet" rather than as an
         # error, so an emptiness check on the NODES is not enough - it has to be
         # on the control flow. Without this, an unreadable teacher solution
-        # looked like a divergent student.
+        # looked like a divergent student. A plan with no control flow at all is
+        # too thin to count, and counting it would reroute every terse plan.
         return True
-    return yours == mine
+    # HOW MANY, not just WHICH. Comparing the SET of kinds was too blunt to see
+    # the case this exists for: measured on the real `invert` problem, a student
+    # who planned two parallel lists, a rescan-to-count and index matching
+    # reduced to {branch, loop, return} - and so did the teacher's dictionary of
+    # counts. Same vocabulary, different algorithm, and the router called it the
+    # same route and handed over the teacher's roadmap. With counts, that plan
+    # reads (2 branches, 1 loop, 1 return) against the teacher's (1, 2, 1) and
+    # is correctly seen as divergent.
+    #
+    # STILL ERRS TOWARDS "SAME ROUTE" on everything it cannot see. A plan is
+    # prose and prose is lossy - measured on a real one, the plan said ONE loop
+    # where the student's own code went on to have THREE, because nobody writes
+    # "and then I nest a second loop inside the first". So counts here are a
+    # floor, not a description: they catch a plan that is plainly a different
+    # shape and will still miss a terse plan that happens to compress to the
+    # teacher's numbers. Being wrong that way costs a rebuilt roadmap the
+    # student did not need, which the oracle gate makes harmless; the code-side
+    # check in grading.py is what catches what prose cannot express.
+    return [theirs.count(k) for k in flow] == [ours.count(k) for k in flow]
+
+
+def diverges_from_roadmap(chunks: list, idx: int, student_code: str,
+                          header: str) -> bool:
+    """Is what they have WRITTEN a different shape from the roadmap they are on?
+
+    THE ONE COMPARISON THAT CAN BE STRICT, because both sides are code. The
+    plan-side check in follows_reference() has to stay loose: a plan is prose,
+    and measured on a real one the student wrote "scan the whole list and count"
+    where their own code went on to have THREE loops. Nobody writes "and then I
+    nest a second loop". So counts there are a floor.
+
+    Here there is no prose. Their submission is compared against the teacher's
+    reference for the steps up to and including this one - like with like, same
+    point in the solution - so the counts mean what they say. Measured on the
+    real `invert` roadmap: the student who kept a `unique_values` list reads
+    (2 branches, 2 loops) against the teacher's step 1 (0, 1) and is seen as
+    divergent, while an ordinary answer and the same answer WITH ITS VARIABLES
+    RENAMED both read (0, 1) and are left alone. Renaming cannot move control
+    flow, which is what makes this safe to be strict about.
+
+    CALLED ONLY WHEN GRADING COULD NOT CONFIRM THE STEP, never on its own. That
+    is the whole safety story: "could not confirm" already means no tier could
+    attribute anything, which is exactly the state a genuinely different
+    approach produces. A submission that was ACCEPTED is never asked - and it
+    matters that it is not, because a correct answer can still be a different
+    shape (the same student's accepted attempt reads (1, 2) against (0, 1)).
+
+    Errs to False - "same shape" - on everything it cannot read, for the same
+    reason follows_reference errs to True: a rebuild nobody needed costs a
+    minute, and refusing to rebuild costs nothing that was not already lost."""
+    flow = ("loop", "branch", "return")
+    try:
+        from .graphs import _signature, code_graph
+        # THIS STEP AGAINST THIS STEP. Comparing their submission to the
+        # reference for every chunk UP TO here read a perfectly ordinary step 2
+        # as divergent - one step of theirs against two of the teacher's is not
+        # like with like. A student whose step-1 answer also does step 2's work
+        # never reaches this: being ahead is something bridge.find ACCEPTS.
+        chunk = chunks[idx] if chunks and 0 <= idx < len(chunks) else None
+        mine_src = (chunk.get("reference") if isinstance(chunk, dict)
+                    else getattr(chunk, "reference", "")) or ""
+        if not (student_code or "").strip() or not mine_src.strip():
+            return False
+        mine = _signature(code_graph(mine_src, header))
+        yours = _signature(code_graph(student_code, header))
+    except Exception:
+        return False
+    if not (set(yours) & set(flow)):
+        # THEIR side is what has to be readable. An answer with no loop, branch
+        # or return says nothing about their approach - it is far likelier to be
+        # unfinished than to be a different algorithm, and rebuilding a roadmap
+        # around it spends a minute to learn nothing.
+        return False
+    return [yours.count(k) for k in flow] != [mine.count(k) for k in flow]
 
 
 # HOW LONG ONE OPEN MAY SPEND HERE. build()'s own docstring has always said
@@ -427,5 +500,38 @@ if __name__ == "__main__":
     assert follows_reference(_loop_prob, _hdr, None) is True
     assert follows_reference({"slug": "x", "solution": "!!not python"},
                              _hdr, _rec) is True
+
+    # ── WHAT THEY WROTE, AGAINST THE STEP THEY WROTE IT FOR ──────────────
+    # diverges_from_roadmap is the strict half, and it may only ever be strict
+    # because both sides are code. Cases measured on the real `invert` roadmap.
+    _H = "def invert(d):"
+    _CH = [{"reference": "counts = {}\nfor value in d.values():\n"
+                         "    counts[value] = counts.get(value, 0) + 1"},
+           {"reference": "result = {}\nfor key, value in d.items():\n"
+                         "    if counts[value] == 1:\n        result[value] = key"},
+           {"reference": "return result"}]
+    # The reported case: two parallel lists, a rescan to count, a unique list.
+    _theirs = ("keys = list(d.keys())\nvalues = list(d.values())\n"
+               "unique_values = []\nfor v in values:\n    count = 0\n"
+               "    for other in values:\n        if other == v:\n"
+               "            count += 1\n    if count == 1:\n"
+               "        unique_values.append(v)")
+    assert diverges_from_roadmap(_CH, 0, _theirs, _H)
+    # ...and everything ordinary is left alone. RENAMING especially: it cannot
+    # move control flow, which is what makes strictness safe here.
+    for _idx, _code in [
+            (0, "counts = {}\nfor v in d.values():\n"
+                "    counts[v] = counts.get(v, 0) + 1"),
+            (0, "tally = {}\nfor item in d.values():\n"
+                "    tally[item] = tally.get(item, 0) + 1"),
+            # one step of theirs against ONE of the teacher's, not all of them
+            # so far - comparing against chunks[:idx+1] read this as divergent.
+            (1, "result = {}\nfor k, v in d.items():\n"
+                "    if counts[v] == 1:\n        result[v] = k"),
+            (2, "return result"),
+            (0, "counts = dict()"),      # no control flow: too thin to judge
+            (0, ""),
+    ]:
+        assert not diverges_from_roadmap(_CH, _idx, _code, _H), _code
 
     print("reroute.py self-check OK")

@@ -140,18 +140,57 @@ def test_an_unapproved_student_is_refused(env):
     assert r.json()["detail"]["reason_code"] == "design_not_approved"
 
 
-def test_a_session_with_accepted_work_is_left_alone(env):
-    """Replacing the roadmap under a student who has accepted steps would
-    retire the session those steps live in, and they were graded against chunks
-    that are about to stop existing. Carrying them forward is a separate job."""
+def test_work_already_accepted_is_carried_forward_not_lost(env2):
+    """A student can be rerouted AFTER they have started, and their code comes
+    with them.
+
+    The steps they had accepted were graded against chunks that stop existing,
+    so they cannot be carried as ACCEPTED - but the code is theirs and retyping
+    it is not a thing to ask. It comes back as `carried`, for the page to seed
+    the editor with; bridge.find then reports how far it reaches, so one
+    submission can answer several of the new steps at once."""
     from main import sessions
+    env = env2
     first, _ = _open(env)
     sessions.apply_outcome(first["session_id"], "sub-1", {"verdict": "correct"},
                            accept_code="counts = {}")
     _plan(env, _stamp()); _approve_design(env)
     out, spent = _replan(env)
-    assert out == {"rerouted": False}, out
-    assert spent == 0, "and it must not pay to find that out"
+    assert out["rerouted"] is True, out
+    assert spent > 0, "a rebuild that cost nothing did not happen"
+    assert "counts = {}" in out["carried"], out.get("carried")
+    assert out["session_id"] != first["session_id"]
+
+
+def test_code_that_could_not_be_confirmed_can_trigger_a_rebuild(env2):
+    """THE CASE PROSE CANNOT EXPRESS. A plan that follows the teacher's route
+    still gets a rebuild if what they actually WROTE is a different shape -
+    and `code` is only ever sent after grading could not confirm the step."""
+    from main.context import solution_body
+    from main.graphs import code_graph
+    from main import reroute
+    env = env2
+    _open(env)
+    # A plan the router reads as the SAME route, so nothing here comes from it.
+    same = code_graph(solution_body(dict(PROBLEM)),
+                      reroute.effective_header(dict(PROBLEM)))
+    env.sb.rows("mt_graphs").append(
+        {"student_id": env.student, "slug": SLUG, "kind": "plan",
+         "created_at": _stamp(), "graph": same})
+    _approve_design(env)
+    assert _replan(env)[0] == {"rerouted": False}, "the plan alone says nothing"
+
+    # ...now send what they wrote. Two nested loops where the step has one.
+    divergent = ("letters = list(txt)\nseen = []\nfor ch in letters:\n"
+                 "    n = 0\n    for other in letters:\n"
+                 "        if other == ch:\n            n += 1\n"
+                 "    if n == 1:\n        seen.append(ch)")
+    before = len(env.calls)
+    r = env.client.post("/replan", json={"slug": SLUG, "code": divergent})
+    assert r.status_code == 200, r.text
+    out = r.json()
+    assert out["rerouted"] is True, out
+    assert len(env.calls) - before > 0
 
 
 def test_a_plan_that_follows_the_teacher_is_not_rebuilt(env):

@@ -1023,6 +1023,20 @@ def _with_diagnosis(result, problem, chunk, header, chunks, idx, upto,
         example = diagnose.counterexample(problem, header, chunks, idx, upto,
                                           tests, entry, ambient)
         if example is None:
+            # NOTHING TO TRACE BECAUSE NOTHING RAN. counterexample() gives up
+            # here, and what the student was then left with was the bare "we
+            # could not confirm this step" - the least useful sentence we have,
+            # at the moment it explains the least. Saying what we OBSERVED
+            # covers every shape that parses without executing at once: a step
+            # inside `if __name__ == '__main__':`, a nested def that is never
+            # called, a branch that cannot be taken. No rule per habit, and no
+            # claim that their answer is wrong - it still costs no attempt.
+            if diagnose.bound_nothing(upto) and hasattr(result, "model_copy"):
+                return result.model_copy(update={"student_reason":
+                    "We ran your code for this step and it left no values "
+                    "behind for the next step to use. Check that the lines you "
+                    "wrote actually run - code inside something that never "
+                    "happens is never reached. Your attempt was not used."})
             return result
         msg = diagnose.question(problem, chunk, student_code, example)
     except Exception:
@@ -1076,6 +1090,20 @@ def grade_submission(session: dict, student_code: str,
     # ── TIER 1 - static policy + compile. No LLM here, ever. ──
     if not student_code:
         return _ok("incorrect", "syntax", "No answer submitted.", "blank_answer")
+    # ── COMMENTS ARE NOT CODE. BEFORE THE PARSE, and that ordering is the whole
+    #    point: an answer of pure comments makes the assembled function body
+    #    EMPTY, which is an IndentationError, so the syntax gate below got there
+    #    first and said "your indentation doesn't line up on line 1 - `# Count
+    #    each value in d.`. The line above it opens a block..." - about a single
+    #    comment with no line above it. Reported by an audit on the live site,
+    #    reproduced here on the real `invert` problem. Sitting after the parse,
+    #    this check could never fire for the one input it was written for.
+    #    It needs no parse of its own: _has_no_statements appends a sentinel.
+    if _has_no_statements(student_code):
+        return _ok("incorrect", "syntax",
+                   "There is no code in this answer - comments and blank lines "
+                   "are not run, so there is nothing here to answer the step yet.",
+                   "comments_only")
     upto = "\n".join(b for b in (prefix, student_code) if b.strip())
     probe = classify_run(_assemble(problem, header, upto), [], entry_name=entry)
     if probe.outcome == "policy_violation":
@@ -1094,14 +1122,6 @@ def grade_submission(session: dict, student_code: str,
                    _syntax_message(probe.internal_error[7:].strip(),
                                    problem, prefix, student_code),
                    "syntax_error")
-
-    # ── COMMENTS ARE NOT CODE. Same dead end as the gate below, from the other
-    #    direction: text that is not blank but runs nothing. ──
-    if _has_no_statements(student_code):
-        return _ok("incorrect", "syntax",
-                   "There is no code in this answer - comments and blank lines "
-                   "are not run, so there is nothing here to answer the step yet.",
-                   "comments_only")
 
     # ── THE DEF LINE IS ALREADY THERE. Static, deterministic, no reference and
     #    no model - and it has to run BEFORE the scope gate, because an inner
@@ -1232,9 +1252,15 @@ def grade_submission(session: dict, student_code: str,
         covers = bridged["boundary"] - idx + 1
         _trace(trace.record_route, corr, "execution-bridged", "correct",
                mapping=bridged["mapping"], boundary=bridged["boundary"])
+        # SAME SENTENCE AS EXECUTION-REFERENCE, deliberately. This used to say
+        # "you named things differently to our version", which tells the
+        # student a reference solution exists and that theirs was measured
+        # against it - and an audit found it firing on the ORDINARY approach
+        # too, so it was not even describing an unusual answer. Which tier
+        # acquitted is our business; what they need to know is that their step
+        # works. The tier is still on the result for telemetry.
         return _ok("correct", "execution-bridged",
-                   "Correct - you named things differently to our version, and "
-                   "your step works with the rest of the solution."
+                   "Correct - your step works with the rest of the solution."
                    if covers == 1 else
                    f"Correct - and you have already written what the next "
                    f"{covers - 1} step(s) asked for, so we have marked those "
@@ -1336,7 +1362,9 @@ def _tier3(problem, session, chunk, header, prefix, student_code, upto,
             _trace(trace.record_route, corr, "execution-adapted", "correct")
             return _remember(_ok(
                 "correct", "execution-adapted",
-                "Correct - your approach differs from ours, but it works.",
+                # "differs from ours" names a reference the same way the
+                # bridged message did. Same sentence as every other acquittal.
+                "Correct - your step works with the rest of the solution.",
                 "adapted_pass", execution_outcome="pass", divergent=True))
         if cand.outcome == "harness_error":
             return _system("harness_error", cand.internal_error)

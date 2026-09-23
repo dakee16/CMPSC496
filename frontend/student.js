@@ -122,7 +122,7 @@ async function chooseRoadmap(){
   // use, and true whichever way this goes.
   const slow = setTimeout(() => {
     if (mine === workspaceEpoch) markUnlocked("Setting up the steps for this "
-      + "problem\u2026 this takes longer if your approach differs from ours.");
+      + "problem\u2026 this can take a little longer the first time.");
   }, 4000);
   let res = null;
   try {
@@ -135,21 +135,83 @@ async function chooseRoadmap(){
   clearTimeout(slow);
   if (mine !== workspaceEpoch) return;      // another problem is open now
 
-  if (res && res.rerouted && res.session_id){
-    // A NEW SESSION, adopted whole. The old one is already retired server-side,
-    // so keeping its id here is what produces "That session belongs to someone
-    // else" two clicks later. Nothing of theirs is lost: this runs before any
-    // code is written, and the server refuses to reroute a session that has
-    // accepted steps.
-    sessionId = res.session_id;
-    chunks = res.chunks || chunks;
-    idx = 0;
-    accepted = [];
-    markUnlocked("These steps follow the approach you described.");
-  } else {
+  if (adoptRoadmap(res) === null) {
     markUnlocked("Design accepted. The editor is unlocked for this problem.");
   }
   loadSteps();          // the prompts were withheld until this moment
+}
+
+/* Move onto a rebuilt roadmap. Returns whether there was one.
+
+   A NEW SESSION, ADOPTED WHOLE. The old one is already retired server-side, so
+   keeping its id here is what produces "That session belongs to someone else"
+   two clicks later.
+
+   `carried` is the code they had already had accepted under the OLD roadmap.
+   Those steps were graded against chunks that no longer exist, so they cannot
+   come back as accepted - but the code is theirs. It is put in the editor
+   together with whatever they were working on, and one submission then answers
+   as many of the new steps as it reaches (main/bridge.find, covers_chunks), so
+   the work is re-earned in a click rather than retyped. */
+function adoptRoadmap(res){
+  if (!(res && res.rerouted && res.session_id)) return null;
+  const working = editor ? editor.getValue() : "";
+  sessionId = res.session_id;
+  chunks = res.chunks || chunks;
+  idx = 0;
+  accepted = [];
+  reviewIdx = null;
+  setReviewMode(false);
+  markUnlocked("These steps follow the approach you described.");
+  // RETURNED, NOT APPLIED. render() reseeds the editor from the draft for the
+  // step it is on, so setting it here and rendering afterwards threw it away -
+  // the same ordering reworkStep() already has a note about. The caller puts
+  // it in once the page has finished redrawing.
+  return [res.carried || "", working].map(t => (t || "").trim())
+                                     .filter(Boolean).join("\n");
+}
+
+/* THE SECOND PLACE THE ROUTER CAN FIRE, and the one prose cannot reach.
+
+   A plan is a sketch: measured on a real one, the student wrote "scan the list
+   and count" where their own code went on to have three loops. So the plan-time
+   check is a floor, and a student whose plan reads like the teacher's can still
+   write something genuinely different - which is exactly what happened on
+   `invert`, where an approved two-list plan met a roadmap built around a
+   dictionary of counts and grading declined every step of it.
+
+   Sent ONLY after grading could not confirm the step. That is the whole safety
+   argument: "could not confirm" already means no tier could attribute anything,
+   which is the state a different approach produces. An ACCEPTED answer is never
+   sent - a correct answer can be a different shape too, and there is nothing to
+   fix for someone who is passing.
+
+   Runs behind the diagnosis rather than in front of it: a rebuild is up to a
+   minute and they should not sit on a blank screen for it. If it comes back
+   with nothing, they keep the question they were already reading. */
+async function offerRoadmapForTheirCode(code){
+  const mine = workspaceEpoch;
+  let res = null;
+  try {
+    const r = await fetch(`${API}/replan`, {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({slug: openProblem.slug, code})
+    });
+    if (r.ok) res = await r.json();
+  } catch (e) { /* they keep the roadmap and the question they have */ }
+  if (mine !== workspaceEpoch) return;
+  const seed = adoptRoadmap(res);
+  if (seed !== null){
+    render();
+    // AWAITED, and the message comes last. Both render() and loadSteps() clear
+    // #msg on their way past, so saying this any earlier said it to a box that
+    // was about to be wiped.
+    await loadSteps();
+    if (editor && seed) { editor.setValue(seed); saveDraft(); }
+    show("ok", "These steps follow the approach you described. What you had "
+             + "written is in the editor - submit it and it will count for as "
+             + "much of the new first step as it covers.");
+  }
 }
 
 /* Fetch the step prompts, which the server withholds until the design is
@@ -402,7 +464,14 @@ async function uploadDesign(){
   // same guard on the chat path.
   const reviewing = workspaceEpoch;
   setBusy(btn, true, "Reviewing…");
-  designMsg("info", "Reading your design. This takes a few seconds.");
+  // NOT "a few seconds" ANY MORE. Approval is no longer the end of the wait:
+  // openGate() then asks /replan whose roadmap this student gets, and building
+  // one around their own approach is a solution proposal plus a full
+  // decomposition - measured at 7-27s on the live site, bounded at a minute
+  // (main/reroute.BUDGET_SECONDS). Promising "a few seconds" and then taking
+  // twenty reads as a hang, and the honest number costs nothing to say.
+  designMsg("info", "Reading your design and preparing your steps. This can "
+                  + "take up to a minute.");
   try {
     const r = await fetch(`${API}/design_review`, {method: "POST", body: fd});
     const data = await r.json();
@@ -456,7 +525,8 @@ async function submitPlanGraph(){
   // on a problem that was never planned.
   const reviewing = workspaceEpoch;
   setBusy(btn, true, "Reviewing…");
-  designMsg("info", "Reading your plan. This takes a few seconds.");
+  designMsg("info", "Reading your plan and preparing your steps. This can "
+                  + "take up to a minute.");
   try {
     // CATCH THE GRAPH UP FIRST. It is drawn in the background while the student
     // reads each reply, so the last thing they said is routinely not in it yet -
@@ -1158,7 +1228,7 @@ async function start(p){
     const line = $("clog") && $("clog").querySelector(".restoring span:last-child");
     if (line) line.textContent =
       "Setting up the steps for this problem… this takes longer the first "
-      + "time, and longer again if your approach differs from ours.";
+      + "time.";
   }, 4000);
   let r;
   try {
@@ -1922,7 +1992,9 @@ $("submit").onclick = async () => {
          + '<button type="button" id="diagFix">'
          + 'I see it, let me fix my code</button>'
          + '<button type="button" id="diagExplain" class="ghost">'
-         + 'My approach is different, let me explain</button></div>');
+         + 'Let me explain my approach</button></div>');
+    // ...and while they read it, ask whether the roadmap itself is the problem.
+    offerRoadmapForTheirCode(code);
     const fix = $("diagFix"), explain = $("diagExplain");
     if (fix) fix.onclick = () => {
       $("msg").innerHTML = "";
@@ -1947,12 +2019,16 @@ $("submit").onclick = async () => {
         // does the opener ask for the description.
         const said = chatLog.some(m => m && m.role === "user"
                                     && (m.content || "").trim());
+        // NEITHER WORDING MAY NAME AN EXPECTED APPROACH. Both of these used
+        // to open "My approach is different from the one you expected", which
+        // is the page telling the student, in words it wrote for them, that a
+        // preferred answer exists. An audit flagged it, and it is the one rule
+        // this whole design rests on. Say what they are doing, not what it
+        // differs from.
         box.value = said
-          ? "My approach is different from the one you expected. I have "
-          + "already described it earlier in this conversation - please go "
-          + "by that. "
-          : "My approach is different from the one you expected. "
-          + "Here is what I am doing and why: ";
+          ? "Let me explain my approach - I have already described it earlier "
+          + "in this conversation, so please go by that. "
+          : "Let me explain my approach. Here is what I am doing and why: ";
         box.focus();
         box.setSelectionRange(box.value.length, box.value.length);
         box.dispatchEvent(new Event("input"));   // keep the counter honest

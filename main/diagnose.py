@@ -124,6 +124,26 @@ def _size(inp) -> int:
         return 1 << 30
 
 
+def bound_nothing(upto: str) -> bool:
+    """Did their code leave no values behind at all?
+
+    The one case counterexample() cannot build a question for - it says so at
+    the `stu_names` check - and the one where the bare "we could not confirm
+    this step" is at its most useless: there is nothing to trace because
+    nothing ran. It is what a step wrapped in `if __name__ == '__main__':`
+    produces, and what a nested `def` that is never called produces, and what
+    anything else that parses without executing will produce. Naming the
+    OBSERVATION covers all of them without a rule per habit.
+
+    Loop and comprehension variables do not count, for the same reason
+    counterexample() excludes them: they are machinery, not state a student
+    would call theirs."""
+    try:
+        return not (bridge.stores(upto) - bridge.loop_targets(upto))
+    except Exception:
+        return False        # cannot tell -> say nothing new
+
+
 def counterexample(problem: dict, header: str, chunks: list, idx: int,
                    upto: str, tests: list, entry: str, ambient: set) -> dict | None:
     """One concrete oracle input worth tracing by hand, with the student's own
@@ -278,8 +298,17 @@ def _fallback(example: dict) -> str:
     lines = [f"Try your code on this input: {example['input_repr']}"]
     for f in example["student_state"]:
         lines.append(f"After your step, `{f['name']}` is {f['value']}.")
-    lines.append("Does that give the next step everything it needs? Compare it "
-                 "with what you said your approach would keep track of.")
+    # POINTS AT THE STEP, NOT AT THEIR PLAN. It used to say "compare it with
+    # what you said your approach would keep track of" - which is the wrong
+    # place to send them in the one case this sentence is most likely to be
+    # read. When the roadmap could not be rebuilt around their approach, their
+    # plan and the step they are on are describing different state, and their
+    # plan is the half that is not being graded. The step's own prompt is on
+    # screen above the editor and is the actual contract, so naming it discloses
+    # nothing they are not already looking at.
+    lines.append("Does that give the next step everything it needs? Read what "
+                 "this step asks you to keep, and check it against the values "
+                 "above.")
     return " ".join(lines)
 
 
