@@ -747,17 +747,20 @@ def _claims_a_transition(text: str) -> bool:
 # Targets permission and instruction, never a question. "How would you implement
 # the counting?" is the planning tutor doing its job and must survive; "you can
 # start coding" is a promise it cannot keep.
+# EVERY FORM OF THE VERB, and the reason is a live miss. The first version
+# spelled this `\bimplement\b`, which needs a word boundary immediately after
+# "implement" - so "Go ahead and TRY IMPLEMENTING it." sailed straight through
+# and was caught on screen, by Sanan, on the very next test run. One suffix.
+_CODE_VERB = r"(?:implement(?:ing|s|ed)?|cod(?:e|es|ing)|writ(?:e|es|ing))"
+
 _CLAIMS_CODING_OPEN = re.compile(
-    r"\b(?:go\s+ahead|feel\s+free)\b[^.!?]{0,40}"
-    r"\b(?:implement|cod(?:e|ing)|writ(?:e|ing))\b"
+    r"\b(?:go\s+ahead|feel\s+free)\b[^.!?]{0,40}\b" + _CODE_VERB + r"\b"
     r"|\byou\s+(?:can|may|could|should)\s+(?:now\s+)?(?:go\s+ahead\s+and\s+)?"
-    r"(?:start\s+|begin\s+)?(?:implement|cod(?:e|ing)|writ(?:e|ing))\b"
-    r"|\b(?:time|ready)\s+to\s+(?:start\s+|begin\s+)?"
-    r"(?:implement|cod(?:e|ing)|writ(?:e|ing))\b"
-    r"|\b(?:let\'?s|now)\s+(?:start\s+|begin\s+)?"
-    r"(?:implement(?:ing)?|cod(?:e|ing))\b"
-    r"|\bstart\s+(?:implementing|coding|writing\s+(?:the\s+)?code)\b"
-    r"|\bimplement\s+(?:your|the|this)\s+plan\b",
+    r"(?:try\s+|start\s+|begin\s+)?" + _CODE_VERB + r"\b"
+    r"|\b(?:time|ready)\s+to\s+(?:try\s+|start\s+|begin\s+)?" + _CODE_VERB + r"\b"
+    r"|\b(?:let\'?s|now)\s+(?:try\s+|start\s+|begin\s+)?" + _CODE_VERB + r"\b"
+    r"|\b(?:try|start|begin)\s+" + _CODE_VERB + r"\b"
+    r"|\b" + _CODE_VERB + r"\s+(?:your|the|this)\s+(?:plan|solution|idea|approach)\b",
     re.I)
 
 
@@ -1603,6 +1606,11 @@ if __name__ == "__main__":
         "...and helper mode must NOT run it: there the design IS reviewed and " \
         "the editor IS open, so 'go ahead and implement it' is simply true"
     for _t in ("Go ahead and implement it.",
+               # Caught live on the NEXT test run after this guard shipped: the
+               # pattern was `\bimplement\b`, so the -ing form escaped it.
+               "Go ahead and try implementing it.",
+               "Go ahead and try coding this up.",
+               "Now start implementing your plan.",
                "Go ahead and start coding your solution. Good luck!",
                "You can now start coding.",
                "Time to implement your plan.",
