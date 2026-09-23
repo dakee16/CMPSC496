@@ -280,3 +280,52 @@ def test_review_and_seen_routes_are_teacher_only(db, monkeypatch):
     assert client.post("/teacher/issues/seen", json=body).json()["seen"] is True
     assert client.get("/teacher/dashboard").json()["problems"][0]["needs_help"] == 0
     assert client.get("/teacher/review?slug=nope&student_id=alice").status_code == 404
+
+
+def test_the_review_shows_the_code_as_it_stood_when_the_step_failed():
+    """Reported: the listing showed the header and the failing line and nothing
+    between, so "return report" read as line 2 of a three-step answer. The
+    live session had moved on (an earlier step reopened truncates its accepted
+    prefix); the code above an error is what was accepted BEFORE it."""
+    import types
+    from main import sessions
+    from main.teacher_dashboard import review_detail
+
+    chunks = [types.SimpleNamespace(step_id=f"Part {i + 1}", prompt=p, expected_type="code",
+                                    reference=r) for i, (p, r) in enumerate([
+        ("Set up the report", "report = {}"),
+        ("Evaluate each statement", "for s in self.stmts:\n    report[s] = 1"),
+        ("Hand the report back", "return report")])]
+    sid = sessions.create_session(
+        {"slug": "calc", "title": "calculateExpressions", "description": "d", "solution": "x"},
+        {"header": "def calculateExpressions(self):", "chunks": chunks}, "h",
+        student_id="jg")["session_id"]
+    for i, code in enumerate(["report = {}", "for s in self.stmts:\n    report[s] = 1"]):
+        sessions.begin_submission(sid, f"s{i}")
+        s = sessions.load_session(sid)
+        sessions.commit_outcome(sid, f"s{i}", s["revision"], {"verdict": "correct"},
+                                accept_code=code)
+    sessions.begin_submission(sid, "s2")
+    s = sessions.load_session(sid)
+    sessions.commit_outcome(sid, "s2", s["revision"], {"verdict": "incorrect", "reason": "wrong"})
+    sessions.reopen_step(sid, 0)                     # the session moves on afterwards
+    row = lambda i, n, v, code, t: {"id": i, "session_id": sid, "student_id": "jg",
+        "slug": "calc", "chunk_index": n, "verdict": v, "reason": "", "code": code,
+        "created_at": f"2026-09-22T18:{t:02}:00Z"}
+    data = DB({"problems": [{"slug": "calc", "title": "calculateExpressions", "assignment_id": "a"}],
+               "students": [{"id": "jg", "username": "j@psu.edu", "first_name": "Jiaming",
+                             "last_name": "Gou"}],
+               "assignments": [{"id": "a", "name": "HW3"}],
+               "mt_sessions": [{"session_id": sid, "student_id": "jg", "slug": "calc",
+                                "started_at": "2026-09-22T18:00:00Z"}],
+               "mt_submissions": [
+                   row(1, 0, "correct", "report = {}", 1),
+                   row(2, 1, "incorrect", "for s in stmts:", 2),
+                   row(3, 1, "correct", "for s in self.stmts:\n    report[s] = 1", 3),
+                   row(4, 2, "incorrect", "return report", 20),
+                   # A LATER correct answer at step 1 is not what step 3 failed on.
+                   row(5, 0, "correct", "report = dict()", 30)]})
+    r = review_detail(data, "calc", "jg")
+    assert [(p["number"], p["code"]) for p in r["prefix"]] == [
+        (1, "report = {}"), (2, "for s in self.stmts:\n    report[s] = 1")]
+    assert r["step"]["number"] == 3 and r["step"]["code"] == "return report"

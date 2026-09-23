@@ -214,13 +214,25 @@ def find_resumable(student_id: str | None, content_hash: str,
     except Exception:
         return None
     try:
-        r = conn.execute(
+        rows = conn.execute(
             "SELECT * FROM sessions WHERE student_id=? AND content_hash=?"
             " AND state IN ('active','completed') AND retired=0"
             # created_at is second-precision; rowid is insertion order, so two
             # sessions opened in the same second still resolve to the newer.
-            " ORDER BY created_at DESC, rowid DESC LIMIT 1",
-            (student_id, content_hash)).fetchone()
+            " ORDER BY created_at DESC, rowid DESC", (student_id, content_hash)).fetchall()
+        # THE NEWEST SESSION THAT HOLDS WORK, not simply the newest. Before
+        # finished problems could resume, reopening one issued a FRESH empty
+        # session - so every problem finished before that change has an empty
+        # session NEWER than its finished one, and newest-wins handed that
+        # back: "you solved this before" above an empty step 1. Today an empty
+        # session is only ever created when nothing here was resumable, so
+        # preferring work changes nothing for anyone else.
+        def _has_work(row):
+            try:
+                return row["state"] == "completed" or bool(json.loads(row["accepted_json"] or "[]"))
+            except Exception:
+                return row["state"] == "completed"
+        r = next((row for row in rows if _has_work(row)), rows[0] if rows else None)
         if r is not None and r["state"] == "active":
             # Grading refuses an expired session (load_session), so a resumed
             # one has to be live again before the student can submit into it.
@@ -966,17 +978,30 @@ if __name__ == "__main__":
                      ("2000-01-01T00:00:00+00:00", stale["session_id"]))
     finally:
         conn.close()
-    revived = find_resumable(WHO, HASH, db_path=db)
-    assert revived["session_id"] == stale["session_id"], "newest wins, expired or not"
+    # An EMPTY session newer than a FINISHED one is the legacy shape: before
+    # finished problems resumed, reopening one made exactly this. The finished
+    # one - the one holding their code - is what comes back.
+    assert find_resumable(WHO, HASH, db_path=db)["session_id"] == sid, \
+        "an empty session hid the finished one"
+    # Expiry revival on its own: a student whose only session has aged out.
+    lone = create_session(prob, decomp, HASH, student_id="student-expired", db_path=db)
+    conn = _connect(db)
+    try:
+        conn.execute("UPDATE sessions SET expires_at=? WHERE session_id=?",
+                     ("2000-01-01T00:00:00+00:00", lone["session_id"]))
+    finally:
+        conn.close()
+    revived = find_resumable("student-expired", HASH, db_path=db)
+    assert revived["session_id"] == lone["session_id"], "expired, and still resumed"
     assert revived["expires_at"] > _now(), "resuming must make it gradeable again"
-    load_session(stale["session_id"], db_path=db)      # would raise if still expired
+    load_session(lone["session_id"], db_path=db)       # would raise if still expired
 
     # ── restart really restarts ───────────────────────────────────────────
     # Resume made this route load-bearing: without it "start over" empties the
     # chat and then hands the student their old steps back.
     fresh = create_session(prob, decomp, HASH, student_id=WHO, db_path=db)
-    assert find_resumable(WHO, HASH, db_path=db)["session_id"] == fresh["session_id"]
-    # Two rows go: the live one and the revived one above.
+    assert find_resumable(WHO, HASH, db_path=db)["session_id"] == sid, "work still wins"
+    # Two rows go: the two empty live ones above.
     assert abandon_active(WHO, "invert", db_path=db) == 2
     # ...and the FINISHED one is retired from resuming too. Without that, now
     # that finished problems resume, Start over would reopen straight onto the

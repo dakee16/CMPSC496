@@ -14,17 +14,17 @@
   // ONE TILE PER PROBLEM, and each is a LINK to that problem's own review page
   // (teacher-review.html) rather than a panel unfolding under the list: a page
   // can be opened in a new tab, bookmarked, and gone back from. A tile is
-  // highlighted while any student on it has an open, unseen issue; "Issue
-  // seen" on the review page is what brings its count back down to zero.
+  // highlighted while any student on it has an open, unseen issue; "Mark
+  // done" on the review page is what brings its count back down to zero.
   const reviewLink = p => `teacher-review.html?slug=${encodeURIComponent(p.slug)}&assignment=${encodeURIComponent(p.assignment_id)}`;
   function tile(p) {
     const open = p.needs_help || 0;
     const status = open ? `${count(open)} need${open === 1 ? "s" : ""} help` : "No open issues";
     return `<li><a class="problem-tile${open ? " needs-attention" : ""}" href="${reviewLink(p)}" data-insight-problem="${esc(p.slug)}" aria-label="${esc(p.title || p.slug)}, ${esc(assignmentName(p))}: ${status}.">
       <span class="tile-name">${esc(p.title || p.slug)}</span>
-      <span class="tile-assignment">${esc(assignmentName(p))}</span>
+      <span class="tile-assignment" title="${esc(assignmentName(p))}">${esc(assignmentName(p))}</span>
       <span class="tile-count"><strong>${open}</strong><span>${open === 1 ? "student needs help" : "students need help"}</span></span>
-      <span class="tile-foot">${count(p.attempted)} tried${p.seen ? ` · ${p.seen} seen` : ""}</span>
+      <span class="tile-foot">${count(p.attempted)} tried${p.seen ? ` · ${p.seen} done` : ""}</span>
     </a></li>`;
   }
 
@@ -37,7 +37,7 @@
         ${tried.length ? `<ul class="problem-tiles" aria-describedby="chartExplanation">${tried.map(tile).join("")}</ul>` : `<div class="insight-empty"><h3>${s.problems ? "No answers to review yet" : "Publish an assignment to get started"}</h3><p>${s.problems ? "Problems will appear here after students submit their first answers." : "Add and publish an assignment in the Assignments tab. Student progress will appear here."}</p>${s.problems ? "" : `<a class="insight-link" href="teacher-assignments.html">Go to Assignments →</a>`}</div>`}
       </div></div>
       <details class="insight-method"><summary>How are these numbers worked out?</summary>
-        <ul><li><strong>Needs help:</strong> a student has at least one incorrect answer they haven’t corrected yet. This is a reason to check in, not a grade.</li><li><strong>Seen:</strong> you marked the issue as seen on the problem’s page. It leaves the count until the student gets something wrong again.</li><li><strong>Tried:</strong> a student submitted code and received a correct or incorrect result. Simply opening a problem doesn’t count.</li><li>A student counts once per problem, even if they try many times. We use their most recent attempt at each problem; restarting begins a new attempt.</li><li>Only assignments currently available to students are included. Problems with no checked answers aren’t shown.</li></ul>
+        <ul><li><strong>Needs help:</strong> a student has at least one incorrect answer they haven’t corrected yet. This is a reason to check in, not a grade.</li><li><strong>Marked done:</strong> you marked the student done on the problem’s page. It leaves the count until the student gets something wrong again.</li><li><strong>Tried:</strong> a student submitted code and received a correct or incorrect result. Simply opening a problem doesn’t count.</li><li>A student counts once per problem, even if they try many times. We use their most recent attempt at each problem; restarting begins a new attempt.</li><li>Only assignments currently available to students are included. Problems with no checked answers aren’t shown.</li></ul>
         ${s.indeterminate ? `<p>${count(s.indeterminate, "submission")} could not be checked. ${s.indeterminate === 1 ? "It is" : "They are"} left out and not counted as a student mistake.</p>` : ""}
       </details>`;
   }

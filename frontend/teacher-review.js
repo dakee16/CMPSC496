@@ -12,7 +12,7 @@
                              failed on, their whole function up to that step
                              with the failing attempt in red, and every attempt.
 
-   "Issue seen" is on both. It takes the student out of the problem's counter
+   "Mark done" is on both. It takes the student out of the problem's counter
    until they get something wrong again; main/teacher_dashboard.py explains why
    it is a timestamp rather than a flag. Nothing here grades anything. */
 (() => {
@@ -39,7 +39,7 @@
   }
 
   async function setSeen(studentId, seen, button) {
-    if (button) setBusy(button, true, seen ? "Marking…" : "Undoing…");
+    if (button) setBusy(button, true, seen ? "Marking done…" : "Undoing…");
     try {
       const r = await fetch(`${API}/teacher/issues/seen`, {
         method: "POST", headers: {"Content-Type": "application/json"},
@@ -53,8 +53,11 @@
     }
   }
 
+  // A SMALL SECONDARY CONTROL, deliberately. Opening the student is the main
+  // action on a row; marking it done is housekeeping, and styled as a primary
+  // button it read as the way forward.
   const seenButton = (studentId, seen) =>
-    `<button class="${seen ? "ghost " : ""}seen-toggle" type="button" data-seen="${esc(studentId)}" data-now="${seen}" aria-pressed="${seen}">${seen ? "Seen · undo" : "Issue seen"}</button>`;
+    `<button class="ghost mark-done${seen ? " is-done" : ""}" type="button" data-seen="${esc(studentId)}" data-now="${seen}" aria-pressed="${seen}">${seen ? `<span aria-hidden="true">✓</span> Done · undo` : `<span aria-hidden="true">✓</span> Mark done`}</button>`;
   function wireSeen() {
     host.querySelectorAll("[data-seen]").forEach(b =>
       b.onclick = () => setSeen(b.dataset.seen, b.dataset.now !== "true", b));
@@ -76,7 +79,7 @@
       const steps = s.steps.length > 1 ? `Steps ${s.steps.join(", ")}` : `Step ${first.number}`;
       return `<li class="review-student${s.seen ? " is-seen" : ""}">
         <a class="review-student-link" href="${link({student: s.student_id})}">
-          <span class="rs-name">${esc(s.name)}${s.seen ? `<span class="rs-badge">Seen</span>` : ""}</span>
+          <span class="rs-name">${esc(s.name)}${s.seen ? `<span class="rs-badge">Done</span>` : ""}</span>
           <span class="rs-step">${steps}${first.prompt ? `: ${esc(undash(first.prompt))}` : ""}</span>
           <span class="rs-reason">${esc(undash(s.reason))}</span>
           <span class="rs-when">Last wrong answer ${esc(when(s.last_activity))}</span>
@@ -84,7 +87,7 @@
     };
     host.innerHTML = `<a class="back-link" href="teacher.html">← Dashboard</a>
       <header class="review-head"><p class="eyebrow">${esc(aname)}</p><h1 tabindex="-1">${esc(p.title || p.slug)}</h1>
-        <p class="sub">${open.length ? `${count(open.length)} with an open issue` : "No open issues"}${seen.length ? ` · ${seen.length} seen` : ""} · ${count(p.attempted)} tried</p></header>
+        <p class="sub">${open.length ? `${count(open.length)} with an open issue` : "No open issues"}${seen.length ? ` · ${seen.length} marked done` : ""} · ${count(p.attempted)} tried</p></header>
       ${p.follow_up.length
         ? `<p class="hint">Choose a student to see the step, their code and what went wrong.</p><ul class="review-students">${[...open, ...seen].map(row).join("")}</ul>`
         : `<div class="insight-empty"><p>No students have an uncorrected answer on this problem.</p></div>`}`;

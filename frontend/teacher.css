@@ -251,25 +251,33 @@ ul.items{list-style:none; padding:0; margin:0; display:grid; gap:var(--s2)}
    Square, scannable, and HIGHLIGHTED only while a student has an open, unseen
    issue - the one thing the grid is for. Each tile is a link to the problem's
    review page. Colour is never the only signal: the count is printed too. */
-.problem-tiles{list-style:none;padding:0;margin:18px 0 0;display:grid;gap:14px;
-  grid-template-columns:repeat(auto-fill,minmax(180px,1fr))}
-.problem-tile{aspect-ratio:1/1;display:flex;flex-direction:column;gap:6px;padding:18px;
+.problem-tiles{list-style:none;padding:0;margin:20px 0 0;display:grid;gap:16px;
+  grid-template-columns:repeat(auto-fill,minmax(220px,1fr))}
+.problem-tile{aspect-ratio:1/1;display:flex;flex-direction:column;gap:6px;padding:20px;
   border:1px solid var(--border);border-radius:var(--r-md);background:var(--surface);
-  color:var(--text);text-decoration:none;transition:border-color .15s,background .15s,transform .15s}
+  color:var(--text);text-decoration:none;transition:border-color .15s,background .15s}
 .problem-tile:hover{border-color:var(--border-strong);background:var(--surface-raised)}
 .problem-tile:focus-visible{outline:2px solid var(--accent-ink);outline-offset:2px}
-.problem-tile .tile-name{font-weight:600;font-size:15px;line-height:1.35;overflow-wrap:anywhere}
-.problem-tile .tile-assignment{font-size:12.5px;color:var(--text-muted);line-height:1.4}
-.problem-tile .tile-count{margin-top:auto;display:flex;align-items:baseline;gap:6px;flex-wrap:wrap}
-.problem-tile .tile-count strong{font-size:30px;line-height:1;font-family:var(--font-display,inherit)}
-.problem-tile .tile-count span{font-size:12.5px;color:var(--text-muted)}
-.problem-tile .tile-foot{font-size:12px;color:var(--text-subtle)}
+/* Problem names are function names - code - so they are set as code, and a
+   long identifier breaks at a character only when it truly cannot fit. */
+.problem-tile .tile-name{font-family:var(--font-mono);font-weight:600;font-size:14px;
+  line-height:1.4;letter-spacing:-.01em;overflow-wrap:anywhere}
+/* One line; the full name is on hover (title) and in the accessible label. */
+.problem-tile .tile-assignment{font-size:12px;color:var(--text-muted);line-height:1.45;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.problem-tile .tile-count{margin-top:auto;display:flex;align-items:baseline;gap:7px;flex-wrap:wrap}
+.problem-tile .tile-count strong{font-family:var(--font-sans);font-size:26px;font-weight:600;
+  line-height:1;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.problem-tile .tile-count span{font-size:12px;color:var(--text-muted)}
+.problem-tile .tile-foot{font-size:11.5px;color:var(--text-subtle);padding-top:10px;
+  border-top:1px solid var(--border)}
 .problem-tile.needs-attention{border-color:var(--warning);background:var(--warning-bg);
-  box-shadow:inset 4px 0 0 var(--warning)}
+  box-shadow:inset 3px 0 0 var(--warning)}
 .problem-tile.needs-attention .tile-count strong{color:var(--warning)}
+.problem-tile.needs-attention .tile-foot{border-top-color:color-mix(in srgb,var(--warning) 35%,transparent)}
 .problem-tile:not(.needs-attention) .tile-count strong{color:var(--text-subtle)}
-@media (max-width:520px){.problem-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}
-  .problem-tile{padding:14px}.problem-tile .tile-count strong{font-size:24px}}
+@media (max-width:520px){.problem-tiles{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+  .problem-tile{padding:14px}.problem-tile .tile-count strong{font-size:22px}}
 
 /* ── Review page (teacher-review.html) ───────────────────────────────── */
 /* Width comes from the shared .page.narrow (ui.css), centred. */
@@ -296,7 +304,12 @@ ul.items{list-style:none; padding:0; margin:0; display:grid; gap:var(--s2)}
 .rs-when{font-size:12px;color:var(--text-subtle)}
 .rs-badge{font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;background:var(--surface-raised);color:var(--text-muted)}
 .review-student.is-seen .review-student-link{opacity:.72}
-.seen-toggle{flex:none;white-space:nowrap}
+/* Housekeeping, not the way forward: small, quiet, and the same weight as the
+   other secondary actions beside it. */
+.mark-done{flex:none;white-space:nowrap;min-height:32px;padding:4px 12px;font-size:12.5px;
+  font-weight:500;border-radius:999px;gap:6px}
+.mark-done.is-done{color:var(--text-subtle)}
+.mark-done span{color:var(--success,var(--accent-ink))}
 
 /* The immersive view */
 .step-switch{margin:-6px 0 16px;font-size:14px;color:var(--text-muted);display:flex;gap:10px;flex-wrap:wrap}
@@ -334,4 +347,4 @@ ul.items{list-style:none; padding:0; margin:0; display:grid; gap:var(--s2)}
 .attempt p{margin:4px 0 8px;font-size:14px;color:var(--text-muted)}
 .attempt-code{margin:0;max-height:220px}
 @media (max-width:640px){.review-student{flex-direction:column;align-items:stretch;gap:0;padding-bottom:12px}
-  .seen-toggle{align-self:flex-start}}
+  .mark-done{align-self:flex-start}}

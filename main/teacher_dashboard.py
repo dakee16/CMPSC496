@@ -343,34 +343,50 @@ def review_detail(client, slug, student_id, step=None, db_path=None):
     snap = session_snapshot(session_id, db_path)
     chunks = (snap or {}).get("chunks") or []
     prompt = lambda i: (chunks[i].get("prompt") or "") if i < len(chunks) else ""
-    # The function as it stood: the steps accepted before this one. From the
-    # session when it is there; otherwise each earlier step's last correct
-    # attempt from the archive.
-    if snap:
-        prefix = [{"number": i + 1, "prompt": prompt(i), "code": a.get("code") or ""}
-                  for i, a in enumerate((snap.get("accepted") or [])[:index])]
-    else:
-        prefix = []
-        for i in range(index):
-            good = [r for r in by_step.get(i, []) if r["verdict"] == "correct"]
-            prefix.append({"number": i + 1, "prompt": "",
-                           "code": (good[-1].get("code") or "") if good else ""})
-
     attempts = by_step[index]
     failing = [r for r in attempts if r["verdict"] == "incorrect"][-1]
-    code = failing.get("code") or ""
-    if snap and index < len(chunks):
-        try:
-            code = align_submission({**snap, "index": index}, code)
-        except Exception:
-            pass
+    failed_at = at(failing)
+
+    def seat(code, i):
+        """Raw archived text, re-seated where the grader put it."""
+        if snap and i < len(chunks):
+            try:
+                return align_submission({**snap, "index": i}, code)
+            except Exception:
+                pass
+        return code
+
+    # THE FUNCTION AS IT STOOD WHEN THAT ATTEMPT FAILED - not as the session
+    # stands now. The live session moves on: reopening an earlier step
+    # truncates its accepted prefix, so reading it showed the failing line with
+    # nothing above it, under a header that made "return report" look like line
+    # 2 of a three-step answer. The archive has every correct submission with
+    # its time, so each earlier step is its last correct attempt BEFORE the
+    # failure. The live session fills in only what the archive cannot: a step
+    # accepted in an earlier session this one was copied from. A step with
+    # neither was answered inside another step's code (covered), and adds no
+    # lines of its own.
+    live = (snap or {}).get("accepted") or []
+    prefix = []
+    for i in range(index):
+        good = [r for r in by_step.get(i, [])
+                if r["verdict"] == "correct" and at(r) <= failed_at]
+        if good:
+            code = seat(good[-1].get("code") or "", i)
+        elif i < len(live) and (live[i].get("code") or "").strip():
+            code = live[i]["code"]
+        else:
+            continue
+        prefix.append({"number": i + 1, "prompt": prompt(i), "code": code})
+
+    code = seat(failing.get("code") or "", index)
     # What the student was shown for that attempt: the last failing result the
     # server recorded at this step.
     shown = [r for r in _local_results(session_id, db_path)
              if r.get("verdict") == "incorrect" and r.get("index") == index]
     cases = (shown[-1].get("failing_cases") or []) if shown else []
     seen_at = seen_marks(db_path).get((student_id, slug))
-    last_wrong = at(failing)
+    last_wrong = failed_at
     return {
         "slug": slug, "title": problem.get("title") or slug,
         "assignment_id": problem["assignment_id"],
