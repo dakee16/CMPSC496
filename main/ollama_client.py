@@ -22,11 +22,14 @@ The design principle is unchanged: the model proposes, deterministic validation
 mistakes for validation to catch - never more trust in the model.
 """
 import os
+import sys
 import time
 from typing import Dict, List, Optional
 
 import requests
 from dotenv import load_dotenv
+
+from . import trace
 
 load_dotenv()
 
@@ -66,6 +69,24 @@ TUTOR_MODEL = os.environ.get("MICROTUTOR_TUTOR_MODEL", "gpt-4o")
 # touching the conversational tutor.
 VISION_MODEL = os.environ.get("MICROTUTOR_VISION_MODEL", "gpt-4o")
 
+# WHAT EVERY CALL COSTS, so the server can say what it spent instead of us
+# estimating it after the bill arrives. On 24 Sep 2026 the OpenAI account was
+# billed $325 in a day and nothing here could say how much of that was ACADIA:
+# OpenAI returns the token counts with every reply and we threw them away.
+#
+# USD per 1M tokens (input, output), OpenAI list prices when this was written.
+# The TOKENS are what is recorded and they are exact; the cost is derived from
+# this table, so if a price changes, fix it here and the tokens already on disk
+# can be re-priced. Cached input is billed lower, so costs here are an upper
+# bound. A model missing from the table records tokens with cost=None - never a
+# guessed number (trace.py's rule).
+LIST_PRICES = {
+    "gpt-4o": (2.50, 10.00),
+    "gpt-4o-mini": (0.15, 0.60),
+}
+for _m, (_in, _out) in LIST_PRICES.items():
+    trace.configure_pricing(_m, _in, _out)
+
 OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions"
 OLLAMA_CHAT_URL = "http://localhost:11434/api/chat"
 
@@ -94,6 +115,42 @@ def _backoff(attempt: int, retry_after: str | None = None) -> None:
     time.sleep(min(wait, 30.0))
 
 
+def _caller() -> str:
+    """Which feature made this call - `main.tutor.reply`, `tests.sandbox.
+    generate_test_inputs` - read off the stack so no call site has to label
+    itself. Seven modules call chat(); a label each one had to remember to pass
+    is a label one of them would forget."""
+    try:
+        f = sys._getframe(1)
+        while f is not None and f.f_globals.get("__name__") == __name__:
+            f = f.f_back
+        if f is None:
+            return "?"
+        return f"{f.f_globals.get('__name__', '?')}.{f.f_code.co_name}"
+    except Exception:
+        return "?"
+
+
+def _record_usage(backend: str, model: str, purpose: str, usage: dict,
+                  served: str | None = None) -> None:
+    """One `model_usage` trace event per BILLED call. Never raises: a telemetry
+    failure must not turn a good model reply into an error.
+
+    Only successful replies are recorded - a refused request (429, 5xx) is not
+    billed, so counting it would overstate spend."""
+    try:
+        tin = usage.get("prompt_tokens")
+        tout = usage.get("completion_tokens")
+        cached = (usage.get("prompt_tokens_details") or {}).get("cached_tokens")
+        trace.record(kind="model_usage", backend=backend, model=model,
+                     served_model=served, purpose=purpose,
+                     input_tokens=tin, cached_input_tokens=cached,
+                     output_tokens=tout,
+                     estimated_cost_usd=trace._estimate(model, tin, tout))
+    except Exception:
+        pass
+
+
 def _openai_chat(model: str, system: str, messages: List[Dict[str, str]],
                  temperature: float, fmt: Optional[str]) -> str:
     key = os.environ.get("OPENAI_API_KEY", "").strip()
@@ -118,6 +175,7 @@ def _openai_chat(model: str, system: str, messages: List[Dict[str, str]],
 
     headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
     last_error: Exception = RuntimeError("No attempts made")
+    purpose = _caller()
 
     for attempt in range(1, _MAX_RETRIES + 1):
         try:
@@ -131,7 +189,10 @@ def _openai_chat(model: str, system: str, messages: List[Dict[str, str]],
                     continue
                 raise last_error
             r.raise_for_status()        # 4xx: a real bug, fail loudly and now
-            return r.json()["choices"][0]["message"]["content"]
+            body = r.json()
+            _record_usage("openai", model, purpose, body.get("usage") or {},
+                          served=body.get("model"))
+            return body["choices"][0]["message"]["content"]
         except (requests.ConnectionError, requests.Timeout) as e:
             last_error = e
             if attempt < _MAX_RETRIES:
@@ -145,6 +206,7 @@ def _openai_chat(model: str, system: str, messages: List[Dict[str, str]],
 def _ollama_chat(model: str, system: str, messages: List[Dict[str, str]],
                  temperature: float, fmt: Optional[str]) -> str:
     """Unchanged local path - student simulation depends on it."""
+    purpose = _caller()
     payload: Dict = {
         "model": model,
         "messages": [{"role": "system", "content": system}] + messages,
@@ -159,7 +221,13 @@ def _ollama_chat(model: str, system: str, messages: List[Dict[str, str]],
         try:
             r = requests.post(OLLAMA_CHAT_URL, json=payload, timeout=_TIMEOUT)
             r.raise_for_status()
-            return r.json()["message"]["content"]
+            body = r.json()
+            # Local and free, but recorded all the same: tokens are the
+            # comparable unit, and cost comes back None for an Ollama tag.
+            _record_usage("ollama", model, purpose,
+                          {"prompt_tokens": body.get("prompt_eval_count"),
+                           "completion_tokens": body.get("eval_count")})
+            return body["message"]["content"]
         except (requests.ConnectionError, requests.Timeout) as e:
             last_error = e
             if attempt < _MAX_RETRIES:

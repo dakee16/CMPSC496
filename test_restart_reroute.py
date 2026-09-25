@@ -138,8 +138,29 @@ def env(monkeypatch, tmp_path):
 
     for mod in (ollama_client, reroute, run_phase1):
         monkeypatch.setattr(mod, "chat", fake_chat, raising=False)
+    # The last line of defence: anything that still reaches the real provider
+    # fails loudly here instead of spending credits - or, with none left,
+    # failing as if the code under test were broken. That is how this suite
+    # was found to be online: tests.sandbox generates oracle inputs through
+    # its OWN imported copy of chat, which none of the patches above reach.
+    def no_network(*a, **k):
+        raise AssertionError("a test reached the real model provider")
+    monkeypatch.setattr(ollama_client, "_openai_chat", no_network)
+    monkeypatch.setattr(ollama_client, "_ollama_chat", no_network)
     import tests.sandbox as sandbox
-    monkeypatch.setattr(sandbox, "get_oracle_tests", lambda p, **k: list(ORACLE))
+    # EVERY copy of the name: run_phase1 and gates import get_oracle_tests at
+    # load time, so patching sandbox alone left the decomposer's gates
+    # generating a real oracle.
+    import sys
+    # The necessity gate also asks whether that oracle was mutation-validated,
+    # which is a lookup in the real cache: ORACLE stands in for a validated one.
+    fakes = {"get_oracle_tests": lambda p, **k: list(ORACLE),
+             "is_oracle_certified": lambda p: True}
+    for name, fake in fakes.items():
+        real = getattr(sandbox, name)
+        for mod in list(sys.modules.values()):
+            if getattr(mod, name, None) is real:
+                monkeypatch.setattr(mod, name, fake)
     # The teacher's own roadmap is not what is being measured: make the
     # fallback instant so every model call counted below belongs to reroute.
     monkeypatch.setattr(api_server, "get_chunk_decomposition", lambda p: {
