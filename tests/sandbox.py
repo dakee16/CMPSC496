@@ -678,6 +678,8 @@ def get_oracle_tests(problem: dict, n: int = 10, emit=None) -> list[dict]:
     behaviour; leaving it None is the production path."""
     emit = emit or (lambda ev: None)
     from main.identity import content_hash
+    if problem.get("oracle_from") is not None:
+        return _borrowed_tests(problem)
     slug = problem.get("slug", "")          # for humans reading the logs only
     key = content_hash(problem)             # cache identity: content, not title
     cache = _load_cache()
@@ -763,6 +765,36 @@ def get_oracle_tests(problem: dict, n: int = 10, emit=None) -> list[dict]:
     return validated["final_tests"]
 
 
+def _borrowed_tests(problem: dict) -> list[dict]:
+    """The TEACHER'S certified tests, for a problem that is the teacher's with
+    a different `solution` - which is what reroute.build hands the decomposer
+    when it rebuilds a roadmap around a student's approach.
+
+    WHY THIS EXISTS - it cost $600. The cache is keyed by content, and content
+    includes `solution`, so every rebuilt roadmap MISSED the cache and got a
+    brand-new oracle generated and mutation-tested from scratch. Worse, for a
+    METHOD that solution is the whole assignment file (build_program's output),
+    so mutation testing planted 291 mutants across EVERY method in HW3 instead
+    of 3-44 in the one being solved, and asked gpt-4o about each survivor with
+    the whole file quoted twice: measured, 585 calls of ~12,400 tokens for ONE
+    rebuild, where the teacher's problem makes zero. On 24 Sep 2026 that was
+    15,557 requests and $325 in a day, on a key nothing else uses.
+
+    The teacher's suite is also simply the RIGHT one to gate with: the rebuilt
+    solution has already passed it at 100% (reroute's Gate 1), it is
+    mutation-validated, and it describes what the problem must do - which a
+    student-shaped solution does not change.
+
+    READ-ONLY by construction: never generates, never validates, never writes.
+    No certified teacher oracle -> no tests, which the gates read as "cannot
+    certify" and reroute turns into "keep the teacher's roadmap"."""
+    from main.oracle_store import OracleUnusableError, load_strong_cached_oracle
+    try:
+        return load_strong_cached_oracle(problem["oracle_from"])
+    except OracleUnusableError:
+        return []
+
+
 def is_oracle_certified(problem: dict) -> bool:
     """May this problem's oracle be graded with?
 
@@ -777,6 +809,8 @@ def is_oracle_certified(problem: dict) -> bool:
     the collision this change removes."""
     from main.identity import content_hash
     from main.oracle_store import certified, is_stale
+    if problem.get("oracle_from") is not None:
+        return bool(_borrowed_tests(problem))
     slug = problem.get("slug", "")
     entry = _load_cache().get(content_hash(problem))
     # A stale verdict is treated as no verdict here too, or this gate would

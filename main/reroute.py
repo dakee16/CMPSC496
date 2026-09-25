@@ -424,8 +424,12 @@ def build(problem: dict, header: str, graph: dict, chat_log: list | None = None,
         # is what makes this their route rather than the teacher's: the
         # decomposer splits the code it is given.
         try:
+            # `oracle_from`: gate with the TEACHER'S tests, never a new oracle
+            # built from this solution - see tests/sandbox._borrowed_tests for
+            # the $325 day that doing otherwise produced.
             decomp = decompose_into_chunks(
-                {**problem, "solution": build_program(problem, body, header)},
+                {**problem, "solution": build_program(problem, body, header),
+                 "oracle_from": problem},
                 max_tries=DECOMPOSE_TRIES)
         except Exception as e:
             last = f"could not be split into steps: {e!r}"[:200]
