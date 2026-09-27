@@ -56,8 +56,12 @@ def _sb():
 _CHUNK_POOL_PATH = os.environ.get(
     "MICROTUTOR_CHUNK_POOL",
     os.path.join(os.path.dirname(__file__), "chunk_pool.json"))
-_POOL_TARGET = 5          # stop generating fresh once a problem has this many
-_FRESH_PROBABILITY = 0.4  # chance to generate fresh even when pool has entries
+# Stop generating fresh once a problem has this many. A FULL POOL IS FINAL:
+# there used to be a 40% chance of building one more on every open anyway,
+# which made fresh roadmaps the largest normal cost on a busy day ($2.50 of
+# $6.71 on 25 Sep) and let the pool grow without bound (invert reached 10).
+# Five gated roadmaps is already the variety students see.
+_POOL_TARGET = 5
 
 
 class OracleNotStrongError(RuntimeError):
@@ -643,8 +647,7 @@ def get_chunk_decomposition(problem: dict) -> dict:
     pool = _load_pool()
     entries = pool.get(key, [])
 
-    want_fresh = (not entries) or (len(entries) < _POOL_TARGET) or \
-                 (random.random() < _FRESH_PROBABILITY)
+    want_fresh = len(entries) < _POOL_TARGET
 
     if want_fresh:
         try:

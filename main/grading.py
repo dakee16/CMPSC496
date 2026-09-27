@@ -30,9 +30,15 @@ return `incorrect`:
     execution-reference  the teacher's tail runs as-is against their work
     execution-bridged    same tail, byte for byte, with their names matched to
                          it BY VALUE (main/bridge.py). Deterministic, no model.
-    execution-adapted    a model rewrites the tail; calibration, the full oracle
-                         and a neutralised knockout must all still pass
-    llm-judge            two independent judges both say it is right
+    execution-adapted    a model rewrites the tail in their names; calibration,
+                         the full oracle and a knockout must all still pass.
+                         When it runs cleanly and comes out WRONG, the cases
+                         are shown - evidence, never a verdict.
+    execution-completed  a model writes its own finish on top of their step;
+                         the full oracle and a knockout must still pass
+
+(llm-judge - two judges reading code without running it - is retired: it
+acquitted 37 real steps that went on to trap their students.)
 
 A tier that cannot acquit falls through, and running out of tiers is
 `indeterminate` with no attempt spent. What that costs is the ability to tell a
@@ -44,6 +50,7 @@ import ast
 import difflib
 import json
 import re
+import textwrap
 
 from . import bridge
 from .execution import classify_run
@@ -55,19 +62,8 @@ from .schemas import GradeResult
 from .context import build_program
 from .sessions import accepted_prefix, problem_of
 
-# Retries of the Tier 3 adapter. Raised from 2 once that tier became
-# acquit-only, because the two situations are not the same kind of thing.
-# Re-running a JUDGE until it agrees with itself manufactures confidence: the
-# output is an opinion nothing checks, so repetition converges on the model's
-# favourite answer (at a 70% bias, an agreed verdict is wrong 84% of the time).
-# Re-running the ADAPTER is a SEARCH: every candidate must still pass
-# calibration, the full oracle and the anti-bypass check before it can acquit,
-# so a bad one is discarded by execution rather than believed. Failure now
-# costs nothing but latency, which makes another look worth taking.
-MAX_ADAPT_TRIES = 4
-
-# Verdict memo, so identical code gets an identical verdict. Tier 3 and Tier 4
-# are model calls, and a model that wavers turns one student's answer into
+# Verdict memo, so identical code gets an identical verdict. Tiers 3 and 4 are
+# model calls, and a model that wavers turns one student's answer into
 # `correct` and an identical answer into `cannot verify` - a milder version of
 # the 1am/4:58am flip, but the same complaint. Keyed by what was actually
 # graded, never by submission id, and bounded so a long-lived process cannot
@@ -138,6 +134,12 @@ _SAFE_BUILTINS = frozenset({
     "issubclass", "iter", "len", "list", "map", "max", "min", "next", "object",
     "oct", "ord", "pow", "print", "range", "repr", "reversed", "round", "set",
     "slice", "sorted", "str", "sum", "tuple", "zip",
+    # Missing, they convicted valid code as "`type` isn't defined" - a real
+    # student lost attempts to hasattr. getattr/setattr/delattr are NOT here on
+    # purpose: they reach any attribute by a string built at run time, which
+    # walks straight past the policy's ban on `.__class__` and friends, so
+    # execution._BANNED_NAMES refuses them with an honest "isn't allowed here".
+    "type", "id", "hasattr", "super",
     "True", "False", "None", "NotImplemented", "Ellipsis", "__name__",
     # typing aliases the execution harness injects into the run namespace
     "List", "Dict", "Optional", "Tuple", "Set", "Any", "Union", "Callable",
@@ -215,7 +217,7 @@ def _render_case(problem: dict, test: dict, failure: dict) -> str:
     from .context import is_method
 
     inp = (test or {}).get("input") or []
-    lines = []
+    lines, labels = [], []      # labels[i]: the call that produced output i
     if is_method(problem) and inp and isinstance(inp[0], str):
         lines.append(inp[0].rstrip())          # a block test IS a program
     elif is_method(problem) and inp and isinstance(inp[0], list):
@@ -223,26 +225,322 @@ def _render_case(problem: dict, test: dict, failure: dict) -> str:
         lines.append(f"x = {cls}()")
         for call in inp[0]:
             if not (isinstance(call, list) and call):
+                labels.append(None)
                 continue
             name, args = str(call[0]), call[1:]
             rendered = ", ".join(repr(a) for a in args)
             if name == "new":
                 lines[0] = f"x = {cls}({rendered})"
+                labels.append(lines[0])
             elif name in ("len", "str", "bool"):
                 lines.append(f"{name}(x)")
+                labels.append(lines[-1])
             else:
                 lines.append(f"x.{name}({rendered})")
+                labels.append(lines[-1])
     else:
         name = get_resolved_entry(problem)["entry_name"] or "solution"
         lines.append(f"{name}({', '.join(repr(a) for a in inp)})")
 
     out = ["\n".join(lines)]
     if failure.get("error"):
-        out.append(f"\nit raised: {failure['error']}")
+        out.append(f"\nyour code crashed: {failure['error']}")
     else:
-        out.append(f"\nexpected: {_shown(failure.get('expected'))}")
-        out.append(f"you gave: {_shown(failure.get('got'))}")
+        got, crashes = _crashes_in(failure.get("got"))
+        expected, _ = _crashes_in(failure.get("expected"), expected=True)
+        out.append(f"\nexpected: {expected}")
+        out.append(f"you gave: {got}")
+        # WHICH CALL CRASHED, AND WHY, in words. The recorded value is only the
+        # exception's name; a student shown `'!AttributeError'` spent nine
+        # attempts on a one-character typo the message would have named.
+        # Outputs line up one-to-one with the calls rendered above (the
+        # construction line records nothing), so each crash is put beside its
+        # own call when that holds, and listed plainly when it does not.
+        for pos, msg in crashes:
+            where = (labels[pos] if pos is not None and 0 <= pos < len(labels)
+                     and labels[pos] else "your code")
+            out.append(f"  {where} crashed: {msg}")
     return "\n".join(out)
+
+
+_CRASH = re.compile(r"""(['"])!([A-Za-z_]\w*)(?:\\x00((?:(?!\1)[^\\]|\\.)*))?\1""")
+
+
+# ── A CRASH IN THE STUDENT'S OWN LINES ───────────────────────────────────
+#
+# At a middle step a wrong-LOOKING result proves nothing: a correct answer that
+# takes a different route holds different values too, which is why every other
+# non-final failure here is "could not confirm". A CRASH is different. Once a
+# line of theirs raises, no later step can undo it - so every finished program
+# built on this step crashes there as well, and that is a verdict about their
+# code alone. A real student lost nine attempts to `self._expr` for
+# `self.__expr` after the judges, who read code and never run it, let it
+# through.
+#
+# Read off the run grading ALREADY makes of their code with nothing of the
+# teacher's after it (the "already finished?" check), so no run and no model is
+# added. Only counted when it would crash in ANY completion of their step:
+#   * their step sits at the top level of the function - not inside a loop,
+#     branch, try or with, where code after it could run first or catch it;
+#   * the crash is the FIRST time their lines ever run in that test - the
+#     function is not recursive, is called directly, and was not called
+#     earlier in the sequence - so nothing they have not written yet could
+#     have set things up differently;
+#   * the teacher's version does not raise there too (pop() on an empty stack
+#     may be meant to);
+#   * it is an ordinary exception, not recursion depth or memory.
+# Anything that fails a condition is simply not counted, and grading carries on
+# exactly as before.
+
+# Accepted WITHOUT execution confirming the student's step on its own terms:
+# by the retired judges, the retired adapter, or a model-written completion
+# (which can still paper over a subtle bug). A later crash or failure inside
+# one of these is pointed back at it.
+_UNCONFIRMED_ACCEPTS = {"llm-judge", "execution-adapted", "execution-completed"}
+
+_NOT_THEIR_FAULT = {"RecursionError", "MemoryError", "TimeoutError",
+                    "KeyboardInterrupt", "SystemExit"}
+
+
+def _changed_lines(before: str, after: str):
+    """1-based (first, last) lines of `after` that are not in `before`, found
+    by trimming the shared head and tail. Any coincidental match only SHRINKS
+    the range, which can hide a crash but never blame a line that is not theirs."""
+    a, b = before.splitlines(), after.splitlines()
+    h = 0
+    while h < min(len(a), len(b)) and a[h] == b[h]:
+        h += 1
+    t = 0
+    while t < min(len(a), len(b)) - h and a[-1 - t] == b[-1 - t]:
+        t += 1
+    return (h + 1, len(b) - t) if len(b) - t >= h + 1 else None
+
+
+def _step_ranges(problem, header, codes):
+    """Line range of each accepted step (and the one being answered, last) in
+    the assembled program."""
+    out = []
+    for k in range(len(codes)):
+        out.append(_changed_lines(_assemble(problem, header, *codes[:k]),
+                                  _assemble(problem, header, *codes[:k + 1]))
+                   if codes[k].strip() else None)
+    return out
+
+
+def _entry_def(program: str, first: int, last: int):
+    """The function their lines live in, and whether they sit at its top level
+    with nothing re-entrant about it. None when any condition fails."""
+    try:
+        tree = ast.parse(program)
+    except SyntaxError:
+        return None
+    fns = [n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+           and n.lineno <= first and (n.end_lineno or 0) >= last]
+    if not fns:
+        return None
+    fn = max(fns, key=lambda n: n.lineno)            # innermost
+    for st in fn.body:                               # top level only
+        s0, s1 = st.lineno, st.end_lineno or st.lineno
+        if s0 < first <= s1 or s0 <= last < s1 and s0 < first:
+            return None                              # their lines are nested
+    names = lambda n: {x.attr if isinstance(x, ast.Attribute) else x.id
+                       for x in ast.walk(n) if isinstance(x, (ast.Attribute, ast.Name))}
+    if fn.name in names(ast.Module(body=fn.body, type_ignores=[])):
+        return None                                  # recursive
+    # Every function that can reach this one, directly or through another.
+    fdefs = [n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+             and n is not fn]
+    callers, grew = set(), True
+    while grew:
+        grew = False
+        for d in fdefs:
+            if d.name not in callers and names(d) & ({fn.name} | callers):
+                callers.add(d.name)
+                grew = True
+    starts = {fn.lineno} | {d.lineno for d in fn.decorator_list}
+    return {"name": fn.name, "starts": starts, "callers": callers}
+
+
+def _crash_sites(problem, tests, failures, entry):
+    """(test index, 'Type: message', innermost line in the entry function) for
+    each crash the conditions above allow."""
+    from .context import DUNDER_CALL, is_method
+    same = {entry["name"], DUNDER_CALL.get(entry["name"], entry["name"])}
+    out = []
+    for f in failures or []:
+        i = f.get("index")
+        if not (isinstance(i, int) and 0 <= i < len(tests or [])):
+            continue
+        t = tests[i]
+        if not is_method(problem):
+            exp = t.get("expected")
+            if not f.get("error") or (isinstance(exp, dict) and "__error__" in exp):
+                continue
+            kind, where = f["error"].split(":", 1)[0], f.get("where") or []
+            msg = f["error"]
+        else:
+            inp = t.get("input") or []
+            if not (inp and isinstance(inp[0], list)):
+                continue                             # block tests: not counted
+            calls = inp[0]
+            text = _shown(f.get("got"))
+            try:
+                expected = ast.literal_eval(_shown(f.get("expected")))
+            except Exception:
+                expected = None
+            hit = None
+            for m in _CRASH.finditer(text):
+                pos = _index_at(text, m.start())
+                if pos is None or not (0 <= pos < len(calls)) or not m.group(3):
+                    continue
+                name = str((calls[pos] or [""])[0])
+                if name not in same or any(str((c or [""])[0]) in same | entry["callers"]
+                                           for c in calls[:pos]):
+                    continue
+                if isinstance(expected, list) and pos < len(expected) and \
+                        isinstance(expected[pos], str) and expected[pos].startswith("!"):
+                    continue                         # the teacher's raises too
+                try:
+                    raw = ast.literal_eval(m.group(1) + m.group(3) + m.group(1))
+                except Exception:
+                    continue
+                message, _, frames = raw.partition("\x00@")
+                hit = (m.group(2), f"{m.group(2)}: {message}",
+                       [tuple(int(x) for x in fr.split(":")) for fr in frames.split(",") if ":" in fr])
+                break
+            if hit is None:
+                continue
+            kind, msg, where = hit
+        if kind in _NOT_THEIR_FAULT:
+            continue
+        inner = [ln for first, ln in where if first in entry["starts"]]
+        if inner:
+            out.append((i, msg, inner[-1]))
+    return out
+
+
+def _crash_verdict(problem, header, session, student_code, tests, res, is_last):
+    """A GradeResult when the run `res` of their code shows a crash that is
+    theirs to fix, else None. Two answers:
+
+      * in the lines of the step being answered -> `incorrect`, attempt used,
+        and the line named;
+      * in an EARLIER step the judges accepted without running it -> no
+        attempt, and they are pointed at that step and Rework (C). The step
+        they are on may be fine; charging it would be charging the wrong step.
+    """
+    try:
+        codes = [a.get("code") or "" for a in session.get("accepted") or []]
+        tiers = [a.get("tier") for a in session.get("accepted") or []]
+        ranges = _step_ranges(problem, header, codes + [student_code])
+        mine = ranges[-1]
+        if mine is None:
+            return None
+        program = _assemble(problem, header, *(codes + [student_code]))
+        entry = _entry_def(program, *mine)
+        if entry is None:
+            return None
+        sites = _crash_sites(problem, tests, res.failures, entry)
+        lines = program.splitlines()
+        for i, msg, ln in sites:
+            shown = failing_cases(problem, tests,
+                                  [f for f in res.failures if f.get("index") == i])
+            quoted = lines[ln - 1].strip() if 0 < ln <= len(lines) else ""
+            if mine[0] <= ln <= mine[1]:
+                n = ln - mine[0] + 1
+                return _ok("incorrect", "execution-crash",
+                           f"Your step crashed on line {n} of your answer"
+                           + (f" (`{quoted}`)" if quoted else "")
+                           + f": {msg}. Fix that line and try again.",
+                           "own_code_crash", execution_outcome="runtime_error",
+                           failures=res.failures, failing_cases=shown,
+                           failed_total=_failed_total(res, len(shown)))
+            for k, r in enumerate(ranges[:-1]):
+                if r and r[0] <= ln <= r[1] and tiers[k] in _UNCONFIRMED_ACCEPTS:
+                    return _ok("indeterminate", "execution-crash",
+                               f"The crash is in step {k + 1}, which was accepted "
+                               f"earlier without being fully confirmed"
+                               + (f" (`{quoted}`)" if quoted else "")
+                               + f": {msg}. Your attempt was not used - reopen "
+                               f"step {k + 1} with Rework and fix it there.",
+                               "earlier_step_crash", deterministic=True,
+                               consume_attempt=False, execution_outcome="runtime_error",
+                               failures=res.failures, failing_cases=shown,
+                               failed_total=_failed_total(res, len(shown)))
+    except Exception:
+        return None                     # a hint is never worth breaking grading
+    return None
+
+
+_CRASH_CUT = re.compile(r"""['"]!([A-Za-z_]\w*)\\x00.*$""", re.S)
+
+
+def _crashes_in(v, expected: bool = False):
+    """A recorded value as a person should read it, plus the crashes inside it.
+
+    A call that raised is recorded as "!Name" + NUL + message (context.py,
+    ERROR_SEP). Shown raw that is `'!AttributeError\\x00...'`; shown here it is
+    <crashed: AttributeError> in the list, and the message comes back as
+    (position, "AttributeError: 'Calculator' object has no attribute '_expr'")
+    for the line underneath. An EXPECTED crash reads <raises IndexError>: that
+    is the teacher's method raising on purpose, not a fault."""
+    text = _shown(v)
+    crashes, pos = [], [-1]
+
+    def swap(m):
+        name, raw = m.group(2), m.group(3)
+        idx = _index_at(text, m.start())
+        if not expected:
+            msg = name
+            if raw:
+                try:
+                    import ast as _a
+                    text_ = _a.literal_eval(m.group(1) + raw + m.group(1))
+                    msg = f"{name}: {text_.partition(chr(0) + '@')[0]}"
+                except Exception:
+                    msg = f"{name}: {raw.split(chr(92) + 'x00@')[0]}"
+            crashes.append((idx, msg))
+            return f"<crashed: {name}>"
+        return f"<raises {name}>"
+
+    text = _CRASH.sub(swap, text)
+    # Long outputs are cut to a length cap, and the cut can land inside a
+    # crash's message - which left `"!AttributeError\\x00'Advanced...<truncated>`
+    # on screen. A crash the cap cut through is still a crash.
+    cut = _CRASH_CUT.search(text)
+    if cut:
+        text = text[:cut.start()] + (f"<raises {cut.group(1)}>" if expected
+                                     else f"<crashed: {cut.group(1)}>") + " ..."
+    return text, crashes
+
+
+def _index_at(text: str, offset: int):
+    """Which top-level list element `offset` falls in, or None if `text` is not
+    a flat list. Only for pairing a crash with the call that produced it."""
+    if not text.startswith("["):
+        return None
+    depth, idx, quote = 0, 0, None
+    for i, ch in enumerate(text[:offset]):
+        if quote:
+            if ch == "\\":
+                continue
+            if ch == quote and text[i - 1] != "\\":
+                quote = None
+        elif ch in "'\"":
+            quote = ch
+        elif ch in "[({":
+            depth += 1
+        elif ch in "])}":
+            depth -= 1
+        elif ch == "," and depth == 1:
+            idx += 1
+    return idx
+
+
+def _count_outputs(v) -> int:
+    if isinstance(v, dict) and "len" in v:
+        return int(v.get("len") or -1)
+    return len(v) if isinstance(v, list) else -1
 
 
 def _shown(v) -> str:
@@ -722,8 +1020,8 @@ def _hoistable_declarations(problem: dict, chunks: list, header: str,
     fell through to the Tier 3 adapter. Across 24 live trials of the IDENTICAL
     student code that adapter returned a clean calibrated rewrite 12 times and,
     the other 12, also invented a self-referencing alias
-    ({"target": "postfixStack", "source": "postfixStack"}) that _valid_aliases
-    rightly refused - so WHICH TIER decided a correct answer was a coin flip on
+    ({"target": "postfixStack", "source": "postfixStack"}) that its alias
+    check rightly refused - so WHICH TIER decided a correct answer was a coin flip on
     the model's mood rather than on anything the student did.
 
     Returns the lines to prepend to the tail, in the reference's own order, or
@@ -786,14 +1084,45 @@ def _hoistable_declarations(problem: dict, chunks: list, header: str,
             for n in sorted(found, key=lambda n: (n.lineno, n.col_offset))]
 
 
-# ── Tier 3: calibrated adaptation ────────────────────────────────────────
+# ── TIER 3 - CALIBRATED ADAPTATION ───────────────────────────────────────
+#
+# A model rewrites the teacher's remaining steps so they read the STUDENT's
+# names. Before it may say anything about the student, the rewrite must pass
+# the full oracle after the teacher's OWN steps (calibration) - so when it then
+# runs cleanly on the student's work and comes out wrong, that is evidence
+# about their step and not about a broken rewrite. Evidence, not a verdict: the
+# failing cases are shown and no attempt is used.
+#
+# MEASURED ON 137 REAL STEPS (2026-09-27, the live code, one real call each):
+# 86% of tries were thrown away before running and none was ever accepted.
+# Four causes, each fixed below where it lives:
+#   * the model filed its name pairs the other way round from what the checker
+#     insisted on - 54 of 136 pairs;
+#   * it echoed the example pair from these instructions verbatim - 43 of 137;
+#   * a "pasted the teacher's code" rule matched a tail found ANYWHERE in the
+#     solution, so a bare `return True` counted - 34;
+#   * one unusable pair threw away the whole try, though pairs feed only
+#     calibration.
+# Replayed with the fixes, the same recorded answers showed 44 students their
+# failing cases instead of 2. They still confirmed no correct step - that is
+# what tier 4 does well, and why it runs after this one.
+#
+# ONE TRY. The model runs at temperature 0: a second try repeated the first
+# word for word 17 times in 25, yet 136 of 141 real steps paid for all four.
+MAX_ADAPT_TRIES = 1
 
 _ADAPT_SYSTEM = (
-    "You complete a partially written Python function. Return STRICT JSON only: "
-    '{"adapted_tail": "<remaining body lines>", "aliases": [{"target": "n", "source": "m"}]}. '
-    "adapted_tail is body code only - no def line, no imports, no markdown. "
-    "aliases map a name the tail needs (target) to a name the earlier code already "
-    "produced (source). Identifiers only, no expressions.")
+    "You rewrite the remaining part of a partially written Python function so "
+    "that it works with the student's variables. Return STRICT JSON only, with "
+    'two keys: "adapted_tail" and "aliases". adapted_tail is ONE string holding '
+    "the remaining body code, lines separated by newlines - no def line, no "
+    "imports, no markdown - and it must read the STUDENT's variables. aliases "
+    "is a list with one object per variable of "
+    "the original remaining logic that holds the same thing as one of the "
+    'student\'s variables; each object has the key "teacher" (the original\'s '
+    'variable name) and the key "student" (the student\'s variable name). '
+    "Plain variable names only, never expressions. Use an empty list when "
+    "there are none.")
 
 
 def _request_adaptation(problem, header, upto, reference_tail, student_outputs):
@@ -803,34 +1132,387 @@ def _request_adaptation(problem, header, upto, reference_tail, student_outputs):
             f"Function header: {header}\n\n"
             f"Code so far (the student's own approach):\n{upto}\n\n"
             f"The remaining logic was originally written as:\n{reference_tail}\n\n"
-            f"Names the student's code produced: {sorted(student_outputs) or 'none'}\n\n"
-            "Rewrite the remaining logic so it builds on the student's names. "
+            f"Variables the student's code produced: {sorted(student_outputs) or 'none'}\n\n"
+            "Rewrite the remaining logic so it builds on the student's variables. "
             "Do not restate their work and do not recompute the answer from scratch.")
     raw = chat(GRADING_MODEL, _ADAPT_SYSTEM, [{"role": "user", "content": user}],
                temperature=0, fmt="json")
     data = json.loads(raw)
-    return data.get("adapted_tail", ""), data.get("aliases", []) or []
+    tail = data.get("adapted_tail") or ""
+    # A LIST OF LINES is still the tail. Measured: 70 of 88 real answers came
+    # back that way, and str() of the list is a list literal - valid Python
+    # that does nothing - so every one of them failed calibration.
+    if isinstance(tail, list) and all(isinstance(ln, str) for ln in tail):
+        tail = "\n".join(tail)
+    return (tail if isinstance(tail, str) else ""), data.get("aliases") or []
 
 
-def _valid_aliases(aliases, allowed_targets, allowed_sources):
-    """Only `target = source`, both plain identifiers, both in scope."""
+def _valid_aliases(aliases, student_names: set, teacher_names: set) -> list:
+    """`student = teacher` lines for CALIBRATION, the only place they are used.
+
+    WHICH SIDE IS WHICH is read off the names, never off the key the model
+    filed them under - 54 of 136 real pairs came back the other way round, and
+    each one used to throw away the whole try. A pair naming nothing real on
+    either side (an echoed example, an expression like `self.top.value`) is
+    DROPPED rather than fatal. That is safe because a pair can only help the
+    rewrite pass on the teacher's work; a verdict still needs it to pass on
+    the student's own, where no pair is applied at all."""
     out = []
-    for a in aliases:
-        t, s = (a or {}).get("target", ""), (a or {}).get("source", "")
-        if not (isinstance(t, str) and isinstance(s, str)):
-            return None
-        if not (t.isidentifier() and s.isidentifier()):
-            return None
-        if allowed_targets and t not in allowed_targets:
-            return None
-        if allowed_sources and s not in allowed_sources:
-            return None
-        out.append(f"{t} = {s}")
+    for a in aliases if isinstance(aliases, list) else []:
+        if not isinstance(a, dict):
+            continue
+        t = a.get("teacher", a.get("target"))
+        s = a.get("student", a.get("source"))
+        if not (isinstance(t, str) and isinstance(s, str)
+                and t.isidentifier() and s.isidentifier()):
+            continue
+        if s in student_names and t in teacher_names:
+            out.append(f"{s} = {t}")
+        elif t in student_names and s in teacher_names:
+            out.append(f"{t} = {s}")
     return out
 
 
-def _tail_is_sane(tail: str, current_outputs: set, solution: str) -> bool:
-    """Structural checks before the tail is allowed anywhere near a verdict."""
+def _calibrate(problem, header, trusted_prefix, alias_lines, tail, tests, entry):
+    """An adapter must prove itself on TRUSTED work before it may judge a
+    student. A random LLM tail that fails proves nothing about the student:
+    it may simply be a broken tail. Only a tail that passes here has earned
+    the right to produce a verdict."""
+    cand = _assemble(problem, header, trusted_prefix, "\n".join(alias_lines), tail)
+    return classify_run(cand, tests, entry_name=entry).outcome == "pass"
+
+
+def _squash(code: str) -> str:
+    return re.sub(r"\s+", "", code or "")
+
+
+def _step_outputs(student_code: str) -> set:
+    """Every name their step produces: what it assigns, and any function or
+    class it DEFINES. Defs are not Store names, so they were missed - a
+    completion calling their helper was then tested by deleting the step, and
+    the NameError read as "their work mattered" whatever it actually did."""
+    out = _names(student_code, ast.Store)
+    try:
+        out |= {n.name for n in _parse_body(student_code).body[0].body
+                if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))}
+    except SyntaxError:
+        pass
+    return out
+
+
+def _their_work_matters(problem, header, prefix, upto, tail, outputs, tests, entry) -> bool:
+    """Does the finished program BREAK without the student's step?
+
+    Deleting the step is foolable when the tail reads their names: it just
+    raises NameError, which reads as "it broke without them" even when the tail
+    did all the work. So a tail that reads their names gets their VALUES blanked
+    instead (a function becomes one that does nothing - `type(f)()` cannot
+    build a function, and crashing read as dependence for free). A tail that
+    reads none of them - their step only guards or returns - has nothing to
+    blank, so the step is DELETED. A run our machinery could not complete
+    proves nothing either way, so it never counts as breaking."""
+    if bridge.free_names(tail) & outputs:
+        neutral = "\n".join(
+            f"{n} = (lambda *_a, **_k: None) if callable({n}) else type({n})()"
+            for n in sorted(outputs))
+        program = _assemble(problem, header, upto, neutral, tail)
+    else:
+        program = _assemble(problem, header, prefix, tail)
+    return classify_run(program, tests, entry_name=entry).outcome not in ("pass", "harness_error")
+
+
+# THEIR FINISHED VALUES ARE READ-ONLY. The residual risk of both model tiers:
+# a step that is slightly WRONG and a continuation that quietly PATCHES the
+# value before using it - `n += 1` on an off-by-one, `chars.insert(0, ...)` on
+# a list missing its first item. Every test passes, and blanking their values
+# still breaks it, because the patch builds on their value - so the wrong step
+# would be accepted. A continuation may therefore only READ what their step
+# produced, except a value the step merely set up EMPTY (`counts = {}`,
+# `total = 0`, `stack = Stack()`), which carrying on is the point of.
+# Methods that change the object they are called on; the course's own classes
+# add push/enqueue/dequeue.
+_MUTATORS = frozenset({
+    "append", "extend", "insert", "pop", "remove", "clear", "sort", "reverse",
+    "update", "setdefault", "popitem", "add", "discard", "intersection_update",
+    "difference_update", "symmetric_difference_update",
+    "push", "enqueue", "dequeue",
+})
+
+
+def _changed_in_place(tail: str, names: set) -> set:
+    """Which of `names` the tail CHANGES without rebinding them: `n += 1`,
+    `xs[i] = ...`, `node.next = ...`, `del d[k]`, `xs.append(...)`."""
+    try:
+        tree = _parse_body(tail)
+    except SyntaxError:
+        return set()
+
+    def root(t):
+        while isinstance(t, (ast.Subscript, ast.Attribute)):
+            t = t.value
+        return t.id if isinstance(t, ast.Name) else None
+
+    hit = set()
+    for n in ast.walk(tree):
+        if isinstance(n, ast.AugAssign):
+            hit.add(root(n.target))
+        elif isinstance(n, (ast.Assign, ast.AnnAssign, ast.Delete)):
+            targets = n.targets if isinstance(n, (ast.Assign, ast.Delete)) else [n.target]
+            for t in targets:
+                for sub in ast.walk(t):
+                    if isinstance(sub, (ast.Subscript, ast.Attribute)) \
+                            and isinstance(sub.ctx, (ast.Store, ast.Del)):
+                        hit.add(root(sub))
+        elif isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) \
+                and n.func.attr in _MUTATORS:
+            hit.add(root(n.func.value))
+    return (hit - {None}) & names
+
+
+def _only_set_up_empty(problem, header, upto, names, tests, entry) -> bool:
+    """Did their code leave every one of `names` EMPTY - equal to a fresh
+    `type(x)()` - on every input that reached the end of it? Measured by
+    running their code, never guessed; anything unreadable is not empty."""
+    names = sorted(names)
+    fresh = [f"_mt_fresh_{i}" for i in range(len(names))]
+    probe = "\n".join(f"try:\n    {f} = type({n})()\nexcept Exception:\n"
+                      f"    {f} = ('<no empty form>',)" for f, n in zip(fresh, names))
+    try:
+        sig = bridge.capture(problem, header, upto + "\n" + probe, names + fresh,
+                             [t["input"] for t in tests], entry)
+    except Exception:
+        return False
+    if not sig:
+        return False
+    unbound = repr(bridge.UNBOUND)
+    return all(a == b for n, f in zip(names, fresh)
+               for a, b in zip(sig[n], sig[f]) if a != unbound)
+
+
+def _patches_their_values(problem, header, upto, tail, protected, tests, entry) -> bool:
+    changed = _changed_in_place(tail, protected)
+    return bool(changed) and not _only_set_up_empty(problem, header, upto, changed,
+                                                    tests, entry)
+
+
+def _run_crashed(res) -> bool:
+    """Did a run CRASH somewhere its expected output does not, rather than
+    finish with a wrong answer?
+
+    A method's crash is recorded as a value ("!NameError..."), so its run
+    classifies as wrong_output like any clean wrong answer. Measured on a real,
+    correct `calculate` guard: tier 3's rewrite read `calcStack`, which the
+    teacher's step creates and the step never asked for, crashed with NameError
+    on the student's work - and those cases would have been shown to the
+    student as THEIR failing cases. A crash is the rewrite's, not evidence."""
+    for f in res.failures or []:
+        if f.get("error"):
+            return True
+        if len(_CRASH.findall(_shown(f.get("got")))) > \
+                len(_CRASH.findall(_shown(f.get("expected")))):
+            return True
+    return False
+
+
+def _tier3(problem, session, header, prefix, student_code, upto, ref_tail,
+           tests, entry, outputs, corr=None):
+    """An acceptance, an evidence-only result (failing cases, no attempt), a
+    harness failure - or None when it proved nothing. Records no route: the
+    caller, _model_tiers, decides what the student sees and records it once."""
+    idx = session["index"]
+    trusted_prefix = "\n".join((session["chunks"][j].get("reference") or "")
+                               for j in range(idx + 1))
+    prefix_names = _names(upto, ast.Store) | set(get_resolved_entry(problem)["params"])
+    student_names = outputs | prefix_names
+    teacher_names = _names(trusted_prefix, ast.Store) | prefix_names
+    # A loop variable is a counter, not a result of theirs: a rewrite reusing
+    # `value` for its own loop is not overwriting their work, and one that
+    # secretly redoes the loop is caught by _their_work_matters.
+    protected = outputs - bridge.loop_targets(student_code)
+
+    for attempt in range(1, MAX_ADAPT_TRIES + 1):
+        try:
+            with trace.model_call(corr, GRADING_MODEL, "adapter", attempt=attempt):
+                tail, aliases = _request_adaptation(problem, header, upto, ref_tail, outputs)
+            tail = textwrap.dedent(tail).strip("\n")
+        except Exception:
+            # Model trouble. Tier 4 is next and asks for itself; if the
+            # provider is really down, that is where the student hears so.
+            _trace(trace.record_adapter, corr, GRADING_MODEL, attempt, "malformed")
+            return None
+        # THE TEACHER'S TAIL HANDED BACK UNCHANGED is not an adaptation: it is
+        # tier 1 again, and tier 1 already failed - so its "failing cases"
+        # would be the teacher's names missing from a correct different
+        # approach. Compared with the TAIL, not with the whole solution: that
+        # matched any fragment found anywhere, so `return True` counted.
+        # No `+=` on their names here (allow_add=False): tier 4 needs it to
+        # carry an accumulator on; a rewrite of the teacher's code never did,
+        # in 137 real tries.
+        if not _tail_is_sane(tail, protected, "", allow_add=False) \
+                or _squash(tail) == _squash(ref_tail):
+            _trace(trace.record_adapter, corr, GRADING_MODEL, attempt, "unsafe")
+            continue
+        if _patches_their_values(problem, header, upto, tail, protected, tests, entry):
+            _trace(trace.record_adapter, corr, GRADING_MODEL, attempt, "changes_their_values")
+            continue
+        alias_lines = _valid_aliases(aliases, student_names, teacher_names)
+        if not _calibrate(problem, header, trusted_prefix, alias_lines, tail,
+                          tests, entry):
+            _trace(trace.record_adapter, corr, GRADING_MODEL, attempt, "calibration_failed")
+            continue
+        # The alias lines belong to calibration only. They map the teacher's
+        # names onto the student's; here the student's names already exist.
+        cand = classify_run(_assemble(problem, header, upto, tail), tests, entry_name=entry)
+        if cand.outcome == "pass":
+            if not _their_work_matters(problem, header, prefix, upto, tail,
+                                       outputs, tests, entry):
+                _trace(trace.record_adapter, corr, GRADING_MODEL, attempt, "bypass_rejected")
+                continue
+            _trace(trace.record_adapter, corr, GRADING_MODEL, attempt, "accepted")
+            return _ok("correct", "execution-adapted",
+                       "Correct - your step works with the rest of the solution.",
+                       "adapted_pass", execution_outcome="pass", divergent=True)
+        if cand.outcome == "harness_error":
+            return _system("harness_error", cand.internal_error)
+        if cand.outcome == "wrong_output" and not _run_crashed(cand):
+            # THE EVIDENCE WITHOUT THE VERDICT. A calibrated rewrite ran
+            # cleanly on their work and the finished answer came out wrong.
+            # Worth SHOWING, not worth convicting on: the cases are concrete
+            # and checkable by hand, but that the fault is theirs rests on the
+            # model having re-expressed the tail faithfully, which calibration
+            # does not establish. Costs no attempt.
+            #
+            # The sentence is derived from what was actually shown: failing
+            # _cases skips any case it cannot render, and may skip them all.
+            shown = failing_cases(problem, tests, cand.failures)
+            _trace(trace.record_adapter, corr, GRADING_MODEL, attempt, "evidence_only")
+            return _ok(
+                "indeterminate", "execution-adapted",
+                "We ran your step together with the rest of the solution and the "
+                "finished answer came out wrong on at least one case. We can't "
+                "be certain the fault is in this step, so your attempt was not "
+                "used"
+                + (" - but the case below is worth tracing by hand." if shown
+                   else ". Try your step on a small input of your own and check "
+                        "what it hands on to the rest of the solution."),
+                "adapted_evidence_only" if shown else "adapted_evidence_unrenderable",
+                deterministic=False, consume_attempt=False,
+                execution_outcome="wrong_output", failures=cand.failures,
+                failing_cases=shown, failed_total=_failed_total(cand, len(shown)))
+        _trace(trace.record_adapter, corr, GRADING_MODEL, attempt,
+               f"no_acquittal_{cand.outcome}")
+    return None
+
+
+# ── TIER 4 - A COMPLETION THE TESTS DECIDE ────────────────────────────────
+#
+# Replaced the two LLM judges (2026-09-26).
+#
+# The judges were asked "is this step correct?" - an opinion, formed by reading
+# code, which is the one thing a model is worst at. Measured on every real
+# acceptance they made: of 31 students who later finished, 25 had to REDO the
+# step the judges had passed, and 41 more were left stuck behind it. Only 6
+# kept it. Tier 3 is sound but narrow: it has to rewrite the TEACHER'S
+# remaining code and prove it on the teacher's own steps first (calibration),
+# which a student who took a different route can never satisfy.
+#
+# The model is now asked for what it is GOOD at - writing code that carries on
+# from someone else's - and never for a verdict. It is shown what the student's
+# variables really hold on real inputs (measured, not guessed) and asked to
+# write the remaining steps on top of them. Then EXECUTION decides:
+#   * the finished program must pass every oracle test, and
+#   * with the student's values blanked out it must FAIL - so the completion
+#     genuinely used their work instead of quietly redoing it, and
+#   * it may not rebind a name their step produced (it may add to it).
+# No completion that survives all three -> "could not confirm", which costs no
+# attempt and comes with a question built on their own values. Known residue:
+# a completion can still compensate for a subtle bug (an off-by-one undone
+# later). That is why a step accepted here is tracked, and a later crash or
+# failure inside it is pointed back at it (see _crash_verdict).
+MAX_COMPLETE_TRIES = 2
+
+_COMPLETE_SYSTEM = (
+    "You finish a student's partially written Python function. Return STRICT "
+    'JSON only: {"completion": "<the remaining body lines>"}. '
+    "Body lines only - no def line, no imports, no markdown fences. "
+    "BUILD ON THE STUDENT'S CODE EXACTLY AS IT IS: use the variables their code "
+    "produced, with the values it really gives them (you are shown those "
+    "values, measured by running it). Never reassign, rebuild, recompute or "
+    "change a variable their code produced - only read it, except one their "
+    "code merely set up empty (like counts = {}), which you may fill. Do not redo "
+    "their work. If what their code produced cannot lead to a correct answer "
+    "without changing it, return an empty completion - do not work around it.")
+
+
+def _lines(code: str) -> int:
+    """Lines that do something - blank lines and comments do not count."""
+    return sum(1 for ln in (code or "").splitlines()
+               if ln.strip() and not ln.strip().startswith("#"))
+
+
+def _their_values(problem, header, upto, tests, entry, limit=5) -> str:
+    """What the student's own variables hold on a few short real inputs -
+    measured by running their code, never guessed. Empty when nothing honest
+    can be shown."""
+    try:
+        names = sorted(bridge.stores(upto) - bridge.loop_targets(upto))[:6]
+        if not names or not tests:
+            return ""
+        inputs = sorted((t["input"] for t in tests), key=lambda i: len(repr(i)))[:limit]
+        got = bridge.capture(problem, header, upto, names, inputs, entry,
+                             human=True, with_owners=True)
+        sig, owners = got if isinstance(got, tuple) else (got, [])
+        if not sig or not owners:
+            return ""
+        lines = []
+        for i, inp in enumerate(inputs):
+            pos = [p for p, o in enumerate(owners) if o == i]
+            shown = None
+            for p in reversed(pos):                 # the latest snapshot
+                vals = {n: sig[n][p] for n in names
+                        if sig[n][p] not in (None, bridge.UNBOUND)}
+                if vals:
+                    shown = vals
+                    break
+            if shown:
+                lines.append(f"  input {', '.join(repr(a) for a in inp)}: "
+                             + "; ".join(f"{n} = {str(v)[:200]}" for n, v in shown.items()))
+        return "\n".join(lines)
+    except Exception:
+        return ""
+
+
+def _request_completion(problem, header, upto, student_code, remaining,
+                        reference_tail, evidence, temperature=0.0,
+                        step_prompt: str = "") -> str:
+    """Ask for the remaining body on top of the student's code. Isolated so
+    tests can substitute it without a network call."""
+    steps = "\n".join(f"  {k}. {p}" for k, p in enumerate(remaining, 1) if p)
+    user = (f"PROBLEM:\n{(problem.get('description') or '')[:600]}\n\n"
+            f"Function header: {header}\n\n"
+            f"CODE SO FAR (the last part is the student's newest step):\n{upto}\n\n"
+            + (f"WHAT THAT NEWEST STEP WAS ASKED TO DO:\n{step_prompt}\n\n" if step_prompt else "")
+            + (f"WHAT THEIR VARIABLES HOLD after that code, measured:\n{evidence}\n\n"
+               if evidence else "")
+            + (f"THE REMAINING STEPS TO WRITE:\n{steps}\n\n" if steps else "")
+            + f"A COMPLETE CORRECT SOLUTION, written by someone who named and "
+              f"shaped things differently from this student - use it only to "
+              f"see what the function must do:\n{reference_tail}\n\n"
+            "First compare the student's code and measured values with what the "
+            "newest step was asked to do. If they contradict it on any input "
+            "shown, OR the step does not yet do everything it was asked, return "
+            "an empty completion - never write the newest step's missing work "
+            "yourself. Otherwise write ONLY the remaining steps, building on the "
+            "student's variables, so the finished function is correct.")
+    raw = chat(GRADING_MODEL, _COMPLETE_SYSTEM, [{"role": "user", "content": user}],
+               temperature=temperature, fmt="json")
+    return str(json.loads(raw).get("completion", "") or "")
+
+
+def _tail_is_sane(tail: str, current_outputs: set, solution: str,
+                  allow_add: bool = True) -> bool:
+    """Structural checks before the tail is allowed anywhere near a verdict.
+    `allow_add` lets it `+=` onto a name in current_outputs (tier 4 only)."""
     if not tail.strip():
         return False
     try:
@@ -854,160 +1536,24 @@ def _tail_is_sane(tail: str, current_outputs: set, solution: str) -> bool:
     # pick a letter the student had also used. Measured: the same tail with `q`
     # instead of `p` was accepted. That is a coin flip on a variable name, and
     # part of why this tier's reliability looked like ~50%.
-    if (_names(tail, ast.Store) - bridge._comprehension_vars(tree)) & current_outputs:
+    # ADDING TO a name is not overwriting it: `total += x` on a total their step
+    # started is how an accumulation carries on, and refusing it threw away
+    # correct completions. Plain rebinding (`counts = ...`) is still refused.
+    augmented = {n.target.id for n in ast.walk(tree)
+                 if isinstance(n, ast.AugAssign) and isinstance(n.target, ast.Name)} \
+        if allow_add else set()
+    rebound = _names(tail, ast.Store) - bridge._comprehension_vars(tree) - augmented
+    if rebound & current_outputs:
         return False
-    # Must not simply be the reference solution pasted back in.
-    body = re.sub(r"\s+", "", tail)
-    if body and body in re.sub(r"\s+", "", solution or ""):
-        return False
+    # NO "must not be the teacher's code" rule. It used to refuse any tail found
+    # verbatim in the solution, which also refused the RIGHT answer whenever
+    # the student's step matched the teacher's closely enough that the correct
+    # continuation IS the teacher's remaining code - measured on a real, correct
+    # `calculate` guard. Cheating by pasting a solution that ignores the student
+    # is caught where it belongs: _their_work_matters. (Tier 3 refuses the
+    # teacher's tail handed back UNCHANGED - see _tier3 - which is narrower.)
     return True
 
-
-def _calibrate(problem, header, trusted_prefix, alias_lines, tail, tests, entry):
-    """An adapter must prove itself on TRUSTED work before it may judge a
-    student. A random LLM tail that fails proves nothing about the student:
-    it may simply be a broken tail. Only a tail that passes here has earned
-    the right to produce a verdict."""
-    cand = _assemble(problem, header, trusted_prefix, "\n".join(alias_lines), tail)
-    return classify_run(cand, tests, entry_name=entry).outcome == "pass"
-
-
-# ── Tier 4: dual LLM judge ───────────────────────────────────────────────
-
-_JUDGE_SYSTEM = (
-    "You judge ONE step of a student's partial solution. Return STRICT JSON: "
-    '{"correct": true/false, "reason": "<one sentence for the student>", '
-    '"failing_input": "<required when correct is false: a concrete input value '
-    'on which this code produces a different RESULT than the step requires, or '
-    'empty string if you cannot name one>", '
-    '"confidence": 0.0-1.0, "evidence_category": "<short label>"}. '
-    # THE ONLY GROUND FOR CONVICTION IS A DIFFERENT RESULT. The judge is handed
-    # the reference, so it drifts into marking any deviation from it wrong:
-    # `txt.replace(" ", "")` before an isalpha() check was failed live as
-    # "unnecessary" - redundant, yes, and identical in output, so the student
-    # was told correct code was incorrect. Style, efficiency, redundancy,
-    # naming and structure are not this judge's business, and a rule saying so
-    # is only half of it: failing_input is the half that has teeth, because
-    # "unnecessary" cannot name an input where the answer differs. See
-    # _tier4 for what happens when the field comes back empty.
-    "THE ONLY REASON TO ANSWER correct=false IS THAT THE CODE PRODUCES A "
-    "DIFFERENT RESULT than this step requires. Before answering false, name "
-    "the input in failing_input and satisfy yourself that the student's code "
-    "really does produce something different on it. If their code reaches the "
-    "same result by a longer, redundant, slower, differently-named or "
-    "differently-shaped route than the reference, that is CORRECT - say so. "
-    "Extra work that changes nothing is not an error. Differing from the "
-    "reference is not an error. Only a different answer is an error. "
-    "Never quote the reference solution, hidden tests, or internal code in reason. "
-    # ...AND NEVER DESCRIBE IT EITHER. The rule above says "quote", and the
-    # model complied with it exactly: asked about `counts = []` it answered
-    # "it should be a dictionary to map letters to their counts", which quotes
-    # nothing and hands over the container AND what it maps - point 1 of the
-    # plan rubric, the thing the tutor holds a student at the design gate to
-    # work out for themselves. Saying it in prose is the same disclosure.
-    "Do not describe the correct approach either - naming the data structure, "
-    "the algorithm, or what the student should have written instead is the "
-    "same disclosure as quoting it. Say what their code DOES and where it "
-    "stops matching the step as asked; never say what it should do.")
-
-
-# The answer-leak redaction that used to live here is gone with the verdict it
-# guarded. It rewrote a judge's sentence when an INCORRECT explanation named the
-# data structure the student was being held at the design gate to work out for
-# themselves. A judge can no longer return incorrect, and its own docstring made
-# the point that a CORRECT verdict cannot leak - it describes code the student
-# has already written. The tutor keeps its own guard (tutor._handed_over), which
-# is where that logic belongs and where it is still exercised.
-
-
-def _ask_judge(payload: str, role: str):
-    raw = chat(GRADING_MODEL, _JUDGE_SYSTEM + f"\nYou are the {role}.",
-               [{"role": "user", "content": payload}], temperature=0, fmt="json")
-    d = json.loads(raw)
-    return (bool(d["correct"]), str(d.get("reason", ""))[:300],
-            float(d.get("confidence", 0.0)), str(d.get("evidence_category", ""))[:60],
-            str(d.get("failing_input", ""))[:200].strip())
-
-
-def _tier4(problem, chunk, upto, student_code, why, evidence, corr=None) -> GradeResult:
-    payload = (f"PROBLEM:\n{(problem.get('description') or '')[:600]}\n\n"
-               f"STEP ASKED:\n{chunk['prompt']}\n\n"
-               f"ACCEPTED SO FAR:\n{upto}\n\n"
-               f"STUDENT'S ANSWER FOR THIS STEP:\n{student_code}\n\n"
-               f"PRIVATE REFERENCE FOR THIS STEP:\n{chunk.get('reference','')}\n\n"
-               f"EXECUTION EVIDENCE: {evidence}\nWHY EXECUTION WAS INCONCLUSIVE: {why}")
-    try:
-        with trace.model_call(corr, GRADING_MODEL, "judge", role="primary"):
-            a_ok, a_reason, a_conf, a_cat, a_input = _ask_judge(payload, "primary judge")
-        _trace(trace.record_judge, corr, GRADING_MODEL, "primary", a_ok, a_conf)
-        # THE SECOND JUDGE IS NOT SHOWN THE FIRST ONE'S ANSWER. It used to be:
-        # the payload carried the first judge's verdict and reason appended to
-        # it, which anchors the second on the very answer it is supposed to
-        # check independently. Two anchored samples agreeing is close to no
-        # evidence at all, and their agreement was the whole basis for acting.
-        # Same payload, different role, no cross-talk. The self-check at the
-        # bottom of this file guards against it being reintroduced.
-        with trace.model_call(corr, GRADING_MODEL, "judge", role="verifier"):
-            b_ok, b_reason, b_conf, b_cat, b_input = _ask_judge(
-                payload, "independent verifier")
-        _trace(trace.record_judge, corr, GRADING_MODEL, "verifier", b_ok, b_conf)
-    except Exception as e:
-        # This try wraps ONLY the two model calls, so anything landing here is
-        # a provider failure - unreachable, timed out, or malformed output.
-        _trace(trace.record_route, corr, "system", "indeterminate")
-        return _provider_down("judge_unavailable", repr(e)[:200])
-
-    if a_ok != b_ok or min(a_conf, b_conf) < 0.6:
-        _trace(trace.record_route, corr, "llm-judge", "indeterminate")
-        return _ok("indeterminate", "llm-judge",
-                   "This one needs a closer look - we couldn't decide "
-                   "confidently, so your attempt was not used.",
-                   "judge_disagreement", deterministic=False,
-                   consume_attempt=False,
-                   internal_detail=f"a={a_ok}/{a_conf} b={b_ok}/{b_conf}")
-
-    # A JUDGE MAY ACQUIT, NEVER CONVICT.
-    #
-    # This is the rule the 1am/4:58am flip came down to. Everything above this
-    # line is an opinion: no run attributed anything to the student, and the
-    # tier exists precisely because execution could not. An opinion that costs a
-    # student an attempt is the one thing this module is not allowed to do, and
-    # the failure is not hypothetical - correct-but-redundant code was failed
-    # live as "unnecessary" by judges that agreed with each other.
-    #
-    # Requiring a nameable failing_input (below) narrowed that, but it is still
-    # the model deciding what counts as a failing input. So a `false` here now
-    # ends the same way an "I don't know" does: indeterminate, no attempt spent,
-    # and the student is asked to look again. What is LOST is the ability to
-    # tell a student their non-final step is wrong on a model's say-so, which
-    # was never a thing we could do soundly. The final chunk still runs the real
-    # oracle and still convicts on it.
-    if not a_ok:
-        _trace(trace.record_route, corr, "llm-judge", "indeterminate")
-        return _ok("indeterminate", "llm-judge",
-                   "We could not confirm this step. Your attempt was not used - "
-                   "check it against your plan and try again.",
-                   "judge_no_acquittal", deterministic=False,
-                   consume_attempt=False,
-                   internal_detail=f"agreed incorrect a={a_input!r} b={b_input!r}")
-
-    # AN "INCORRECT" THAT CANNOT NAME A FAILING INPUT IS NOT A CONVICTION.
-    # Execution already failed to decide this submission - that is why we are
-    # here - so the judge's sentence is all the evidence there is, and a
-    # sentence like "this removes spaces first, which is unnecessary" is an
-    # observation about style wearing a verdict's clothes. Requiring a concrete
-    # input is what separates the two: code that is merely redundant has none
-    # to give, because there is no input on which it answers differently.
-    # Indeterminate rather than correct - we have not shown them right either -
-    # and it costs no attempt, in keeping with this module's rule that our own
-    # inability to decide is never evidence about the student.
-    # Both judges, independently, said this step is right. That is an ACQUITTAL
-    # and nothing more: it is still flagged deterministic=False, because no run
-    # attributed anything, and the final chunk will check the whole solution
-    # against the real oracle regardless.
-    _trace(trace.record_route, corr, "llm-judge", "correct")
-    return _ok("correct", "llm-judge", a_reason,
-               f"judge_{a_cat or 'agreed'}", deterministic=False)
 
 
 def _with_diagnosis(result, problem, chunk, header, chunks, idx, upto,
@@ -1169,9 +1715,28 @@ def grade_submission(session: dict, student_code: str,
                "runtime_error": "Your solution crashes while running.",
                "timeout": "Your solution took too long - it may loop forever.",
                "policy_violation": "That answer uses something not allowed here."}
+        crashed = _crash_verdict(problem, header, session, student_code,
+                                 tests, res, is_last=True)
+        if crashed is not None:
+            return crashed
         shown = failing_cases(problem, tests, res.failures)
+        judged = [k + 1 for k, a in enumerate(session.get("accepted") or [])
+                  if a.get("tier") in _UNCONFIRMED_ACCEPTS]
+        if judged:
+            # C, the rare case: a wrong ANSWER (not a crash) with a step behind
+            # it that was accepted without being fully confirmed. We cannot tell which step is
+            # at fault, so the attempt still counts - but they are told the
+            # earlier step is a suspect and that Rework can reopen it.
+            s_ = "s" if len(judged) > 1 else ""
+            steps_ = ", ".join(str(k) for k in judged)
+            hint = (f" Step{s_} {steps_} {'were' if s_ else 'was'} accepted "
+                    f"earlier without being fully confirmed - if this "
+                    f"step looks right to you, the problem may be there "
+                    f"(reopen it with Rework).")
+        else:
+            hint = ""
         return _ok("incorrect", "execution-final",
-                   msg.get(res.outcome, "Your solution didn't pass."),
+                   msg.get(res.outcome, "Your solution didn't pass.") + hint,
                    f"final_{res.outcome}", execution_outcome=res.outcome,
                    failures=res.failures, failing_cases=shown,
                    failed_total=_failed_total(res, len(shown)))
@@ -1206,6 +1771,14 @@ def grade_submission(session: dict, student_code: str,
                    "the steps are already answered by what you wrote.",
                    "final_pass_early", execution_outcome="pass",
                    covers_chunks=len(chunks) - idx)
+
+    # ── A CRASH IN THEIR OWN LINES - read off the run just made, which has
+    #    nothing of the teacher's after it. See _crash_verdict. ──
+    crashed = _crash_verdict(problem, header, session, student_code, tests,
+                             whole, is_last=False)
+    if crashed is not None:
+        _trace(trace.record_route, corr, "execution-crash", crashed.verdict)
+        return crashed
 
     # ── NON-LAST - trusted reference tail ──
     ref_tail = "\n".join((chunks[j].get("reference") or "")
@@ -1268,8 +1841,8 @@ def grade_submission(session: dict, student_code: str,
                    "bridged_pass", execution_outcome="pass",
                    divergent=True, covers_chunks=covers)
 
-    result = _tier3(problem, session, chunk, header, prefix, student_code, upto,
-                    ref_tail, tests, entry, res, corr)
+    result = _model_tiers(problem, session, chunk, header, prefix, student_code,
+                          upto, ref_tail, tests, entry, corr)
     # ── COULD NOT CONFIRM -> ASK, rather than leave them on a step nobody
     #    named a problem with. An indeterminate verdict does not advance the
     #    session, so every tier being acquit-only would otherwise strand a
@@ -1288,10 +1861,18 @@ def grade_submission(session: dict, student_code: str,
     return result
 
 
-def _tier3(problem, session, chunk, header, prefix, student_code, upto,
-           ref_tail, tests, entry, ref_res, corr=None) -> GradeResult:
-    """Adapt the tail to the student's interface - but only a CALIBRATED
-    adapter may influence a verdict."""
+def _model_tiers(problem, session, chunk, header, prefix, student_code, upto,
+                 ref_tail, tests, entry, corr=None) -> GradeResult:
+    """Tier 3, then tier 4, and the ONE route event for whatever came of them.
+
+    TIER 4 RUNS EVEN WHEN TIER 3 FOUND FAILING CASES. Those cases come from a
+    model's rewrite, so they are a strong hint and not proof - and the same
+    code always gets the same answer, so a correct step shown a wrong hint
+    could only move on by being changed. Tier 4 can overrule it only with
+    proof: a program built on their step that passes every test and breaks
+    without it. It is NOT shown the cases: told exactly which inputs fail, a
+    model is invited to write the patch that hides the mistake. An overrule is
+    traced (`overruled`) so each one can be reviewed."""
     idx = session["index"]
     # Identical code, identical verdict - see _VERDICT_MEMO. Everything from
     # here down can consult a model, and this is the last point before that.
@@ -1305,121 +1886,116 @@ def _tier3(problem, session, chunk, header, prefix, student_code, upto,
         _VERDICT_MEMO[memo_key] = result
         return result
 
-    trusted_prefix = "\n".join((session["chunks"][j].get("reference") or "")
-                               for j in range(idx + 1))
-    current_outputs = _names(student_code, ast.Store)
-    prefix_names = _names(upto, ast.Store) | set(
-        get_resolved_entry(problem)["params"])
-    trusted_names = _names(trusted_prefix, ast.Store) | prefix_names
-    evidence = f"reference-tail {ref_res.outcome} ({ref_res.passed}/{ref_res.total})"
+    outputs = _step_outputs(student_code)
+    adapted = _tier3(problem, session, header, prefix, student_code, upto,
+                     ref_tail, tests, entry, outputs, corr)
+    if adapted is not None and adapted.verdict == "correct":
+        _trace(trace.record_route, corr, "execution-adapted", "correct")
+        return _remember(adapted)
+    if adapted is not None and adapted.tier == "system":
+        _trace(trace.record_route, corr, "system", "indeterminate")
+        return adapted                  # ours - not remembered
 
-    for attempt in range(1, MAX_ADAPT_TRIES + 1):
+    completed = _complete(problem, session, chunk, header, prefix, student_code,
+                          upto, ref_tail, tests, entry, outputs, corr)
+    if completed is not None and completed.verdict == "correct":
+        if adapted is not None:
+            _trace(trace.record_route, corr, "execution-completed", "correct",
+                   overruled="execution-adapted")
+            completed = completed.model_copy(update={"internal_detail":
+                "overruled tier 3's failing cases: " + " | ".join(
+                    (adapted.failing_cases or [])[:2])[:500]})
+        else:
+            _trace(trace.record_route, corr, "execution-completed", "correct")
+        return _remember(completed)
+    if completed is not None:
+        # Ours (provider down, harness error). Not remembered: the next try
+        # should ask again rather than replay an outage. Tier 3's evidence,
+        # when there is some, is still the most useful thing to show.
+        if adapted is not None:
+            _trace(trace.record_route, corr, "execution-adapted", "indeterminate")
+            return adapted
+        _trace(trace.record_route, corr, "system", "indeterminate")
+        return completed
+    if adapted is not None:
+        _trace(trace.record_route, corr, "execution-adapted", "indeterminate")
+        return _remember(adapted)
+    _trace(trace.record_route, corr, "unconfirmed", "indeterminate")
+    return _remember(_ok(
+        "indeterminate", "unconfirmed",
+        "We could not confirm this step, so your attempt was not used. Check "
+        "what your code produces against what the step asks for.",
+        "unconfirmed", deterministic=False, consume_attempt=False))
+
+
+def _complete(problem, session, chunk, header, prefix, student_code, upto,
+              ref_tail, tests, entry, outputs, corr=None):
+    """Tier 4 - see the note above MAX_COMPLETE_TRIES. An acceptance, one of
+    our own failures, or None when no completion proved anything."""
+    idx = session["index"]
+    chunks = session["chunks"]
+    remaining = [(chunks[j].get("prompt") or "") for j in range(idx + 1, len(chunks))]
+    remaining_lines = sum(_lines(chunks[j].get("reference") or "")
+                          for j in range(idx + 1, len(chunks)))
+    # A loop variable is a counter, not a result of theirs: a completion reusing
+    # `value` for its own loop is not overwriting their work. Measured - a real
+    # completion passing 10/10 was refused for exactly that.
+    protected = outputs - bridge.loop_targets(student_code)
+    evidence = _their_values(problem, header, upto, tests, entry)
+    # The WHOLE reference body as the example, not just the steps after this
+    # one: a name the teacher created in an earlier step (`calcStack = Stack()`)
+    # is otherwise invisible, and the completion reads it without creating it.
+    reference = problem.get("solution") or ref_tail
+
+    for attempt in range(1, MAX_COMPLETE_TRIES + 1):
         try:
-            with trace.model_call(corr, GRADING_MODEL, "adapter", attempt=attempt):
-                tail, aliases = _request_adaptation(
-                    problem, header, upto, ref_tail, current_outputs)   # noqa: E501
-        except Exception:
+            with trace.model_call(corr, GRADING_MODEL, "completion", attempt=attempt):
+                tail = _request_completion(problem, header, upto, student_code,
+                                           remaining, reference, evidence,
+                                           temperature=0.0 if attempt == 1 else 0.4,
+                                           step_prompt=chunk.get("prompt") or "")
+            # Models often return the body still indented as it sits in the
+            # function; it is spliced in at the right depth by _assemble.
+            tail = textwrap.dedent(tail).strip("\n")
+        except (ValueError, TypeError, AttributeError):
             _trace(trace.record_adapter, corr, GRADING_MODEL, attempt, "malformed")
-            break                                   # model trouble -> Tier 4
-        alias_lines = _valid_aliases(aliases, current_outputs | prefix_names,
-                                     trusted_names)
-        if alias_lines is None or not _tail_is_sane(
-                tail, current_outputs, problem.get("solution", "")):
+            continue
+        except Exception as e:
+            # The provider, not the student.
+            return _provider_down("completion_unavailable", repr(e)[:200])
+        if not _tail_is_sane(tail, protected, problem.get("solution", "")):
             _trace(trace.record_adapter, corr, GRADING_MODEL, attempt, "unsafe")
             continue
-
-        # CALIBRATION - prove the adapter on trusted work first.
-        if not _calibrate(problem, header, trusted_prefix, alias_lines, tail,
-                          tests, entry):
-            _trace(trace.record_adapter, corr, GRADING_MODEL, attempt, "calibration_failed")
-            continue                                # uncalibrated: prove nothing
-
-        # The alias bridge belongs to CALIBRATION only. It maps the trusted
-        # reference's names onto the tail's interface; the student already
-        # produces those names, so injecting it here would assign from an
-        # undefined reference name and raise NameError on every run.
+        # SIZE BUDGET - the completion writes the REMAINING steps, not this
+        # one. Measured: a step that only set things up ("split the statements
+        # AND evaluate each one", answered with the split alone) was accepted
+        # because the completion wrote the whole evaluation loop itself - 30
+        # lines standing in for a 2-line remaining step. A different approach
+        # may need a few more lines than the teacher's; it does not need the
+        # current step's work done for it.
+        if _lines(tail) > 2 * remaining_lines + 4:
+            _trace(trace.record_adapter, corr, GRADING_MODEL, attempt, "oversized")
+            continue
+        if _patches_their_values(problem, header, upto, tail, protected, tests, entry):
+            _trace(trace.record_adapter, corr, GRADING_MODEL, attempt, "changes_their_values")
+            continue
         cand = classify_run(_assemble(problem, header, upto, tail), tests, entry_name=entry)
-        if cand.outcome == "pass":
-            # ANTI-BYPASS - blank out what the student's chunk PRODUCED, keeping
-            # the names, and require the composite to break. Deleting the chunk
-            # instead is foolable: the tail then reads a name that no longer
-            # exists, raises NameError, and "it broke without them" reads as
-            # necessity even when the tail was doing all the work. Rebinding
-            # each name to an empty value of its own type removes the VALUES
-            # while leaving the interface intact, so only a tail that genuinely
-            # used their work survives.
-            #
-            # Unlike the bridge below it, an adapted tail is model-written code
-            # that CAN compute, so this check still earns its keep here.
-            neutral = "\n".join(f"{n} = type({n})()" for n in sorted(current_outputs))
-            ko = classify_run(
-                _assemble(problem, header, upto, neutral, tail),
-                tests, entry_name=entry)
-            if ko.outcome == "pass":
-                _trace(trace.record_adapter, corr, GRADING_MODEL, attempt, "bypass_rejected")
-                continue                            # bypassing adapter: reject
-            _trace(trace.record_adapter, corr, GRADING_MODEL, attempt, "accepted")
-            _trace(trace.record_route, corr, "execution-adapted", "correct")
-            return _remember(_ok(
-                "correct", "execution-adapted",
-                # "differs from ours" names a reference the same way the
-                # bridged message did. Same sentence as every other acquittal.
-                "Correct - your step works with the rest of the solution.",
-                "adapted_pass", execution_outcome="pass", divergent=True))
         if cand.outcome == "harness_error":
             return _system("harness_error", cand.internal_error)
-        if cand.outcome == "wrong_output":
-            # THE EVIDENCE WITHOUT THE VERDICT. A calibrated tail ran cleanly on
-            # their work and the finished solution came out wrong somewhere.
-            # That is worth SHOWING and not worth CONVICTING on: the cases are
-            # concrete and checkable by hand, while the claim that the fault is
-            # theirs rests on a model having re-expressed the tail faithfully,
-            # which calibration does not establish.
-            #
-            # Without this a wrong answer got the bare "we could not confirm
-            # this step", which is the worst of both - no verdict AND no way
-            # forward - and a student cannot advance past a step they keep
-            # failing. Costs no attempt, so being wrong about it is free.
-            shown = failing_cases(problem, tests, cand.failures)
-            _trace(trace.record_adapter, corr, GRADING_MODEL, attempt, "evidence_only")
-            _trace(trace.record_route, corr, "execution-adapted", "indeterminate")
-            # THE SENTENCE IS DERIVED FROM THE EVIDENCE, NEVER WRITTEN BESIDE
-            # IT. failing_cases() SKIPS any case it cannot render - a failure
-            # carrying no usable index, an input whose rendering raises - and it
-            # may skip every one of them. This message promised "the case below"
-            # either way, so a student was told to trace a case that was never
-            # sent: the worst version of this text, because it reads as the page
-            # having dropped the one useful thing in it. One name for the rule
-            # this broke - never promise evidence that is not there - and the
-            # promise is now a function of `shown` rather than a constant.
-            return _remember(_ok(
-                "indeterminate", "execution-adapted",
-                "We ran your step together with the rest of the solution and the "
-                "finished answer came out wrong on at least one case. We can't "
-                "be certain the fault is in this step, so your attempt was not "
-                "used"
-                + (" - but the case below is worth tracing by hand." if shown
-                   else ". Try your step on a small input of your own and check "
-                        "what it hands on to the rest of the solution."),
-                "adapted_evidence_only" if shown else "adapted_evidence_unrenderable",
-                deterministic=False,
-                consume_attempt=False, execution_outcome="wrong_output",
-                failures=cand.failures, failing_cases=shown,
-                failed_total=_failed_total(cand, len(shown))))
-        # ANYTHING ELSE IS NOT A CONVICTION, and this is the change that
-        # matters most in this function. It used to return `incorrect` on
-        # wrong_output, which means a student was failed on the strength of code
-        # a language model wrote: calibration proves the tail is a correct
-        # continuation of the REFERENCE's own earlier chunks, never that it was
-        # faithfully re-expressed in the student's vocabulary. A subtly wrong
-        # re-expression produces wrong answers that are not the student's. So
-        # this tier may now only ever acquit, and a failure falls through.
-        _trace(trace.record_adapter, corr, GRADING_MODEL, attempt,
-               f"no_acquittal_{cand.outcome}")
-
-    return _remember(_tier4(
-        problem, chunk, upto, student_code,
-        "no calibrated adapter produced attributable evidence", evidence, corr))
+        if cand.outcome != "pass":
+            _trace(trace.record_adapter, corr, GRADING_MODEL, attempt, f"failed_{cand.outcome}")
+            continue
+        # THEIR WORK MUST MATTER - see _their_work_matters.
+        if not _their_work_matters(problem, header, prefix, upto, tail,
+                                   outputs, tests, entry):
+            _trace(trace.record_adapter, corr, GRADING_MODEL, attempt, "bypass_rejected")
+            continue
+        _trace(trace.record_adapter, corr, GRADING_MODEL, attempt, "accepted")
+        return _ok("correct", "execution-completed",
+                   "Correct - your step works with the rest of the solution.",
+                   "completed_pass", execution_outcome="pass", divergent=True,
+                   deterministic=False)
+    return None
 
 
 if __name__ == "__main__":
@@ -1563,20 +2139,6 @@ if __name__ == "__main__":
     assert failing_cases(_p, _tests, [{"index": None, "error": "boom"}]) == []
     assert failing_cases(_p, _tests, [{"index": 99, "error": "boom"}]) == []
 
-    # ── never promise evidence that is not there ─────────────────────────
-    # The sentence is derived from `shown`, so the two cannot disagree. Checked
-    # on the source because reaching this branch for real needs a model, an
-    # oracle and four subprocesses; what must hold is that neither wording is a
-    # constant sitting next to the other.
-    import inspect as _inspect
-    _t3 = _inspect.getsource(_tier3)
-    _promise = "the case below is worth tracing by hand"
-    assert _promise in _t3, "the with-evidence wording is gone"
-    _line = next(l for l in _t3.splitlines() if _promise in l)
-    assert "if shown" in _line, \
-        "the promise must be conditional on the cases actually existing"
-    assert '"adapted_evidence_only" if shown' in _t3, \
-        "the two outcomes must be distinguishable in telemetry"
     # An index the suite does not have is skipped, not raised on, and must not
     # cost the student the cases that WOULD have told them something.
     assert len(failing_cases(_p, _tests, [{"index": 99}] + _fails)) == MAX_SHOWN_CASES
@@ -1660,7 +2222,7 @@ if __name__ == "__main__":
     def _no_model(*a, **k):
         raise AssertionError("no model may be consulted here")
 
-    _request_adaptation, chat = _no_model, _no_model
+    _request_completion, chat = _no_model, _no_model
 
     _graded = grade_submission(_sess, _deferred, oracle_loader=lambda p: _postfix_tests)
     assert _graded.verdict == "correct", (_graded.verdict, _graded.student_reason)
@@ -1681,7 +2243,7 @@ if __name__ == "__main__":
                                                        "expected": ["3"]},
                                                       {"input": [["a", "b", "c"]],
                                                        "expected": ["a", "b"]}])
-    assert _fell.reason_code == "judge_unavailable", _fell.reason_code
+    assert _fell.reason_code == "completion_unavailable", _fell.reason_code
 
     # ── the value bridge, end to end, with no model reachable ────────────
     # THE SUBMISSION THIS WHOLE TIER EXISTS FOR. The teacher wrote `counts`,
@@ -1756,52 +2318,45 @@ if __name__ == "__main__":
         assert _p.reason_code != "final_pass_early", (_partial, _p.reason_code)
         assert _p.verdict != "incorrect", "an unfinished step is not a conviction"
 
-    # ── A JUDGE MAY ACQUIT, NEVER CONVICT ────────────────────────────────
-    # Live, a student's step 1 on `frequency` was failed with "the code
-    # incorrectly removes spaces before checking for alphabetic characters,
-    # which is unnecessary". Redundant, yes - and identical in output, because
-    # isalpha() already skips spaces. Correct code, marked wrong for not being
-    # lean, by two judges that agreed with each other.
-    #
-    # Requiring a nameable failing input narrowed that but left the model
-    # deciding what counts as one. The rule below does not depend on the model
-    # agreeing to anything: a `false` from this tier cannot reach a student as
-    # `incorrect` at all, whatever it says and however confident it is. No
-    # network - the judge is stubbed.
-    _real_ask = _ask_judge
-    def _stub(ok, reason, failing_input):
-        return lambda payload, role: (ok, reason, 0.9, "style", failing_input)
-
-    _p, _c = {"description": "Count letters."}, {"prompt": "Prepare.", "reference": "counts = {}"}
+    # ── TIER 3: A COMPLETION ACQUITS ONLY IF EXECUTION AGREES ────────────
+    # The model proposes the rest of the function; the oracle and the blank-out
+    # check decide. No network - the proposal is stubbed.
+    _real_req = _request_completion
+    _csess = {"slug": "freq3", "title": "f", "description": "Count letters.",
+              "solution": "def f(txt):\n    counts = {}\n    for ch in txt:\n"
+                          "        counts[ch] = counts.get(ch, 0) + 1\n    return counts",
+              "header": "def f(txt):", "index": 0, "accepted": [],
+              "chunks": [{"prompt": "tally", "reference": "counts = {}\nfor ch in txt:\n"
+                          "    counts[ch] = counts.get(ch, 0) + 1"},
+                         {"prompt": "return it", "reference": "return counts"}]}
+    _ct = [{"input": ["aab"], "expected": {"a": 2, "b": 1}},
+           {"input": [""], "expected": {}}]
+    # A DIFFERENT SHAPE (a sorted list, not a dict of counts), so no renaming
+    # can match it to the teacher's names and it genuinely reaches this tier.
+    _mine = "letters = sorted(txt)"
     try:
-        # Style complaint, no failing input: not a conviction, no attempt spent.
-        _ask_judge = _stub(False, "This removes spaces first, which is unnecessary.", "")
-        _v = _tier4(_p, _c, "", "code", "why", "evidence")
-        assert _v.verdict == "indeterminate", _v.verdict
-        assert _v.consume_attempt is False, "an undecided verdict costs no attempt"
-        # ...and NEITHER IS A CONFIDENT ONE THAT NAMES AN INPUT. This is the
-        # case that used to convict. Both judges agree, both are sure, both can
-        # point at 'a1b' - and it is still an opinion about code no run
-        # attributed anything to, so it still costs the student nothing.
-        _ask_judge = _stub(False, "It counts a character it should skip.", "'a1b'")
-        _v = _tier4(_p, _c, "", "code", "why", "evidence")
-        assert _v.verdict == "indeterminate", _v.verdict
-        assert _v.consume_attempt is False, "an opinion may never cost an attempt"
-        assert _v.reason_code == "judge_no_acquittal", _v.reason_code
-        # An ACQUITTAL is what this tier is still for.
-        _ask_judge = _stub(True, "This prepares the count correctly.", "")
-        _v = _tier4(_p, _c, "", "code", "why", "evidence")
-        assert _v.verdict == "correct" and _v.deterministic is False, _v
+        # A completion that USES their work: acquitted, by execution.
+        _request_completion = lambda *a, **k: "return {c: letters.count(c) for c in letters}"
+        _VERDICT_MEMO.clear()
+        _v = grade_submission(_csess, _mine, oracle_loader=lambda p: _ct)
+        assert (_v.verdict, _v.tier) == ("correct", "execution-completed"), _v
+        # A completion that REDOES the work ignores their values: the blank-out
+        # check sees it still passing and refuses it.
+        _request_completion = lambda *a, **k: ("out = {}\nfor c in txt:\n"
+                                               "    out[c] = out.get(c, 0) + 1\nreturn out")
+        _VERDICT_MEMO.clear()
+        _v = grade_submission(_csess, _mine, oracle_loader=lambda p: _ct)
+        assert (_v.verdict, _v.tier) == ("indeterminate", "unconfirmed"), _v
+        assert _v.consume_attempt is False, "not confirming costs no attempt"
+        # A completion that REBUILDS their variable is refused before it runs.
+        _request_completion = lambda *a, **k: ("letters = list(txt)\n"
+                                               "return {c: letters.count(c) for c in letters}")
+        _VERDICT_MEMO.clear()
+        _v = grade_submission(_csess, _mine, oracle_loader=lambda p: _ct)
+        assert _v.tier == "unconfirmed", _v
     finally:
-        _ask_judge = _real_ask
-    assert "DIFFERENT RESULT" in _JUDGE_SYSTEM, \
-        "the judge must be told that only a different answer is an error"
-    # The verifier must not be shown the primary's answer: two anchored samples
-    # agreeing is not independent agreement, and agreement was the whole basis
-    # for acting on this tier at all.
-    import inspect as _inspect
-    assert "PRIMARY JUDGMENT" not in _inspect.getsource(_tier4), \
-        "the second judge must not be anchored on the first"
+        _request_completion = _real_req
+        _VERDICT_MEMO.clear()
 
     # ── THEY TYPED THE def LINE AGAIN ───────────────────────────────────
     # Reported by a real student on _isNumber: the frozen first line already

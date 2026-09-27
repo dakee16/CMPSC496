@@ -67,6 +67,17 @@ DUNDER_CALL = {"__len__": "len", "__str__": "str", "__repr__": "str",
 # IndexError has to be killed, not silently treated as a crashed harness.
 ERROR_PREFIX = "!"
 
+# ...and the exception's MESSAGE rides after this separator, for the student to
+# read. A student who sees only "!AttributeError" cannot tell a typo in an
+# attribute name from anything else; "'Calculator' object has no attribute
+# '_expr'" points straight at it (a real student spent nine attempts on exactly
+# that). COMPARISON NEVER SEES IT: execution.norm cuts everything from the
+# separator on, so two crashes of the same type compare equal exactly as they
+# did before - messages can carry memory addresses and differ run to run, and
+# every cached expected value was recorded without one. NUL because no value a
+# student's method legitimately returns will start with "!" and contain one.
+ERROR_SEP = "\x00"
+
 
 def is_method(problem: dict) -> bool:
     """True when this problem is one method of a class group."""
@@ -102,7 +113,8 @@ def {SEQ_ENTRY}(calls):
     that builtin, anything else is an attribute - called with the args when it
     is callable, read when it is a plain field. A call that raises records
     "{ERROR_PREFIX}<ExceptionName>" and the sequence CONTINUES: one failing call
-    must not void the observations after it."""
+    must not void the observations after it. The exception's MESSAGE follows a
+    NUL separator - see ERROR_SEP in main/context.py."""
     # A STRING argument is a block of statements rather than a call list. It
     # exists for the observations a flat call list cannot express: catching
     # `node.next = None` needs a reference to the popped node taken BEFORE the
@@ -110,6 +122,19 @@ def {SEQ_ENTRY}(calls):
     # runs in this module's namespace, statement by statement, recording the
     # value of every expression - so `n = x.top` is a step and `n.next is None`
     # is an observation. Self-contained: it builds its own object.
+    def _mt_where(exc):
+        # WHERE it crashed: every frame of the assembled program the error
+        # passed through, as "<def line>:<line>" - grading uses it to tell a
+        # crash in the student's OWN lines from one anywhere else. Lives inside
+        # this function because only this function is exempt from the policy.
+        out, tb = [], exc.__traceback__
+        while tb is not None:
+            co = tb.tb_frame.f_code
+            if co.co_filename == "<student>":
+                out.append(str(co.co_firstlineno) + ":" + str(tb.tb_lineno))
+            tb = tb.tb_next
+        return "\\x00@" + ",".join(out)
+
     if isinstance(calls, str):
         import ast as _ast
         ns = dict(globals())
@@ -117,7 +142,7 @@ def {SEQ_ENTRY}(calls):
         try:
             body = _ast.parse(calls).body
         except SyntaxError as exc:
-            return ["{ERROR_PREFIX}" + type(exc).__name__]
+            return ["{ERROR_PREFIX}" + type(exc).__name__ + "\\x00" + str(exc)[:200] + _mt_where(exc)]
         for stmt in body:
             try:
                 if isinstance(stmt, _ast.Expr):
@@ -127,7 +152,7 @@ def {SEQ_ENTRY}(calls):
                     exec(compile(_ast.Module([stmt], []), "<block>", "exec"), ns)
                     out.append(None)
             except Exception as exc:
-                out.append("{ERROR_PREFIX}" + type(exc).__name__)
+                out.append("{ERROR_PREFIX}" + type(exc).__name__ + "\\x00" + str(exc)[:200] + _mt_where(exc))
         return out
 
     obj = {cls}()
@@ -148,7 +173,7 @@ def {SEQ_ENTRY}(calls):
                 attr = getattr(obj, name)
                 out.append(attr(*args) if callable(attr) else attr)
         except Exception as exc:
-            out.append("{ERROR_PREFIX}" + type(exc).__name__)
+            out.append("{ERROR_PREFIX}" + type(exc).__name__ + "\\x00" + str(exc)[:200] + _mt_where(exc))
     return out
 '''
 
@@ -677,8 +702,12 @@ if __name__ == "__main__":
                          "n = x.top\nx.pop()\nn.next is None") == \
         [None, None, None, None, 2, False]
     # A raising statement records the error and the block CONTINUES.
-    assert ns[SEQ_ENTRY]("x = Stack()\nx.nope()\nlen(x)") == \
-        [None, ERROR_PREFIX + "AttributeError", 0]
+    # Compared as before (norm cuts the message); the message is still there
+    # for the student to read.
+    from .execution import _norm
+    _raised = ns[SEQ_ENTRY]("x = Stack()\nx.nope()\nlen(x)")
+    assert _norm(_raised) == [None, ERROR_PREFIX + "AttributeError", 0], _raised
+    assert "has no attribute 'nope'" in _raised[1].split(ERROR_SEP, 1)[1], _raised
     assert ns[SEQ_ENTRY]("x = (").pop().startswith(ERROR_PREFIX), "a bad block"
 
     # The decomposer is shown the class, with the body it must write removed.

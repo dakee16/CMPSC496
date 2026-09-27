@@ -623,7 +623,13 @@ def commit_outcome(session_id: str, submission_id: str, revision: int, result: d
                                          len(s["chunks"]))):
                 accepted.append({"step_id": s["chunks"][step]["step_id"],
                                  "code": accept_code if step == first else "",
-                                 "provenance": provenance})
+                                 "provenance": provenance,
+                                 # HOW it was accepted. A step the judges
+                                 # accepted was never run through the tests,
+                                 # so a later crash inside it is pointed back
+                                 # at it (grading._crash_verdict) instead of
+                                 # being charged to the step being answered.
+                                 "tier": result.get("tier")})
                 idx += 1
             attempts = 0
             if provenance == "revealed_reference":

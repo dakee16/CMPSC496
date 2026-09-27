@@ -43,9 +43,20 @@ GradeTier = Literal[
     "execution-bridged",     # ran with the reference tail UNCHANGED, the
                              # student's names bridged to it by VALUE - see
                              # main/bridge.py. Deterministic, no model.
-    "execution-adapted",     # ran with a CALIBRATED adapted tail
+    "execution-adapted",     # tier 3: a model's rewrite of the teacher's
+                             # remaining steps, proven on the teacher's own
+                             # steps first. Acquits, or shows failing cases
+                             # (indeterminate) - see grading._tier3.
     "execution-final",       # last chunk: whole function, no borrowed tail
-    "llm-judge",             # execution could not attribute fault
+    "execution-crash",       # the student's OWN lines crashed in a run with
+                             # nothing of the teacher's after them - see
+                             # grading._crash_verdict. Deterministic, no model.
+    "execution-completed",   # a model-written completion on top of the
+                             # student's step passed the full oracle AND broke
+                             # when their values were blanked out - see
+                             # grading._complete. Tier 4; replaced the judges.
+    "unconfirmed",           # nothing could confirm the step; no attempt used
+    "llm-judge",             # RETIRED 2026-09-26; kept so old records parse
     "system",                # precondition/infrastructure failure
 ]
 

@@ -35,6 +35,9 @@ _ALLOWED_IMPORTS = {
 _BANNED_NAMES = {
     "eval", "exec", "compile", "open", "input", "__import__", "breakpoint",
     "globals", "locals", "vars", "memoryview", "exit", "quit", "help",
+    # By-string attribute access: getattr(x, "__cl" + "ass__") reaches what
+    # _BANNED_ATTRS refuses when it is written out, and no AST can see it.
+    "getattr", "setattr", "delattr",
 }
 _BANNED_ATTRS = {
     "__subclasses__", "__bases__", "__mro__", "__globals__", "__code__",
@@ -54,6 +57,11 @@ _MAX_OUTPUT_BYTES = 4 * 1024 * 1024
 _DEFAULT_TIMEOUT = 6.0
 _MEM_BYTES = 512 * 1024 * 1024
 _CPU_SECONDS = 5
+
+
+# OUR module-level helpers, spliced into the program next to the student's
+# code: context's call driver and bridge's value encoder.
+_INJECTED = frozenset({SEQ_ENTRY, "_mt_state"})
 
 
 class PolicyViolation(Exception):
@@ -77,9 +85,13 @@ def _policed_nodes(tree: ast.AST):
     Skipped by MODULE-LEVEL name, and that is what stops it being a bypass. A
     student's chunk is always spliced into a function body or a class method,
     so nothing they write is ever a direct child of the module: a
-    `def _mt_run_calls` typed into an answer is nested, and stays policed."""
+    `def _mt_run_calls` typed into an answer is nested, and stays policed.
+
+    The same holds for bridge's value encoder, _mt_state, which reads a
+    student's objects with getattr. Its comment always said it was exempt; it
+    was not - it passed only because getattr was not banned yet."""
     stack = [n for n in ast.iter_child_nodes(tree)
-             if not (isinstance(n, ast.FunctionDef) and n.name == SEQ_ENTRY)]
+             if not (isinstance(n, ast.FunctionDef) and n.name in _INJECTED)]
     while stack:
         node = stack.pop()
         yield node
@@ -138,6 +150,10 @@ def norm(x):
         return {norm(k): norm(v) for k, v in x.items()}
     if isinstance(x, (set, frozenset)):
         return {norm(i) for i in x}
+    if isinstance(x, str) and x.startswith("!") and "\x00" in x:
+        # A crash's MESSAGE is for the student to read, never for comparison -
+        # see ERROR_SEP in main/context.py.
+        return x.split("\x00", 1)[0]
     if x is None or isinstance(x, (bool, int, float, str)):
         return x
     return str(x)
@@ -235,7 +251,15 @@ def main():
                 got = fn(*t["input"])
             except Exception as e:
                 raised = True
-                failures.append({"index": i, "error": repr(e)[:200]})
+                where, tb = [], e.__traceback__
+                while tb is not None:
+                    co = tb.tb_frame.f_code
+                    if co.co_filename == "<student>":
+                        where.append([co.co_firstlineno, tb.tb_lineno])
+                    tb = tb.tb_next
+                failures.append({"index": i,
+                                 "error": f"{type(e).__name__}: {e}"[:300],
+                                 "where": where})
                 continue
             if norm(got) == norm(t["expected"]):
                 passed += 1

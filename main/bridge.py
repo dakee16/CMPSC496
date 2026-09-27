@@ -103,8 +103,8 @@ CAPTURE_KEY = "__mt_cap__"
 UNBOUND = "__mt_unbound__"
 
 # Injected at MODULE level of the probe program, so it is exempt from the AST
-# policy the same way context.SEQ_ENTRY is - see execution._policed_nodes. It
-# uses only dir/getattr/type/sorted/repr, none of which the policy bans.
+# policy the same way context.SEQ_ENTRY is - see execution._INJECTED, which
+# must name it. It uses getattr, which the policy bans in a student's code.
 # How much of one snapshot the encoder may look at. Reading an object means
 # running code somebody else wrote - see the FENCE note in _mt_state - so every
 # dimension of the walk is bounded rather than trusted.
