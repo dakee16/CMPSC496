@@ -37,6 +37,12 @@ ALLOWED_MIME = {
 }
 MAX_BYTES = 8 * 1024 * 1024      # a phone photo of a whiteboard, with room
 MAX_ROUNDS = 6                   # past this a human should be looking, not a bot
+# What the student sees, and what the plan's archive row keeps, when the
+# REVIEWER could not run (see api_server._let_through_unreviewed). The teacher's
+# report matches on it to say "not reviewed".
+UNREVIEWED_REPLY = ("The plan reviewer isn't available right now, so your plan "
+                    "was saved without a review and you can start coding. Your "
+                    "teacher can see that it wasn't reviewed.")
 
 
 class DesignRejected(Exception):

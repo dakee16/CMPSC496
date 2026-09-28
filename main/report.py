@@ -330,12 +330,16 @@ def _submissions(rows: list[dict]) -> str:
 def _designs(rows: list[dict]) -> str:
     if not rows:
         return f"<p>{_MISSING}: no plan was uploaded as a picture.</p>"
+    from .design_review import UNREVIEWED_REPLY
     out = []
     for d in rows:
-        ok = "approved" if d.get("approved") else "not approved"
+        # Let through while the reviewer was down - approved, but by nobody.
+        unreviewed = d.get("reviewer_reply") == UNREVIEWED_REPLY
+        ok = ("not reviewed" if unreviewed else
+              "approved" if d.get("approved") else "not approved")
         out.append(
             f'<h4>Plan revision {_esc(d.get("round"))} &middot; {_when(d.get("created_at"))}</h4>'
-            f'<p><span class="pill {"ok" if d.get("approved") else "bad"}">{ok}</span> '
+            f'<p><span class="pill {"ok" if d.get("approved") and not unreviewed else "bad"}">{ok}</span> '
             f'{_esc(d.get("mime") or "")} &middot; '
             f'{"image stored" if d.get("storage_path") else "<span class=missing>image not stored</span>"}</p>')
         if d.get("reviewer_reply"):

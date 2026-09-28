@@ -492,7 +492,8 @@ async function uploadDesign(){
     bubble("bot", data.reply);
     // The verdict belongs in the panel the student is looking at, not only in
     // a chat bubble on the other side of the screen.
-    designMsg(data.approved ? "ok" : "warn", data.reply);
+    // Let through UNREVIEWED while the reviewer was down: open, but say so.
+    designMsg(data.approved && !data.unreviewed ? "ok" : "warn", data.reply);
     if (data.approved) openGate();
     // A graph read straight off their drawing beats one scraped from chat
     // prose, so it seeds planGraph before any chat-based refresh runs.
@@ -557,7 +558,7 @@ async function submitPlanGraph(){
     hideFork();
     bubble("me", "Submitted my plan from the chat");
     bubble("bot", data.reply);
-    designMsg(data.approved ? "ok" : "warn", data.reply);
+    designMsg(data.approved && !data.unreviewed ? "ok" : "warn", data.reply);
     // APPROVED, and the reviewer also spotted the collect-then-transform shape:
     // offer the choice instead of unlocking straight through. openOptimizePopup
     // was written, styled and given both its handlers, and then nothing ever

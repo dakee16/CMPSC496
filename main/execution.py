@@ -218,6 +218,15 @@ def brief(v, cap=160):
         r = r[:cap] + "...<truncated>"
     return {"repr": r, "type": t, "len": n}
 
+def crashed(v):
+    """Does a recorded value hold a crash? A method call that raised is
+    recorded as "!Name" + NUL + message (main/context.py, ERROR_SEP).
+    ponytail: only the 160-char `brief` of it travels, so a crash past that
+    point is still invisible to grading - 0 of 468 real submissions."""
+    if isinstance(v, (list, tuple)):
+        return any(crashed(x) for x in v)
+    return isinstance(v, str) and v.startswith("!") and "\x00" in v
+
 def main():
     payload = _ast.literal_eval(open(sys.argv[1]).read())
     limits(payload["mem"], payload["cpu"])
@@ -263,7 +272,11 @@ def main():
                 continue
             if norm(got) == norm(t["expected"]):
                 passed += 1
-            elif len(failures) < 5:
+            elif len(failures) < 5 or crashed(got):
+                # EVERY CRASH, not just the first five failures: grading's crash
+                # check reads them, and an unfinished step's plain wrong answers
+                # used to fill all five slots before the crash in test 7 - is-
+                # number's `splitted[0]` IndexError went unseen three times.
                 failures.append({"index": i, "got": brief(got),
                                  "expected": brief(t["expected"])})
         emit({"status": "compared", "passed": passed, "total": len(tests),
@@ -420,9 +433,11 @@ def classify_run(code: str, tests: list, entry_name: str | None = None,
     failures = d.get("failures", [])
     if passed == total and total:
         return ExecutionResult(outcome="pass", passed=passed, total=total)
+    # Not cut here: the child already caps plain wrong answers at five and sends
+    # every crash, so grading's crash check sees them all (see `crashed`).
     return ExecutionResult(
         outcome="runtime_error" if d.get("raised") else "wrong_output",
-        passed=passed, total=total, failures=failures[:5])
+        passed=passed, total=total, failures=failures)
 
 
 if __name__ == "__main__":

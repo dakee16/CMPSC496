@@ -361,6 +361,27 @@ def _entry_def(program: str, first: int, last: int):
     return {"name": fn.name, "starts": starts, "callers": callers}
 
 
+def _mentions(node, names: set) -> int:
+    return sum(1 for n in ast.walk(node)
+               if isinstance(n, ast.Attribute) and n.attr in names
+               or isinstance(n, ast.Name) and n.id in names)
+
+
+def _first_run_here(calls, pos, same, callers, block) -> bool:
+    """Is call `pos` a DIRECT call of the method, and the first time anything
+    in the test could have run it? A call list says so by name. A block
+    statement must be a simple one that names the method exactly once - no
+    loop, no second call - with nothing before it naming the method or a
+    method that calls it."""
+    if not block:
+        return (str((calls[pos] or [""])[0]) in same
+                and not any(str((c or [""])[0]) in same | callers for c in calls[:pos]))
+    st = calls[pos]
+    return (isinstance(st, (ast.Expr, ast.Assign, ast.AugAssign, ast.AnnAssign))
+            and _mentions(st, same) == 1 and not _mentions(st, callers)
+            and not any(_mentions(s, same | callers) for s in calls[:pos]))
+
+
 def _crash_sites(problem, tests, failures, entry):
     """(test index, 'Type: message', innermost line in the entry function) for
     each crash the conditions above allow."""
@@ -380,9 +401,21 @@ def _crash_sites(problem, tests, failures, entry):
             msg = f["error"]
         else:
             inp = t.get("input") or []
-            if not (inp and isinstance(inp[0], list)):
-                continue                             # block tests: not counted
-            calls = inp[0]
+            block = bool(inp) and isinstance(inp[0], str)
+            if not (inp and (isinstance(inp[0], list) or block)):
+                continue
+            if block:
+                # A BLOCK is a program, one recorded output per top-level
+                # statement. Dunders are left out: Python calls them without
+                # naming them (`if x:`, `x == y`), so "first call" is unknowable.
+                if entry["name"].startswith("__"):
+                    continue
+                try:
+                    calls = ast.parse(inp[0]).body
+                except SyntaxError:
+                    continue
+            else:
+                calls = inp[0]
             text = _shown(f.get("got"))
             try:
                 expected = ast.literal_eval(_shown(f.get("expected")))
@@ -393,9 +426,7 @@ def _crash_sites(problem, tests, failures, entry):
                 pos = _index_at(text, m.start())
                 if pos is None or not (0 <= pos < len(calls)) or not m.group(3):
                     continue
-                name = str((calls[pos] or [""])[0])
-                if name not in same or any(str((c or [""])[0]) in same | entry["callers"]
-                                           for c in calls[:pos]):
+                if not _first_run_here(calls, pos, same, entry["callers"], block):
                     continue
                 if isinstance(expected, list) and pos < len(expected) and \
                         isinstance(expected[pos], str) and expected[pos].startswith("!"):
@@ -1182,6 +1213,23 @@ def _calibrate(problem, header, trusted_prefix, alias_lines, tail, tests, entry)
     return classify_run(cand, tests, entry_name=entry).outcome == "pass"
 
 
+_REACHED = "_mt_rewrite_reached"
+
+
+def _tail_reached(problem, header, trusted_prefix, alias_lines, tests, entry) -> set:
+    """Indices of the tests on which calibration actually RAN the rewrite: the
+    same program with a tail that raises on arrival. A test it passes returned
+    before the tail. Every crash comes back (execution reports them all), so
+    the set is complete; a run our machinery could not finish vouches for none.
+    ponytail: per test, not per call - a sequence whose rewrite ran on one call
+    counts as covered for all of them."""
+    probe = _assemble(problem, header, trusted_prefix, "\n".join(alias_lines),
+                      f'raise RuntimeError("{_REACHED}")')
+    res = classify_run(probe, tests, entry_name=entry)
+    return {f.get("index") for f in res.failures or []
+            if _REACHED in (f.get("error") or _shown(f.get("got")))}
+
+
 def _squash(code: str) -> str:
     return re.sub(r"\s+", "", code or "")
 
@@ -1382,9 +1430,21 @@ def _tier3(problem, session, header, prefix, student_code, upto, ref_tail,
             # model having re-expressed the tail faithfully, which calibration
             # does not establish. Costs no attempt.
             #
+            # ONLY CASES THE PROOF COVERED. Where the teacher's step returns
+            # early, calibration never ran the rewrite, so it proves nothing
+            # there - and a case from there could blame a correct step. 57 of
+            # 116 saved steps skip it on some tests (calculateExpressions step
+            # 2: 32 of 40). None covered, nothing to show.
+            reached = _tail_reached(problem, header, trusted_prefix,
+                                    alias_lines, tests, entry)
+            covered = [f for f in cand.failures if f.get("index") in reached]
+            if not covered:
+                _trace(trace.record_adapter, corr, GRADING_MODEL, attempt,
+                       "evidence_unproven")
+                continue
             # The sentence is derived from what was actually shown: failing
             # _cases skips any case it cannot render, and may skip them all.
-            shown = failing_cases(problem, tests, cand.failures)
+            shown = failing_cases(problem, tests, covered)
             _trace(trace.record_adapter, corr, GRADING_MODEL, attempt, "evidence_only")
             return _ok(
                 "indeterminate", "execution-adapted",
@@ -1397,8 +1457,10 @@ def _tier3(problem, session, header, prefix, student_code, upto, ref_tail,
                         "what it hands on to the rest of the solution."),
                 "adapted_evidence_only" if shown else "adapted_evidence_unrenderable",
                 deterministic=False, consume_attempt=False,
-                execution_outcome="wrong_output", failures=cand.failures,
-                failing_cases=shown, failed_total=_failed_total(cand, len(shown)))
+                execution_outcome="wrong_output", failures=covered,
+                # A floor, never the run's total: the uncovered failures are
+                # exactly the ones we cannot vouch for.
+                failing_cases=shown, failed_total=max(len(covered), len(shown)))
         _trace(trace.record_adapter, corr, GRADING_MODEL, attempt,
                f"no_acquittal_{cand.outcome}")
     return None

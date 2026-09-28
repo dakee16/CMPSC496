@@ -3003,6 +3003,24 @@ def graphs_route(req: GraphsRequest, request: Request):
     return out
 
 
+def _let_through_unreviewed(prior: list, err: Exception) -> dict:
+    """The plan gate's verdict when the REVIEWER itself failed - an OpenAI
+    outage, credits run out, the monthly limit reached.
+
+    It used to be a 503, and until OpenAI came back no student in the class
+    could write a line of code: our failure, made theirs. The plan is let
+    through instead, and recorded as NOT reviewed - approved in the row every
+    gate reads, and saying so in the reply the student and the teacher's report
+    both show. Only a failure reaches here: a reviewer that ran and said no
+    still says no, and a malformed reply already fails closed inside it."""
+    from main import trace
+    from main.design_review import UNREVIEWED_REPLY
+    print(f"  ⚠️  plan reviewer unavailable - let through unreviewed: {err!r}"[:300])
+    trace.record(kind="plan_unreviewed", error=repr(err)[:200])
+    return {"reply": UNREVIEWED_REPLY, "approved": True, "unreviewed": True,
+            "round": sum(1 for m in prior if m.get("role") == "assistant") + 1}
+
+
 @app.post("/design_review")
 async def design_review(request: Request,
                         slug: str = Form(...),
@@ -3044,8 +3062,8 @@ async def design_review(request: Request,
     # structure the browser composed.
     tutor_chat, prior = _recorded_chat(claims["sub"], slug)
 
+    blob = await design.read()
     try:
-        blob = await design.read()
         out = review_design(row[0], blob, design.content_type or "", prior,
                             chat_log=tutor_chat)
     except DesignRejected as e:
@@ -3054,17 +3072,14 @@ async def design_review(request: Request,
         raise HTTPException(status_code=400, detail={
             "reason_code": "design_rejected", "message": str(e)})
     except Exception as e:
-        raise HTTPException(status_code=503, detail={
-            "reason_code": "reviewer_unavailable",
-            "message": "The design reviewer is unavailable right now. Try again "
-                       "shortly.",
-            "detail": str(e)[:120]})
+        out = _let_through_unreviewed(prior, e)
 
     # On approval, read the plan graph off the DRAWING itself. Without this a
     # student who draws a careful flowchart and types little gets an empty plan
     # graph - punishing exactly the behaviour this gate exists to encourage.
     # Only on approval, so it is one extra vision call per problem, not per try.
-    if out.get("approved"):
+    # Not when the reviewer was down: that call goes into the same outage.
+    if out.get("approved") and not out.get("unreviewed"):
         from main.graphs import graph_from_design
         out["plan_graph"] = graph_from_design(row[0], blob,
                                               design.content_type or "")
@@ -3086,7 +3101,9 @@ async def design_review(request: Request,
         # on either side able to explain it. Say so instead and let them resend.
         if out.get("approved") and not recorded:
             out = {**out, "approved": False,
-                   "reply": "Your plan looks good, but we could not record the "
+                   "reply": "We could not save your plan just now - please "
+                            "submit it once more." if out.get("unreviewed") else
+                            "Your plan looks good, but we could not record the "
                             "approval just now - please submit it once more."}
     return out
 
@@ -3318,11 +3335,7 @@ def design_review_plan(req: PlanSubmitRequest, request: Request):
         raise HTTPException(status_code=400, detail={
             "reason_code": "design_rejected", "message": str(e)})
     except Exception as e:
-        raise HTTPException(status_code=503, detail={
-            "reason_code": "reviewer_unavailable",
-            "message": "The design reviewer is unavailable right now. Try again "
-                       "shortly.",
-            "detail": str(e)[:120]})
+        out = _let_through_unreviewed(prior, e)
 
     # Archived exactly like an uploaded design, with no bytes: save_design skips
     # the storage upload for an empty blob and still writes the row, which is
@@ -3342,7 +3355,9 @@ def design_review_plan(req: PlanSubmitRequest, request: Request):
         # on either side able to explain it. Say so instead and let them resend.
         if out.get("approved") and not recorded:
             out = {**out, "approved": False,
-                   "reply": "Your plan looks good, but we could not record the "
+                   "reply": "We could not save your plan just now - please "
+                            "submit it once more." if out.get("unreviewed") else
+                            "Your plan looks good, but we could not record the "
                             "approval just now - please submit it once more."}
         if out.get("approved"):
             # The plan that PASSED the gate is the one worth keeping, and from
