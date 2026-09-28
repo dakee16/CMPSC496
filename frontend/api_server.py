@@ -1787,16 +1787,16 @@ def reprepare_assignment(assignment_id: str, request: Request,
     only way back was to make the instructor find it.
 
     Streams the same events an upload does, so the page renders it with the same
-    code. Existing decompositions for these problems are dropped first: the
-    point of re-preparing is to get new ones, and serving a pooled split from
-    before the change would quietly defeat that."""
+    code. Existing decompositions for these problems are REPLACED: the point of
+    re-preparing is to get new ones, and serving a pooled split from before the
+    change would quietly defeat that. Each problem's new set is swapped in only
+    once it is built - students are only ever served saved roadmaps, so
+    dropping them first left an error page for as long as the run took."""
     import json as _json
     from fastapi.responses import StreamingResponse
     from main.publish import prepare_assignment_stream
     from main.prepare_bus import finish as bus_finish, key as bus_key
     from main.prepare_bus import open_channel, publish as bus_publish
-    from main.identity import content_hash
-    from main.run_phase1 import _load_pool, _save_pool
     from main import transcripts
 
     require_teacher(request)
@@ -1829,14 +1829,9 @@ def reprepare_assignment(assignment_id: str, request: Request,
             "message": ("None of these problems has a stored solution, so there "
                         "is nothing to prepare. Upload the .py file instead.")})
 
-    # Drop the old splits for exactly these problems. Verdicts are keyed by
-    # content and stay - re-running mutation testing on unchanged text would
-    # cost minutes and reach the same answer.
-    pool = _load_pool()
-    for pr in problems:
-        pool.pop(content_hash(pr), None)
-    _save_pool(pool)
-
+    # The old splits are replaced per problem (replace_roadmaps below). Verdicts
+    # are keyed by content and stay - re-running mutation testing on unchanged
+    # text would cost minutes and reach the same answer.
     opened: list[str] = []
     taped: dict[str, list] = {}
 
@@ -1856,7 +1851,8 @@ def reprepare_assignment(assignment_id: str, request: Request,
                            "name": "", "n_problems": len(problems),
                            "parse_errors": []}) + "\n"
         try:
-            for ev in prepare_assignment_stream(problems, emit_for=emit_for):
+            for ev in prepare_assignment_stream(problems, emit_for=emit_for,
+                                                replace_roadmaps=True):
                 if ev.get("event") == "prepared":
                     bus_finish(bus_key(assignment_id, ev.get("slug", "?")))
                     src = next((x for x in problems

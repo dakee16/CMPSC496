@@ -2,6 +2,7 @@ import json
 import os
 import random
 import re
+import threading
 from dotenv import load_dotenv
 from pydantic import ValidationError
 from supabase import create_client
@@ -62,6 +63,10 @@ _CHUNK_POOL_PATH = os.environ.get(
 # $6.71 on 25 Sep) and let the pool grow without bound (invert reached 10).
 # Five gated roadmaps is already the variety students see.
 _POOL_TARGET = 5
+# Every pool write is load-modify-save of ONE file shared by every problem, so
+# two unlocked writers keep only the last save. ponytail: in-process lock, which
+# is enough because start.sh pins uvicorn to one worker.
+_POOL_LOCK = threading.Lock()
 
 
 class OracleNotStrongError(RuntimeError):
@@ -519,10 +524,26 @@ def pooled_step_count(problem: dict) -> int:
 
 
 def _save_pool(pool: dict) -> None:
+    # WRITE, THEN RENAME. Opening the pool for writing empties it, so a failure
+    # part way (disk full, a crash) left every problem with no roadmaps - and
+    # students are only ever served saved ones. A rename is all or nothing:
+    # a reader sees the old file or the new one, never half of one.
+    tmp = _CHUNK_POOL_PATH + ".tmp"
     try:
-        json.dump(pool, open(_CHUNK_POOL_PATH, "w"), indent=2)
+        with open(tmp, "w") as f:
+            json.dump(pool, f, indent=2)
+        os.replace(tmp, _CHUNK_POOL_PATH)
     except Exception as e:
         print(f"  ⚠️  Could not save chunk pool: {e}")
+
+
+def _add_to_pool(key: str, entries: list, replace: bool = False) -> None:
+    """The one way to write roadmaps into the pool. `replace` swaps a problem's
+    whole list in one step, so the old ones are served until then."""
+    with _POOL_LOCK:
+        pool = _load_pool()
+        pool[key] = ([] if replace else pool.get(key, [])) + entries
+        _save_pool(pool)
 
 
 def _serialize(result: dict) -> dict:
@@ -641,72 +662,90 @@ def decompose_into_chunks_best(problem: dict, max_tries: int = 5) -> dict:
         f"assembly that compiled and ran. Nothing safe to serve.")
 
 
-def get_chunk_decomposition(problem: dict) -> dict:
-    slug = problem.get("slug", "")      # for humans reading the logs only
-    key = content_hash(problem)         # pool identity: content, not title
-    pool = _load_pool()
-    entries = pool.get(key, [])
+def _reading_saved_tests(problem: dict) -> dict:
+    """`problem`, with every oracle read below it sent to the saved test set.
 
-    want_fresh = len(entries) < _POOL_TARGET
+    The gates and the decomposer read the oracle through get_oracle_tests - the
+    WRITE path, which regenerates and mutation-tests an outdated or missing set.
+    `oracle_from` sends those reads to load_strong_cached_oracle, the read
+    grading already uses: an outdated set is served, a missing one refused.
+    Generation belongs to publish.py, which certifies the set BEFORE anything
+    here runs. content_hash ignores the key, so no cache entry moves."""
+    return {**problem, "oracle_from": problem.get("oracle_from") or problem}
 
-    if want_fresh:
-        try:
-            fresh = decompose_into_chunks(problem)
-            entries.append(_serialize(fresh))
-            pool[key] = entries
-            _save_pool(pool)
-            print(f"  ✨ Fresh decomposition added to pool for {slug} "
-                  f"(pool size: {len(entries)})")
-            return fresh
-        except (OracleNotStrongError, NoOracleTestsError):
-            # Neither is "generation went badly." Gate 1 explicitly refused
-            # to certify this decomposition - either the oracle isn't strong
-            # enough yet, or no oracle exists for this problem at all. Falling
-            # back to decompose_into_chunks_best would serve an ungated
-            # decomposition under a different name, which is exactly what
-            # this exists to prevent.
-            raise
-        except RuntimeError as e:
-            if entries:
-                # Pool has validated entries - serve one, log the failure
-                print(f"  ↩️  Fresh generation failed ({e}); serving from pool.")
-            else:
-                # Pool empty AND generation failed - serve best-attempt with a warning.
-                # Better than a 500 - the gate failure means it's imperfect but usable.
-                print(f"  ⚠️  All retries failed and pool empty for {slug}. "
-                      f"Serving best attempt (imperfect but not crashing).")
-                # Re-run once more explicitly to get best attempt
-                try:
-                    return decompose_into_chunks_best(problem)
-                except Exception as e:
-                    # Nothing left to try. The old behaviour here fabricated
-                    # a single chunk with reference "pass" -- one chunk
-                    # (violates the 2-3 chunk rule) whose reference is
-                    # guaranteed non-load-bearing (violates the necessity
-                    # gate it never went through). That is not a degraded
-                    # decomposition, it is not a decomposition at all, so
-                    # refuse instead of serving it.
-                    raise DecompositionUnavailableError(
-                        f"Could not produce any decomposition for '{slug}' "
-                        f"after exhausting fresh generation, the pool, and "
-                        f"the best-effort fallback ({e}).") from e
 
+def _usable(problem: dict, entries: list) -> list:
     # SHAPE-FILTER BEFORE CHOOSING. Entries written before the shape gate
     # existed were never checked against it, and 4 of the 22 in the real pool
     # fail: each one convicts a student who copies the reference verbatim. The
     # filter is pure AST work with no oracle run, so screening the whole pool
-    # costs nothing, and dropping a bad entry is strictly better than serving
-    # it or than raising at the boundary and 500-ing the student.
-    usable = [e for e in entries
-              if not shape_failures(problem, e.get("header", ""),
-                                    _deserialize(e)["chunks"])]
+    # costs nothing.
+    return [e for e in entries
+            if not shape_failures(problem, e.get("header", ""),
+                                  _deserialize(e)["chunks"])]
+
+
+def fill_pool(problem: dict, replace: bool = False) -> int:
+    """Build roadmaps until the problem has _POOL_TARGET usable ones saved, and
+    return how many it has. TEACHER SIDE ONLY - publish.py calls it at upload,
+    so no student ever waits for a build or sets one off (28 Sep: opens used to
+    top the pool up, and 30 students opening together paid for 30 builds).
+
+    `replace` (re-prepare) builds a full new set and swaps it in only at the
+    end, so students keep getting the old roadmaps until the new ones exist.
+
+    BOUNDED: one build per missing roadmap, each at most decompose_into_chunks'
+    own five tries, and it stops at the first build that fails - a problem the model cannot
+    split right now will not split on the next four tries either. With nothing
+    saved at all, one best-effort try follows, as the upload always did."""
+    slug = problem.get("slug", "")
+    key = content_hash(problem)
+    problem = _reading_saved_tests(problem)
+    have = 0 if replace else len(_usable(problem, _load_pool().get(key, [])))
+    new = []
+
+    def keep(decomposition):
+        new.append(_serialize(decomposition))
+        if not replace:
+            # Saved as soon as it is paid for: a run stopped part way (a crash,
+            # main.topup_pools' spending cap) keeps what it already bought.
+            _add_to_pool(key, new[-1:])
+
+    for _ in range(_POOL_TARGET - have):
+        try:
+            keep(decompose_into_chunks(problem))
+        except (OracleNotStrongError, NoOracleTestsError):
+            raise                       # the oracle's fault; no build can fix it
+        except RuntimeError as e:
+            print(f"  ⚠️  Roadmap build failed for {slug}; stopping at "
+                  f"{have + len(new)} saved: {e}")
+            break
+    if have + len(new) == 0:
+        try:
+            # Gated inside (assert_serveable), so it is saved like any other.
+            keep(decompose_into_chunks_best(problem))
+        except RuntimeError as e:
+            print(f"  ⚠️  Best-effort roadmap failed for {slug}: {e}")
+    if replace:
+        _add_to_pool(key, new, replace=True)
+    print(f"  ✨ {slug}: {have + len(new)} roadmap(s) saved ({len(new)} new)")
+    return have + len(new)
+
+
+def get_chunk_decomposition(problem: dict) -> dict:
+    """One of the problem's SAVED roadmaps, at random. Never builds one - that is
+    fill_pool's job, at upload - so opening a problem never costs a model call.
+    publish.py runs this too, right after filling, so "ready" means a student
+    can be served."""
+    slug = problem.get("slug", "")      # for humans reading the logs only
+    key = content_hash(problem)         # pool identity: content, not title
+    problem = _reading_saved_tests(problem)
+    entries = _load_pool().get(key, [])
+    usable = _usable(problem, entries)
     if not usable:
-        print(f"  🧹 All {len(entries)} pooled decomposition(s) for {slug} fail "
-              f"the shape gate; generating fresh.")
-        fresh = decompose_into_chunks(problem)
-        pool[key] = entries + [_serialize(fresh)]
-        _save_pool(pool)
-        return fresh
+        raise DecompositionUnavailableError(
+            f"'{slug}' has no saved steps to serve yet - it needs to be "
+            f"prepared again.")
     if len(usable) < len(entries):
         print(f"  🧹 Skipped {len(entries) - len(usable)} un-answerable pooled "
               f"decomposition(s) for {slug}.")

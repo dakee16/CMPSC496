@@ -377,7 +377,9 @@ def build(problem: dict, header: str, graph: dict, chat_log: list | None = None,
     if key is not None and key in _NO_ROUTE:
         raise RouteUnavailable(f"{_NO_ROUTE[key]} (already tried)")
 
-    tests = get_oracle_tests(problem)
+    # READ-ONLY, like grading: the bare call regenerates an outdated or missing
+    # set while the student waits (see run_phase1._reading_saved_tests).
+    tests = get_oracle_tests({**problem, "oracle_from": problem})
     if not tests:
         raise RouteUnavailable("no oracle tests; nothing could be verified")
     entry = get_resolved_entry(problem)["entry_name"]

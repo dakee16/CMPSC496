@@ -110,7 +110,7 @@ def stage_of_error(error: str | None) -> str | None:
     return PREPARE_STAGES[-1][0]
 
 
-def prepare_problem(problem: dict, emit=None) -> dict:
+def prepare_problem(problem: dict, emit=None, replace_roadmaps: bool = False) -> dict:
     """Make one problem student-ready. Returns {slug, ready, chunks, stage,
     error}, where `stage` names the gate it stopped at - None once it passed.
 
@@ -122,9 +122,12 @@ def prepare_problem(problem: dict, emit=None) -> dict:
     watching a spinner - see main/prepare_bus.py for why the watching tab
     mirrors this run rather than starting its own. It never changes behaviour
     and never affects the return value; leaving it None is the production path,
-    and a failure inside a watcher must never fail an upload."""
+    and a failure inside a watcher must never fail an upload.
+
+    `replace_roadmaps` (re-prepare) builds a whole new set of roadmaps and swaps
+    it in at the end, instead of topping up the saved ones."""
     from tests.sandbox import get_oracle_tests, is_oracle_certified
-    from .run_phase1 import get_chunk_decomposition
+    from .run_phase1 import fill_pool, get_chunk_decomposition
 
     slug = problem.get("slug", "?")
     emit = emit or (lambda ev: None)
@@ -216,12 +219,15 @@ def prepare_problem(problem: dict, emit=None) -> dict:
     except Exception as e:
         return fail("strength", _reason(e))
 
-    # DECOMPOSITION, gated. get_chunk_decomposition runs the same serve boundary
-    # a student request would have, so "ready" means exactly what it says.
+    # DECOMPOSITION, gated. fill_pool builds the roadmaps students will be
+    # served - HERE, never on a student's open - then get_chunk_decomposition
+    # runs the same serve boundary a student request does, so "ready" means
+    # exactly what it says.
     emit({"type": "stage", "name": "decomposition",
-          "label": "Decomposing into steps - exactly the path a student request "
-                   "takes, including every retry and Gate 1"})
+          "label": "Decomposing into steps - every retry and Gate 1, then served "
+                   "exactly the way a student request is"})
     try:
+        fill_pool(problem, replace=replace_roadmaps)
         decomp = get_chunk_decomposition(problem)
     except Exception as e:
         return fail("steps", _reason(e))
@@ -237,7 +243,8 @@ def prepare_problem(problem: dict, emit=None) -> dict:
             "n_tests": len(tests), "stage": None, "error": None}
 
 
-def prepare_assignment_stream(problems: list[dict], emit_for=None):
+def prepare_assignment_stream(problems: list[dict], emit_for=None,
+                              replace_roadmaps: bool = False):
     """Yield one dict per problem as preparation finishes, then a summary.
 
     A generator so the upload page can show progress: preparing twenty problems
@@ -260,7 +267,7 @@ def prepare_assignment_stream(problems: list[dict], emit_for=None):
         emit = emit_for(p.get("slug", "?")) if emit_for else None
         yield {"event": "preparing", "index": i, "total": total,
                "slug": p.get("slug", "?"), "title": p.get("title", "")}
-        res = prepare_problem(p, emit=emit)
+        res = prepare_problem(p, emit=emit, replace_roadmaps=replace_roadmaps)
         ready += 1 if res["ready"] else 0
         if res.get("needs_review"):
             review.append({"slug": res["slug"], "title": p.get("title", ""),
@@ -286,7 +293,7 @@ def save_manual_decomposition(problem: dict, header: str,
     hand-written decomposition is not automatically trustworthy: it can still
     contain a chunk that does no work, which would let a student skip a step and
     still be marked correct. Raises on rejection so the teacher sees why."""
-    from .run_phase1 import _load_pool, _save_pool, _serialize
+    from .run_phase1 import _add_to_pool, _serialize
 
     items = [StepItem(question_id=problem.get("slug", "problem"),
                       step_id=c.get("step_id") or f"Part {i + 1}",
@@ -297,10 +304,7 @@ def save_manual_decomposition(problem: dict, header: str,
     decomp = {"header": header, "chunks": items}
     assert_serveable(problem, decomp)              # raises if not serveable
 
-    pool = _load_pool()
-    key = content_hash(problem)
-    pool.setdefault(key, []).append(_serialize(decomp))
-    _save_pool(pool)
+    _add_to_pool(content_hash(problem), [_serialize(decomp)])
     return {"ready": True, "chunks": len(items)}
 
 
@@ -350,7 +354,7 @@ if __name__ == "__main__":
     # Patched in THIS module's globals - run as __main__ that is the namespace
     # prepare_assignment_stream actually resolves the name in.
     _real = prepare_problem
-    globals()["prepare_problem"] = lambda p, emit=None: _outcomes[p["slug"]]
+    globals()["prepare_problem"] = lambda p, emit=None, **_k: _outcomes[p["slug"]]
     try:
         events = list(prepare_assignment_stream(
             [{"slug": s, "title": s.upper()} for s in ("a", "b", "c")]))

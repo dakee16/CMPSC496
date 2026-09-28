@@ -56,6 +56,7 @@ def stub_pipeline(monkeypatch):
     monkeypatch.setattr(sandbox, "get_oracle_tests",
                         lambda p, n=10, emit=None: [{"input": [12], "expected": 3}])
     monkeypatch.setattr(sandbox, "is_oracle_certified", lambda p: True)
+    monkeypatch.setattr(run_phase1, "fill_pool", lambda p, **k: 5)
     monkeypatch.setattr(run_phase1, "get_chunk_decomposition",
                         lambda p: {"header": "def digit_sum(n):",
                                    "chunks": [StepItem(question_id="q", step_id="Part 1",
