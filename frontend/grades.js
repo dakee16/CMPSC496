@@ -20,6 +20,19 @@ function gradeCell(r){
     ${r.percent === null ? "" : `<div class="grade-track" aria-hidden="true"><i style="width:${Math.max(0, Math.min(100, Number(r.percent) || 0))}%"></i></div>`}`;
 }
 
+/* Sent code, opened a problem without sending any, or nothing at all. The
+   sheet used to show the middle one as "Submitted", so "Submitted, 0 solved"
+   could mean a student had never written a line. */
+const STATUS = {
+  submitted: ["ok", "Submitted", "Sent code for at least one step"],
+  started: ["warn", "Started", "Opened a problem but has not sent any code yet"],
+  missing: ["bad", "Missing", "Has not opened any problem in this assignment"],
+};
+function statusPill(r){
+  const [cls, label, why] = STATUS[r.status] || STATUS[r.submitted ? "submitted" : "missing"];
+  return `<span class="pill ${cls}" title="${why}">${label}</span>`;
+}
+
 function table(rows){
   return `<table>
     <thead><tr>
@@ -29,8 +42,7 @@ function table(rows){
     <tbody>${rows.map(r => `<tr data-id="${esc(r.student_id)}">
       <td class="colName">${esc(r.name)}</td>
       <td class="colMail">${esc(r.username)}</td>
-      <td><span class="pill ${r.submitted ? "ok" : "bad"}">${
-        r.submitted ? "Submitted" : "Missing"}</span></td>
+      <td>${statusPill(r)}</td>
       <td>${gradeCell(r)}</td>
       <td class="colDl"><button class="ghost" data-act="dl">Open record</button></td>
     </tr>`).join("")}</tbody></table>`;
@@ -222,7 +234,8 @@ window.addEventListener("acadia:cache-update",event=>{
 loadAssignments();
 
 function paintGradeStats(rows){
-  const values = rows ? [rows.length, rows.filter(r => r.submitted).length,
-    rows.filter(r => !r.submitted).length] : ["-", "-", "-"];
+  const count = status => rows.filter(r => r.status === status).length;
+  const values = rows ? [rows.length, count("submitted"), count("started"),
+    count("missing")] : ["-", "-", "-", "-"];
   $("gradeStats").querySelectorAll("[data-metric]").forEach((el,i) => el.textContent = values[i]);
 }

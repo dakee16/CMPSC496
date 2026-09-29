@@ -186,9 +186,11 @@ def grade_sheet(client, assignment_id: str) -> dict:
         subs.setdefault(row["student_id"], {}).setdefault(
             row["slug"], []).append(row)
 
-    # Started but never submitted still counts as turned up, and the sheet has
-    # to say so: "missing" beside a name that spent an hour on the problem is
-    # the one wrong answer this column can give.
+    # THREE STATES, NOT TWO. "Missing" beside a name that spent an hour on the
+    # problem is wrong - but so was the old fix, counting a student who only
+    # OPENED a problem as "Submitted": an instructor saw "Submitted, 0 solved"
+    # and could not tell what had happened. Sent code, opened only, and
+    # nothing at all are three different things, and the sheet says which.
     started = {r["student_id"] for r in
                _rows(client, "mt_sessions", "slug", slugs, "student_id, slug")}
 
@@ -202,7 +204,9 @@ def grade_sheet(client, assignment_id: str) -> dict:
                 agg[k] += t[k]
         rows.append({"student_id": st["id"], "name": st["name"],
                      "username": st["username"],
-                     "submitted": bool(mine) or st["id"] in started,
+                     "submitted": bool(mine),
+                     "status": ("submitted" if mine else
+                                "started" if st["id"] in started else "missing"),
                      **agg, "total": total_steps,
                      "percent": percent(agg["solved"], total_steps)})
     return {"assignment_id": assignment_id, "problems": len(problems),
