@@ -181,6 +181,20 @@ async def _limit_body(request: Request, call_next):
     return await call_next(request)
 
 
+@app.middleware("http")
+async def _bind_account(request: Request, call_next):
+    """Tell the model client whose request this is, for main/account_cap.py.
+    Bound here, above every route, so no route has to remember to - a route
+    that forgot would be an uncapped hole. Only while some account is capped."""
+    from main import account_cap
+    if not account_cap.caps():
+        return await call_next(request)
+    token = account_cap.ACCOUNT.set((current_claims(request) or {}).get("username"))
+    try:
+        return await call_next(request)
+    finally:
+        account_cap.ACCOUNT.reset(token)
+
 
 class DecomposeRequest(BaseModel, extra="forbid"):
     # forbid, like ChunkRequest: an unrecognised field is a stale client, and

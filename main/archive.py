@@ -404,10 +404,16 @@ def purge_student(client, student_id: str) -> dict:
     if client is None:
         return {}
     removed = {}
+    # `solved` and `student_interactions` were missed until 29 Sep: a purged
+    # student still showed as having solved problems, with their code on file.
     for table in ("mt_graphs", "mt_designs", "mt_messages", "mt_submissions",
-                  "mt_sessions"):
+                  "mt_sessions", "solved", "student_interactions"):
         r = client.table(table).delete().eq("student_id", student_id).execute()
         removed[table] = len(r.data or [])
+    # So was the grading store on the server's own disk. It holds their code
+    # too, and a session left there is what the next open hands straight back.
+    from .sessions import purge_student as purge_local
+    removed["local_sessions"] = purge_local(student_id)
     try:
         files = client.storage.from_(DESIGN_BUCKET).list(student_id)
         if files:

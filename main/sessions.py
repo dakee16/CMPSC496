@@ -299,6 +299,24 @@ def abandon_active(student_id: str | None, slug: str,
         conn.close()
 
 
+def purge_student(student_id: str, db_path: str | None = None) -> int:
+    """DELETE every session of one student, and their graded submissions.
+    Returns how many sessions. Only for archive.purge_student - everything else
+    here retires rather than deletes (see abandon_active for why). Raises: a
+    purge that silently kept the student's code is worse than one that failed."""
+    if not student_id:
+        return 0
+    conn = _connect(db_path)
+    try:
+        conn.execute("DELETE FROM submissions WHERE session_id IN"
+                     " (SELECT session_id FROM sessions WHERE student_id=?)",
+                     (student_id,))
+        return conn.execute("DELETE FROM sessions WHERE student_id=?",
+                            (student_id,)).rowcount or 0
+    finally:
+        conn.close()
+
+
 def public_session(session: dict) -> dict:
     """The resumable view of a session: what create_session returns, plus where
     the student had got to.

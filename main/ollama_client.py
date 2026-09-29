@@ -29,7 +29,7 @@ from typing import Dict, List, Optional
 import requests
 from dotenv import load_dotenv
 
-from . import trace
+from . import account_cap, trace
 
 load_dotenv()
 
@@ -176,6 +176,9 @@ def _openai_chat(model: str, system: str, messages: List[Dict[str, str]],
     headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
     last_error: Exception = RuntimeError("No attempts made")
     purpose = _caller()
+    # A capped test account (account_cap.py) is refused here, before anything
+    # is sent; everyone else gets None and nothing changes.
+    hold = account_cap.reserve(model, payload["messages"], LIST_PRICES.get(model))
 
     for attempt in range(1, _MAX_RETRIES + 1):
         try:
@@ -192,6 +195,7 @@ def _openai_chat(model: str, system: str, messages: List[Dict[str, str]],
             body = r.json()
             _record_usage("openai", model, purpose, body.get("usage") or {},
                           served=body.get("model"))
+            account_cap.settle(hold, body.get("usage"))
             return body["choices"][0]["message"]["content"]
         except (requests.ConnectionError, requests.Timeout) as e:
             last_error = e

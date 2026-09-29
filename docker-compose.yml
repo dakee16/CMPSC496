@@ -23,6 +23,7 @@ services:
       MICROTUTOR_TRANSCRIPTS: /data/transcripts.json
       MICROTUTOR_CHUNK_POOL: /data/chunk_pool.json
       MICROTUTOR_TRACE_FILE: /data/model_trace.jsonl
+      MICROTUTOR_ACCOUNT_SPEND: /data/account_spend.json
       PORT: "8000"
     volumes:
       - microtutor-data:/data
