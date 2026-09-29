@@ -55,7 +55,7 @@ import textwrap
 from . import bridge
 from .execution import classify_run
 from .identity import get_resolved_entry
-from .indent import align_to, align_to_chunk, base_indent
+from .indent import align_to, align_to_chunk, base_indent, unpad_first_line
 from .ollama_client import GRADING_MODEL, chat
 from . import trace
 from .schemas import GradeResult
@@ -246,8 +246,12 @@ def _render_case(problem: dict, test: dict, failure: dict) -> str:
     if failure.get("error"):
         out.append(f"\nyour code crashed: {failure['error']}")
     else:
-        got, crashes = _crashes_in(failure.get("got"))
-        expected, _ = _crashes_in(failure.get("expected"), expected=True)
+        # Expected first: where the teacher's method raises on purpose, the
+        # same exception from theirs is the behaviour asked for, not a crash.
+        # Listed as one, it sent a student (29 Sep, _isNumber) after an
+        # `x._getPostfix()` error their `return True` could not have caused.
+        expected, raises = _crashes_in(failure.get("expected"), expected=True)
+        got, crashes = _crashes_in(failure.get("got"), same=set(raises))
         out.append(f"\nexpected: {expected}")
         out.append(f"you gave: {got}")
         # WHICH CALL CRASHED, AND WHY, in words. The recorded value is only the
@@ -506,7 +510,7 @@ def _crash_verdict(problem, header, session, student_code, tests, res, is_last):
 _CRASH_CUT = re.compile(r"""['"]!([A-Za-z_]\w*)\\x00.*$""", re.S)
 
 
-def _crashes_in(v, expected: bool = False):
+def _crashes_in(v, expected: bool = False, same: set = frozenset()):
     """A recorded value as a person should read it, plus the crashes inside it.
 
     A call that raised is recorded as "!Name" + NUL + message (context.py,
@@ -514,14 +518,19 @@ def _crashes_in(v, expected: bool = False):
     <crashed: AttributeError> in the list, and the message comes back as
     (position, "AttributeError: 'Calculator' object has no attribute '_expr'")
     for the line underneath. An EXPECTED crash reads <raises IndexError>: that
-    is the teacher's method raising on purpose, not a fault."""
+    is the teacher's method raising on purpose, not a fault - and so is theirs
+    raising the same exception at the same position (`same`, the (position,
+    name) pairs of the expected value, which is what `expected=True` returns in
+    place of crashes)."""
     text = _shown(v)
     crashes, pos = [], [-1]
 
     def swap(m):
         name, raw = m.group(2), m.group(3)
         idx = _index_at(text, m.start())
-        if not expected:
+        if expected:
+            crashes.append((idx, name))
+        elif idx is None or (idx, name) not in same:
             msg = name
             if raw:
                 try:
@@ -987,11 +996,18 @@ def align_submission(session: dict, student_code: str) -> str:
     # after THIS student's own accepted steps is another depth tried, nearest
     # first. Code that parses at no depth stays at the reference depth and is
     # their syntax error.
-    if want == 0 or not seated or _seat_fits(session, seated):
+    if not seated or _seat_fits(session, seated):
         return seated
     for depth in sorted(range(0, want + 12, 4), key=lambda d: (abs(d - want), d)):
-        if depth != want and _seat_fits(session, align_to(student_code, depth)):
+        if want and depth != want and _seat_fits(session, align_to(student_code, depth)):
             return align_to(student_code, depth)
+    # LAST, and only when nothing above parses: a block pasted into the
+    # editor's own starting indent (indent.unpad_first_line).
+    unpadded = unpad_first_line(student_code)
+    if unpadded != student_code:
+        again = align_submission(session, unpadded)
+        if again and _seat_fits(session, again):
+            return again
     return seated
 
 
@@ -1654,6 +1670,25 @@ def _tail_is_sane(tail: str, current_outputs: set, solution: str,
 
 
 
+def _returns_early(code: str) -> bool:
+    """Does this step's own code `return` - outside any def or lambda of its
+    own? A step that is not the last and returns has ended the function."""
+    try:
+        tree = ast.parse(textwrap.dedent(code or ""))
+    except SyntaxError:
+        return False
+
+    def walk(node):
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, ast.Return):
+                return True
+            if not isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef,
+                                      ast.Lambda, ast.ClassDef)) and walk(child):
+                return True
+        return False
+    return walk(tree)
+
+
 def _with_diagnosis(result, problem, chunk, header, chunks, idx, upto,
                     student_code, tests, entry, ambient):
     """`result` plus a question built on a real input, when one can be found.
@@ -1676,6 +1711,17 @@ def _with_diagnosis(result, problem, chunk, header, chunks, idx, upto,
             # called, a branch that cannot be taken. No rule per habit, and no
             # claim that their answer is wrong - it still costs no attempt.
             if diagnose.bound_nothing(upto) and hasattr(result, "model_copy"):
+                # UNLESS IT RAN AND RETURNED. `return True` at step 1 of 2 ran
+                # fine and ended the function, and was told to check that its
+                # lines "actually run" (29 Sep audit, _isNumber) - advice about
+                # a different mistake. Every step but the last is asked to keep
+                # its result for the next step; say that.
+                if _returns_early(student_code):
+                    return result.model_copy(update={"student_reason":
+                        "Your code for this step returns from the function, so "
+                        "the steps after it never run. This isn't the last "
+                        "step - work out the result and keep it for the next "
+                        "step instead of returning it. Your attempt was not used."})
                 return result.model_copy(update={"student_reason":
                     "We ran your code for this step and it left no values "
                     "behind for the next step to use. Check that the lines you "

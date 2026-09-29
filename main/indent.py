@@ -116,6 +116,35 @@ def is_seatable(code: str) -> bool:
     return _leading(lines[0]) == base_indent(code)
 
 
+def unpad_first_line(code: str) -> str:
+    """`code` with its first line moved back to the depth of the lines under it
+    (a level above them if it opens a block), when it alone sits too deep.
+    Anything else comes back unchanged.
+
+    That shape is a PASTE, not a program: the editor opens each step with the
+    caret after a few spaces of its own (frontend/student.js, so the box lines
+    up with the code above it), and a pasted block keeps those spaces on its
+    first line only. Seen live on 29 Sep: 3 correct answers from 2 students,
+    plus the audit's own paste, came back "your indentation doesn't line up on
+    line 2". No such code parses as typed, so moving the line cannot change
+    the meaning of anything that did."""
+    lines = code.split("\n")
+    first = next((i for i, ln in enumerate(lines) if ln.strip()), None)
+    if first is None or "\t" in code:
+        return code
+    head = lines[first]
+    rest = [ln for ln in lines[first + 1:] if ln.strip()]
+    if not rest or head.lstrip().startswith("#"):
+        return code
+    depth = min(len(ln) - len(ln.lstrip()) for ln in rest)
+    if head.rstrip().endswith(":"):
+        depth -= 4                  # a block opener sits a level above its body
+    if depth < 0 or len(head) - len(head.lstrip()) <= depth:
+        return code
+    lines[first] = " " * depth + head.lstrip()
+    return "\n".join(lines)
+
+
 def align_to_chunk(code: str, chunk: dict) -> str:
     """Re-seat a submission at the depth of the chunk it answers.
 

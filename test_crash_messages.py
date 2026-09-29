@@ -95,3 +95,31 @@ def test_comparison_ignores_the_message():
     live = ERROR_PREFIX + "IndexError" + ERROR_SEP + "pop from empty list"
     assert _norm([None, live]) == _norm([None, ERROR_PREFIX + "IndexError"])
     assert _norm(live) != _norm(ERROR_PREFIX + "KeyError")
+
+
+# A method the tests call with the wrong arguments ON PURPOSE: the teacher's
+# code raises TypeError there too, and the oracle expects it.
+PEEK = {**PROBLEM, "context_prefix": PREFIX.replace(
+    "    def get(self):\n", "    def peek(self, i):\n        return self.__v\n\n"
+    "    def get(self):\n")}
+
+
+def test_an_error_the_teachers_code_raises_too_is_not_blamed_on_the_student(grade):
+    """THE AUDIT (29 Sep, _isNumber). A `return True` was shown
+    `x._getPostfix() crashed: TypeError: ... missing 1 required positional
+    argument` - a call it could not have caused, which the teacher's code
+    raises too and the expected list already showed as <raises TypeError>."""
+    from main.context import ERROR_PREFIX
+    oracle = [{"input": [[["put", 5], ["peek"], ["get"]]],
+               "expected": [None, ERROR_PREFIX + "TypeError", 5]}]
+    r = grade("return 0", problem=PEEK, oracle=oracle)
+    shown = "\n".join(r.failing_cases or [])
+    assert r.verdict == "incorrect", r
+    assert "expected: [None, <raises TypeError>, 5]" in shown, shown
+    assert "you gave: [None, <raises TypeError>, 0]" in shown, shown
+    assert "crashed" not in shown, shown
+
+    # A crash of their own on the same run is still named.
+    shown = "\n".join(grade("return self._v", problem=PEEK, oracle=oracle).failing_cases)
+    assert "x.get() crashed: AttributeError" in shown, shown
+    assert "x.peek() crashed" not in shown, shown
