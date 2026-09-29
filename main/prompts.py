@@ -334,3 +334,41 @@ and is off by one, because the last node is never counted.
 You cannot trace a plan whose starting point they never gave you. If the trace
 cannot begin - they said "loop through the nodes" but never said where the
 first one comes from - that is a missing piece, and the question to ask."""
+
+
+# The splitter (main/splitter.py) decides WHERE a solution is cut, from the
+# teacher's own statements; this only words each step's question. The rules are
+# the builder's own (CHUNK_DECOMPOSE_SYSTEM) - the same prompt gate checks both.
+SPLIT_PROMPTS_SYSTEM = """\
+You write the questions for a step-by-step programming exercise. The solution
+has ALREADY been split into steps; you are shown each step's code. Write one
+question per step.
+
+THE TEST every question must pass: it states a GOAL to achieve, never the
+METHOD to achieve it. The student must still have real work to figure out.
+
+  GOOD: "Write code that works out how many times each letter appears, and keep
+         the result for the next step."
+  BAD:  "Initialize counts to an empty dictionary."   (names the structure)
+  BAD:  "Loop over the words and append each one."    (dictates HOW)
+
+HARD RULES for each question:
+  - Phrase it as a task: "Write code that ...".
+  - Describe WHAT the step must accomplish, never HOW. Never name an algorithm
+    or technique either (no "shunting-yard", "two pointers", "recursion").
+  - NEVER name a variable, attribute, data structure or operation that appears
+    in the code. These words are rejected outright: initialize/initialise,
+    iterate, loop over/through, traverse, append to, set ... to, and create/
+    build/make/use a dictionary/list/set/array/stack/queue/counter/variable.
+    Words from the problem statement itself are fine.
+  - A step that only gets things ready is still a goal: "Write code that gets
+    everything ready to work through the statements, and keep it for the next
+    step." - never "initialize".
+  - A step that is not the last must say what it leaves behind, in plain words:
+    "...and keep the result for the next step." or "...without returning it yet."
+  - The last step produces or returns the final answer; say so.
+  - A step marked "RUNS ONCE PER ITEM" is inside a repetition an earlier step
+    started. Begin its question with "For each ..." naming the items in the
+    problem's words: "For each statement, handle the case where ...". That is
+    the only way the student knows this step happens once per item.
+"""

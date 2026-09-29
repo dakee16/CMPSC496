@@ -55,7 +55,7 @@ import textwrap
 from . import bridge
 from .execution import classify_run
 from .identity import get_resolved_entry
-from .indent import align_to_chunk
+from .indent import align_to, align_to_chunk, base_indent
 from .ollama_client import GRADING_MODEL, chat
 from . import trace
 from .schemas import GradeResult
@@ -975,7 +975,43 @@ def align_submission(session: dict, student_code: str) -> str:
     chunks, idx = session["chunks"], session["index"]
     if idx >= len(chunks):
         return (student_code or "").strip()
-    return align_to_chunk(student_code, chunks[idx])
+    seated = align_to_chunk(student_code, chunks[idx])
+    want = base_indent(chunks[idx].get("reference") or "")
+    # THE REFERENCE'S DEPTH ASSUMES THE TEACHER'S STRUCTURE. A step that
+    # continues the teacher's loop is seated four columns in - but a student who
+    # wrote their OWN complete earlier step has no loop left open there, and
+    # every answer they could type came back "unexpected indent, on line 1".
+    # Measured live on replace-variables: 11 correct answers marked wrong, one
+    # student. The reference depth is still tried FIRST, so an answer that
+    # parsed before is seated exactly as before; only when it cannot parse
+    # after THIS student's own accepted steps is another depth tried, nearest
+    # first. Code that parses at no depth stays at the reference depth and is
+    # their syntax error.
+    if want == 0 or not seated or _seat_fits(session, seated):
+        return seated
+    for depth in sorted(range(0, want + 12, 4), key=lambda d: (abs(d - want), d)):
+        if depth != want and _seat_fits(session, align_to(student_code, depth)):
+            return align_to(student_code, depth)
+    return seated
+
+
+def _seat_fits(session: dict, code: str) -> bool:
+    """Does `code` parse where it lands, after this student's accepted steps?
+    An answer ending in a block opener (`for w in words:`) is left for the next
+    step to fill, so it is tried with a placeholder body as well."""
+    prefix = "\n".join(accepted_prefix(session))
+    last = [ln for ln in code.splitlines() if ln.strip()][-1]
+    body = " " * (len(last) - len(last.lstrip()) + 4) + "pass"
+    for trial in (code, code + "\n" + body):
+        try:
+            compile(_assemble(problem_of(session), session.get("header") or "",
+                              prefix, trial), "<seat>", "exec")
+            return True
+        except (SyntaxError, ValueError):
+            continue
+        except Exception:
+            return True             # not a question of depth - leave it be
+    return False
 
 
 def _ok(verdict, tier, reason, code, **kw) -> GradeResult:

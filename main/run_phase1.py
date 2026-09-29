@@ -18,6 +18,7 @@ from .identity import content_hash, get_resolved_entry
 from .gates import (assert_serveable, check_necessity, check_prompts,
                     shape_failures)
 from .prompts import DECOMPOSE_SYSTEM, EVAL_SYSTEM, CHUNK_DECOMPOSE_SYSTEM
+from . import splitter
 
 
 load_dotenv()
@@ -696,7 +697,9 @@ def fill_pool(problem: dict, replace: bool = False) -> int:
 
     BOUNDED: one build per missing roadmap, each at most decompose_into_chunks'
     own five tries, and it stops at the first build that fails - a problem the model cannot
-    split right now will not split on the next four tries either. With nothing
+    split right now will not split on the next four tries either. A build with
+    a step over splitter.MAX_STEP_LINES counts as failed. What is still missing
+    is then cut from the teacher's own code (main/splitter.py). With nothing
     saved at all, one best-effort try follows, as the upload always did."""
     slug = problem.get("slug", "")
     key = content_hash(problem)
@@ -713,13 +716,34 @@ def fill_pool(problem: dict, replace: bool = False) -> int:
 
     for _ in range(_POOL_TARGET - have):
         try:
-            keep(decompose_into_chunks(problem))
+            built = decompose_into_chunks(problem)
         except (OracleNotStrongError, NoOracleTestsError):
             raise                       # the oracle's fault; no build can fix it
         except RuntimeError as e:
             print(f"  ⚠️  Roadmap build failed for {slug}; stopping at "
                   f"{have + len(new)} saved: {e}")
             break
+        # NO STEP OVER splitter.MAX_STEP_LINES from the model. Measured: every
+        # model roadmap for calculateExpressions and get-postfix had a 35-48
+        # line step - one step that is most of the problem is not a step. It
+        # counts as a failed build, which stops the model here.
+        if splitter.too_big(built):
+            print(f"  ⚠️  Roadmap for {slug} has a {splitter.biggest_step(built)}"
+                  f"-line step (limit {splitter.MAX_STEP_LINES}); cutting the "
+                  f"teacher's code instead.")
+            break
+        keep(built)
+    # THE SPLITTER FILLS WHAT THE MODEL COULD NOT: cuts of the teacher's own
+    # code at statement boundaries, through the same serve gate - see
+    # main/splitter.py. Its only model call words each step (~1c per roadmap).
+    if have + len(new) < _POOL_TARGET:
+        try:
+            for d in splitter.build(problem, want=_POOL_TARGET - have - len(new)):
+                keep(d)
+        except (OracleNotStrongError, NoOracleTestsError):
+            raise
+        except RuntimeError as e:
+            print(f"  ⚠️  Splitting the teacher's code failed for {slug}: {e}")
     if have + len(new) == 0:
         try:
             # Gated inside (assert_serveable), so it is saved like any other.

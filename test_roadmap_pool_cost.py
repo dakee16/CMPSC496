@@ -166,6 +166,10 @@ def test_an_upload_stops_at_the_first_failed_build(pool, monkeypatch):
         raise run_phase1.DecompositionUnavailableError("nothing safe to serve")
     monkeypatch.setattr(run_phase1, "decompose_into_chunks", fails)
     monkeypatch.setattr(run_phase1, "decompose_into_chunks_best", best_fails)
+    # Since 28 Sep a failed build is followed by cuts of the teacher's own code
+    # (main/splitter.py, no model build - see test_splitter.py). This pins the
+    # bound for the case where even that finds nothing to serve.
+    monkeypatch.setattr(run_phase1.splitter, "plan", lambda *a, **k: [])
     pool.saved(0)
 
     result = publish.prepare_problem(dict(PROBLEM))
