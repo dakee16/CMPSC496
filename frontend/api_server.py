@@ -2910,6 +2910,28 @@ def tutor_chat(req: TutorChatRequest, request: Request):
             # They keep the tutor's reply; the real gate still runs on submit.
             pass
 
+    # ── NOR DOES IT GET TO WARN ALONE ─────────────────────────────────────
+    #
+    # "This approach may not get you to the right answer" was the tutor's own
+    # guess. On calculator-is-number it warned students off try float(txt) /
+    # except ValueError - the teacher's own solution - and the reviewer approved
+    # the same plan a minute later. Since 20 Sep, all 5 students who clicked
+    # "keep going" finished. So the box needs the gate to object too: no plan
+    # yet, an approval or an unreachable reviewer all mean no box. (Once the
+    # gate is open, tutor.reply never raises the flag.) One extra call (~1c),
+    # only on a turn the tutor flags.
+    if out.get("offtrack"):
+        rejected = False
+        if (req.plan or {}).get("nodes"):
+            try:
+                from main.design_review import review_plan_graph
+                rejected = not review_plan_graph(row[0], req.plan, [],
+                                                 chat_log=req.messages).get("approved")
+            except Exception:
+                pass                    # an unreachable gate warns nobody
+        if not rejected:
+            out = {**out, "offtrack": False, "offtrack_reason": ""}
+
     # Archive only the NEW turns - the student's last message and this reply.
     # The client resends the whole history every call, so writing all of it
     # would grow the transcript quadratically.

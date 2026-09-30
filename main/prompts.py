@@ -361,9 +361,11 @@ HARD RULES for each question:
     iterate, loop over/through, traverse, append to, set ... to, and create/
     build/make/use a dictionary/list/set/array/stack/queue/counter/variable.
     Words from the problem statement itself are fine.
-  - A step that only gets things ready is still a goal: "Write code that gets
-    everything ready to work through the statements, and keep it for the next
-    step." - never "initialize".
+  - Say what THIS step's code actually does or produces, in the problem's own
+    words, specifically enough that the sentence could not describe any other
+    step. A step that sets things up says what it makes ready and for what; if
+    it also starts going through the items or finishes a case, say that too.
+    Never "initialize".
   - A step that is not the last must say what it leaves behind, in plain words:
     "...and keep the result for the next step." or "...without returning it yet."
   - The last step produces or returns the final answer; say so.
