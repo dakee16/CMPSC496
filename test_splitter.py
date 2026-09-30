@@ -86,8 +86,11 @@ def env(monkeypatch, tmp_path):
     def wording(model, system, messages, **_k):
         log.worded += 1
         n = len(re.findall(r"STEP \d+ CODE", messages[0]["content"]))
+        # Every non-final step also says it goes through each word: a step that
+        # starts the loop must say so or the prompt gate rejects it (30 Sep).
         return json.dumps({"prompts": [f"Write code that handles part {i + 1} of the "
-                                       f"scoring, and keep the result for the next step."
+                                       f"scoring as it goes through each word, and "
+                                       f"keep the result for the next step."
                                        for i in range(n - 1)]
                            + ["Write code that returns the final score."]})
     monkeypatch.setattr(splitter, "chat", wording)

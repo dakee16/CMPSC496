@@ -696,6 +696,120 @@ def find(problem: dict, header: str, chunks: list, idx: int, upto: str,
     return None
 
 
+# ── RENAMING, where no snapshot can be taken ─────────────────────────────
+#
+# find() compares values at the END of the step. A roadmap cut inside a loop
+# has no such point: the snapshot ran after the whole loop, and a step that
+# leaves the loop's advancing to the next step never finishes (get-postfix: the
+# teacher's own step 1 timed out at 5s). find() also read no names from a next
+# step that starts indented - it cannot be parsed alone. Student report, 30 Sep:
+# `operator_stack` for the teacher's `postfixStack`, correct, and unconfirmable
+# without a model.
+#
+# So names are paired by how each is FIRST SET UP - `x = {}` with `y = {}`,
+# `s = Stack()` with `t = Stack()` - and the teacher's remaining steps are run
+# with the student's names swapped in. Pairing only proposes; exactly as in
+# find(), a pass on EVERY test is what confirms.
+
+def _setup_key(value, ambient: set):
+    """How a name is first set up, when that says what it holds on its own: an
+    expression reading nothing but `ambient` names (a literal, `Stack()`)."""
+    if {n.id for n in ast.walk(value) if isinstance(n, ast.Name)} - ambient:
+        return None
+    return ast.dump(value)
+
+
+def _first_setups(body: str, ambient: set) -> dict:
+    """{name: its set-up} for every name whose FIRST binding is `name = value`."""
+    try:
+        tree = _tree(body)
+    except SyntaxError:
+        return {}
+    parent = {c: p for p in ast.walk(tree) for c in ast.iter_child_nodes(p)}
+    first = {}
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store) and \
+                (n.id not in first or (n.lineno, n.col_offset)
+                 < (first[n.id].lineno, first[n.id].col_offset)):
+            first[n.id] = n
+    out = {}
+    for name, n in first.items():
+        p = parent.get(n)
+        if isinstance(p, ast.Assign) and len(p.targets) == 1 and p.targets[0] is n:
+            key = _setup_key(p.value, ambient)
+            if key:
+                out[name] = key
+    return out
+
+
+def _tail_names(upto: str, tail: str):
+    """(names the tail reads, names it binds) - read from the program their
+    code and the tail make TOGETHER, since a tail that carries on inside a loop
+    cannot be parsed on its own. None when that program does not parse."""
+    try:
+        tree = _tree(upto + "\n" + tail)
+    except SyntaxError:
+        return None
+    start = len(upto.splitlines()) + 2          # after the wrapper's def line
+    reads, binds = set(), set()
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Name) and n.lineno >= start:
+            (reads if isinstance(n.ctx, ast.Load) else binds).add(n.id)
+    return reads, binds
+
+
+def _renamed(tail: str, mapping: dict) -> str:
+    """`tail` with each variable in `mapping` renamed - never an attribute
+    (`.name`) or a keyword argument (`f(name=...)`), and every column kept."""
+    import io
+    import tokenize
+    toks = list(tokenize.generate_tokens(io.StringIO(tail).readline))
+    code = [t for t in toks if t.type not in (tokenize.NL, tokenize.NEWLINE,
+                                              tokenize.INDENT, tokenize.DEDENT,
+                                              tokenize.COMMENT)]
+    lines = tail.splitlines(keepends=True)
+    for k in range(len(code) - 1, -1, -1):
+        t = code[k]
+        if t.type != tokenize.NAME or t.string not in mapping:
+            continue
+        before = code[k - 1].string if k else ""
+        after = code[k + 1].string if k + 1 < len(code) else ""
+        if before == "." or (after == "=" and before in ("(", ",")):
+            continue
+        (row, c0), (_, c1) = t.start, t.end
+        lines[row - 1] = lines[row - 1][:c0] + mapping[t.string] + lines[row - 1][c1:]
+    return "".join(lines)
+
+
+def rename(problem: dict, header: str, chunks: list, idx: int, upto: str,
+           tests: list, entry: str, ambient: set) -> dict | None:
+    """A confirming renaming of the teacher's remaining steps, or None - which,
+    as with find(), is evidence of nothing."""
+    from .execution import classify_run              # local: avoid a cycle
+
+    refs = [(c.get("reference") or "") for c in chunks]
+    tail = "\n".join(r for r in refs[idx + 1:] if r.strip())
+    names = _tail_names(upto, tail) if tail.strip() and tests else None
+    if names is None or not is_applicable(problem, entry, [upto] + refs):
+        return None
+    reads, binds = names
+    teacher = _first_setups("\n".join(r for r in refs[:idx + 1] if r.strip()), ambient)
+    student = _first_setups(upto, ambient)
+    missing = reads - ambient - stores(upto) - binds
+    if not missing or not missing <= teacher.keys():
+        return None
+    cands = {t: sorted(s for s, key in student.items()
+                       if key == teacher[t] and s not in reads | binds)
+             for t in missing}
+    for mapping in assignments(cands):
+        res = classify_run(build_program(problem, upto + "\n" + _renamed(tail, mapping),
+                                         header), tests, entry_name=entry)
+        if res.outcome == "pass":
+            return {"boundary": idx, "mapping": mapping, "bridge": "", "ahead": False,
+                    "by": "renaming"}
+    return None
+
+
 def bridge_lines(mapping: dict) -> str:
     """The mapping as ONE simultaneous assignment.
 

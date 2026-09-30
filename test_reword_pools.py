@@ -22,12 +22,35 @@ from test_auth_routes import FakeSupabase
 from test_restart_reroute import ORACLE, PROBLEM
 from test_student_open_never_generates import ROADMAP
 
-COPIED = "Write code that gets everything ready to work through the statements, " \
+# A roadmap cut INSIDE the loop, as the splitter cuts calculateExpressions and
+# get-postfix: step 1 starts going through the text, step 2 carries on inside.
+# 30 Sep, a student report: worded "gets everything ready" / "prepares
+# everything needed", step 1 was answered with the set-up alone - and could
+# not be confirmed, because step 2 had no loop to continue.
+LOOPED = {"header": "def frequency(txt):", "chunks": [
+    {"step_id": "Part 1", "expected_type": "code", "prompt": "",
+     "reference": "counts = {}\nfor ch in txt:\n    if not ch.isalpha():\n        continue"},
+    {"step_id": "Part 2", "expected_type": "code",
+     "prompt": "For each letter, add one to its tally, and keep the result for the next step.",
+     "reference": "    counts[ch] = counts.get(ch, 0) + 1"},
+    {"step_id": "Part 3", "expected_type": "code",
+     "prompt": "Write code that returns how many times each letter appears.",
+     "reference": "return counts"}]}
+COPIED = "Write code that gets everything ready to work through the text, " \
          "and keep it for the next step."
-VAGUE = {**ROADMAP, "chunks": [{**ROADMAP["chunks"][0], "prompt": COPIED},
-                               ROADMAP["chunks"][1]]}
-DRAFTED = ["Write code that works out how many times each letter appears in the "
-           "text, and keep the result for the next step.",
+
+
+def _worded(first):
+    return {**LOOPED, "chunks": [{**LOOPED["chunks"][0], "prompt": first}] + LOOPED["chunks"][1:]}
+
+
+VAGUE = _worded(COPIED)
+CLEAR = _worded("Write code that starts going through each character of the text, "
+                "skipping anything that is not a letter, and keep the tally for the next step.")
+DRAFTED = ["Write code that sets up a tally and starts going through each character of "
+           "the text, skipping anything that is not a letter, and keep the tally for the "
+           "next step.",
+           "For each letter, add one to its tally, and keep the result for the next step.",
            "Write code that returns how many times each letter appears."]
 
 
@@ -45,7 +68,7 @@ def world(tmp_path, monkeypatch):
     cache.write_text(json.dumps({content_hash(PROBLEM): {
         "strong": True, "status": "strong", "kill_rate": 1.0, "kill_rate_direct": 1.0,
         "features": ["calls"], "final_tests": ORACLE}}))
-    pool.write_text(json.dumps({content_hash(PROBLEM): [VAGUE, ROADMAP]}))
+    pool.write_text(json.dumps({content_hash(PROBLEM): [VAGUE, CLEAR]}))
     sb = FakeSupabase()
     sb.problems.append({**PROBLEM, "ready": True})
     monkeypatch.setattr(reword_pools, "_sb", lambda: sb)
@@ -82,8 +105,21 @@ def test_listing_finds_only_the_copied_sentence_and_spends_nothing(world, capsys
     before = world.pool.read_text()
     assert world.run([]) == 0
     out = capsys.readouterr().out
-    assert "1 roadmap(s)" in out and "gets everything ready" in out
+    assert "1 roadmap(s)" in out and COPIED in out
     assert world.calls == [] and world.pool.read_text() == before
+
+
+def test_listing_finds_a_reworded_copy_by_its_shape_not_its_words(world, capsys):
+    """The report's roadmap said "prepares everything needed", which no
+    search for the copied words could find. What gives it away is the shape:
+    the step starts the loop and its question never says so."""
+    from main.identity import content_hash
+    said = "Write code that prepares everything needed to work through the text, " \
+           "and keep it for the next step."
+    world.pool.write_text(json.dumps({content_hash(PROBLEM): [_worded(said), CLEAR]}))
+    assert world.run([]) == 0
+    out = capsys.readouterr().out
+    assert "1 roadmap(s)" in out and said in out
 
 
 def test_a_draft_shows_old_and_new_wording_and_changes_nothing(world, capsys):
@@ -105,8 +141,8 @@ def test_apply_swaps_in_exactly_the_drafted_wording_with_no_model_call(world, ca
     vague, clear = world.saved()
     assert [c["prompt"] for c in vague["chunks"]] == DRAFTED
     assert [c["reference"] for c in vague["chunks"]] == \
-        [c["reference"] for c in ROADMAP["chunks"]], "the code must not change"
-    assert clear == ROADMAP, "a roadmap that did not copy the sentence is untouched"
+        [c["reference"] for c in LOOPED["chunks"]], "the code must not change"
+    assert clear == CLEAR, "a roadmap already worded clearly is untouched"
     assert len(world.calls) == calls, "apply must never call the model"
     assert "every roadmap is ready" in capsys.readouterr().out
 
@@ -115,7 +151,7 @@ def test_apply_skips_a_roadmap_whose_code_changed_since_the_draft(world):
     world.run(["--draft", world.file])
     pool = json.loads(world.pool.read_text())
     key = next(iter(pool))
-    pool[key][0]["chunks"][1]["reference"] = "return dict(counts)"
+    pool[key][0]["chunks"][2]["reference"] = "return dict(counts)"
     world.pool.write_text(json.dumps(pool))
 
     assert world.run(["--apply", world.file]) == 1
@@ -149,3 +185,32 @@ def test_readiness_catches_a_step_the_teachers_code_cannot_pass(world):
 def test_the_wording_prompt_has_no_setup_sentence_to_copy():
     from main.prompts import SPLIT_PROMPTS_SYSTEM
     assert "gets everything ready" not in re.sub(r"\s+", " ", SPLIT_PROMPTS_SYSTEM)
+
+
+def _gate(first):
+    from main.gates import check_prompts
+    from main.run_phase1 import _deserialize
+    return check_prompts(_deserialize(_worded(first))["chunks"], dict(PROBLEM))["status"]
+
+
+def test_the_gate_rejects_a_step_that_starts_the_loop_without_saying_so():
+    for said in (COPIED,                              # the copied sentence
+                 "Write code that prepares everything needed to work through the text, "
+                 "and keep it for the next step.",     # the report, reworded
+                 "Write code that prepares to process each character of the text, "
+                 "and keep it for the next step."):    # live since the 30 Sep re-word
+        assert _gate(said) == "fail", said
+    assert _gate(DRAFTED[0]) == "pass"
+    assert _gate(CLEAR["chunks"][0]["prompt"]) == "pass"
+
+
+def test_the_wording_request_marks_the_step_that_starts_the_loop(monkeypatch):
+    from main import splitter
+    from main.run_phase1 import _deserialize
+    asked = []
+    monkeypatch.setattr(splitter, "chat", lambda m, s, msgs, **k:
+                        asked.append(msgs[0]["content"]) or json.dumps({"prompts": []}))
+    splitter.write_prompts(dict(PROBLEM), _deserialize(LOOPED), tries=1)
+    assert "STEP 1 CODE (STARTS A REPETITION" in asked[0]
+    assert "STEP 2 CODE (STARTS A REPETITION" not in asked[0]
+    assert "STEP 3 CODE (STARTS A REPETITION" not in asked[0]

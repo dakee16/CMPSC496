@@ -369,6 +369,10 @@ HARD RULES for each question:
   - A step that is not the last must say what it leaves behind, in plain words:
     "...and keep the result for the next step." or "...without returning it yet."
   - The last step produces or returns the final answer; say so.
+  - A step marked "STARTS A REPETITION" begins going through the items that the
+    next steps carry on with. Its question must say that it starts going
+    through each of them, naming them in the problem's words, and must not call
+    the step preparation - a student who reads "prepare" writes only the set-up.
   - A step marked "RUNS ONCE PER ITEM" is inside a repetition an earlier step
     started. Begin its question with "For each ..." naming the items in the
     problem's words: "For each statement, handle the case where ...". That is

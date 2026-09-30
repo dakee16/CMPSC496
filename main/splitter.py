@@ -197,6 +197,11 @@ def write_prompts(problem: dict, decomposition: dict, tries: int = 3) -> dict:
         f"STEP {i + 1} CODE"
         + (" (RUNS ONCE PER ITEM - inside the repetition an earlier step started)"
            if base_indent(c.reference) else "")
+        # ...and the step that STARTS that repetition, which was worded as
+        # set-up and answered as set-up (student report, 30 Sep).
+        + (" (STARTS A REPETITION - the next step carries on inside it)"
+           if i + 1 < len(chunks)
+           and base_indent(chunks[i + 1].reference) > base_indent(c.reference) else "")
         + f":\n{c.reference}" for i, c in enumerate(chunks))
     feedback = ""
     for _ in range(tries):

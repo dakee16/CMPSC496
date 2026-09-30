@@ -208,6 +208,12 @@ pre.code .t-fn{color:var(--code-yellow)}
 .cm-s-dracula span.cm-string{color:var(--code-green)}
 .cm-s-dracula span.cm-number,.cm-s-dracula span.cm-atom{color:var(--code-yellow)}
 .cm-s-dracula span.cm-comment{color:var(--code-dim)}
+/* The rest of dracula's token colours are made for a DARK background: `self`
+   stayed white (1.07:1 on cream) and `.expressions` pale cyan - student report,
+   30 Sep. Every Python token takes a colour from our palette (test_editor_colors). */
+.cm-s-dracula span.cm-variable-2,.cm-s-dracula span.cm-builtin{color:var(--code-accent)}
+.cm-s-dracula span.cm-property,.cm-s-dracula span.cm-meta,.cm-s-dracula span.cm-qualifier,.cm-s-dracula span.cm-attribute,.cm-s-dracula span.cm-variable-3,.cm-s-dracula span.cm-type{color:var(--code-text)}
+.cm-s-dracula span.cm-operator{color:var(--code-pink)}
 .cm-s-dracula .CodeMirror-selected{background:var(--code-selection)}
 
 /* Overlays and feedback. */

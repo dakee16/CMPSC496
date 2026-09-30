@@ -42,6 +42,7 @@ import ast
 import re
 
 from .identity import get_resolved_entry
+from .indent import base_indent
 from tests.sandbox import (get_oracle_tests, is_oracle_certified,
                            passes_tests)
 
@@ -125,6 +126,35 @@ def _returns(reference: str) -> bool:
     return any(isinstance(n, ast.Return) for n in ast.walk(tree))
 
 
+# A STEP THAT STARTS THE LOOP THE NEXT STEP CARRIES ON INSIDE must say so.
+# Reported 30 Sep: calculateExpressions and get-postfix step 1s were worded
+# "gets everything ready" / "prepares everything needed", a student wrote the
+# set-up alone, and the step could not be confirmed - the next step had no loop
+# to continue. "prepares to process each statement", live since the first
+# re-word, still reads as set-up, so calling it preparation fails too.
+_GOES_THROUGH = re.compile(
+    r"\bfor (?:each|every)\b|\bone (?:at a time|by one)\b"
+    r"|\b(?:go|goes|going|work|works|working|process|processes|processing|handle"
+    r"|handles|handling|check|checks|checking|read|reads|reading|look|looks|looking)"
+    r"(?: through| over| at)? (?:each|every)\b", re.I)
+_ONLY_SETUP = re.compile(r"\bprepar\w*|\bget(?:s|ting)? (?:everything|things) ready\b", re.I)
+
+
+def opens_unsaid(chunks: list) -> list[int]:
+    """Steps whose code starts a repetition the NEXT step continues inside (it
+    sits deeper), but whose question does not say the step starts going
+    through the items - or calls the step preparation."""
+    out = []
+    for i in range(len(chunks) - 1):
+        here = getattr(chunks[i], "reference", "") or ""
+        nxt = getattr(chunks[i + 1], "reference", "") or ""
+        prompt = getattr(chunks[i], "prompt", "") or ""
+        if base_indent(nxt) > base_indent(here) and \
+                (not _GOES_THROUGH.search(prompt) or _ONLY_SETUP.search(prompt)):
+            out.append(i)
+    return out
+
+
 def check_prompts(chunks: list, problem: dict) -> dict:
     """Gate 2. {"status": "pass"|"fail", "summary": str}.
 
@@ -136,10 +166,20 @@ def check_prompts(chunks: list, problem: dict) -> dict:
                           ((problem.get("description") or "") + " " +
                            (problem.get("group_description") or "")).lower()))
     bad = []
+    opens = set(opens_unsaid(chunks))
     for i, c in enumerate(chunks):
         prompt = getattr(c, "prompt", "") or ""
         step = getattr(c, "step_id", "?")
         reference = getattr(c, "reference", "") or ""
+
+        if i in opens:
+            bad.append(f"{step}: its code starts going through the items that the "
+                       f"next step carries on with, but the question does not say so "
+                       f"- a student will only set things up, and the next step then "
+                       f"has nothing to continue. Say that it starts going through "
+                       f"each of the items, named in the problem's words, and do not "
+                       f"call it preparation.")
+            continue
 
         # THE MISLEADING-STEP CHECK, and the only one here that is about what a
         # student would DO rather than what they are told. A chunk that is not

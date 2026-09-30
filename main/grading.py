@@ -1962,13 +1962,17 @@ def grade_submission(session: dict, student_code: str,
     # rewriting of the teacher's code, the same answer every time. It is tried
     # before Tier 3 because Tier 3 was measured at ~50% on exactly this case.
     # See main/bridge.py for why a bridge may only ever acquit.
-    bridged = bridge.find(problem, header, chunks, idx, upto, tests, entry,
-                          set(resolved["params"]) | _header_params(header)
-                          | _module_names(problem, header) | _SAFE_BUILTINS)
+    ambient = (set(resolved["params"]) | _header_params(header)
+               | _module_names(problem, header) | _SAFE_BUILTINS)
+    # Values first; when that finds nothing - no snapshot can be taken inside
+    # a loop the next step carries on - pairing names by their set-up.
+    bridged = bridge.find(problem, header, chunks, idx, upto, tests, entry, ambient) \
+        or bridge.rename(problem, header, chunks, idx, upto, tests, entry, ambient)
     if bridged:
         covers = bridged["boundary"] - idx + 1
         _trace(trace.record_route, corr, "execution-bridged", "correct",
-               mapping=bridged["mapping"], boundary=bridged["boundary"])
+               mapping=bridged["mapping"], boundary=bridged["boundary"],
+               by=bridged.get("by", "values"))
         # SAME SENTENCE AS EXECUTION-REFERENCE, deliberately. This used to say
         # "you named things differently to our version", which tells the
         # student a reference solution exists and that theirs was measured
@@ -1987,6 +1991,7 @@ def grade_submission(session: dict, student_code: str,
 
     result = _model_tiers(problem, session, chunk, header, prefix, student_code,
                           upto, ref_tail, tests, entry, corr)
+    generic = result.student_reason
     # ── COULD NOT CONFIRM -> ASK, rather than leave them on a step nobody
     #    named a problem with. An indeterminate verdict does not advance the
     #    session, so every tier being acquit-only would otherwise strand a
@@ -2002,7 +2007,27 @@ def grade_submission(session: dict, student_code: str,
                                  upto, student_code, tests, entry,
                                  set(resolved["params"]) | _header_params(header)
                                  | _module_names(problem, header) | _SAFE_BUILTINS)
+    # ── A LOOP THEY WERE MEANT TO START. Reported 30 Sep: step 1 said "prepare
+    #    everything needed", a student wrote the set-up alone, and was told to
+    #    check their code against the step - which it matched. The next step
+    #    carries on INSIDE a loop this step starts, so joined to theirs it
+    #    cannot even be read. Said only when the shape proves it, and only in
+    #    place of the generic sentence - a more specific one (returned early,
+    #    never reached) keeps priority. Verdict and attempt stay as they were. ──
+    if result.tier == "unconfirmed" and result.student_reason == generic \
+            and idx + 1 < len(chunks) \
+            and base_indent(chunks[idx + 1].get("reference") or "") \
+            > base_indent(chunk.get("reference") or "") \
+            and "unexpected indent" in (res.internal_error or ""):
+        result = result.model_copy(update={"student_reason": _LOOP_NOT_STARTED})
     return result
+
+
+_LOOP_NOT_STARTED = (
+    "We could not confirm this step, so your attempt was not used. The next step "
+    "carries on inside a repetition (a loop) that this step is meant to start, "
+    "and your code does not start one yet. Have this step also start going "
+    "through the items - the next step continues from inside it.")
 
 
 def _model_tiers(problem, session, chunk, header, prefix, student_code, upto,

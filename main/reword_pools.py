@@ -1,12 +1,15 @@
-"""reword_pools.py - ONE-OFF: new wording for saved steps that copied the
-wording prompt's example sentence. The code of every step stays exactly as is.
+"""reword_pools.py - ONE-OFF: new wording for saved steps that start the loop
+the next step carries on inside, but are not worded that way (gates.opens_unsaid).
+The code of every step stays exactly as is.
 
 THE MEASUREMENT (server, 30 Sep). prompts.SPLIT_PROMPTS_SYSTEM quoted one
 example setup step - "Write code that gets everything ready to work through the
 statements, and keep it for the next step." - and the model copied it into 6 of
 200 live steps: all 5 calculateExpressions roadmaps and 1 of get-postfix's 3.
 One of them is a 19-line step that ends in `return report`. The example is now
-a rule; this fixes what is already saved.
+a rule. Then a student report (30 Sep) showed the copy was only one symptom:
+"prepares everything needed to work through the expression" hid the same loop,
+and no word search found it - so roadmaps are now found by their shape.
 
 THREE STEPS, so the wording that ships is exactly the wording that was read:
 
@@ -28,24 +31,16 @@ import collections
 import hashlib
 import json
 import os
-import re
 import sys
 import textwrap
 
 from . import grading, splitter
-from .gates import assert_serveable, check_prompts
+from .gates import assert_serveable, check_prompts, opens_unsaid
 from .identity import content_hash
 from .run_phase1 import (_add_to_pool, _deserialize, _load_pool,
                          _reading_saved_tests, _sb, _usable)
 from .sessions import CONTEXT_FIELDS, context_of
 from .topup_pools import SpendCapReached, spend_cap
-
-COPIED = "gets everything ready"
-
-
-def _norm(text) -> str:
-    return re.sub(r"\s+", " ", text or "").lower()
-
 
 def fingerprint(entry: dict) -> str:
     """The roadmap exactly as drafted from - its code AND the wording being
@@ -64,11 +59,19 @@ def _ready_problems() -> dict:
     return {content_hash(p): p for p in problems}           # the key students read
 
 
+def _unsaid(entry: dict) -> list[int]:
+    """Steps that start the loop the next step continues, without saying so.
+    Found by SHAPE, not by words: the first re-word searched for the copied
+    sentence and missed get-postfix's "prepares everything needed to work
+    through the expression" - the roadmap in the 30 Sep student report."""
+    return opens_unsaid(_deserialize(entry)["chunks"])
+
+
 def affected(problems: dict) -> list[tuple]:
-    """(problem, roadmap) for every served roadmap whose wording copied it."""
+    """(problem, roadmap) for every served roadmap with such a step."""
     pool = _load_pool()
     return [(p, e) for key, p in problems.items() for e in _usable(p, pool.get(key, []))
-            if any(COPIED in _norm(c.get("prompt")) for c in e["chunks"])]
+            if _unsaid(e)]
 
 
 def readiness(problem: dict, entry: dict) -> list[str]:
@@ -184,9 +187,11 @@ def main(argv: list[str]) -> int:
         return draft(argv[argv.index("--draft") + 1], cap)
     targets = affected(_ready_problems())
     for problem, e in targets:
-        copied = next(c["prompt"] for c in e["chunks"] if COPIED in _norm(c.get("prompt")))
-        print(f"  {problem['slug']} (roadmap {fingerprint(e)}): {copied}")
-    print(f"{len(targets)} roadmap(s) copied the example sentence: about "
+        for i in _unsaid(e):
+            print(f"  {problem['slug']} (roadmap {fingerprint(e)}) step {i + 1}: "
+                  f"{e['chunks'][i].get('prompt')}")
+    print(f"{len(targets)} roadmap(s) with a step that starts a loop but is not "
+          f"worded that way: about "
           f"${0.007 * len(targets):.2f} to re-word, at most {3 * len(targets)} model "
           f"calls. Nothing changed, $0. Next: --draft FILE.")
     return 0
