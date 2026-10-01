@@ -445,6 +445,20 @@ def build(problem: dict, header: str, graph: dict, chat_log: list | None = None,
         if shape:
             last = f"split is not answerable: {shape[0]}"[:200]
             continue
+
+        # GATE 4 - THE SAME RULES AS EVERY OTHER ROADMAP (30 Sep / 1 Oct). A
+        # step carrying on inside a block a student's own code could not
+        # continue is what left two students stuck on get-postfix and
+        # calculateExpressions; a giant step is what the splitter exists to
+        # prevent. A rebuild that breaks either is not served - the student
+        # keeps the teacher's roadmap, which obeys both.
+        from . import splitter
+        if splitter.unsafe_cut(problem, decomp):
+            last = "split carries a step on inside a block a student could not continue"
+            continue
+        if splitter.too_big(decomp):
+            last = f"split has a {splitter.biggest_step(decomp)}-line step"
+            continue
         return decomp
 
     if not transient:

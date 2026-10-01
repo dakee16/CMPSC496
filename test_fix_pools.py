@@ -130,8 +130,8 @@ def test_drafted_wording_that_still_fails_the_gate_is_refused_at_apply(world, mo
     gate never passed - so --apply checks again, and keeps the old roadmap."""
     import test_fix_pools as me
     monkeypatch.setattr(me, "_wording", lambda n: [
-        "Write code that fills counts for each letter, and keep the result for the next step."
-    ] * (n - 1) + ["Write code that returns counts."])
+        "Write code that initializes a tally for each letter, and keep the result for "
+        "the next step."] * (n - 1) + ["Write code that initializes and returns the tally."])
     world.mod.main(["--draft", world.file])
     assert world.mod.main(["--apply", world.file]) == 1
     assert VAGUE in world.saved() and WHILE in world.saved(), "nothing failing is swapped in"

@@ -602,6 +602,24 @@ def begin_submission(session_id: str, submission_id: str,
         except Exception: pass
 
 
+def forget_result(session_id: str, submission_id: str,
+                  db_path: str | None = None) -> None:
+    """Drop a FINISHED result so the same submission can be graded again.
+
+    Only for one case (api_server.grade_chunk_route): an accepted answer whose
+    acceptance was undone by reopen_step. The submission id is the session, the
+    step and the code (student.js), so sending the same answer after reopening
+    matched the old row and was handed back "correct" WITHOUT being committed -
+    the page moved on and the session did not (1 Oct, live). mt_submissions,
+    the archive, keeps both attempts either way."""
+    conn = _connect(db_path)
+    try:
+        conn.execute("DELETE FROM submissions WHERE session_id=? AND submission_id=?"
+                     " AND result_json IS NOT NULL", (session_id, submission_id))
+    finally:
+        conn.close()
+
+
 def release_submission(session_id: str, submission_id: str,
                        db_path: str | None = None) -> None:
     """Give back a reservation that never produced a result.

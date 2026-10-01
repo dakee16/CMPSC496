@@ -79,6 +79,16 @@ const read = name => fs.readFileSync(path.join(root, name), 'utf8');
     assert.equal(doc.querySelector('.studio-brief #stepper'),null);
     assert.equal(doc.querySelector('#workStep #stepCount').textContent,'Step 1 of 3');
     assert.equal(doc.querySelector('#stepNotes').hidden,true,'a step with no notes shows no notes box');
+    // A multi-line paste over the box's own starting spaces starts at column 0.
+    const pasted=[];
+    const fakeCm={getLine:()=> '    '};
+    const change=(origin,text,ch)=>({origin,text,from:{line:0,ch},to:{line:0,ch},update:(f,t,x)=>pasted.push([f.ch,x.length])});
+    window.pasteOverPad(fakeCm,change('paste',['tokens = []','i = 0'],4));
+    assert.deepEqual(pasted,[[0,2]],'the paste replaces the pre-typed spaces');
+    window.pasteOverPad(fakeCm,change('paste',['x = 1'],4));
+    window.pasteOverPad(fakeCm,change('+input',['a','b'],4));
+    window.pasteOverPad({getLine:()=> '    y = 2'},change('paste',['a','b'],9));
+    assert.equal(pasted.length,1,'one-line pastes, typing, and pastes after code are left alone');
     window.acadiaEval(`chunks[0]={prompt:'First step',indent:0,loop_note:'Start going through the items in this step.',starts_with:'The numbers.',leaves:'The running total.'}; render();`);
     assert.equal(doc.querySelector('#stepNotes').hidden,false);
     assert.match(doc.querySelector('#stepNotes').textContent,/Start going through the items/);

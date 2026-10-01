@@ -139,6 +139,15 @@ const server = http.createServer((req,res) => {
     assert.equal(await page.locator('#statement').isVisible(),false,'…minimised, so the editor keeps the height');
     assert.equal(await page.locator('#clog .bub.me pre').count(),1);
     await noOverflow('Desktop light');
+    // A multi-line paste over the box's own starting spaces starts at column 0
+    // (student.js pasteOverPad) - in the REAL CodeMirror, through its own paste
+    // origin. 1 Oct: a student's correct step, pasted, failed "Indentation
+    // error on line 1" because only its first line got the box's spaces.
+    const afterPaste=await page.evaluate(()=>{
+      editor.setValue('    '); editor.setCursor({line:0,ch:4});
+      editor.replaceSelection('tokens = []\ni = 0',null,'paste');
+      const v=editor.getValue(); editor.setValue(''); return v;});
+    assert.equal(afterPaste,'tokens = []\ni = 0','a paste must not inherit the box\'s spaces on line 1');
     await page.evaluate(()=>editor.setValue('    previous_year = year - 1\n    previous_year_records = d[previous_year]\n    new_dict = {}'));
     await screenshot('acadia-workspace-light');
     await setTheme('dark');

@@ -373,6 +373,8 @@ HARD RULES for each question:
     next steps carry on with. Its question must say that it starts going
     through each of them, naming them in the problem's words, and must not call
     the step preparation - a student who reads "prepare" writes only the set-up.
+    Like every step but the last, end with what it hands on: "...and leave the
+    rest of the work on each one for the next step."
   - A step marked "RUNS ONCE PER ITEM" is inside a repetition an earlier step
     started. Begin its question with "For each ..." naming the items in the
     problem's words: "For each statement, handle the case where ...". That is

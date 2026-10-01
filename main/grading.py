@@ -1973,12 +1973,18 @@ def grade_submission(session: dict, student_code: str,
         # is real, but gating the whole event on it meant the commonest
         # acquittal of all was invisible - see the note on execution-final
         # above. No model is consulted on this path either way.
+        covers = _written_ahead(problem, header, chunks, idx, upto, student_code,
+                                tests, entry)
         _trace(trace.record_route, corr, "execution-reference", "correct",
-               hoisted=hoisted or [])
+               hoisted=hoisted or [], covers=covers)
         return _ok("correct", "execution-reference",
-                   "Correct - your step works with the rest of the solution.",
+                   "Correct - your step works with the rest of the solution."
+                   if covers == 1 else
+                   f"Correct - and you have already written what the next "
+                   f"{covers - 1} step(s) asked for, so we have marked those "
+                   f"done too.",
                    "reference_pass_hoisted" if hoisted else "reference_pass",
-                   execution_outcome="pass")
+                   execution_outcome="pass", covers_chunks=covers)
     if res.outcome == "harness_error":
         return _system("harness_error", res.internal_error)
     if res.outcome == "policy_violation":
@@ -2079,6 +2085,34 @@ def grade_submission(session: dict, student_code: str,
 _EVIDENCE_ONLY = ("We ran your step together with the rest of the solution and the "
                   "finished answer came out wrong on at least one case. We can't be "
                   "certain the fault is in this step, so your attempt was not used")
+
+
+def _written_ahead(problem, header, chunks, idx, upto, student_code, tests,
+                   entry) -> int:
+    """How many steps their accepted answer covers - 1, or more when it also
+    does what the next step(s) ask for. Measured 1 Oct (Ashwin, get-postfix):
+    a step-1 answer holding the set-up AND the whole tokenizer was accepted as
+    step 1 alone, and step 2 then asked for the tokenizer he had just written.
+    The whole-solution case was already handled (final_pass_early); a part of
+    the way ahead was not.
+
+    Proven the same way as the step itself: the teacher's later steps, with the
+    next k skipped, still pass every test on their code. Only tried when their
+    answer is visibly longer than the step - an answer that wrote ahead has to
+    be - so an ordinary step costs no extra run."""
+    if idx + 2 >= len(chunks) or \
+            _lines(student_code) <= _lines(chunks[idx].get("reference") or "") + 2:
+        return 1
+    for skip in range(len(chunks) - idx - 2, 0, -1):
+        tail = "\n".join((chunks[j].get("reference") or "")
+                         for j in range(idx + 1 + skip, len(chunks)))
+        hoisted = _hoistable_declarations(problem, chunks, header, upto, tail)
+        if hoisted:
+            tail = "\n".join(hoisted) + "\n" + tail
+        if classify_run(_assemble(problem, header, upto, tail), tests,
+                        entry_name=entry).outcome == "pass":
+            return skip + 1
+    return 1
 
 
 def _unopened_block(chunks, idx, chunk, res) -> str | None:

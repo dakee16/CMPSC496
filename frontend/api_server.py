@@ -913,8 +913,19 @@ def grade_chunk_route(req: ChunkRequest, request: Request):
     # every retry, while the passing verdict they were retrying FOR sat in the
     # submissions table. Ownership is already established above, so this can
     # only ever hand back the caller's own result.
-    from main.sessions import stored_result
+    from main.sessions import forget_result, session_snapshot, stored_result
     replay = stored_result(req.session_id, req.submission_id)
+    # ...UNLESS THE ACCEPTANCE IT RECORDS WAS UNDONE. An accepted answer moves
+    # the session past the step it answered, so a stored "correct" for the step
+    # the session is on NOW was reopened since (/reopen_step) - replaying it
+    # would tell the page to move on while the session stays put, and every
+    # later step would be "out of date" (1 Oct, live: reload did not help, as
+    # the reload sent the same answer again). Graded and committed afresh.
+    if replay is not None and replay.get("verdict") == "correct" \
+            and req.expected_index is not None \
+            and (session_snapshot(req.session_id) or {}).get("index") == req.expected_index:
+        forget_result(req.session_id, req.submission_id)
+        replay = None
     if replay is not None:
         return replay
 

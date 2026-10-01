@@ -208,3 +208,48 @@ def test_a_plan_that_follows_the_teacher_is_not_rebuilt(env):
     out, spent = _replan(env)
     assert out == {"rerouted": False}, out
     assert spent == 0, "matching the teacher's route must be free"
+
+
+# ── A REBUILD OBEYS THE SAME RULES AS EVERY ROADMAP (1 Oct) ───────────────
+# A rebuilt roadmap is model-built from the student's own plan, and was only
+# checked for being answerable. One that carries a step on inside a `while`
+# (the shape that left two students stuck) or has a giant step is now refused,
+# and the student keeps the teacher's roadmap - which obeys both rules.
+WHILE_BODY = ("counts = {}\ni = 0\nwhile i < len(txt):\n    ch = txt[i]\n"
+              "    if ch.isalpha():\n        counts[ch] = counts.get(ch, 0) + 1\n"
+              "    i += 1\nreturn counts")
+
+
+@pytest.fixture
+def env_unsafe(env, monkeypatch):
+    import json
+    from main import ollama_client, reroute, run_phase1
+
+    def fake_chat(model, system, messages, **kw):
+        env.calls.append((system or "").splitlines()[0][:40])
+        if "subproblem" in (system or "").lower():
+            return json.dumps({"subproblems": [
+                {"prompt": "Start going through each character of the text, and keep "
+                           "the tally for the next step.",
+                 "reference": "counts = {}\ni = 0\nwhile i < len(txt):\n    ch = txt[i]"},
+                {"prompt": "For each character, count it if it is a letter, and keep "
+                           "the tally for the next step.",
+                 "reference": "    if ch.isalpha():\n        counts[ch] = counts.get(ch, 0) + 1\n"
+                              "    i += 1"},
+                {"prompt": "Hand back what you counted.", "reference": "return counts"}]})
+        return json.dumps({"body": WHILE_BODY})
+    for mod in (ollama_client, reroute, run_phase1):
+        monkeypatch.setattr(mod, "chat", fake_chat, raising=False)
+    return env
+
+
+def test_a_rebuild_cut_inside_a_while_loop_is_not_served(env_unsafe):
+    env = env_unsafe
+    first, _ = _open(env)
+    _plan(env, _stamp())
+    _approve_design(env)
+    out, spent = _replan(env)
+    assert spent > 0, "the rebuild must really have been attempted"
+    assert out["rerouted"] is False, out
+    again, _ = _open(env)
+    assert again["session_id"] == first["session_id"], "they keep the teacher's roadmap"

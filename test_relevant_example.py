@@ -101,3 +101,60 @@ def test_the_example_is_an_input_their_code_gets_wrong(step2):
 def test_a_correct_step_is_still_accepted(step2):
     r = step2(STEPS[1]["reference"], before=STEPS[0]["reference"])
     assert r.verdict == "correct", (r.tier, r.student_reason)
+
+
+# ── WRITTEN AHEAD (1 Oct, Ashwin again) ───────────────────────────────────
+# On the get-postfix roadmap the 30 Sep fix serves, step 1 is the set-up and
+# step 2 the tokenizer. His step 1 held both; it was accepted as step 1 alone,
+# and step 2 then asked for the tokenizer he had just written.
+# Like get-postfix, and unlike the steps above: the tokenizer is a `while` over
+# a position, so the teacher's step 2 run AFTER the student's (which already
+# went through everything) is a no-op - the reference tail passes, and nothing
+# else would notice the answer had done step 2 as well.
+W_SOLUTION = ("def words_of(txt):\n"
+              "    words = []\n"
+              "    parts = txt.split()\n"
+              "    i = 0\n"
+              "    while i < len(parts):\n"
+              "        if parts[i].isalpha():\n"
+              "            words.append(parts[i].lower())\n"
+              "        i += 1\n"
+              "    return ' '.join(words)\n")
+W_PROBLEM = {"slug": "words-of", "title": "Words", "solution": W_SOLUTION,
+             "description": "The words of the text that are only letters, lower-cased."}
+_w = {}
+exec(W_SOLUTION, _w)
+W_ORACLE = [{"input": [x], "expected": _w["words_of"](x)}
+            for x in ("A b", "a 1 B", "", "x2 Yy z", "HELLO world 3")]
+W_STEPS = [
+    {"step_id": "Part 1", "expected_type": "code", "prompt": "p1",
+     "reference": "words = []\nparts = txt.split()\ni = 0"},
+    {"step_id": "Part 2", "expected_type": "code", "prompt": "p2",
+     "reference": "while i < len(parts):\n    if parts[i].isalpha():\n"
+                  "        words.append(parts[i].lower())\n    i += 1"},
+    {"step_id": "Part 3", "expected_type": "code", "prompt": "p3",
+     "reference": "return ' '.join(words)"}]
+
+
+def _grade_w(code):
+    from main import grading, sessions
+    import types as _t
+    decomp = {"header": "def words_of(txt):",
+              "chunks": [_t.SimpleNamespace(**c) for c in W_STEPS]}
+    sid = sessions.create_session(dict(W_PROBLEM), decomp, "h-w", student_id="stu")["session_id"]
+    grading._VERDICT_MEMO.clear()
+    return grading.grade_submission(sessions.load_session(sid), code,
+                                     oracle_loader=lambda p: list(W_ORACLE))
+
+
+def test_an_answer_that_also_does_the_next_step_covers_it(step2):
+    both = W_STEPS[0]["reference"] + "\n" + W_STEPS[1]["reference"]
+    r = _grade_w(both)
+    assert (r.verdict, r.tier, r.covers_chunks) == ("correct", "execution-reference", 2), \
+        (r.tier, r.covers_chunks, r.student_reason)
+    assert "already written what the next 1 step(s) asked for" in r.student_reason
+
+
+def test_an_ordinary_step_covers_only_itself(step2):
+    r = _grade_w(W_STEPS[0]["reference"])
+    assert (r.verdict, r.covers_chunks) == ("correct", 1), r

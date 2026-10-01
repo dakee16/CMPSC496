@@ -24,14 +24,18 @@ from test_reword_pools import LOOPED
 GOOD = [{"starts_with": "The text.", "leaves": "Each letter of the text, one at a time."},
         {"starts_with": "One letter of the text.", "leaves": "The tally, one higher for it."},
         {"starts_with": "The tally of every letter.", "leaves": "How many times each letter appears."}]
-LEAKY = [dict(GOOD[0], leaves="The counts dictionary.")] + GOOD[1:]
+LEAKY = [dict(GOOD[0], leaves="The letter_counts so far.")] + GOOD[1:]
 
 
 def _roadmap():
+    """LOOPED, with its tally named like code (`letter_counts`) - the kind of
+    name a note must never hand a student."""
     from main.run_phase1 import _deserialize
-    return _deserialize({**LOOPED, "chunks": [{**c, "prompt": c["prompt"] or "Start going "
-                         "through each character, and keep the tally for the next step."}
-                         for c in LOOPED["chunks"]]})
+    return _deserialize({**LOOPED, "chunks": [
+        {**c, "reference": c["reference"].replace("counts", "letter_counts"),
+         "prompt": c["prompt"] or "Start going through each character, and keep the "
+                                  "tally for the next step."}
+        for c in LOOPED["chunks"]]})
 
 
 @pytest.fixture
@@ -51,9 +55,9 @@ def notes(monkeypatch):
 
 PROBLEM = {"slug": "frequency", "title": "Letter frequency",
            "description": "Count how many times each letter appears.",
-           "solution": "def frequency(txt):\n    counts = {}\n    for ch in txt:\n"
-                       "        if ch.isalpha():\n            counts[ch] = counts.get(ch, 0) + 1\n"
-                       "    return counts\n"}
+           "solution": "def frequency(txt):\n    letter_counts = {}\n    for ch in txt:\n"
+                       "        if ch.isalpha():\n            letter_counts[ch] = letter_counts.get(ch, 0) + 1\n"
+                       "    return letter_counts\n"}
 
 
 def test_good_notes_reach_every_step_and_survive_saving(notes):
@@ -69,7 +73,7 @@ def test_a_note_naming_the_solutions_variable_is_retried_with_the_reason(notes):
     notes.replies += [LEAKY, GOOD]
     d = notes.mod.write_notes(PROBLEM, _roadmap())
     assert d["chunks"][0].leaves == GOOD[0]["leaves"]
-    assert "counts" in notes.asked[1] and "REJECTED" in notes.asked[1]
+    assert "letter_counts" in notes.asked[1] and "REJECTED" in notes.asked[1]
 
 
 def test_notes_that_never_pass_leave_the_roadmap_as_it_was(notes):
@@ -106,3 +110,18 @@ def test_a_student_opening_the_problem_sees_the_notes(env, monkeypatch, notes):
     assert (first["starts_with"], first["leaves"]) == (GOOD[0]["starts_with"], GOOD[0]["leaves"])
     assert "Start going through the items" in first["loop_note"]
     assert "counts" not in json.dumps(body["chunks"])
+
+
+def test_plain_english_that_happens_to_be_a_variable_is_fine():
+    """1 Oct, the first live draft: every get-postfix and employee-update note
+    was refused for "tokens", "previous year's records", "updated records" and
+    "initialized structures" - ordinary words the teacher also used as names."""
+    from main.gates import check_notes
+    from main.schemas import StepItem
+    code = "previous = d[year - 1]\nupdated = {}\ntokens = []\npostfixStack = []"
+    chunks = [StepItem(question_id="t", step_id="Part 1", prompt="p", reference=code,
+                       starts_with="The previous year's records and initialized structures.",
+                       leaves="The updated records, and the tokens of the expression.")]
+    assert check_notes(chunks, {"description": "Update the records."})["status"] == "pass"
+    chunks[0] = chunks[0].model_copy(update={"leaves": "The postfixStack, filled."})
+    assert check_notes(chunks, {"description": "Update the records."})["status"] == "fail"

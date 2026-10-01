@@ -164,8 +164,15 @@ def opens_unsaid(chunks: list) -> list[int]:
         here = getattr(chunks[i], "reference", "") or ""
         nxt = getattr(chunks[i + 1], "reference", "") or ""
         prompt = getattr(chunks[i], "prompt", "") or ""
-        if base_indent(nxt) > base_indent(here) and \
-                (not _GOES_THROUGH.search(prompt) or _ONLY_SETUP.search(prompt)):
+        if base_indent(nxt) <= base_indent(here):
+            continue
+        # "Prepares to process each statement" frames the step as set-up and is
+        # answered as set-up; "Start going through each statement, preparing to
+        # handle each one" frames it as starting the loop. What decides is
+        # which comes first - the first live re-word (1 Oct) was refused for
+        # the second kind, the right one.
+        goes, setup = _GOES_THROUGH.search(prompt), _ONLY_SETUP.search(prompt)
+        if not goes or (setup and setup.start() < goes.start()):
             out.append(i)
     return out
 
@@ -220,9 +227,14 @@ def check_prompts(chunks: list, problem: dict) -> dict:
         if hit:
             bad.append(f'{step}: "{hit.group(0)}" states HOW, not what to achieve')
             continue
+        # CODE-SHAPED names only, as for the notes (check_notes): "the previous
+        # year's records" is English, `prev_year_records` is the solution's
+        # choice. Plain words used to count too, and refused every re-word of
+        # employee-update (1 Oct) for "updated" and "previous".
         leaked = sorted(n for n in _identifiers(getattr(c, "reference", "") or "")
                         if len(n) > 2 and n.lower() not in said
                         and n.lower() not in _ORDINARY
+                        and re.search(r"_|\d|[a-z][A-Z]", n)
                         and re.search(rf"\b{re.escape(n)}\b", prompt))
         if leaked:
             bad.append(f'{step}: names {", ".join(leaked)} - that is a name only '
@@ -252,8 +264,12 @@ def check_notes(chunks: list, problem: dict, header: str = "") -> dict:
     names = set()
     for c in chunks:
         names |= _identifiers(getattr(c, "reference", "") or "")
+    # CODE-SHAPED names only (an underscore, a capital inside, a digit): a note
+    # is prose, and the teacher's plain-word variables are plain words - the
+    # first live draft (1 Oct) lost every get-postfix and employee-update note
+    # to "tokens", "previous year's records" and "updated records".
     secret = {n for n in names if len(n) > 2 and n.lower() not in said
-              and n.lower() not in _ORDINARY}
+              and n.lower() not in _ORDINARY and re.search(r"_|\d|[a-z][A-Z]", n)}
     bad = []
     for c in chunks:
         step = getattr(c, "step_id", "?")
@@ -264,7 +280,9 @@ def check_notes(chunks: list, problem: dict, header: str = "") -> dict:
                 continue
             if len(text.split()) > _NOTE_WORDS:
                 bad.append(f"{step}: {field} is over {_NOTE_WORDS} words")
-            hit = _METHOD_WORDS.search(text)
+            # "initialized" describes what EXISTS - fine in a note, unlike a
+            # question telling them to initialize something.
+            hit = _METHOD_WORDS.search(re.sub(r"\binitiali[sz]\w*", "", text, flags=re.I))
             if hit:
                 bad.append(f'{step}: {field} says "{hit.group(0)}" - that is HOW, not what')
             leaked = sorted(n for n in secret if re.search(rf"\b{re.escape(n)}\b", text))

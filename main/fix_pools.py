@@ -20,6 +20,8 @@ THREE STEPS, so what ships is exactly what was read (as main/reword_pools):
     docker compose exec app python -m main.fix_pools --draft /data/fix.json   # <= $2.00
     docker compose exec app python -m main.fix_pools --apply /data/fix.json   # $0
 
+--draft FILE --only slug,slug drafts just those problems (to redo a few).
+
 --draft is the only step that calls the model (wording ~0.7c a try, notes ~1c a
 try, at most 3 tries each), under a hard cap. It prints old and new and changes
 nothing. --apply makes no model call: per problem it swaps in only drafted
@@ -57,10 +59,13 @@ def needs(problem: dict, entry: dict) -> list[str]:
     return why
 
 
-def targets() -> list[tuple]:
-    """(problem, [(entry, needs)]) for every ready problem with work to do."""
+def targets(only: set | None = None) -> list[tuple]:
+    """(problem, [(entry, needs)]) for every ready problem with work to do -
+    or only the problems named in `only` (slugs)."""
     pool, out = _load_pool(), []
     for key, problem in _ready_problems().items():
+        if only and problem["slug"] not in only:
+            continue
         work = [(e, needs(problem, e)) for e in _usable(problem, pool.get(key, []))]
         work = [(e, w) for e, w in work if w]
         if work:
@@ -99,8 +104,8 @@ def _finish(problem: dict, d: dict, reword: bool) -> dict:
     return _serialize(step_notes.write_notes(problem, d))
 
 
-def draft(path: str, cap: float) -> int:
-    work, records, spent, stopped = targets(), [], [0.0], None
+def draft(path: str, cap: float, only: set | None = None) -> int:
+    work, records, spent, stopped = targets(only), [], [0.0], None
     try:
         with spend_cap(cap) as spent:
             for problem, entries in work:
@@ -175,7 +180,8 @@ def main(argv: list[str]) -> int:
         return apply(argv[argv.index("--apply") + 1])
     if "--draft" in argv:
         cap = float(argv[argv.index("--max-dollars") + 1]) if "--max-dollars" in argv else 2.00
-        return draft(argv[argv.index("--draft") + 1], cap)
+        only = set(argv[argv.index("--only") + 1].split(",")) if "--only" in argv else None
+        return draft(argv[argv.index("--draft") + 1], cap, only)
     total, count = 0.0, collections.Counter()
     for problem, entries in targets():
         for _e, w in entries:

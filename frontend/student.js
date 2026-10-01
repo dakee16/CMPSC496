@@ -1463,6 +1463,22 @@ function clearDraft(){
   try { sessionStorage.removeItem(key); } catch (e) { /* nothing to clear */ }
 }
 
+/* A PASTE REPLACES THE BOX'S OWN STARTING SPACES. Each step opens with the
+   caret a few spaces in (render(): the body's indent plus the step's), so the
+   box lines up with the frozen code above it. A pasted block then got those
+   spaces on its FIRST line only, and the grader rightly said "Indentation
+   error on line 1" about code the student never mis-indented (1 Oct: a
+   student's correct step, pasted, failed exactly that way). When a
+   multi-line paste lands where only whitespace precedes the caret, it starts
+   at column 0 instead - their text exactly as copied, nothing of ours added.
+   Their own indentation is never touched; the grader re-seats the answer. */
+function pasteOverPad(cm, change){
+  if (change.origin !== "paste" || !change.update || change.text.length < 2) return;
+  const before = cm.getLine(change.from.line).slice(0, change.from.ch);
+  if (before.trim() !== "" || change.from.ch === 0) return;
+  change.update({line: change.from.line, ch: 0}, change.to, change.text);
+}
+
 function ensureEditor(){
   if (editor) return;
   editor = CodeMirror.fromTextArea($("code"), {
@@ -1489,6 +1505,7 @@ function ensureEditor(){
   // cheap enough not to need debouncing, and debouncing would reintroduce the
   // exact window this closes.
   editor.on("change", saveDraft);
+  editor.on("beforeChange", pasteOverPad);
   // A freshly created editor defaults to editable - re-assert the current gate
   // so it does not spring open the moment fromTextArea() runs.
   applyTutorGate();
