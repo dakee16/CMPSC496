@@ -1767,6 +1767,7 @@ function render(){
                            : `All ${chunks.length} steps complete`)
     : "";
   $("prompt").textContent = cur ? undash(cur.prompt) : "";
+  renderStepNotes(cur, idx === chunks.length - 1);
   $("attempts").textContent = "";
 
   const shown = renderContext();
@@ -1797,6 +1798,33 @@ function render(){
     requestAnimationFrame(matchGutter);
     if (tutorReleased && workspaceStage === "code" && !resourceKind) editor.focus();
   }
+}
+
+/* Under the step's question: where it sits in a loop, what it starts with,
+   and what it must leave for the next step (main/step_notes.py,
+   sessions.loop_note). Added 30 Sep - two students answered "prepare
+   everything needed" with the set-up alone, because nothing on screen said
+   step 1 had to START the loop step 2 carries on inside. Text only. */
+function renderStepNotes(cur, isLast){
+  const box = $("stepNotes");
+  if (!box) return;
+  box.replaceChildren();
+  const rows = [];
+  if (cur && cur.loop_note) rows.push(["", cur.loop_note, "loop"]);
+  if (cur && cur.starts_with) rows.push(["Starts with", cur.starts_with, ""]);
+  if (cur && cur.leaves) rows.push([isLast ? "Gives back" : "Leaves for the next step", cur.leaves, ""]);
+  for (const [label, text, kind] of rows){
+    const p = document.createElement("p");
+    if (kind) p.className = kind;
+    if (label){
+      const b = document.createElement("strong");
+      b.textContent = label + ": ";
+      p.append(b);
+    }
+    p.append(document.createTextNode(undash(text)));
+    box.append(p);
+  }
+  box.hidden = rows.length === 0;
 }
 
 /* Mirror of main/indent.py's align_to_chunk, for DISPLAY only.
@@ -2418,6 +2446,9 @@ async function sendToTutor(text, extra = {}){
         // stays on screen and in the archive; only what travels is trimmed.
         messages: chatLog.slice(-TUTOR_WINDOW),
         chunk_prompt: chunks[idx] ? chunks[idx].prompt : null,
+        // Their code box, so the tutor can see what they are writing; the
+        // server adds their accepted steps (api_server.tutor_chat).
+        code: editor ? editor.getValue() : "",
         design_ok: tutorReleased,
         // So the tutor can put a release past the REAL gate before promising
         // anything. Without it the tutor says "sounds workable" and the gate

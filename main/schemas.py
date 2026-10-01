@@ -14,6 +14,11 @@ class StepItem(BaseModel):
     canonical: Optional[str] = None   # ONE runnable line for this step
     indent: int = 0                   # block depth (0=def, 1=body, 2=inside loop/if)
     reference: Optional[str] = None
+    # Two plain lines shown under the step (main/step_notes.py): what the step
+    # has to work with, and what it must leave for the next one. Written once
+    # per roadmap, gated like the prompt - never a name only the solution uses.
+    starts_with: Optional[str] = None
+    leaves: Optional[str] = None
 
 class DecomposeOutput(BaseModel):
     steps: List[StepItem]

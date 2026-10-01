@@ -146,7 +146,9 @@ def create_session(problem: dict, decomposition: dict, content_hash: str,
     sid = secrets.token_urlsafe(32)
     did = secrets.token_urlsafe(12)
     chunks = [{"step_id": c.step_id, "prompt": c.prompt,
-               "expected_type": c.expected_type, "reference": c.reference or ""}
+               "expected_type": c.expected_type, "reference": c.reference or "",
+               **{k: getattr(c, k, None) for k in ("starts_with", "leaves")
+                  if getattr(c, k, None)}}
               for c in decomposition["chunks"]]
     now = _now()
     exp = (datetime.now(timezone.utc) + timedelta(hours=SESSION_TTL_HOURS)
@@ -370,7 +372,28 @@ def public_chunks(chunks: list[dict]) -> list[dict]:
     """
     return [{"step_id": c["step_id"], "prompt": c["prompt"],
              "expected_type": c.get("expected_type", "code"),
-             "indent": base_indent(c.get("reference") or "")} for c in chunks]
+             "indent": base_indent(c.get("reference") or ""),
+             "starts_with": c.get("starts_with") or "",
+             "leaves": c.get("leaves") or "",
+             "loop_note": loop_note(chunks, i)} for i, c in enumerate(chunks)]
+
+
+def loop_note(chunks: list[dict], i: int) -> str:
+    """Where a step sits relative to a loop, said in words - derived from the
+    steps' depths, so it is always right and costs nothing. The one thing two
+    students could not tell on 30 Sep: that step 1 had to START the loop step 2
+    carries on inside. Like `indent`, it reveals nesting and nothing else."""
+    here = base_indent(chunks[i].get("reference") or "")
+    nxt = (base_indent(chunks[i + 1].get("reference") or "")
+           if i + 1 < len(chunks) else 0)
+    out = []
+    if here:
+        out.append("This step runs inside the loop from an earlier step, once "
+                   "for each item.")
+    if nxt > here:
+        out.append("Start going through the items in this step and end your "
+                   "code inside that loop: the next step carries on inside it.")
+    return " ".join(out)
 
 
 def _row_to_session(r: sqlite3.Row) -> dict:

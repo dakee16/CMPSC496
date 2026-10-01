@@ -290,6 +290,12 @@ class TutorChatRequest(BaseModel, extra="forbid"):
     # the same posture already applied to a submitted plan's own text.
     offtrack_hint: str = ""
     offtrack_count: int = 0
+    # What is in their code box right now - their OWN text, never ours. Their
+    # accepted steps are read server-side (sessions.accepted_so_far), so the
+    # tutor sees the whole function they are building. Before 30 Sep it saw
+    # neither, and a student told Dr. Saha "the tutor is no help since I don't
+    # think the tutor can see the entire code file".
+    code: str = ""
 
 
 class PlanGraphRequest(BaseModel, extra="forbid"):
@@ -2858,10 +2864,18 @@ def tutor_chat(req: TutorChatRequest, request: Request):
     # same durable record /session_steps and /grade_chunk gate on, and the
     # client field is now ignored entirely (see TutorChatRequest).
     approved = _design_approved(claims["sub"], req.slug)
+    # THEIR code: accepted steps from the session store (their own, re-seated
+    # text - never a chunk reference) plus the box. Only once coding is open.
+    own = ""
+    if approved:
+        from main.sessions import accepted_so_far
+        done = (accepted_so_far(claims["sub"], [req.slug]).get(req.slug) or {}).get("code", "")
+        own = "\n".join(b for b in (done, (req.code or "").rstrip()) if b.strip())[:6000]
     try:
         out = reply(row[0], req.messages, req.chunk_prompt, approved,
                     offtrack_hint=(req.offtrack_hint or "")[:300],
-                    offtrack_count=max(0, min(req.offtrack_count, 20)))
+                    offtrack_count=max(0, min(req.offtrack_count, 20)),
+                    student_code=own)
     except Exception as e:
         # A tutor outage is not a judgement about the student.
         raise HTTPException(status_code=503, detail={

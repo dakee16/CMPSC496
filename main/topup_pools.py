@@ -31,7 +31,8 @@ _REPLY_TOKENS = 2000
 # The only features allowed to spend inside the cap: the roadmap builder.
 _ALLOWED = {"main.run_phase1.decompose_into_chunks",
             "main.run_phase1.decompose_into_chunks_best",
-            "main.splitter.write_prompts"}     # fill_pool's fallback words its steps
+            "main.splitter.write_prompts",     # fill_pool's fallback words its steps
+            "main.step_notes._ask"}            # ...and every roadmap gets its notes
 
 
 class SpendCapReached(BaseException):

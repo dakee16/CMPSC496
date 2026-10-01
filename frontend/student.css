@@ -516,6 +516,11 @@ body.in-studio .page{padding:calc(var(--header-height) + 28px) 24px 40px;max-wid
 .work-step .stepcount{font-size:12px;margin:0 0 8px;letter-spacing:.01em;color:var(--accent-ink)}
 .work-step .prompt{font-size:15px;line-height:1.7;font-weight:500;margin:0;max-height:150px;overflow:auto;overscroll-behavior:contain}
 .work-step .prompt:empty,.stepcount:empty{display:none}
+/* What a step starts with / leaves behind, and where it sits in a loop. */
+.work-step .stepnotes{margin:8px 0 0;font-size:13.5px;line-height:1.55;color:var(--muted)}
+.work-step .stepnotes p{margin:2px 0}
+.work-step .stepnotes strong{font-weight:600}
+.work-step .stepnotes .loop{color:var(--accent-ink)}
 .planLocked{padding:18px 24px;background:var(--accent-tint);border-bottom:1px solid var(--border)}
 .planLocked strong{font-size:13px;color:var(--accent-ink)}
 .planLocked p{font-size:13px;line-height:1.7;margin:4px 0 0;color:var(--text-muted)}

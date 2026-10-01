@@ -98,3 +98,39 @@ def test_renaming_touches_variables_only_and_keeps_every_column():
         "    tally[ch] = tally.get(ch, 0) + 1\n"
         "    self.counts = f(counts=tally)\n"
         "return tally")
+
+
+# ── LOOP VARIABLES (30 Sep) ──────────────────────────────────────────────
+# Measured on Sean's real calculateExpressions roadmap: a correct step 1 that
+# started the loop was confirmed ONLY when its loop variable was the teacher's
+# `statement` - `for original in statements` went to the model tiers. A loop
+# variable is now paired by what it loops over, read through the names it uses.
+def test_a_loop_variable_named_differently_is_paired(grade):
+    from test_reword_pools import LOOPED
+    own = "counts = {}\nfor letter in txt:\n    if not letter.isalpha():\n        continue"
+    r = grade(own, roadmap=LOOPED)
+    assert (r.verdict, r.tier) == ("correct", "execution-bridged"), (r.tier, r.student_reason)
+
+
+def test_a_loop_over_a_name_holding_the_same_thing_is_paired(grade):
+    from test_reword_pools import LOOPED
+    own = "tally = {}\ntext = txt\nfor c in text:\n    if not c.isalpha():\n        continue"
+    r = grade(own, roadmap=LOOPED)
+    assert (r.verdict, r.tier) == ("correct", "execution-bridged"), (r.tier, r.student_reason)
+
+
+def test_a_loop_over_something_else_is_not_paired(grade):
+    """Pairing only proposes - but a loop over a different thing must not even
+    be proposed as the teacher's."""
+    from main import bridge
+    teacher = bridge._first_setups("for ch in txt:\n    pass", {"txt"})
+    other = bridge._first_setups("for ch in sorted(txt):\n    pass", {"txt", "sorted"})
+    assert teacher["ch"] != other["ch"]
+
+
+def test_unpacked_parts_pair_by_position():
+    from main import bridge
+    amb = {"self"}
+    t = bridge._first_setups("for s in self.items:\n    name, expr = s.split('=', 1)", amb)
+    u = bridge._first_setups("for line in self.items:\n    left, right = line.split('=', 1)", amb)
+    assert (t["name"], t["expr"]) == (u["left"], u["right"]) and t["name"] != u["right"]

@@ -183,7 +183,8 @@ def bound_nothing(upto: str) -> bool:
 
 
 def counterexample(problem: dict, header: str, chunks: list, idx: int,
-                   upto: str, tests: list, entry: str, ambient: set) -> dict | None:
+                   upto: str, tests: list, entry: str, ambient: set,
+                   failing: set | None = None) -> dict | None:
     """One concrete oracle input worth tracing by hand, with the student's own
     state after it.
 
@@ -247,6 +248,16 @@ def counterexample(problem: dict, header: str, chunks: list, idx: int,
             if wanted - theirs:
                 interesting.append(i)
                 break
+    # AN INPUT THEIR CODE ACTUALLY GETS WRONG, when the run says which those are
+    # (`failing`: the test indices their step, run with the rest of the
+    # solution, came out wrong on). Measured 1 Oct: a tokenizer that broke only
+    # on negative numbers was asked about `setExpr('2 - 1')` - every input
+    # looked "interesting" because the teacher's later steps read set-up theirs
+    # never wrote (postfixStack, precedence), so the shortest one won, and it
+    # had nothing to do with the bug.
+    # None of the failing inputs small enough to show means no example at all.
+    if failing:
+        interesting = [i for i in interesting if i in failing]
     if not interesting:
         return None
 

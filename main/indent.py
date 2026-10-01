@@ -23,6 +23,8 @@ anything reads it.
 Pure, deterministic and free of I/O, so grading and the route that stores the
 accepted answer can each call it and get byte-identical results.
 """
+import re
+
 
 # Python 3 forbids mixing tabs and spaces for indentation, and the execution
 # sandbox would reject it anyway. Expanding first means a student who pressed
@@ -116,32 +118,41 @@ def is_seatable(code: str) -> bool:
     return _leading(lines[0]) == base_indent(code)
 
 
-def unpad_first_line(code: str) -> str:
-    """`code` with its first line moved back to the depth of the lines under it
-    (a level above them if it opens a block), when it alone sits too deep.
-    Anything else comes back unchanged.
+def _statement_starts(lines: list[str]) -> list[int]:
+    """Indices of the lines that START a statement: not blank, not a comment,
+    not inside a bracket an earlier line left open."""
+    out, depth = [], 0
+    for i, ln in enumerate(lines):
+        if depth == 0 and ln.strip() and not ln.lstrip().startswith("#"):
+            out.append(i)
+        code = re.sub(r"#.*$", "", re.sub(r"'[^']*'|\"[^\"]*\"", "", ln))
+        depth = max(0, depth + sum(code.count(c) for c in "([{")
+                    - sum(code.count(c) for c in ")]}"))
+    return out
 
-    That shape is a PASTE, not a program: the editor opens each step with the
-    caret after a few spaces of its own (frontend/student.js, so the box lines
-    up with the code above it), and a pasted block keeps those spaces on its
-    first line only. Seen live on 29 Sep: 3 correct answers from 2 students,
-    plus the audit's own paste, came back "your indentation doesn't line up on
-    line 2". No such code parses as typed, so moving the line cannot change
-    the meaning of anything that did."""
+
+def unpad_first_line(code: str) -> str:
+    """`code` with its first line moved back to the depth of the shallowest
+    statement under it, when it alone sits DEEPER than all of them. Anything
+    else comes back unchanged - including a first line that opens a block
+    followed by code at its own level, which is ordinary code.
+
+    That shape is usually a PASTE: the editor opens each step with the caret
+    after a few spaces of its own (frontend/student.js, so the box lines up
+    with the code above it), and a pasted block keeps those spaces on its first
+    line only. grading._first_line_misaligned uses this to DETECT it and tell
+    the student - the answer is never changed for them."""
+    if "\t" in code:
+        return code
     lines = code.split("\n")
-    first = next((i for i, ln in enumerate(lines) if ln.strip()), None)
-    if first is None or "\t" in code:
+    starts = _statement_starts(lines)
+    if len(starts) < 2:
         return code
-    head = lines[first]
-    rest = [ln for ln in lines[first + 1:] if ln.strip()]
-    if not rest or head.lstrip().startswith("#"):
+    head = lines[starts[0]]
+    depth = min(len(lines[i]) - len(lines[i].lstrip()) for i in starts[1:])
+    if len(head) - len(head.lstrip()) <= depth:
         return code
-    depth = min(len(ln) - len(ln.lstrip()) for ln in rest)
-    if head.rstrip().endswith(":"):
-        depth -= 4                  # a block opener sits a level above its body
-    if depth < 0 or len(head) - len(head.lstrip()) <= depth:
-        return code
-    lines[first] = " " * depth + head.lstrip()
+    lines[starts[0]] = " " * depth + head.lstrip()
     return "\n".join(lines)
 
 

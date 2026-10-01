@@ -47,8 +47,26 @@ def test_a_step_that_returns_is_told_to_keep_its_result(grade_step1):
     assert "never reached" not in r.student_reason
 
 
-def test_a_step_that_binds_nothing_without_returning_keeps_the_old_message(grade_step1):
+def test_a_step_that_binds_nothing_where_a_loop_must_start_is_told_so(grade_step1):
+    """STEPS' step 2 carries on inside step 1's loop, so the most useful thing
+    to say is that the loop is missing - and the model tiers are not asked."""
     r = grade_step1("print(words)")
     assert r.verdict == "indeterminate", r
+    assert "`for` loop" in r.student_reason, r.student_reason
+    assert "never reached" not in r.student_reason
+
+
+def test_a_step_that_binds_nothing_without_returning_keeps_the_old_message(grade_step1, monkeypatch):
+    """Where the next step does NOT carry on inside a loop: the old sentence."""
+    import types
+    from main import grading, sessions
+    from test_student_open_never_generates import ROADMAP
+    from test_restart_reroute import ORACLE as FREQ_ORACLE, PROBLEM as FREQ
+    decomp = {"header": ROADMAP["header"],
+              "chunks": [types.SimpleNamespace(**c) for c in ROADMAP["chunks"]]}
+    sid = sessions.create_session(dict(FREQ), decomp, "h-old", student_id="stu")["session_id"]
+    grading._VERDICT_MEMO.clear()
+    r = grading.grade_submission(sessions.load_session(sid), "print(txt)",
+                                 oracle_loader=lambda p: list(FREQ_ORACLE))
+    assert r.verdict == "indeterminate", r
     assert "never reached" in r.student_reason, r.student_reason
-    assert "returns from the function" not in r.student_reason

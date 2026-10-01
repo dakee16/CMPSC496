@@ -711,16 +711,45 @@ def find(problem: dict, header: str, chunks: list, idx: int, upto: str,
 # with the student's names swapped in. Pairing only proposes; exactly as in
 # find(), a pass on EVERY test is what confirms.
 
-def _setup_key(value, ambient: set):
+def _setup_key(value, ambient: set, keyed: dict | None = None,
+               inline: dict | None = None):
     """How a name is first set up, when that says what it holds on its own: an
-    expression reading nothing but `ambient` names (a literal, `Stack()`)."""
-    if {n.id for n in ast.walk(value) if isinstance(n, ast.Name)} - ambient:
+    expression reading nothing but `ambient` names (a literal, `Stack()`) - or
+    names keyed above it. Those are read THROUGH: a name set up as a value is
+    replaced by that value (`statements` by `self.expressions.split(';')`, so a
+    loop over either keys the same), a loop or unpacked name by its key."""
+    keyed, inline = keyed or {}, inline or {}
+    names = {n.id for n in ast.walk(value) if isinstance(n, ast.Name)}
+    if names - ambient - keyed.keys():
         return None
-    return ast.dump(value)
+    if not (names - ambient) & keyed.keys():
+        return ast.dump(value)
+    import copy
+
+    class _Through(ast.NodeTransformer):
+        def visit_Name(self, n):
+            if n.id in ambient or n.id not in keyed:
+                return n
+            if n.id in inline:
+                return self.visit(copy.deepcopy(inline[n.id]))
+            return ast.copy_location(ast.Name(id=f"<{keyed[n.id]}>", ctx=n.ctx), n)
+    return ast.dump(_Through().visit(copy.deepcopy(value)))
 
 
 def _first_setups(body: str, ambient: set) -> dict:
-    """{name: its set-up} for every name whose FIRST binding is `name = value`."""
+    """{name: its set-up} for every name whose FIRST binding says what it holds:
+
+        name = value            the value, see _setup_key
+        a, b = value            a is "part 0 of" the value, b "part 1"
+        for x in it             x is "loop over" it - so `for original in
+                                statements` (statements = self.expressions.
+                                split(';')) pairs with the teacher's `for
+                                statement in self.expressions.split(';')`
+        for i, x in it          by position, as with a, b = value
+
+    Read in source order, so a set-up may read names keyed above it. Measured
+    30 Sep on calculateExpressions: a correct step 1 that started the loop was
+    confirmed ONLY when its loop variable was the teacher's `statement`."""
     try:
         tree = _tree(body)
     except SyntaxError:
@@ -732,13 +761,23 @@ def _first_setups(body: str, ambient: set) -> dict:
                 (n.id not in first or (n.lineno, n.col_offset)
                  < (first[n.id].lineno, first[n.id].col_offset)):
             first[n.id] = n
-    out = {}
-    for name, n in first.items():
-        p = parent.get(n)
+    out, inline = {}, {}
+    for name, n in sorted(first.items(), key=lambda kv: (kv[1].lineno, kv[1].col_offset)):
+        p, pos = parent.get(n), None
+        if isinstance(p, ast.Tuple) and parent.get(p) is not None:
+            pos, p, n = p.elts.index(n), parent[p], p
         if isinstance(p, ast.Assign) and len(p.targets) == 1 and p.targets[0] is n:
-            key = _setup_key(p.value, ambient)
-            if key:
-                out[name] = key
+            key = _setup_key(p.value, ambient, out, inline)
+            how = "value" if pos is None else f"part {pos} of"
+        elif isinstance(p, ast.For) and p.target is n:
+            key = _setup_key(p.iter, ambient, out, inline)
+            how = "loop over" if pos is None else f"loop part {pos} over"
+        else:
+            continue
+        if key:
+            out[name] = key if how == "value" else f"{how} {key}"
+            if how == "value":
+                inline[name] = p.value
     return out
 
 

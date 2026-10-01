@@ -18,7 +18,7 @@ from .identity import content_hash, get_resolved_entry
 from .gates import (assert_serveable, check_necessity, check_prompts,
                     shape_failures)
 from .prompts import DECOMPOSE_SYSTEM, EVAL_SYSTEM, CHUNK_DECOMPOSE_SYSTEM
-from . import splitter
+from . import splitter, step_notes
 
 
 load_dotenv()
@@ -550,15 +550,23 @@ def _add_to_pool(key: str, entries: list, replace: bool = False) -> None:
 def _serialize(result: dict) -> dict:
     return {"header": result["header"],
             "chunks": [{"step_id": c.step_id, "prompt": c.prompt,
-                        "expected_type": c.expected_type, "reference": c.reference or ""}
+                        "expected_type": c.expected_type, "reference": c.reference or "",
+                        **_notes_of(c)}
                        for c in result["chunks"]]}
+
+
+def _notes_of(c) -> dict:
+    """A step's notes (main/step_notes.py), only when it has them - so a saved
+    roadmap without notes is byte-for-byte what it was before notes existed."""
+    get = c.get if isinstance(c, dict) else (lambda k: getattr(c, k, None))
+    return {k: get(k) for k in ("starts_with", "leaves") if get(k)}
 
 
 def _deserialize(entry: dict) -> dict:
     return {"header": entry["header"],
             "chunks": [StepItem(question_id="pool", step_id=c["step_id"],
                                 prompt=c["prompt"], expected_type=c.get("expected_type", "code"),
-                                reference=c.get("reference", ""))
+                                reference=c.get("reference", ""), **_notes_of(c))
                        for c in entry["chunks"]]}
 
 
@@ -708,6 +716,8 @@ def fill_pool(problem: dict, replace: bool = False) -> int:
     new = []
 
     def keep(decomposition):
+        # Two plain lines under every step (main/step_notes.py, ~1c a roadmap).
+        decomposition = step_notes.write_notes(problem, decomposition)
         new.append(_serialize(decomposition))
         if not replace:
             # Saved as soon as it is paid for: a run stopped part way (a crash,
@@ -727,6 +737,13 @@ def fill_pool(problem: dict, replace: bool = False) -> int:
         # model roadmap for calculateExpressions and get-postfix had a 35-48
         # line step - one step that is most of the problem is not a step. It
         # counts as a failed build, which stops the model here.
+        # ...NOR ONE CUT INSIDE A LOOP A STUDENT'S OWN CODE COULD NOT CONTINUE
+        # (splitter.unsafe_cut - get-postfix, 30 Sep: 2 of 2 students stuck).
+        if splitter.unsafe_cut(problem, built):
+            print(f"  ⚠️  Roadmap for {slug} carries a step on inside a block a "
+                  f"student's own code could not continue; cutting the teacher's "
+                  f"code instead")
+            break
         if splitter.too_big(built):
             print(f"  ⚠️  Roadmap for {slug} has a {splitter.biggest_step(built)}"
                   f"-line step (limit {splitter.MAX_STEP_LINES}); cutting the "

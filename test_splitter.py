@@ -233,3 +233,77 @@ def test_rejected_wording_is_retried_with_the_gates_reasons(env, monkeypatch):
     out = env.splitter.write_prompts(dict(PROBLEM), d)
     assert len(asked) == 3 and "REJECTED" in asked[1] and "initiali" in asked[1]
     assert out["chunks"][0].prompt.startswith("Write code that gets everything ready")
+
+
+# ── WHERE A STEP MAY CARRY ON INSIDE A BLOCK (30 Sep) ─────────────────────
+# get-postfix was cut inside its `while i < len(txt)` tokenizer; the next step
+# carried on with the teacher's own index and look-ahead, so a student's
+# `for ch in txt` could never be continued: 2 of 2 students stuck. Only the
+# body of a plain `for` loop is cut now, and only where every name the next
+# step reads from earlier steps can be paired with a student's own.
+def test_a_cut_inside_a_while_loop_or_mid_clause_is_unsafe(env):
+    from test_bridge_renaming import WHILE
+    from test_reword_pools import LOOPED
+    from test_restart_reroute import PROBLEM as FREQ
+    assert env.splitter.unsafe_cut(dict(FREQ), WHILE) is True
+    assert env.splitter.unsafe_cut(dict(FREQ), LOOPED) is False
+    mid_clause = {"header": "def score(words):", "chunks": [
+        {"reference": "\n".join(ln[4:] for ln in SOLUTION.splitlines()[1:13])},
+        {"reference": "\n".join(ln[4:] for ln in SOLUTION.splitlines()[13:17])},
+        {"reference": "\n".join(ln[4:] for ln in SOLUTION.splitlines()[17:])}]}
+    assert mid_clause["chunks"][1]["reference"].lstrip().startswith("elif")
+    assert env.splitter.unsafe_cut(dict(PROBLEM), mid_clause) is True
+
+
+def test_the_splitter_never_cuts_inside_a_while_loop(env, monkeypatch):
+    from main.indent import base_indent
+    sol = ("def total(nums):\n    i = 0\n    t = 0\n    while i < len(nums):\n"
+           "        n = nums[i]\n        if n < 0:\n            i += 1\n            continue\n"
+           "        t += n\n        i += 1\n    return t\n")
+    prob = {"slug": "total-w", "title": "Total", "solution": sol,
+            "description": "Add up the numbers that are not negative."}
+    ns = {}
+    exec(sol, ns)
+    oracle = [{"input": [x], "expected": ns["total"](x)} for x in ([1, 2], [-1, 3], [], [5, -5, 5])]
+    from main import splitter
+    monkeypatch.setattr(splitter, "assert_serveable", lambda p, d: None)
+    monkeypatch.setattr(splitter, "MAX_STEP_LINES", 3)
+    plans = splitter.plan(prob)
+    assert plans, "a split must still be found - with the loop kept whole"
+    assert not any(base_indent(c.reference) for d in plans for c in d["chunks"])
+    del oracle
+
+
+def test_an_upload_whose_model_roadmap_cuts_mid_clause_is_split_instead(env, monkeypatch):
+    from main import publish
+    monkeypatch.setattr(env.splitter, "MAX_STEP_LINES", 50)
+    body = [ln[4:] for ln in SOLUTION.splitlines()[1:]]
+    env.builder({"header": "def score(words):", "chunks": [
+        {"step_id": "Part 1", "prompt": "a", "expected_type": "code", "reference": "\n".join(body[:12])},
+        {"step_id": "Part 2", "prompt": "b", "expected_type": "code", "reference": "\n".join(body[12:16])},
+        {"step_id": "Part 3", "prompt": "c", "expected_type": "code", "reference": "\n".join(body[16:])}]})
+    called = []
+    real = env.splitter.build
+    monkeypatch.setattr(env.splitter, "build", lambda *a, **k: called.append(1) or real(*a, **k))
+    assert publish.prepare_problem(dict(PROBLEM))["ready"] is True
+    assert called and env.log.built == 1, "the model's unsafe roadmap stops the model builds"
+    assert not any(env.splitter.unsafe_cut(PROBLEM, e) for e in env.saved())
+
+
+def test_a_for_loop_cut_the_next_step_cannot_pair_names_across_is_unsafe(env):
+    """Inside a plain `for`, but the next step reads `tail`, which comes from a
+    starred unpack - nothing a student's own name could be paired with."""
+    prob = {"slug": "heads", "title": "Heads", "description": "d",
+            "solution": "def heads(words):\n    out = []\n    for w in words:\n"
+                        "        head, *tail = w\n        out.append(head + str(len(tail)))\n"
+                        "    return out\n"}
+    cut = {"header": "def heads(words):", "chunks": [
+        {"reference": "out = []\nfor w in words:\n    head, *tail = w"},
+        {"reference": "    out.append(head + str(len(tail)))"},
+        {"reference": "return out"}]}
+    paired = {"header": "def heads(words):", "chunks": [
+        {"reference": "out = []\nfor w in words:\n    head = w[0]"},
+        {"reference": "    out.append(head)"},
+        {"reference": "return out"}]}
+    assert env.splitter.unsafe_cut(prob, cut) is True
+    assert env.splitter.unsafe_cut(prob, paired) is False

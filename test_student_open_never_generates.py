@@ -127,7 +127,11 @@ def test_filling_the_pool_pays_for_a_roadmap_but_never_for_a_test_set(world):
 
     assert fill_pool(dict(PROBLEM)) == 5
     assert world.generation() == [], world.generation()
-    assert set(world.calls) == {"main.run_phase1.decompose_into_chunks"}, world.calls
+    # The build, and since 30 Sep its two-line step notes (main/step_notes.py)
+    # - neither of them a test-set generation.
+    assert set(world.calls) <= {"main.run_phase1.decompose_into_chunks",
+                                "main.step_notes._ask"}, world.calls
+    assert "main.run_phase1.decompose_into_chunks" in world.calls
     assert len(json.loads(world.pool.read_text())[content_hash(PROBLEM)]) == 5, \
         "the new roadmap was built and saved"
     assert world.cache.read_text() == before

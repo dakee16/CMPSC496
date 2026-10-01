@@ -37,6 +37,11 @@ def world(tmp_path, monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test-never-sent")
     monkeypatch.setattr(identity, "_RESOLVED_PATH", str(tmp_path / "r.json"))
     monkeypatch.setattr(run_phase1, "_CHUNK_POOL_PATH", str(pool))
+    # Every kept roadmap also gets step notes - one call of its own, counted
+    # and capped in test_step_notes.py / test_fix_pools.py. Off here, so the
+    # counts below stay about the builds this tool exists to pay for.
+    from main import step_notes
+    monkeypatch.setattr(step_notes, "write_notes", lambda problem, d, **_k: d)
 
     certified = {"strong": True, "status": "strong", "kill_rate": 1.0,
                  "kill_rate_direct": 1.0, "features": ["calls"], "final_tests": ORACLE}

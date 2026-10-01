@@ -21,8 +21,15 @@ else. Only the wording of each step's question is written by a model
 prompt gate (gates.check_prompts), exactly as the builder's own prompts are.
 
 HOW A SPLIT IS CHOSEN.
-  * Cuts go only where a statement starts, at any depth, never before
-    `elif`/`else`/`except`/`finally` (a step cannot begin mid-clause).
+  * Cuts go only where a statement starts, never before `elif`/`else`/
+    `except`/`finally` (a step cannot begin mid-clause) - and INSIDE A BLOCK
+    only directly in the body of a plain `for` loop, where everything the next
+    step reads from the earlier ones can be paired with a student's own names
+    (bridge._first_setups). Measured 30 Sep: get-postfix was cut inside its
+    `while i < len(txt)` tokenizer, whose next step carries on with the
+    teacher's own index and look-ahead - a student's `for ch in txt` could
+    never be continued, and 2 of 2 students got stuck; calculateExpressions'
+    `for statement in ...` loop is the one any student writes.
   * Every step must be seatable (its first line is its shallowest - see
     indent.is_seatable) and every prefix must be a program (shape gate).
   * The FEWEST steps whose every step fits in MAX_STEP_LINES win, topped up
@@ -83,11 +90,61 @@ def _cut_points(lines: list[str]) -> list[int]:
         tree = ast.parse(src)
     except SyntaxError:
         return []
+    parent = {c: p for p in ast.walk(tree) for c in ast.iter_child_nodes(p)}
+
+    def only_for_loops_around(n):
+        p = parent.get(n)
+        while p is not None and not isinstance(p, ast.FunctionDef):
+            if not (isinstance(p, (ast.For, ast.AsyncFor)) and n in p.body):
+                return False
+            n, p = p, parent.get(p)
+        return True
     starts = {n.lineno - 2 for n in ast.walk(tree)
-              if isinstance(n, ast.stmt) and n.lineno >= 2}
+              if isinstance(n, ast.stmt) and n.lineno >= 2 and only_for_loops_around(n)}
     return sorted(i for i in starts
                   if 0 < i < len(lines)
                   and not lines[i].strip().startswith(_CLAUSE_WORDS))
+
+
+def unsafe_cut(problem: dict, decomposition: dict) -> bool:
+    """Does this roadmap - from the model, or saved before 30 Sep - carry a
+    step on inside a block where the splitter would never cut? (Inside a
+    `while`, an `if`, mid-clause, or reading names a student's own could not
+    be paired with.) fill_pool treats such a roadmap as a failed build."""
+    refs = [(getattr(c, "reference", None) if not isinstance(c, dict) else c.get("reference"))
+            or "" for c in decomposition["chunks"]]
+    lines, starts = [], []
+    for r in refs:
+        starts.append(len(lines))
+        lines += r.split("\n")
+    if not any(base_indent(r) for r in refs[1:]):
+        return False
+    cuts = set(_cut_points(lines))
+    if any(base_indent(r) and i not in cuts for i, r in zip(starts[1:], refs[1:])):
+        return True
+    return not continuable(problem, decomposition.get("header") or header_for(problem), refs)
+
+
+def continuable(problem: dict, header: str, refs: list[str]) -> bool:
+    """Can every step that carries on INSIDE a loop be continued from a
+    student's own earlier steps? True when each name it reads from the steps
+    before it is set up in a way the bridge can pair with theirs - so a correct
+    student step confirms by renaming, with no model."""
+    from . import bridge
+    from .grading import _SAFE_BUILTINS, _header_params, _module_names
+    ambient = (set(get_resolved_entry(problem)["params"]) | _header_params(header)
+               | _module_names(problem, header) | _SAFE_BUILTINS)
+    for j in range(1, len(refs)):
+        if not base_indent(refs[j]):
+            continue
+        prefix = "\n".join(refs[:j])
+        names = bridge._tail_names(prefix, refs[j])
+        if names is None:
+            return False
+        need = (names[0] & bridge.stores(prefix)) - ambient
+        if not need <= bridge._first_setups(prefix, ambient).keys():
+            return False
+    return True
 
 
 def _candidates(lines: list[str], k: int, limit: int) -> list[list[int]]:
@@ -153,8 +210,14 @@ def plan(problem: dict, want: int = 5) -> list[dict]:
 
     def passing(k, limit):
         found = []
-        for starts in _candidates(lines, k, limit)[:_GATE_BUDGET]:
+        tried = 0
+        for starts in _candidates(lines, k, limit):
             decomp = {"header": header, "chunks": _chunks(lines, starts)}
+            if not continuable(problem, header, [c.reference for c in decomp["chunks"]]):
+                continue                    # free: no gate run, no budget spent
+            tried += 1
+            if tried > _GATE_BUDGET:
+                break
             try:
                 assert_serveable(problem, decomp)
             except Exception:

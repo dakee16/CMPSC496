@@ -55,7 +55,8 @@ import textwrap
 from . import bridge
 from .execution import classify_run
 from .identity import get_resolved_entry
-from .indent import align_to, align_to_chunk, base_indent, unpad_first_line
+from .indent import (_statement_starts, align_to, align_to_chunk, base_indent,
+                     unpad_first_line)
 from .ollama_client import GRADING_MODEL, chat
 from . import trace
 from .schemas import GradeResult
@@ -1001,14 +1002,38 @@ def align_submission(session: dict, student_code: str) -> str:
     for depth in sorted(range(0, want + 12, 4), key=lambda d: (abs(d - want), d)):
         if want and depth != want and _seat_fits(session, align_to(student_code, depth)):
             return align_to(student_code, depth)
-    # LAST, and only when nothing above parses: a block pasted into the
-    # editor's own starting indent (indent.unpad_first_line).
-    unpadded = unpad_first_line(student_code)
-    if unpadded != student_code:
-        again = align_submission(session, unpadded)
-        if again and _seat_fits(session, again):
-            return again
     return seated
+
+
+def _first_line_misaligned(typed: str, chunk: dict, header: str) -> tuple | None:
+    """(message, reason code) for an answer whose FIRST line alone sits deeper than the
+    lines under it (indent.unpad_first_line), or None.
+
+    What a paste into the code box produces: the box opens with the caret a
+    few spaces in, and only the first pasted line gets them (29-30 Sep, live:
+    "indentation doesn't line up on line 2", and once worse - the extra spaces
+    made the line legal INSIDE the previous step's loop, so it ran there and
+    was marked a wrong answer). Told, never fixed for them (Sanan, 30 Sep).
+    Not said when the step's own code starts deeper and then comes back out -
+    there a correct answer has this shape too."""
+    reference = (chunk or {}).get("reference") or ""
+    lines = typed.split("\n")
+    starts = _statement_starts(lines)
+    if not starts:
+        return None
+    n = starts[0]
+    # A pasted `def` line is the likelier slip, and has its own sentence -
+    # whatever its indentation did to the lines under it.
+    if lines[n].lstrip().startswith("def "):
+        redefined = _redefines_enclosing(
+            "\n".join(lines[:n] + [lines[n].lstrip()] + lines[n + 1:]), header)
+        if redefined is not None:
+            return redefined, "redefined_function"
+    if unpad_first_line(typed) == typed or unpad_first_line(reference) != reference:
+        return None
+    return (f"Indentation error on line {n + 1} of your answer - "
+            f"`{lines[n].strip()[:60]}` doesn't line up with the lines after it. "
+            f"Line it up with the rest of your code.", "indentation_error")
 
 
 def _seat_fits(session: dict, code: str) -> bool:
@@ -1670,6 +1695,12 @@ def _tail_is_sane(tail: str, current_outputs: set, solution: str,
 
 
 
+_RETURNED_EARLY = (
+    "Your code for this step returns from the function, so the steps after it "
+    "never run. This isn't the last step - work out the result and keep it for "
+    "the next step instead of returning it. Your attempt was not used.")
+
+
 def _returns_early(code: str) -> bool:
     """Does this step's own code `return` - outside any def or lambda of its
     own? A step that is not the last and returns has ended the function."""
@@ -1690,7 +1721,7 @@ def _returns_early(code: str) -> bool:
 
 
 def _with_diagnosis(result, problem, chunk, header, chunks, idx, upto,
-                    student_code, tests, entry, ambient):
+                    student_code, tests, entry, ambient, failing=None):
     """`result` plus a question built on a real input, when one can be found.
 
     Defensive end to end: diagnosis is help, and help must never be able to
@@ -1700,7 +1731,7 @@ def _with_diagnosis(result, problem, chunk, header, chunks, idx, upto,
     try:
         from . import diagnose
         example = diagnose.counterexample(problem, header, chunks, idx, upto,
-                                          tests, entry, ambient)
+                                          tests, entry, ambient, failing=failing)
         if example is None:
             # NOTHING TO TRACE BECAUSE NOTHING RAN. counterexample() gives up
             # here, and what the student was then left with was the bare "we
@@ -1717,11 +1748,7 @@ def _with_diagnosis(result, problem, chunk, header, chunks, idx, upto,
                 # a different mistake. Every step but the last is asked to keep
                 # its result for the next step; say that.
                 if _returns_early(student_code):
-                    return result.model_copy(update={"student_reason":
-                        "Your code for this step returns from the function, so "
-                        "the steps after it never run. This isn't the last "
-                        "step - work out the result and keep it for the next "
-                        "step instead of returning it. Your attempt was not used."})
+                    return result.model_copy(update={"student_reason": _RETURNED_EARLY})
                 return result.model_copy(update={"student_reason":
                     "We ran your code for this step and it left no values "
                     "behind for the next step to use. Check that the lines you "
@@ -1775,11 +1802,15 @@ def grade_submission(session: dict, student_code: str,
     # Re-seat the answer at this chunk's depth BEFORE anything reads it. A step
     # that continues inside a loop is stitched four columns in, and the student
     # was never told that, so a flat answer is not a wrong answer.
+    typed = student_code
     student_code = align_submission(session, student_code)
 
     # ── TIER 1 - static policy + compile. No LLM here, ever. ──
     if not student_code:
         return _ok("incorrect", "syntax", "No answer submitted.", "blank_answer")
+    misaligned = _first_line_misaligned(typed, chunk, header)
+    if misaligned:
+        return _ok("incorrect", "syntax", *misaligned)
     # ── COMMENTS ARE NOT CODE. BEFORE THE PARSE, and that ordering is the whole
     #    point: an answer of pure comments makes the assembled function body
     #    EMPTY, which is an IndentationError, so the syntax gate below got there
@@ -1989,9 +2020,26 @@ def grade_submission(session: dict, student_code: str,
                    "bridged_pass", execution_outcome="pass",
                    divergent=True, covers_chunks=covers)
 
+    # ── NO TIER MAY ACCEPT A STEP THE NEXT STEP CANNOT CONTINUE FROM ────────
+    #    The next step carries on INSIDE a loop (or block) this step is meant to
+    #    start, and joined to their step it cannot even be read. Tier 1 and the
+    #    bridges cannot accept that - the program does not parse - but tier 4
+    #    could, by writing the missing loop itself: measured 30 Sep, Sean's
+    #    calculateExpressions step 1 (set-up only) was accepted three times, and
+    #    then no step 2 could ever join it - 14 "could not confirm" in a row.
+    #    So the model tiers are not asked, and the student is told what is
+    #    missing. Same verdict as when they find nothing: no attempt used.
+    opener = _unopened_block(chunks, idx, chunk, res)
+    if opener is not None:
+        _trace(trace.record_route, corr, "unconfirmed", "indeterminate",
+               unopened_block=opener)
+        return _ok("indeterminate", "unconfirmed",
+                   _RETURNED_EARLY if _returns_early(student_code)
+                   else _block_not_started(opener),
+                   "block_not_started", consume_attempt=False)
+
     result = _model_tiers(problem, session, chunk, header, prefix, student_code,
                           upto, ref_tail, tests, entry, corr)
-    generic = result.student_reason
     # ── COULD NOT CONFIRM -> ASK, rather than leave them on a step nobody
     #    named a problem with. An indeterminate verdict does not advance the
     #    session, so every tier being acquit-only would otherwise strand a
@@ -2003,31 +2051,72 @@ def grade_submission(session: dict, student_code: str,
     #    counterexample drawn from that would be inventing a problem in the
     #    student's code to explain one in ours.
     if result.verdict == "indeterminate" and result.tier != "system":
+        # The tests their step got wrong when run with the rest of the solution
+        # (tier 1) - where the example should come from, if one can.
+        wrong = ({f["index"] for f in res.failures or [] if isinstance(f.get("index"), int)}
+                 if res.outcome == "wrong_output" else set())
         result = _with_diagnosis(result, problem, chunk, header, chunks, idx,
                                  upto, student_code, tests, entry,
                                  set(resolved["params"]) | _header_params(header)
-                                 | _module_names(problem, header) | _SAFE_BUILTINS)
-    # ── A LOOP THEY WERE MEANT TO START. Reported 30 Sep: step 1 said "prepare
-    #    everything needed", a student wrote the set-up alone, and was told to
-    #    check their code against the step - which it matched. The next step
-    #    carries on INSIDE a loop this step starts, so joined to theirs it
-    #    cannot even be read. Said only when the shape proves it, and only in
-    #    place of the generic sentence - a more specific one (returned early,
-    #    never reached) keeps priority. Verdict and attempt stay as they were. ──
-    if result.tier == "unconfirmed" and result.student_reason == generic \
-            and idx + 1 < len(chunks) \
-            and base_indent(chunks[idx + 1].get("reference") or "") \
-            > base_indent(chunk.get("reference") or "") \
-            and "unexpected indent" in (res.internal_error or ""):
-        result = result.model_copy(update={"student_reason": _LOOP_NOT_STARTED})
+                                 | _module_names(problem, header) | _SAFE_BUILTINS,
+                                 failing=wrong)
+        # No question could be built on one of them (too long to trace by hand,
+        # or nothing of theirs to show) - so show the case itself, as tier 3's
+        # evidence does, rather than the bare "could not confirm" (Ashwin, 1 Oct:
+        # five of those in a row on a tokenizer that broke on negative numbers).
+        if wrong and result.tier == "unconfirmed" and not result.needs_diagnosis \
+                and not result.failing_cases and result.reason_code == "unconfirmed":
+            shown = failing_cases(problem, tests, res.failures)
+            if shown:
+                result = result.model_copy(update={
+                    "student_reason": _EVIDENCE_ONLY + " - but the case below is worth "
+                                      "tracing by hand.",
+                    "failing_cases": shown,
+                    "failed_total": _failed_total(res, len(shown))})
     return result
 
 
-_LOOP_NOT_STARTED = (
-    "We could not confirm this step, so your attempt was not used. The next step "
-    "carries on inside a repetition (a loop) that this step is meant to start, "
-    "and your code does not start one yet. Have this step also start going "
-    "through the items - the next step continues from inside it.")
+_EVIDENCE_ONLY = ("We ran your step together with the rest of the solution and the "
+                  "finished answer came out wrong on at least one case. We can't be "
+                  "certain the fault is in this step, so your attempt was not used")
+
+
+def _unopened_block(chunks, idx, chunk, res) -> str | None:
+    """The keyword of the block this step must leave open for the next one
+    ("for", "while", "if" ...; "" when it cannot be read off the teacher's
+    step), or None when that is not what went wrong. Proven by shape, not
+    guessed: the next step sits deeper than this one, and joined to the
+    student's step it could not even be read ("unexpected indent")."""
+    if idx + 1 >= len(chunks) or "unexpected indent" not in (res.internal_error or ""):
+        return None
+    here = chunk.get("reference") or ""
+    if base_indent(chunks[idx + 1].get("reference") or "") <= base_indent(here):
+        return None
+    depth = base_indent(here)
+    openers = [ln.strip() for ln in here.splitlines()
+               if ln.strip() and len(ln) - len(ln.lstrip()) == depth
+               and ln.split("#")[0].rstrip().endswith(":")]
+    return openers[-1].split()[0].rstrip(":") if openers else ""
+
+
+def _block_not_started(keyword: str) -> str:
+    """What is missing, named by its keyword. Never the teacher's line."""
+    if keyword in ("for", "while"):
+        return (f"This step needs to end inside a `{keyword}` loop: the next "
+                f"step's code runs inside that loop, once for each item, so the "
+                f"loop has to start here. Your code doesn't end inside one yet. "
+                f"Keep what you wrote, start the loop in this step using your own "
+                f"names, and do this step's part of the work inside it. Your "
+                f"attempt was not used.")
+    if keyword:
+        return (f"This step needs to end inside {'an' if keyword[0] in 'aeiou' else 'a'} "
+                f"`{keyword}` block: the next step's code carries on inside it, so "
+                f"the block has to start here. Your code doesn't end inside one "
+                f"yet. Keep what you wrote and open the block in this step. Your "
+                f"attempt was not used.")
+    return ("This step needs to end inside a loop or block that the next step "
+            "carries on inside, and your code doesn't end inside one yet. Keep "
+            "what you wrote and start it in this step. Your attempt was not used.")
 
 
 def _model_tiers(problem, session, chunk, header, prefix, student_code, upto,

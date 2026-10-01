@@ -85,11 +85,26 @@ _ORDINARY = frozenset({
 
 
 def _identifiers(src: str) -> set:
-    """Every name the reference code uses - variables and attributes alike."""
-    try:
-        tree = ast.parse(src)
-    except SyntaxError:
-        return set()
+    """Every name the reference code uses - variables and attributes alike.
+
+    A step that carries on inside a loop cannot be parsed on its own, and this
+    used to return nothing for it - so the name check below never ran on
+    exactly the steps inside a loop (found 30 Sep). Such a step is read as the
+    body of the loops it sits in."""
+    import textwrap
+    tree = None
+    for attempt in (src, textwrap.dedent(src or ""),
+                    "if 1:\n" + textwrap.indent(textwrap.dedent(src or ""), "    ")):
+        try:
+            tree = ast.parse(attempt)
+            break
+        except SyntaxError:
+            continue
+    if tree is None:
+        import keyword
+        return {w for w in re.findall(r"[A-Za-z_]\w*",
+                                      re.sub(r"#.*|'[^']*'|\"[^\"]*\"", "", src or ""))
+                if not keyword.iskeyword(w)}
     out = set()
     for n in ast.walk(tree):
         if isinstance(n, ast.Name):
@@ -220,6 +235,45 @@ def check_prompts(chunks: list, problem: dict) -> dict:
                         "\nRewrite the prompts only - say what each chunk must "
                         "ACHIEVE, in the problem's own words. Leave the "
                         "reference code exactly as it is.")}
+
+
+_NOTE_WORDS = 25
+
+
+def check_notes(chunks: list, problem: dict, header: str = "") -> dict:
+    """The gate for main/step_notes.py: {"status": "pass"|"fail", "summary"}.
+    The two notes under a step say WHAT it starts with and leaves behind - the
+    same rules as the prompt: no method, and no name only the solution uses
+    (the method's own parameters are on screen, so those are fine)."""
+    said = set(re.findall(r"[a-z_]\w*",
+                          ((problem.get("description") or "") + " " +
+                           (problem.get("group_description") or "") + " " +
+                           (header or "")).lower()))
+    names = set()
+    for c in chunks:
+        names |= _identifiers(getattr(c, "reference", "") or "")
+    secret = {n for n in names if len(n) > 2 and n.lower() not in said
+              and n.lower() not in _ORDINARY}
+    bad = []
+    for c in chunks:
+        step = getattr(c, "step_id", "?")
+        for field in ("starts_with", "leaves"):
+            text = (getattr(c, field, "") or "").strip()
+            if not text:
+                bad.append(f"{step}: {field} is empty")
+                continue
+            if len(text.split()) > _NOTE_WORDS:
+                bad.append(f"{step}: {field} is over {_NOTE_WORDS} words")
+            hit = _METHOD_WORDS.search(text)
+            if hit:
+                bad.append(f'{step}: {field} says "{hit.group(0)}" - that is HOW, not what')
+            leaked = sorted(n for n in secret if re.search(rf"\b{re.escape(n)}\b", text))
+            if leaked:
+                bad.append(f"{step}: {field} names {', '.join(leaked)} - a name only "
+                           f"the solution uses")
+    if not bad:
+        return {"status": "pass", "summary": "notes say what, not how"}
+    return {"status": "fail", "summary": "These notes break the rules:\n  " + "\n  ".join(bad)}
 
 
 def _is_noop_reference(ref: str) -> bool:
