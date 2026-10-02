@@ -51,7 +51,9 @@ def _sb():
             raise RuntimeError(
                 f"{' and '.join(missing)} not set. Supabase is required to load "
                 f"problems; set it in .env locally or in the host's environment.")
-        _SB = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_KEY"])
+        from .db_retry import retry_reads
+        _SB = retry_reads(create_client(os.environ["SUPABASE_URL"],
+                                        os.environ["SUPABASE_KEY"]))
     return _SB
 
 

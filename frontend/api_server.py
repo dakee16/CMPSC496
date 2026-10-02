@@ -60,7 +60,9 @@ _SB = None
 def get_supabase():
     global _SB
     if _SB is None:
-        _SB = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_KEY"])
+        from main.db_retry import retry_reads
+        _SB = retry_reads(create_client(os.environ["SUPABASE_URL"],
+                                        os.environ["SUPABASE_KEY"]))
     return _SB
 
 
