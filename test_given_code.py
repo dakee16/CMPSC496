@@ -130,9 +130,10 @@ def test_the_teachers_own_steps_are_accepted_on_every_roadmap(env, shape):
     from main import splitter
     p = _problem(SHAPES[shape])
     tests = _certified(p)
-    # 7 inputs; the 2 whose answer is None are dropped by make_oracle_tests,
-    # as for every problem. The other 5 ran - they were 0 before.
-    assert len(tests) == 5, "the teacher's own code runs"
+    # Every one of the 7 inputs ran - none did before - the 2 negative ones
+    # with None as their answer (kept since 7 Oct, see test_upload_shapes).
+    assert len(tests) == 7, "the teacher's own code runs"
+    assert sum(t["expected"] is None for t in tests) == 2
     roadmaps = splitter.plan(p)
     assert roadmaps, "the exercise's own body is what gets split"
     for rm in roadmaps:

@@ -203,3 +203,43 @@ def test_the_class_example_on_the_upload_page_is_a_working_assignment(model):
                                    entry_name=context.SEQ_ENTRY)
         assert run["results"] == [[None, 150, "Insufficient funds", 120]]
     assert "TEMPLATE" not in src and served["content"].startswith('"""Week 1')
+
+
+# ── None is an answer ────────────────────────────────────────────────────
+
+SAFE_DIVIDE = '''"""D"""
+def safe_divide(a, b):
+    """Return a divided by b, or None if b is 0."""
+    if b == 0:
+        return None
+    return a / b
+'''
+PRINTS = '''"""P"""
+def show_double(n):
+    """Print twice n."""
+    if n < 0:
+        print(0)
+    else:
+        print(n * 2)
+'''
+
+
+def test_return_none_on_bad_input_is_tested(model):
+    """7 Oct: every None answer was dropped, so (5, 0) never became a test and
+    a student with no zero check passed 4/4."""
+    from main.execution import classify_run
+    model["inputs"] = "[[6, 3], [10, 4], [5, 0], [0, 7], [-8, 2], [1, 0]]"
+    tests = sandbox.make_oracle_tests(_problem(SAFE_DIVIDE)[0])
+    assert {"input": [5, 0], "expected": None} in tests and len(tests) == 6
+    forgot = classify_run("def safe_divide(a, b):\n    return a / b\n", tests,
+                          entry_name="safe_divide")
+    assert forgot.passed < forgot.total, "no zero check is caught now"
+    right = classify_run(_problem(SAFE_DIVIDE)[0]["solution"], tests, entry_name="safe_divide")
+    assert right.passed == right.total
+
+
+def test_a_solution_that_returns_nothing_fails_at_upload_and_says_why(model):
+    from main import publish
+    r = publish.prepare_problem(_problem(PRINTS)[0])
+    assert (r["ready"], r["stage"]) == (False, "tests"), r
+    assert "prints its answer instead of returning it" in r["error"]

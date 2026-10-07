@@ -557,8 +557,6 @@ def _count_valid_pairs(nums: list, target: int) -> int:
 
 def _is_ambiguous_output(inp: list, out) -> bool:
     """Detect inputs where multiple valid outputs exist for common problem patterns."""
-    if out is None:
-        return True
     # Two Sum pattern: array + target, output is index pair
     if (len(inp) == 2 and isinstance(inp[0], list) and isinstance(inp[1], int)
             and isinstance(out, list) and len(out) == 2):
@@ -655,8 +653,6 @@ def make_oracle_tests(problem: dict, n: int = 12) -> list[dict]:
             print(f"  [oracle] {problem.get('slug','?')}: dropped an input whose "
                   f"answer changes from run to run")
             continue
-        if out is None:
-            continue
         if _is_ambiguous_output(inp, out):
             continue
         if _useless_block(inp, out, is_method(problem)):
@@ -665,6 +661,16 @@ def make_oracle_tests(problem: dict, n: int = 12) -> list[dict]:
             continue
         tests.append({"input": inp, "expected": out})
 
+    # A None ANSWER IS AN ANSWER (7 Oct). Every one used to be dropped, so
+    # `return None` on bad input was never tested: `safe_divide` kept
+    # (6, 3) and lost (5, 0), and a student with no zero check passed 4/4.
+    # Only when EVERY answer is None is it not a suite - the solution returns
+    # nothing (it prints, or changes its argument in place), and preparation
+    # stops at "tests" with the message that names that.
+    if tests and all(t["expected"] is None for t in tests):
+        print(f"  [oracle] {problem.get('slug','?')}: every answer is None - "
+              f"the solution returns nothing")
+        return []
     return tests
 
 
