@@ -32,8 +32,10 @@ $("example").innerHTML = hlPython(EXAMPLE);
 fetch(`${API}/assignment_template`).then(r => r.json()).then(d => {
   TEMPLATE = d.content;
   $("tmpl").innerHTML = hlPython(d.content);
+  $("exampleClass").innerHTML = hlPython(d.class_example || "");
 }).catch(() => {
   $("tmpl").innerHTML = `<span class="t-com"># could not reach the server</span>`;
+  $("exampleClass").innerHTML = `<span class="t-com"># could not reach the server</span>`;
   disable($("dl"), "The template could not be downloaded from the server.");
 });
 

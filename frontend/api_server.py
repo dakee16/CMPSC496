@@ -1675,8 +1675,9 @@ class ProblemRetryRequest(BaseModel, extra="forbid"):
 @app.get("/assignment_template")
 def assignment_template():
     """A starter file a teacher can download, edit and re-upload."""
-    from main.assignments import TEMPLATE
-    return {"filename": "assignment.py", "content": TEMPLATE}
+    from main.assignments import CLASS_EXAMPLE, TEMPLATE
+    return {"filename": "assignment.py", "content": TEMPLATE,
+            "class_example": CLASS_EXAMPLE}
 
 
 @app.post("/teacher/assignments")

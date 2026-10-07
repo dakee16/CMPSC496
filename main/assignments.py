@@ -221,6 +221,18 @@ def _problem_from_block(slug: str | None, src: str, index: int) -> dict:
         raise ValueError("no function found - each problem needs one")
 
     entry = funcs[-1]                    # helpers first, entry point last
+    # A STANDALONE FUNCTION THAT TAKES `self` IS A METHOD IN DISGUISE (6 Oct,
+    # HW4): every problem was uploaded as `def cache_list_put(self, ...)` with
+    # the classes calling it, and each one failed preparation much later with
+    # "no usable test cases" - its tests are plain values, and `self` is an
+    # object. Said here, at upload, with what to do instead.
+    if entry.args.args and entry.args.args[0].arg == "self":
+        raise ValueError(
+            f"'{entry.name}' takes `self`, so it is a method: write it inside its "
+            f"class and name it on a '# --- steps: ... ---' line in that class "
+            f"(see the HW3 file), instead of as a standalone problem. A "
+            f"standalone problem is tested with plain values, and `self` is an "
+            f"object.")
     doc = ast.get_docstring(entry)
     if not doc or not doc.strip():
         raise ValueError(
@@ -415,6 +427,55 @@ def second_largest(nums):
     return second
 '''
 
+
+# The CLASS format, shown beside TEMPLATE on the upload page (6 Oct). Nothing
+# on the page described it, and HW4 arrived as `def cache_list_put(self, ...)`
+# functions the classes called - 0/10 ready. Its own file, not a part of
+# TEMPLATE: a file with `# --- problem:` lines cannot also hold a class.
+# Like TEMPLATE it must survive preparation: each method has enough ways to
+# break it (5 and 8 mutants) and the examples call both, with a constructor
+# that takes an argument - the shape HW4 needed. test_upload_shapes checks it.
+CLASS_EXAMPLE = '''"""Week 4 - Bank account"""
+
+# Write each method inside its class. Students write the methods named on the
+# class's `# --- steps: ... ---` line, one problem each; every other method
+# (here __init__) is given to them exactly as written. The class docstring and
+# its >>> examples are what students read first.
+
+
+class BankAccount:
+    """A bank account whose balance never goes below zero.
+
+        >>> acct = BankAccount(100)
+        >>> acct.deposit(50)
+        150
+        >>> acct.withdraw(500)
+        'Insufficient funds'
+        >>> acct.withdraw(30)
+        120
+    """
+    # --- steps: deposit, withdraw ---
+    def __init__(self, balance):
+        self.balance = balance
+
+    def deposit(self, amount):
+        """Add amount to the balance if it is positive, and return the new
+        balance."""
+        if amount > 0:
+            self.balance += amount
+        return self.balance
+
+    def withdraw(self, amount):
+        """Take amount out of the balance and return the new balance. If the
+        balance does not cover it, return 'Insufficient funds' and change
+        nothing; an amount of 0 or less changes nothing either."""
+        if amount <= 0:
+            return self.balance
+        if amount > self.balance:
+            return 'Insufficient funds'
+        self.balance -= amount
+        return self.balance
+'''
 
 if __name__ == "__main__":
     # Self-check: the shapes that matter, including the failure modes.

@@ -33,8 +33,11 @@ def _reason(exc: Exception) -> str:
                 "reliably. Try making the problem statement more specific about "
                 "edge cases.")
     if isinstance(exc, NoOracleTestsError):
-        return ("No usable test cases could be generated. This usually means the "
-                "inputs aren't simple values (lists, numbers, strings).")
+        return ("No usable test cases could be generated. Common causes: the "
+                "inputs aren't simple values (lists, numbers, strings); the "
+                "solution prints its answer instead of returning it; or its "
+                "answer changes from run to run - a generator, a random choice, "
+                "or an object with no printable form.")
     if isinstance(exc, DecompositionUnavailableError):
         return ("Could not split this problem into steps that hold together. "
                 "You can split it yourself, or simplify the solution.")
@@ -172,8 +175,8 @@ def prepare_problem(problem: dict, emit=None, replace_roadmaps: bool = False) ->
     except Exception as e:
         return fail("tests", f"test generation failed: {_reason(e)}")
     if not tests:
-        return fail("tests", "No usable test cases could be generated. This "
-                             "usually means the inputs aren't simple values.")
+        from .run_phase1 import NoOracleTestsError
+        return fail("tests", _reason(NoOracleTestsError()))
     # The verdict, read back from what validation just persisted, so a watcher
     # sees the same numbers the badge on the upload row will show.
     try:

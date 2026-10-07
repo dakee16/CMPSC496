@@ -105,9 +105,14 @@ def run_solution(code: str, inputs: list, entry_name: str | None = None,
         pf.write(_dumps(payload))
         payload_path = pf.name
     try:
+        # The SAME hash seed the grader runs students under (see
+        # main.execution._sanitized_env): unpinned, an answer that depends on
+        # set order was recorded under a random seed and a correct student,
+        # graded under seed 0, could not match it.
         proc = subprocess.run(
             [sys.executable, "-c", _HARNESS, payload_path],
             capture_output=True, text=True, timeout=timeout,
+            env={**os.environ, "PYTHONHASHSEED": "0"},
         )
     except subprocess.TimeoutExpired:
         return {"ok": False, "error": f"timeout after {timeout}s (possible infinite loop)"}
@@ -267,10 +272,17 @@ def _generate_blocks(problem: dict, cls: str, target: str,
 
     The model writes the PROGRAM; the teacher's solution supplies every expected
     value, exactly as everywhere else. It is never asked what the answer is."""
-    from main.context import class_properties, fixed_internals, uncall_properties
+    from main.context import (block_exercises, class_properties, constructor_needs,
+                              fixed_internals, uncall_properties)
     allowed = sorted(fixed_internals(problem))
     if not allowed:
         return []
+    # What given code in the file's other classes fixes, read THROUGH the
+    # object (HW4: `c.tail.previous`) - see context.fixed_internals.
+    further = sorted(fixed_internals(problem, file_wide=True) - set(allowed))
+    needed, example = constructor_needs(problem)
+    build = (f"{cls}({', '.join(repr(a) for a in example[1:])})" if example
+             else f"{cls}({', '.join(needed)})" if needed else f"{cls}()")
     props = class_properties(problem)
     public = ", ".join(m for m in methods
                        if not m.startswith("_") and m not in props) or "none"
@@ -282,10 +294,12 @@ def _generate_blocks(problem: dict, cls: str, target: str,
         + (f"PROPERTIES - read these WITHOUT parentheses, `x.{props[0]}` not "
            f"`x.{props[0]}()`: {', '.join(props)}\n" if props else "")
         + 
-        f"Internal attributes you MAY read: {', '.join(allowed)}\n\n"
+        f"Internal attributes you MAY read: {', '.join(allowed)}"
+        + (f"; and, on the objects those hold, {', '.join(further)}" if further else "")
+        + "\n\n"
         f"Write {n} short Python programs that reach what an ordinary "
         f"call-and-compare test does not. Each is self-contained: build a "
-        f"{cls}() itself, exercise it, and END with expressions whose values "
+        f"{build} itself, exercise it, and END with expressions whose values "
         f"reveal what happened.\n\n"
         f"Cover these, one per program where they apply:\n"
         f"1. STATE LEFT BEHIND - links updated or cleared, an object detached "
@@ -340,7 +354,7 @@ def _generate_blocks(problem: dict, cls: str, target: str,
             ast.parse(b)                      # must be real Python
         except SyntaxError:
             continue
-        if target.strip("_") not in b and target not in b:
+        if not block_exercises(b, target):
             continue                          # must actually exercise the method
         # Repair the one mistake the prompt cannot reliably prevent: a
         # @property called like a method raises instead of returning, and the
@@ -357,7 +371,7 @@ def _generate_call_sequences(problem: dict, n: int) -> list[list]:
     own `>>>` examples are the first sequence - they are a recorded oracle
     someone already thought about - and the model grows the rest around them."""
     from main import context
-    from main.context import calls_from_docstring, class_methods
+    from main.context import calls_from_docstring, class_methods, constructor_needs
 
     cls = problem.get("group_title") or "Solution"
     target = problem.get("entry_hint") or problem.get("title", "")
@@ -372,6 +386,12 @@ def _generate_call_sequences(problem: dict, n: int) -> list[list]:
         extra += '- Use ["len"] to call len(obj).\n'
     if "__str__" in dunders or "__repr__" in dunders:
         extra += '- Use ["str"] to call str(obj).\n'
+    needed, example = constructor_needs(problem)
+    if needed:
+        extra += (f'- {cls}() alone is an error: its constructor takes '
+                  f'{", ".join(needed)}. Begin EVERY sequence with ["new", ...] '
+                  f'supplying them' + (f', e.g. {json.dumps(example)}' if example
+                                       else '') + '.\n')
 
     prompt = (
         f"Class: {cls}\n\n"
@@ -435,7 +455,10 @@ def _generate_call_sequences(problem: dict, n: int) -> list[list]:
 
     # The seed goes FIRST and is never dropped: it is the one sequence in the
     # suite whose expected values a human has already checked by hand.
-    sequences = ([seed] if seed else []) + generated + blocks
+    # ...and the same examples as one block when a call list could not hold
+    # them (HW4's hand objects around) - see context.doctest_block.
+    taught = context.doctest_block(problem)
+    sequences = ([seed] if seed else []) + ([taught] if taught else []) + generated + blocks
     if not sequences:
         print(f"  ⚠️  sequence-gen empty for {problem.get('slug','?')}")
     # One positional argument - the whole sequence - because the driver's
@@ -550,7 +573,9 @@ def _is_ambiguous_output(inp: list, out) -> bool:
 
 # `<Foo object at 0x7fb2...>` - what json.dumps(default=str) makes of an object
 # whose class defines no __str__. The address is different in every subprocess.
-_OBJECT_ADDR = re.compile(r" object at 0x[0-9a-fA-F]+>")
+# Any `<... at 0x..>`: `<Node object at 0x..>`, but also `<generator object
+# countdown at 0x..>` and `<function f at 0x..>`, which " object at" missed.
+_OBJECT_ADDR = re.compile(r"<[^<>]* at 0x[0-9a-fA-F]+>")
 
 
 def _useless_block(inp: list, out, method: bool = True) -> bool:
@@ -579,11 +604,14 @@ def _useless_block(inp: list, out, method: bool = True) -> bool:
     shape alone would throw away is_palindrome('racecar'), whose expected value
     is a bool rather than a list of observations."""
     from main.context import ERROR_PREFIX
+    # An ADDRESS is never a test, whatever the problem (6 Oct): a plain
+    # function returning a generator recorded `<generator object ... at 0x..>`,
+    # was certified STRONG off it, and its own teacher's code then failed 5/5.
+    if _OBJECT_ADDR.search(json.dumps(out, default=str)):
+        return True
     if not method or not (len(inp) == 1 and isinstance(inp[0], str)):
         return False                      # an ordinary call list or arg list
     if not isinstance(out, list):
-        return True
-    if _OBJECT_ADDR.search(json.dumps(out, default=str)):
         return True
     return all(o is None or (isinstance(o, str) and o.startswith(ERROR_PREFIX))
                for o in out)
@@ -610,10 +638,22 @@ def make_oracle_tests(problem: dict, n: int = 12) -> list[dict]:
     run = run_solution(solution, inputs, entry_name=name)
     if not run["ok"]:
         return []
+    # TWICE, in a fresh process. An expected value is only an answer if the
+    # teacher's own code gives it again: a random choice, the order of a set
+    # of strings (hashing differs per process), or anything printed as an
+    # address does not - and a test like that fails every student, the
+    # teacher's own solution included, while scoring the suite STRONG.
+    again = run_solution(solution, inputs, entry_name=name)
+    if not again["ok"]:
+        return []
 
     tests = []
-    for inp, out in zip(inputs, run["results"]):
+    for inp, out, out2 in zip(inputs, run["results"], again["results"]):
         if isinstance(out, dict) and "__error__" in out:
+            continue
+        if _norm(out) != _norm(out2):
+            print(f"  [oracle] {problem.get('slug','?')}: dropped an input whose "
+                  f"answer changes from run to run")
             continue
         if out is None:
             continue

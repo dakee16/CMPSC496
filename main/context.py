@@ -155,7 +155,13 @@ def {SEQ_ENTRY}(calls):
                 out.append("{ERROR_PREFIX}" + type(exc).__name__ + "\\x00" + str(exc)[:200] + _mt_where(exc))
         return out
 
-    obj = {cls}()
+    # Built at the first call that needs it, never up front: `{cls}()` with
+    # no arguments is a TypeError for a class whose constructor takes some
+    # (HW4's CacheList(size)), and raised here, before any call, it voided
+    # every run - the teacher's own included - even ones that begin with
+    # ["new", 200]. Built inside the try, a run that never says "new" records
+    # that TypeError per call instead, like any other error.
+    obj = _MT_UNBUILT = object()
     out = []
     for call in calls:
         name, args = call[0], list(call[1:])
@@ -163,7 +169,10 @@ def {SEQ_ENTRY}(calls):
             if name == "new":
                 obj = {cls}(*args)
                 out.append(None)
-            elif name == "len":
+                continue
+            if obj is _MT_UNBUILT:
+                obj = {cls}()
+            if name == "len":
                 out.append(len(obj))
             elif name == "str":
                 out.append(str(obj))
@@ -183,6 +192,58 @@ def _indent(body: str, spaces: int) -> str:
     return "\n".join(pad + ln if ln.strip() else "" for ln in body.splitlines())
 
 
+# What may sit beside a plain function as code it is GIVEN: imports, constants,
+# helper functions and classes. Bare statements (a print, a call) are left out
+# - they would run on every test - and so is the exercise itself.
+_GIVEN_KINDS = (ast.Import, ast.ImportFrom, ast.Assign, ast.AnnAssign,
+                ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+
+
+def _entry_def(tree: ast.Module, entry: str | None):
+    """The exercise's own def: named by entry_hint, else the LAST def - the
+    parser's rule for a block (helpers first, entry point last)."""
+    defs = [n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
+    return next((d for d in defs if d.name == entry), defs[-1] if defs else None)
+
+
+def given_code(problem: dict, include_block: bool = True) -> str:
+    """The module-level code a PLAIN function's exercise runs beside, but the
+    student does not write: the file's top (imports, constants -
+    `module_preamble`) and, with `include_block`, everything in the problem's
+    own block except the exercise (helpers, imports put under its marker).
+
+    6 Oct. Neither ever reached a run. With `import math` at the top of the
+    file, the teacher's own solution raised NameError on every test and the
+    upload failed "no usable test cases"; with it inside the block, the upload
+    said READY and every student - the teacher's own code included - was then
+    told "This step uses `math`, which isn't defined" on the last step. A
+    helper beside the function failed the same way. A method never had the
+    problem: its context is the whole module.
+
+    "" for a method, and for a plain function with nothing beside it - which
+    is every problem live on 6 Oct, so their programs are byte-for-byte as
+    before."""
+    if is_method(problem):
+        return ""
+    parts = []
+    sources = [(problem.get("module_preamble") or "", False)]
+    if include_block:
+        sources.append((problem.get("solution") or "", True))
+    for src, is_block in sources:
+        try:
+            tree = ast.parse(src)
+        except SyntaxError:
+            continue
+        entry = _entry_def(tree, problem.get("entry_hint")) if is_block else None
+        lines = src.splitlines()
+        for n in tree.body:
+            if not isinstance(n, _GIVEN_KINDS) or n is entry:
+                continue
+            start = min([n.lineno] + [d.lineno for d in getattr(n, "decorator_list", [])])
+            parts.append("\n".join(lines[start - 1:n.end_lineno]))
+    return "\n\n".join(parts)
+
+
 def build_program(problem: dict, body: str, header: str = "") -> str:
     """The full module to execute, with `body` as this problem's implementation.
 
@@ -197,7 +258,14 @@ def build_program(problem: dict, body: str, header: str = "") -> str:
     if not body.strip():
         body = "pass"                  # an empty body is a syntax error, not a fail
     if not is_method(problem):
-        return header.rstrip() + "\n" + _indent(body, 4) if header.strip() else body
+        if not header.strip():
+            return body
+        # AFTER the function, never above it: every "line N of your answer"
+        # counts from the def line, and Python looks a global up when the
+        # function RUNS, so a helper or import defined below it still resolves.
+        given = given_code(problem)
+        return (header.rstrip() + "\n" + _indent(body, 4)
+                + ("\n\n\n" + given if given.strip() else ""))
     seated = _indent(body, int(problem.get("context_indent") or 8))
     return (problem["context_prefix"].rstrip("\n") + "\n"
             + seated + "\n"
@@ -351,7 +419,7 @@ def uncall_properties(problem: dict, block: str) -> str:
     return ast.unparse(ast.fix_missing_locations(Fix().visit(tree)))
 
 
-def fixed_internals(problem: dict) -> set[str]:
+def fixed_internals(problem: dict, file_wide: bool = False) -> set[str]:
     """Attribute names a test BLOCK is allowed to look at, derived from the file.
 
     The worry about observing internals is that it grades implementation
@@ -368,7 +436,13 @@ def fixed_internals(problem: dict) -> set[str]:
     object under test.
 
     Returns an empty set for a plain function, and for a class whose given
-    methods touch nothing - in both cases no block may reach inside at all."""
+    methods touch nothing - in both cases no block may reach inside at all.
+
+    By default, THIS class's given methods only: the names that live on the
+    object under test, which is what mutation reads straight off it (`o.x`)
+    and what oracle_store records. `file_wide=True` adds what given code in
+    every other class of the file fixes - the names a block may read further
+    along a chain (block_is_permitted)."""
     if not is_method(problem):
         return set()
     cls_name = problem.get("group_title")
@@ -385,14 +459,32 @@ def fixed_internals(problem: dict) -> set[str]:
     # Everything the student is asked to write in this GROUP, not just this
     # problem: a sibling exercise's body is no more fixed than this one's.
     from .assignments import _STEPS_MARK          # the same marker the parser uses
-    seg = ast.get_source_segment(
-        build_program(problem, solution_body(problem)), cls) or ""
-    named = _STEPS_MARK.search(seg)
-    exercises = ({w.strip() for w in named.group(1).split(",") if w.strip()}
-                 if named else {exercise})
+    program = build_program(problem, solution_body(problem))
 
-    given = [f for f in cls.body
-             if isinstance(f, ast.FunctionDef) and f.name not in exercises]
+    # FILE-WIDE (6 Oct, HW4). `Node` is given code students never write, and
+    # CacheList's given __init__ sets up `head` and `tail` - yet no Cache block
+    # could read them, nor any block the `previous` link: the very things the
+    # teacher's own examples check (`cache.hierarchy[2].tail.previous.value`),
+    # and the links HW4 is about. A name that GIVEN code anywhere depends on is
+    # fixed contract, whichever class it lives in. Each class's exercises come
+    # from its own steps line; a class with none gets the parser's default
+    # (every method past the scaffolding is an exercise), so only its
+    # scaffolding counts here.
+    # Never the default: mutation reads every name it is given off the object
+    # itself, and `o.top` on a Calculator is AttributeError on every run.
+    from .assignments import _SCAFFOLD
+    given = []
+    for c in (n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)
+              and (file_wide or n is cls)):
+        named = _STEPS_MARK.search(ast.get_source_segment(program, c) or "")
+        methods = [f for f in c.body if isinstance(f, ast.FunctionDef)]
+        if named:
+            exercises = {w.strip() for w in named.group(1).split(",") if w.strip()}
+            given += [f for f in methods if f.name not in exercises]
+        elif c is cls:
+            given += [f for f in methods if f.name != exercise]
+        else:
+            given += [f for f in methods if f.name in _SCAFFOLD]
     called = {n.func.attr for f in given for n in ast.walk(f)
               if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)}
     # `self.__expr` is name-mangled to `_Calculator__expr`, and mangling only
@@ -425,7 +517,7 @@ def block_is_permitted(problem: dict, block: str) -> bool:
     # rejected any block that used ordinary Python - .keys, .copy, .split,
     # .append - which is why two AdvancedCalculator methods ended up with zero
     # blocks while their permitted set was non-empty.
-    allowed = fixed_internals(problem) | set(class_methods(problem))
+    allowed = fixed_internals(problem, file_wide=True) | set(class_methods(problem))
     called = {id(n.func) for n in ast.walk(tree) if isinstance(n, ast.Call)}
     return all(n.attr in allowed for n in ast.walk(tree)
                if isinstance(n, ast.Attribute) and id(n) not in called)
@@ -440,7 +532,10 @@ def reference_program(problem: dict) -> str:
     dedented to top level, which does not run at all on its own."""
     if is_method(problem):
         return build_program(problem, solution_body(problem))
-    return problem.get("solution") or ""
+    # The block carries its own helpers; the file's top is added BELOW, as
+    # build_program does - see given_code.
+    top = given_code(problem, include_block=False)
+    return (problem.get("solution") or "") + ("\n\n\n" + top if top.strip() else "")
 
 
 def class_methods(problem: dict) -> list[str]:
@@ -463,6 +558,37 @@ def class_methods(problem: dict) -> list[str]:
     return []
 
 
+def constructor_needs(problem: dict) -> tuple[list[str], list | None]:
+    """The arguments this class's constructor REQUIRES, and a ["new", ...]
+    call from the teacher's own examples that supplies them - ([], None) when
+    `{cls}()` alone builds one, which every HW3 class did.
+
+    For the test writers, who were told "a fresh {cls}()" and nothing more:
+    for HW4's CacheList(size) every run they wrote built nothing."""
+    if not is_method(problem):
+        return [], None
+    cls_name = problem.get("group_title")
+    try:
+        tree = ast.parse(build_program(problem, solution_body(problem)))
+    except SyntaxError:
+        return [], None
+    cls = next((n for n in tree.body
+                if isinstance(n, ast.ClassDef) and n.name == cls_name), None)
+    init = next((f for f in (cls.body if cls else [])
+                 if isinstance(f, ast.FunctionDef) and f.name == "__init__"), None)
+    if init is None:
+        return [], None
+    pos = init.args.args[1:]                       # past `self`
+    needed = [a.arg for a in pos[:len(pos) - len(init.args.defaults)]]
+    needed += [a.arg for a, d in zip(init.args.kwonlyargs, init.args.kw_defaults)
+               if d is None]
+    if not needed:
+        return [], None
+    seed = (calls_from_docstring(problem.get("description") or "", cls_name)
+            or calls_from_docstring(problem.get("group_description") or "", cls_name))
+    return needed, next((c for c in seed if c[0] == "new" and len(c) > 1), None)
+
+
 def solution_body(problem: dict) -> str:
     """The teacher's own body for this problem, at column 0.
 
@@ -475,7 +601,9 @@ def solution_body(problem: dict) -> str:
         tree = ast.parse(src)
     except SyntaxError:
         return src
-    fn = next((n for n in tree.body if isinstance(n, ast.FunctionDef)), None)
+    # The EXERCISE's body: with a helper above it, the first def was the
+    # helper, and the splitter cut `return x * x` into steps instead.
+    fn = _entry_def(tree, problem.get("entry_hint"))
     if fn is None or not fn.body:
         return src
     lines = src.splitlines()
@@ -528,6 +656,87 @@ def _as_call(node: ast.AST, cls: str) -> list | None:
     return None
 
 
+# Methods a program reaches through an OPERATOR, never by name: `c[x]` is
+# __getitem__, `5 in c` is __contains__. A name test dropped every program
+# written for HW4's three of them, the right ones included. Only a subscript
+# on a bare name counts - `c.hierarchy[1]` indexes a list the object holds.
+_OPERATOR_FORM = {
+    "__getitem__": lambda n: isinstance(n, ast.Subscript) and isinstance(n.ctx, ast.Load)
+                             and isinstance(n.value, ast.Name),
+    "__setitem__": lambda n: isinstance(n, ast.Subscript) and isinstance(n.ctx, ast.Store)
+                             and isinstance(n.value, ast.Name),
+    "__delitem__": lambda n: isinstance(n, ast.Subscript) and isinstance(n.ctx, ast.Del)
+                             and isinstance(n.value, ast.Name),
+    "__contains__": lambda n: isinstance(n, ast.Compare)
+                              and any(isinstance(o, (ast.In, ast.NotIn)) for o in n.ops),
+}
+# ...and `a + b`, `a == b`, `-a`, `a += b`, and a loop or list() over an
+# iterator - the usual operator-overloading and iterator exercises.
+for _op, _node in (("add", ast.Add), ("sub", ast.Sub), ("mul", ast.Mult),
+                   ("truediv", ast.Div), ("floordiv", ast.FloorDiv), ("mod", ast.Mod),
+                   ("pow", ast.Pow), ("matmul", ast.MatMult), ("and", ast.BitAnd),
+                   ("or", ast.BitOr), ("xor", ast.BitXor), ("lshift", ast.LShift),
+                   ("rshift", ast.RShift)):
+    for _name in (f"__{_op}__", f"__r{_op}__"):
+        _OPERATOR_FORM[_name] = (lambda t: lambda n: isinstance(n, ast.BinOp)
+                                 and isinstance(n.op, t))(_node)
+    _OPERATOR_FORM[f"__i{_op}__"] = (lambda t: lambda n: isinstance(n, ast.AugAssign)
+                                     and isinstance(n.op, t))(_node)
+for _name, _node in (("__eq__", ast.Eq), ("__ne__", ast.NotEq), ("__lt__", ast.Lt),
+                     ("__le__", ast.LtE), ("__gt__", ast.Gt), ("__ge__", ast.GtE)):
+    _OPERATOR_FORM[_name] = (lambda t: lambda n: isinstance(n, ast.Compare)
+                             and any(isinstance(o, t) for o in n.ops))(_node)
+for _name, _node in (("__neg__", ast.USub), ("__pos__", ast.UAdd),
+                     ("__invert__", ast.Invert)):
+    _OPERATOR_FORM[_name] = (lambda t: lambda n: isinstance(n, ast.UnaryOp)
+                             and isinstance(n.op, t))(_node)
+_ITERATES = {"list", "tuple", "set", "sorted", "sum", "min", "max", "next", "iter",
+             "enumerate", "zip", "any", "all", "dict"}
+_OPERATOR_FORM["__iter__"] = _OPERATOR_FORM["__next__"] = lambda n: (
+    isinstance(n, (ast.For, ast.comprehension))
+    or (isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+        and n.func.id in _ITERATES))
+
+
+def block_exercises(block: str, target: str) -> bool:
+    """Does this program reach `target` at all?"""
+    if target.strip("_") in block or target in block:
+        return True
+    form = _OPERATOR_FORM.get(target)
+    return bool(form) and any(form(n) for n in ast.walk(ast.parse(block)))
+
+
+def doctest_block(problem: dict) -> str | None:
+    """The teacher's `>>>` examples as ONE block, when a call list cannot hold
+    them - None when it can, which is every HW3 class.
+
+    A call list takes only plain values, and HW4's examples hand objects
+    around: `lst.put(content1, 'mru')` with content1 a ContentItem. Turned into
+    calls they shrank to `CacheList(200); clear()`, and the one thing a person
+    had checked by hand was gone from the suite - so a method too short to
+    mutate (Cache.insert: two mutants) had no basis for trust left, and could
+    never be ready. As a block they run exactly as written, the expected values
+    coming from the reference like everything else's. This method's own
+    examples if it has any, else its class's."""
+    if not is_method(problem):
+        return None
+    cls = problem.get("group_title") or "Solution"
+    for text in (problem.get("description"), problem.get("group_description")):
+        examples = doctest.DocTestParser().get_examples(text or "")
+        if examples:
+            break
+    else:
+        return None
+    src = "\n".join(ex.source.rstrip("\n") for ex in examples)
+    try:
+        statements = len(ast.parse(src).body)
+    except SyntaxError:
+        return None
+    if len(calls_from_docstring(text, cls)) == statements:
+        return None                       # the call list already holds all of it
+    return src if block_is_permitted(problem, src) else None
+
+
 def doctest_covers(problem: dict) -> bool:
     """Does the teacher's own recorded run actually exercise THIS method?
 
@@ -555,7 +764,10 @@ def doctest_covers(problem: dict) -> bool:
     cls = problem.get("group_title") or "Solution"
     seed = (calls_from_docstring(problem.get("description") or "", cls)
             or calls_from_docstring(problem.get("group_description") or "", cls))
-    return any(call and call[0] == wanted for call in seed)
+    if any(call and call[0] == wanted for call in seed):
+        return True
+    block = doctest_block(problem)
+    return bool(block) and block_exercises(block, target)
 
 
 def calls_from_docstring(text: str, cls: str) -> list[list]:

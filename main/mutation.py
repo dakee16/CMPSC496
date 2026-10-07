@@ -416,12 +416,18 @@ def _method_input_spec(problem: dict) -> str:
     reset-on-failure branch without being told that reading the object
     afterwards is a thing it may do - which is exactly where the surviving
     mutants on these classes live."""
-    from .context import class_methods, class_properties, fixed_internals
+    from .context import (class_methods, class_properties, constructor_needs,
+                           fixed_internals)
     cls = problem.get("group_title") or "Solution"
+    needed, example = constructor_needs(problem)
     props = set(class_properties(problem))
     methods = [m for m in class_methods(problem)
                if m != "__init__" and not m.startswith("__") and m not in props]
     internals = sorted(fixed_internals(problem))
+    # Further along a chain: what given code in the file's OTHER classes fixes
+    # (HW4: a CacheList's `tail`, a Node's `previous`) - read through the
+    # object, never off it, so they are named apart.
+    further = sorted(fixed_internals(problem, file_wide=True) - set(internals))
     spec = [
         f"The single argument is a RUN against one fresh {cls}(), in one of "
         f"two forms.\n",
@@ -429,6 +435,10 @@ def _method_input_spec(problem: dict) -> str:
         f'against one object. Methods you may call: '
         f'{", ".join(methods) or "none"}.',
     ]
+    if needed:
+        spec.append(f'   {cls}() alone is an error: its constructor takes '
+                    f'{", ".join(needed)}. Begin with ["new", ...] supplying them'
+                    + (f', e.g. {json.dumps(example)}' if example else '') + '.')
     if props:
         spec.append(f'   Read a @property with no arguments and no parentheses '
                     f'- ["{sorted(props)[0]}"]. Properties: {", ".join(sorted(props))}.')
@@ -437,13 +447,16 @@ def _method_input_spec(problem: dict) -> str:
             f'2. A BLOCK: a single string of Python statements, one per line, '
             f'building its own {cls}() and ending in expressions whose values '
             f'reveal what happened - e.g. '
-            f'"o = {cls}()\\no.{methods[0] if methods else "run"}()\\no.{internals[0]}".\n'
+            f'"o = {cls}({", ".join(repr(a) for a in (example or [])[1:])})'
+            f'\\no.{methods[0] if methods else "run"}()\\no.{internals[0]}".\n'
             f'   A block is the ONLY way to see state a return value hides: an '
             f'attribute the method is supposed to clear on failure looks '
             f'identical from the outside, because both versions return None. '
             f'READ IT BETWEEN THE CALLS, not only at the end - a method that '
             f'resets on entry wipes the difference before the next call '
-            f'returns. You may read: {", ".join(internals)}. Nothing else.')
+            f'returns. You may read: {", ".join(internals)}'
+            + (f'; and, on the objects those hold, {", ".join(further)}'
+               if further else '') + '. Nothing else.')
     else:
         spec.append("2. There is no readable internal state on this class, so "
                     "use call lists only - a block could observe nothing a "
@@ -560,7 +573,11 @@ def _sequence_probes(problem: dict, tests: list) -> list[list]:
     row (whatever it is supposed to reset)."""
     seqs = _sequences_of(tests)
     call = _target_call(problem, seqs)
-    out = [[["new"], call]]                    # nothing set up yet
+    # Built the way the recorded runs build it: `["new"]` alone is a TypeError
+    # for a constructor that takes arguments, on both sides, every time.
+    new = next((list(c) for seq in seqs for c in seq
+                if isinstance(c, list) and c and c[0] == "new"), ["new"])
+    out = [[new, call]]                        # nothing set up yet
     for seq in seqs[:2]:
         for k in range(1, len(seq)):
             out.append(seq[:k] + [call])       # the target at each point
@@ -834,7 +851,12 @@ def _runnable(problem: dict, source: str) -> str:
     seating happens ONCE here rather than being threaded through eight run
     helpers. A plain function is returned untouched."""
     if not is_method(problem):
-        return source
+        # Its block holds its own helpers; the file's top runs beside it, as
+        # in reference_program - and only that, or a copy of a helper would
+        # override the mutated one and every mutant in it would survive.
+        from .context import given_code
+        top = given_code(problem, include_block=False)
+        return source + ("\n\n\n" + top if top.strip() else "")
     return build_program(problem, solution_body({"solution": source}))
 
 
@@ -875,6 +897,13 @@ def _first_disagreement(original: str, mutant_code: str, entry: str | None,
             # difference, and the whole chunk failing is the only signal we get.
             got = mut["results"][i] if mut["ok"] else {"__error__": mut["error"]}
             if _norm(got) != _norm(expected):
+                # ...and only if the ORIGINAL says it again - see the same
+                # rule in tests/sandbox.make_oracle_tests. Paid once per
+                # witness, which is rare, never per candidate.
+                again = run_solution(original, [inp], entry_name=entry,
+                                     timeout=_MUTANT_TIMEOUT)
+                if not again["ok"] or _norm(again["results"][0]) != _norm(expected):
+                    continue
                 return {"input": inp, "expected": expected}
     return None
 
