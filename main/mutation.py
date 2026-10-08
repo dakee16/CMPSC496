@@ -55,6 +55,7 @@ CUTOFF_2_MAX_EXPAND_ROUNDS = 5              # max validate_oracle rounds before 
 # strong, and B3 below exits when the survivors are provably unkillable, so
 # extra rounds are only ever spent on a problem that is still improving.
 CUTOFF_4_MAX_COUNTEREXAMPLE_CANDIDATES = 5  # LLM input guesses per surviving mutant
+_CANDIDATE_MAX_TOKENS = 3000                # reply cap for those guesses (normal: ~300)
 
 # Mutants can loop forever where the original did not (e.g. `num //= 10`
 # mutated to `num *= 10`), so they get a tighter leash than a real solution.
@@ -523,8 +524,12 @@ def _candidate_inputs(problem: dict, original: str, mutant_code: str,
     if emit:
         emit({"type": "llm_asking", "detail": f"asking model for up to {n} "
               f"inputs that might make the two programs disagree"})
+    # CAPPED (7 Oct, HW4 upload). A good reply is a few hundred tokens; with
+    # no cap, 13 replies ran to the model's 16,384-token maximum - $0.17 each,
+    # $2.17 of a $4.78 upload - and a reply cut off there is not JSON anyway.
     raw = chat(GEN_MODEL, "You generate test inputs as strict JSON. No prose.",
-               [{"role": "user", "content": prompt}], temperature=0.3, fmt="json")
+               [{"role": "user", "content": prompt}], temperature=0.3, fmt="json",
+               max_tokens=_CANDIDATE_MAX_TOKENS)
     data = _first_json_obj(raw) or {}
     inputs = [i if isinstance(i, list) else [i]
               for i in data.get("inputs", []) if i is not None]

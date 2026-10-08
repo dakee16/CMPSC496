@@ -152,7 +152,8 @@ def _record_usage(backend: str, model: str, purpose: str, usage: dict,
 
 
 def _openai_chat(model: str, system: str, messages: List[Dict[str, str]],
-                 temperature: float, fmt: Optional[str]) -> str:
+                 temperature: float, fmt: Optional[str],
+                 max_tokens: Optional[int] = None) -> str:
     key = os.environ.get("OPENAI_API_KEY", "").strip()
     if not key:
         raise RuntimeError(
@@ -165,6 +166,8 @@ def _openai_chat(model: str, system: str, messages: List[Dict[str, str]],
         "messages": [{"role": "system", "content": system}] + messages,
         "temperature": temperature,
     }
+    if max_tokens:
+        payload["max_completion_tokens"] = int(max_tokens)
     if fmt == "json":
         payload["response_format"] = {"type": "json_object"}
         # OpenAI rejects json_object mode outright unless the word "json"
@@ -251,6 +254,7 @@ def chat(
     messages: List[Dict],
     temperature: float = 0.2,
     fmt: Optional[str] = None,
+    max_tokens: Optional[int] = None,
 ) -> str:
     """Send a system+messages exchange and return the assistant's text.
 
@@ -272,4 +276,7 @@ def chat(
             f"it; use a vision-capable OpenAI model (MICROTUTOR_VISION_MODEL)")
     if _is_ollama_tag(model):
         return _ollama_chat(model, system, messages, temperature, fmt)
-    return _openai_chat(model, system, messages, temperature, fmt)
+    # `max_tokens` bounds the REPLY. Only passed when set, so every caller and
+    # every test double of _openai_chat that predates it is untouched.
+    return _openai_chat(model, system, messages, temperature, fmt,
+                        **({"max_tokens": max_tokens} if max_tokens else {}))
