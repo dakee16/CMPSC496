@@ -1,0 +1,242 @@
+<!DOCTYPE html><html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script>try{document.documentElement.dataset.theme=(localStorage.getItem("mt.theme")==="dark"?"dark":"light")}catch(e){document.documentElement.dataset.theme="light"}</script>
+<title>Review · ACADIA</title>
+<!-- MOCKUP ONLY (8 Oct) - static, real HW4 data, nothing is wired. Delete
+     after the design is approved; it is not part of the product. -->
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&amp;family=Space+Grotesk:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="ui.css">
+<link rel="stylesheet" href="teacher.css">
+<link rel="stylesheet" href="refinements.css">
+<style>
+  .rvGrid{display:grid; grid-template-columns:260px minmax(0,1fr); gap:24px; align-items:start}
+  @media (max-width:900px){ .rvGrid{grid-template-columns:1fr} }
+
+  .queue{position:sticky; top:calc(var(--header-height) + 24px)}
+  .queue h3{margin:0 0 4px; font-size:.8125rem; text-transform:uppercase; letter-spacing:.06em; color:var(--text-subtle)}
+  .queue .qsub{margin:0 0 14px; font-size:.8125rem; color:var(--text-muted)}
+  .queue ul{list-style:none; margin:0; padding:0; display:grid; gap:8px}
+  .queue li a{display:block; padding:12px 14px; border:1px solid var(--border); border-radius:var(--r-md);
+    color:var(--text); text-decoration:none; background:var(--surface)}
+  .queue li a:hover{background:var(--surface-hover)}
+  .queue li a.on{border-color:var(--accent-line); background:var(--accent-tint)}
+  .queue .qn{font-weight:600; display:block}
+  .queue .qw{font-size:.75rem; color:var(--text-muted); display:block; margin-top:3px}
+
+  .score{display:flex; gap:18px; align-items:center; flex-wrap:wrap}
+  .meter{flex:1; min-width:220px; height:10px; border-radius:var(--r-pill); background:var(--surface-raised); overflow:hidden; display:flex}
+  .meter i{display:block; height:100%}
+  .meter .caught{background:var(--success)}
+  .meter .missed{background:var(--warning)}
+  .score .num{font-family:var(--font-display); font-size:1.75rem; font-weight:600}
+  .score .lbl{font-size:.875rem; color:var(--text-muted); line-height:1.5}
+
+  .finding{border:1px solid var(--border); border-left:4px solid var(--warning); border-radius:var(--r-md);
+    padding:16px 18px; margin:0 0 12px; background:var(--surface)}
+  .finding .top{display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:8px}
+  .finding h4{margin:0; font-size:1rem; font-weight:600; flex:1; min-width:220px}
+  .finding .where{display:flex; gap:10px; align-items:baseline; margin:8px 0; padding:8px 10px;
+    border-radius:6px; background:var(--code-bg); font-family:var(--font-mono); font-size:.8125rem; overflow-x:auto}
+  .finding .ln{color:var(--code-dim); white-space:nowrap}
+  .finding .src{color:var(--code-text); white-space:pre}
+  .finding dl{display:grid; grid-template-columns:110px 1fr; gap:6px 12px; margin:10px 0 0; font-size:.875rem; line-height:1.55}
+  .finding dt{color:var(--text-subtle)}
+  .finding dd{margin:0}
+
+  .option{border:1px solid var(--border); border-radius:var(--r-md); padding:18px; margin:0 0 14px}
+  .option.rec{border-color:var(--accent-line)}
+  .option h4{margin:0 0 6px; font-size:1rem; display:flex; gap:10px; align-items:center; flex-wrap:wrap}
+  .option p{margin:0 0 10px; font-size:.875rem; line-height:1.6; color:var(--text-muted)}
+  .option .acts{display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:12px}
+  .option .cost{font-size:.8125rem; color:var(--text-subtle)}
+  .checks{list-style:none; margin:10px 0 0; padding:0; display:grid; gap:4px; font-size:.8125rem}
+  .checks li::before{content:"✓"; color:var(--success); font-weight:700; margin-right:8px}
+  pre.code.ex{max-height:260px; overflow:auto; margin:10px 0 0}
+
+  .solution pre{margin:0; padding:12px 0; border-radius:var(--r-md); background:var(--code-bg); overflow-x:auto;
+    font-family:var(--font-mono); font-size:.8125rem; line-height:1.7}
+  .solution .row{display:flex; padding:0 14px}
+  .solution .row .n{width:34px; flex:none; color:var(--code-dim); text-align:right; margin-right:14px; user-select:none}
+  .solution .row .c{color:var(--code-text); white-space:pre}
+  .solution .row.hit{background:color-mix(in srgb, var(--warning) 18%, transparent)}
+  .solution .row.hit .n{color:var(--warning); font-weight:600}
+  .note{font-size:.75rem; color:var(--text-subtle); margin-top:10px}
+</style>
+</head>
+<body>
+<main class="page">
+  <div class="page-heading"><div>
+    <p class="eyebrow">Homework 4 - Cache · Needs your review</p>
+    <h1>Review: update</h1>
+    <p class="sub">Students can't see this problem until you decide. Nothing here
+      changes your solution unless you choose to.</p>
+  </div></div>
+
+  <div class="rvGrid">
+    <aside class="queue" aria-label="Problems waiting for review">
+      <h3>Waiting for you</h3>
+      <p class="qsub">3 problems in Homework 4</p>
+      <ul>
+        <li><a href="#" class="on"><span class="qn">update</span>
+          <span class="qw">3 mistakes the tests miss</span></a></li>
+        <li><a href="#"><span class="qn">mruEvict</span>
+          <span class="qw">2 changes no test can see - may be harmless</span></a></li>
+        <li><a href="#"><span class="qn">lruEvict</span>
+          <span class="qw">2 changes no test can see - may be harmless</span></a></li>
+      </ul>
+    </aside>
+
+    <div>
+      <!-- 1. WHAT HAPPENED -->
+      <section class="card">
+        <h2 style="margin:0 0 6px">What we found</h2>
+        <p class="hint" style="margin:0 0 16px">To check the tests are good enough
+          to grade with, we break your solution on purpose - one small change at a
+          time - and see whether a test notices.</p>
+        <div class="score">
+          <span class="num">7 of 10</span>
+          <div class="meter" role="img" aria-label="7 caught, 3 missed">
+            <i class="caught" style="width:70%"></i><i class="missed" style="width:30%"></i>
+          </div>
+        </div>
+        <p class="lbl" style="margin:10px 0 0">mistakes were caught. <strong>3 slipped
+          past</strong>: a student who made one of them would be marked correct.</p>
+      </section>
+
+      <!-- 2. THE MISSES, ONE BY ONE -->
+      <section class="card">
+        <h2 style="margin:0 0 14px">The 3 that slipped past</h2>
+
+        <article class="finding">
+          <div class="top">
+            <h4>A student could leave out the "does it fit?" check</h4>
+            <span class="pill warn">real gap - we found a case where it matters</span>
+          </div>
+          <div class="where"><span class="ln">line 19</span><span class="src">    if content.size &gt; available_space:</span></div>
+          <dl>
+            <dt>We tried</dt><dd>deleting this check. Every test still passed.</dd>
+            <dt>Missing test</dt><dd>a replacement that is too big to fit.</dd>
+          </dl>
+        </article>
+
+        <article class="finding">
+          <div class="top">
+            <h4>A student could forget to update the remaining space</h4>
+            <span class="pill warn">real gap - we found a case where it matters</span>
+          </div>
+          <div class="where"><span class="ln">line 22</span><span class="src">    self.remainingSpace = available_space - content.size</span></div>
+          <dl>
+            <dt>We tried</dt><dd>deleting this line. Every test still passed.</dd>
+            <dt>Missing test</dt><dd>reading <code>remainingSpace</code> after an update.</dd>
+          </dl>
+        </article>
+
+        <article class="finding">
+          <div class="top">
+            <h4>A student could write <code>&gt;=</code> instead of <code>&gt;</code></h4>
+            <span class="pill warn">real gap - we found a case where it matters</span>
+          </div>
+          <div class="where"><span class="ln">line 19</span><span class="src">    if content.size &gt; available_space:</span></div>
+          <dl>
+            <dt>We tried</dt><dd>changing <code>&gt;</code> to <code>&gt;=</code>. Every test still passed.</dd>
+            <dt>Missing test</dt><dd>a replacement that fits exactly.</dd>
+          </dl>
+        </article>
+      </section>
+
+      <!-- 3. WHAT YOU CAN DO -->
+      <section class="card">
+        <h2 style="margin:0 0 14px">How to fix it</h2>
+
+        <div class="option rec">
+          <h4>Add examples that cover these <span class="pill ok">recommended</span></h4>
+          <p>We wrote examples for the three missing cases and ran them against your
+            solution before showing them to you. They go into <code>update</code>'s
+            docstring, so students see them too, and they become tests.</p>
+          <pre class="code ex" id="ex"></pre>
+          <ul class="checks">
+            <li>Your solution passes every line</li>
+            <li>Each of the 3 mistakes above now fails at least one line</li>
+          </ul>
+          <div class="acts">
+            <button type="button">Add to the docstring and prepare again</button>
+            <button type="button" class="ghost">Edit them first</button>
+            <span class="cost">Prepares just this problem again - about a minute, under $0.50.</span>
+          </div>
+        </div>
+
+        <div class="option">
+          <h4>These can't change the answer - publish anyway</h4>
+          <p>Only if you've read the lines above and are sure no student answer could
+            differ because of them. Here, we found cases where they do differ, so we
+            don't recommend it. Your name is recorded against the decision.</p>
+          <div class="acts">
+            <button type="button" class="ghost">Publish anyway</button>
+          </div>
+        </div>
+
+        <div class="option">
+          <h4>Edit the problem yourself</h4>
+          <p>Change the statement or the solution, then prepare this problem again.</p>
+          <div class="acts">
+            <button type="button" class="ghost">Open the editor</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 4. CONTEXT -->
+      <section class="card solution">
+        <h2 style="margin:0 0 12px">Your solution</h2>
+        <pre id="sol"></pre>
+        <p class="note">Highlighted: the lines the missed mistakes are on.</p>
+      </section>
+    </div>
+  </div>
+</main>
+
+<script src="ui.js"></script>
+<script>
+  try { mountHeader({variant: "instructor", active: "Assignments",
+    crumbs: [{label: "Assignments", href: "teacher-assignments.html"},
+             {label: "Homework 4 - Cache", href: "teacher-assignments.html"},
+             {label: "Review: update"}]}); } catch (e) {}
+
+  document.getElementById("ex").innerHTML = hlPython(
+`>>> lst = CacheList(20)
+>>> lst.put(ContentItem(1, 10, 'h', 'a'), 'mru')
+'INSERTED: CONTENT ID: 1 SIZE: 10 HEADER: h CONTENT: a'
+>>> lst.update(1, ContentItem(2, 25, 'h', 'b'))      # too big
+'Cache miss!'
+>>> lst.remainingSpace
+10
+>>> lst.update(1, ContentItem(2, 20, 'h', 'c'))      # fits exactly
+'UPDATED: CONTENT ID: 2 SIZE: 20 HEADER: h CONTENT: c'
+>>> lst.remainingSpace
+0
+>>> lst.update(2, ContentItem(3, 5, 'h', 'd'))
+'UPDATED: CONTENT ID: 3 SIZE: 5 HEADER: h CONTENT: d'
+>>> lst.remainingSpace
+15`);
+
+  const sol = [
+    [15, "if cid not in self:"],
+    [16, "    return 'Cache miss!'"],
+    [17, ""],
+    [18, "available_space = self.remainingSpace + self.head.value.size"],
+    [19, "if content.size > available_space:", true],
+    [20, "    return 'Cache miss!'"],
+    [21, ""],
+    [22, "self.remainingSpace = available_space - content.size", true],
+    [23, "self.head.value = content"],
+    [24, "return f'UPDATED: {content}'"],
+  ];
+  document.getElementById("sol").innerHTML = sol.map(([n, c, hit]) =>
+    `<div class="row${hit ? " hit" : ""}"><span class="n">${n}</span><span class="c">${
+      c ? hlPython(c) : " "}</span></div>`).join("");
+</script>
+</body></html>
