@@ -24,6 +24,13 @@ const STAGE_WORDS = {parses: "does not parse", runs: "solution fails to run",
    two badges that look like a contradiction and are really a before and an
    after. Naming the state is the fix; the row itself only clears on a
    re-prepare. */
+/* Waiting on a person, not failed (9 Oct): HW4's three problems in review
+   read "failed" and "oracle too weak" here, in red, beside a link to nowhere.
+   Said as what it is, with the way to the page where it is decided. */
+const inReview = e => /^Waiting on your review/.test(e || "");
+const reviewHref = p => `review.html?a=${encodeURIComponent(p.assignment_id || "")}`
+                        + `&slug=${encodeURIComponent(p.slug)}`;
+
 function staleBlocker(p){
   if (p.ready || !p.stage) return false;
   if (p.stage === "strength" && p.oracle === "strong") return true;
@@ -75,11 +82,13 @@ function renderList(filter){
     ps.forEach(p => {
       const stale = staleBlocker(p);
       const dot = p.ready ? "dot-ok"
-                : stale ? "dot-stale"
+                : stale || inReview(p.prepare_error) ? "dot-stale"
                 : (p.prepare_error ? "dot-bad" : "dot-none");
       const tags = [];
       if (stale)
         tags.push(`<span class="tag warn" title="The blocker below was cleared by a later run. The problems row still says it failed until you re-prepare.">fixed - re-prepare</span>`);
+      else if (!p.ready && inReview(p.prepare_error))
+        tags.push(`<span class="tag warn">your review</span>`);
       else if (!p.ready && p.stage)
         tags.push(`<span class="tag bad">${esc(STAGE_WORDS[p.stage] || p.stage)}</span>`);
       if (p.oracle === "strong")
@@ -143,13 +152,19 @@ async function openProblem(slug){
   });
 
   const r = $("dReady");
-  r.className = "tag " + (d.ready ? "ok" : stale ? "warn"
+  const review = !d.ready && !stale && inReview(d.prepare_error);
+  r.className = "tag " + (d.ready ? "ok" : stale || review ? "warn"
                                   : (d.prepare_error ? "bad" : "dim"));
   r.textContent = d.ready ? "ready" : stale ? "fixed - re-prepare"
+                          : review ? "your review"
                           : (d.prepare_error ? "failed" : "not prepared");
   $("dError").hidden = !d.prepare_error || d.ready;
-  $("dError").className = stale ? "banner warn failNote" : "banner bad failNote";
-  $("dError").innerHTML = stale
+  $("dError").className = stale || review ? "banner warn failNote" : "banner bad failNote";
+  $("dError").innerHTML = review
+    ? `This problem is waiting on your review, not broken.
+       <a href="${reviewHref({...listed, slug: d.slug})}">See exactly what the tests
+       missed and how to fix it &rarr;</a>`
+    : stale
     ? `<b>This blocker is out of date.</b> The row still records
        &ldquo;${esc(d.prepare_error)}&rdquo; from its last preparation, but a
        later run has since cleared it${d.oracle && d.oracle.strong

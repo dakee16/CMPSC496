@@ -1201,6 +1201,7 @@ def playground_problems(request: Request):
             "slug": p["slug"], "title": p.get("title") or p["slug"],
             "difficulty": p.get("difficulty"),
             "assignment": asg.get(p.get("assignment_id"), ""),
+            "assignment_id": p.get("assignment_id"),
             "ready": bool(p.get("ready")),
             "prepare_error": p.get("prepare_error"),
             # Which gate preparation stopped at ("parses"/"runs"/"tests"/
@@ -1565,6 +1566,20 @@ def _stored_problem(assignment_id, slug: str) -> dict | None:
         return None
     merged = {**row[0], **_context_of(row[0])}
     return merged if merged.get("context_prefix") else None
+
+
+def _problem_row(assignment_id, slug: str) -> dict | None:
+    """The stored row for one problem, ANY shape - with what an edit of its
+    text alone cannot carry: its context blob and its place in the assignment.
+    None when there is none (or the store cannot be read)."""
+    try:
+        rows = get_supabase().table("problems").select(
+            "slug, context, group_slug, group_title, group_description, "
+            "group_order, member_order").eq("assignment_id", assignment_id).eq(
+            "slug", slug).execute().data
+    except Exception:
+        return None
+    return rows[0] if rows else None
 
 
 def _context_of(row: dict) -> dict:
@@ -2361,6 +2376,15 @@ def teacher_problem_retry(req: ProblemRetryRequest, request: Request):
         return blocked("parses", "no problem found in this text")
 
     problem["slug"] = req.slug                     # identity is the row's
+    # WHAT THE EDITED TEXT CANNOT CARRY, kept from the row it replaces (9 Oct).
+    # A plain function re-read from its own text alone lost the file's imports
+    # (module_preamble - see context.given_code) and its place in the
+    # assignment; both come from the stored row.
+    row = _problem_row(req.assignment_id, req.slug)
+    kept = _context_of(row) if row else {}
+    if (not context.is_method(problem) and kept.get("module_preamble")
+            and not problem.get("module_preamble")):
+        problem["module_preamble"] = kept["module_preamble"]
     # Taped for the same reason the upload tapes: if this retry ALSO does not
     # pass, the instructor needs the new evidence, not the run from an hour ago.
     # A retry that succeeds clears the old transcript - transcripts.record does
@@ -2373,6 +2397,15 @@ def teacher_problem_retry(req: ProblemRetryRequest, request: Request):
     except Exception:
         pass
 
+    # The CONTEXT is saved too, exactly as an upload saves it. It was not: a
+    # METHOD's docstring also lives in context_prefix, so editing it saved the
+    # problem half new (description, solution) and half old (context) - a
+    # problem whose hash matched nothing just prepared, which students would
+    # have opened with no tests and no roadmap behind it.
+    cols = _group_columns(problem)
+    for k in ("group_order", "member_order"):
+        if row and row.get(k) is not None:
+            cols[k] = row[k]                       # its place stays its own
     sb = get_supabase()
     try:
         sb.table("problems").upsert({
@@ -2381,7 +2414,8 @@ def teacher_problem_retry(req: ProblemRetryRequest, request: Request):
             "solution": problem["solution"],
             "assignment_id": req.assignment_id,
             "ready": bool(result["ready"]),
-            "prepare_error": result.get("error")},
+            "prepare_error": result.get("error"),
+            **cols},
             on_conflict="assignment_id,slug").execute()
     except Exception as e:
         # Same rule as the upload path: a problem that did not SAVE is not
@@ -2393,6 +2427,105 @@ def teacher_problem_retry(req: ProblemRetryRequest, request: Request):
             "error": result.get("error"), "chunks": result.get("chunks", 0),
             "n_tests": result.get("n_tests", 0),
             "checklist": checklist(result.get("stage"), result.get("error"))}
+
+
+# ── the review page (9 Oct) ──────────────────────────────────────────────
+# One problem waiting on review, said plainly: each change the tests missed,
+# its line, and - once the help has been written - what it means and examples
+# that close the gap, checked against the teacher's code (main/review_help).
+
+_REVIEW = "Waiting on your review"
+
+
+def _review_view(assignment_id: str, slug: str, explain: bool = False) -> dict:
+    from main import review_help
+    from main.identity import content_hash
+    sb = get_supabase()
+    rows = sb.table("problems").select(
+        "slug, title, description, solution, ready, prepare_error, context, "
+        "group_slug, group_title, group_description").eq(
+        "assignment_id", assignment_id).eq("slug", slug).execute().data
+    if not rows:
+        raise HTTPException(status_code=404, detail={
+            "reason_code": "problem_not_found",
+            "message": f"No problem '{slug}' in this assignment."})
+    row = rows[0]
+    problem = {**row, **_context_of(row)}
+    key = content_hash({"description": row.get("description") or "",
+                        "solution": row.get("solution") or "", **_context_of(row)})
+    findings = _findings_for(row) or {}
+    checks = findings.get("checks") or []
+    missed = [c for c in checks if not c.get("settled")]
+    in_review = (not row.get("ready")) and str(row.get("prepare_error") or "").startswith(_REVIEW)
+
+    help_ = review_help.cached(key)
+    if explain and in_review and missed and help_ is None:
+        try:
+            help_ = review_help.explain(problem, key, [c["label"] for c in missed])
+        except Exception as e:                    # outage, cap: the free part stands
+            help_ = {"error": str(e)[:200]}
+    said = {c["label"]: c for c in ((help_ or {}).get("changes") or [])}
+    ex = (help_ or {}).get("examples") or {}
+    caught = ex.get("caught") or {}
+    src = (row.get("solution") or "").splitlines()
+
+    out_checks = []
+    for c in missed:
+        lb = c["label"]
+        verdict = ("gap" if caught.get(lb) else
+                   "maybe_harmless" if ex.get("ok") else "unknown")
+        out_checks.append({
+            "label": lb, "line": c.get("line"), "phrasing": c.get("phrasing"),
+            "code": src[c["line"] - 1].rstrip() if c.get("line") and c["line"] <= len(src) else "",
+            "title": (said.get(lb) or {}).get("title"),
+            "missing": (said.get(lb) or {}).get("missing"),
+            "verdict": verdict})
+    any_gap = any(c["verdict"] == "gap" for c in out_checks)
+    edited = (review_help.insert_examples(row.get("solution") or "", ex["doctest"],
+                                          problem.get("entry_hint"))
+              if ex.get("ok") and any_gap else None)
+
+    others = sb.table("problems").select("slug, title, ready, prepare_error").eq(
+        "assignment_id", assignment_id).execute().data or []
+    queue = [{"slug": o["slug"], "title": o.get("title") or o["slug"]}
+             for o in sorted(others, key=lambda o: o["slug"])
+             if not o.get("ready") and str(o.get("prepare_error") or "").startswith(_REVIEW)]
+    name = (sb.table("assignments").select("name").eq("id", assignment_id)
+            .execute().data or [{}])[0].get("name")
+    return {
+        "assignment": {"id": assignment_id, "name": name},
+        "slug": slug, "title": row.get("title") or slug,
+        "ready": bool(row.get("ready")), "in_review": in_review,
+        "error": row.get("prepare_error"),
+        "total": len(checks), "caught": len(checks) - len(missed),
+        "checks": out_checks,
+        "help": None if help_ is None else {
+            "written": "error" not in help_,
+            "error": help_.get("error"),
+            "examples_ok": bool(ex.get("ok")),
+            "examples_reason": ex.get("reason"),
+            "doctest": ex.get("doctest") if ex.get("ok") else None,
+            "catches": sum(1 for c in out_checks if c["verdict"] == "gap"),
+            "edited_source": edited},
+        "source": row.get("solution") or "",
+        "lines": sorted({c["line"] for c in out_checks if c.get("line")}),
+        "queue": queue}
+
+
+@app.get("/teacher/review/{assignment_id}/{slug}")
+def teacher_review(assignment_id: str, slug: str, request: Request):
+    """Everything the review page shows, from what is already known - free."""
+    require_teacher(request)
+    return _review_view(assignment_id, slug)
+
+
+@app.post("/teacher/review/{assignment_id}/{slug}/explain")
+def teacher_review_explain(assignment_id: str, slug: str, request: Request):
+    """The same, after writing the help if it was never written: one capped
+    model call per problem version, then a free check of its examples. A second
+    call for the same version is free - it is remembered."""
+    require_teacher(request)
+    return _review_view(assignment_id, slug, explain=True)
 
 
 @app.post("/teacher/problems/accept")

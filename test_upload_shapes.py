@@ -243,3 +243,36 @@ def test_a_solution_that_returns_nothing_fails_at_upload_and_says_why(model):
     r = publish.prepare_problem(_problem(PRINTS)[0])
     assert (r["ready"], r["stage"]) == (False, "tests"), r
     assert "prints its answer instead of returning it" in r["error"]
+
+
+# ── a plain function's own examples are tests ────────────────────────────
+
+LEAP = '''"""L"""
+def is_leap(year):
+    """True for a leap year.
+
+    >>> is_leap(1900)
+    False
+    >>> is_leap(2000)
+    True
+    """
+    if year % 400 == 0:
+        return True
+    if year % 100 == 0:
+        return False
+    return year % 4 == 0
+'''
+
+
+def test_a_plain_functions_examples_become_tests(model):
+    """9 Oct: they were only shown to the model. Here the model proposes no
+    century years at all - only the teacher's examples cover the 100/400
+    rules, and a student who forgot them must not pass."""
+    from main.execution import classify_run
+    model["inputs"] = "[[2024], [2023], [1996], [2001]]"
+    tests = sandbox.make_oracle_tests(_problem(LEAP)[0])
+    assert {"input": [1900], "expected": False} in tests
+    assert {"input": [2000], "expected": True} in tests
+    forgot = classify_run("def is_leap(year):\n    return year % 4 == 0\n", tests,
+                          entry_name="is_leap")
+    assert forgot.passed < forgot.total, "the century rule is tested now"

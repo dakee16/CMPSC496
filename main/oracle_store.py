@@ -154,11 +154,24 @@ def load_cache() -> dict:
 def save_cache(cache: dict) -> None:
     """Authoring-side only. Never called from a grading request."""
     path = cache_path()
+    # WRITTEN WHOLE OR NOT AT ALL (9 Oct). It was dumped straight into the live
+    # file, so a restart mid-write - a deploy during an upload - could leave
+    # every saved suite, HW3's certified ones included, as half a file. Written
+    # beside it and swapped in: os.replace is atomic, so a reader sees the old
+    # file or the new one, never part of either.
+    tmp = f"{path}.{os.getpid()}.tmp"
     try:
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        json.dump({k: _encode_entry(v) for k, v in cache.items()},
-                  open(path, "w"), indent=2)
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        with open(tmp, "w") as f:
+            json.dump({k: _encode_entry(v) for k, v in cache.items()}, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
     except Exception as e:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
         print(f"  ⚠️  Could not save oracle cache: {e}")
 
 

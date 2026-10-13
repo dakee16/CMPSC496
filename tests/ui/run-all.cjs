@@ -29,6 +29,7 @@ const SUITES = [
   'inline-file.dom.cjs',
   'problem-sort.dom.cjs',
   'workspace-race.dom.cjs',
+  'review.dom.cjs',
 ];
 
 const failed = [];

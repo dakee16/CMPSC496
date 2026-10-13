@@ -706,6 +706,39 @@ def block_exercises(block: str, target: str) -> bool:
     return bool(form) and any(form(n) for n in ast.walk(ast.parse(block)))
 
 
+def examples_as_inputs(problem: dict) -> list[list]:
+    """A PLAIN function's own `>>> f(args)` examples, as argument lists.
+
+    9 Oct. A class's examples were already its first tests (calls_from_docstring,
+    doctest_block); a plain function's were only shown to the model as part of
+    the statement, so a case the teacher wrote down - the one most worth
+    testing - was tested only if the model happened to copy it. Only calls to
+    the function itself with plain values are taken; the expected answers come
+    from running the teacher's code, never from the docstring's printed text."""
+    if is_method(problem):
+        return []
+    entry = problem.get("entry_hint")
+    out = []
+    for ex in doctest.DocTestParser().get_examples(problem.get("description") or ""):
+        try:
+            tree = ast.parse(ex.source)
+        except SyntaxError:
+            continue
+        if len(tree.body) != 1 or not isinstance(tree.body[0], ast.Expr):
+            continue
+        call = tree.body[0].value
+        if not (isinstance(call, ast.Call) and isinstance(call.func, ast.Name)
+                and call.func.id == entry and not call.keywords):
+            continue
+        try:
+            args = [ast.literal_eval(a) for a in call.args]
+        except (ValueError, SyntaxError):
+            continue
+        if args not in out:
+            out.append(args)
+    return out
+
+
 def doctest_block(problem: dict) -> str | None:
     """The teacher's `>>>` examples as ONE block, when a call list cannot hold
     them - None when it can, which is every HW3 class.

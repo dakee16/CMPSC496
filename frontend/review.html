@@ -1,0 +1,96 @@
+<!DOCTYPE html><html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script>try{document.documentElement.dataset.theme=(localStorage.getItem("mt.theme")==="dark"?"dark":"light")}catch(e){document.documentElement.dataset.theme="light"}</script>
+<title>Review · ACADIA</title>
+
+<meta name="theme-color" content="#f5ebdd">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&amp;family=Space+Grotesk:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="ui.css">
+<link rel="stylesheet" href="teacher.css">
+<link rel="stylesheet" href="refinements.css">
+<style>
+  .rvGrid{display:grid; grid-template-columns:260px minmax(0,1fr); gap:24px; align-items:start}
+  .queue{position:sticky; top:calc(var(--header-height) + 24px)}
+  /* After the rule it overrides: one column, and the list scrolls away. */
+  @media (max-width:900px){ .rvGrid{grid-template-columns:minmax(0,1fr)} .queue{position:static} }
+  .queue h3{margin:0 0 4px; font-size:.8125rem; text-transform:uppercase; letter-spacing:.06em; color:var(--text-subtle)}
+  .queue .qsub{margin:0 0 14px; font-size:.8125rem; color:var(--text-muted)}
+  .queue ul{list-style:none; margin:0; padding:0; display:grid; gap:8px}
+  .queue li a{display:block; padding:12px 14px; border:1px solid var(--border); border-radius:var(--r-md);
+    color:var(--text); text-decoration:none; background:var(--surface)}
+  .queue li a:hover{background:var(--surface-hover)}
+  .queue li a.on{border-color:var(--accent-line); background:var(--accent-tint)}
+  .queue .qn{font-weight:600; display:block; overflow-wrap:anywhere}
+  .queue .back{display:inline-block; margin-top:14px; font-size:.8125rem}
+
+  .score{display:flex; gap:18px; align-items:center; flex-wrap:wrap}
+  .meter{flex:1; min-width:180px; height:10px; border-radius:var(--r-pill); background:var(--surface-raised); overflow:hidden; display:flex}
+  .meter i{display:block; height:100%}
+  .meter .caught{background:var(--success)}
+  .meter .missed{background:var(--warning)}
+  .score .num{font-family:var(--font-display); font-size:1.75rem; font-weight:600}
+  .lbl{font-size:.875rem; color:var(--text-muted); line-height:1.55; margin:10px 0 0}
+
+  .finding{border:1px solid var(--border); border-left:4px solid var(--warning); border-radius:var(--r-md);
+    padding:16px 18px; margin:0 0 12px; background:var(--surface)}
+  .finding.maybe{border-left-color:var(--border-strong)}
+  .finding .top{display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:8px}
+  .finding h4{margin:0; font-size:1rem; font-weight:600; flex:1; min-width:200px}
+  .finding .where{display:flex; gap:10px; align-items:baseline; margin:8px 0; padding:8px 10px;
+    border-radius:6px; background:var(--code-bg); font-family:var(--font-mono); font-size:.8125rem; overflow-x:auto}
+  .finding .ln{color:var(--code-dim); white-space:nowrap}
+  .finding .src{color:var(--code-text); white-space:pre}
+  .finding dl{display:grid; grid-template-columns:110px 1fr; gap:6px 12px; margin:10px 0 0; font-size:.875rem; line-height:1.55}
+  .finding dt{color:var(--text-subtle)}
+  .finding dd{margin:0}
+
+  .option{border:1px solid var(--border); border-radius:var(--r-md); padding:18px; margin:0 0 14px}
+  .option.rec{border-color:var(--accent-line)}
+  .option h4{margin:0 0 6px; font-size:1rem; display:flex; gap:10px; align-items:center; flex-wrap:wrap}
+  .option p{margin:0 0 10px; font-size:.875rem; line-height:1.6; color:var(--text-muted)}
+  .option .acts{display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:12px}
+  .option .cost{font-size:.8125rem; color:var(--text-subtle)}
+  .checks{list-style:none; margin:10px 0 0; padding:0; display:grid; gap:4px; font-size:.8125rem}
+  .checks li::before{content:"✓"; color:var(--success); font-weight:700; margin-right:8px}
+  pre.code.ex{max-height:280px; overflow:auto; margin:10px 0 0}
+  textarea.rvEdit{width:100%; min-height:320px; margin-top:10px; font-family:var(--font-mono); font-size:.8125rem;
+    line-height:1.6; padding:12px; border-radius:var(--r-md); border:1px solid var(--border);
+    background:var(--code-bg); color:var(--code-text); resize:vertical}
+
+  .solution pre{margin:0; padding:12px 0; border-radius:var(--r-md); background:var(--code-bg); overflow-x:auto;
+    font-family:var(--font-mono); font-size:.8125rem; line-height:1.7}
+  .solution .srow{display:flex; flex-wrap:nowrap; padding:0 14px; min-width:max-content}
+  .solution .srow .n{width:34px; flex:none; color:var(--code-dim); text-align:right; margin-right:14px; user-select:none}
+  .solution .srow .c{color:var(--code-text); white-space:pre}
+  .solution .srow.hit{background:color-mix(in srgb, var(--warning) 18%, transparent)}
+  .solution .srow.hit .n{color:var(--warning); font-weight:600}
+  .note{font-size:.75rem; color:var(--text-subtle); margin-top:10px}
+</style>
+</head>
+<body>
+<main class="page">
+  <div class="page-heading"><div>
+    <p class="eyebrow" id="eyebrow">Needs your review</p>
+    <h1 id="title">Review</h1>
+    <p class="sub" id="sub"></p>
+  </div></div>
+
+  <div class="rvGrid">
+    <aside class="queue" aria-label="Problems waiting for review">
+      <h3>Waiting for you</h3>
+      <p class="qsub" id="qsub"></p>
+      <ul id="queue"></ul>
+      <a class="back" href="teacher-assignments.html">&larr; Back to assignments</a>
+    </aside>
+    <div id="main" aria-live="polite"><p class="hint">Loading…</p></div>
+  </div>
+</main>
+
+<script src="ui.js"></script>
+<script src="review.js"></script>
+</body></html>

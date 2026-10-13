@@ -332,7 +332,7 @@ function handle(ev){
     $("summary").innerHTML = `<div class="banner ${cls}">${esc(msg)}</div>`;
     toast(msg, cls);
     endRun();
-    if (review.length) openReview(review);
+    if (review.length) openReview(review, run.assignmentId);
   }
 }
 
@@ -359,7 +359,13 @@ function addRow(slug, state, title, why){
 
 /* ---------- the end-of-run review prompt ---------- */
 
-function openReview(review){
+/* The review PAGE (review.html), not the Playground (9 Oct): the Playground
+   is a pipeline tool, and it showed a problem waiting on review as "failed"
+   and "oracle too weak". */
+const reviewHref = (assignmentId, slug) =>
+  `review.html?a=${encodeURIComponent(assignmentId || "")}&slug=${encodeURIComponent(slug)}`;
+
+function openReview(review, assignmentId){
   // The range is the honest statement of what is known: the low end assumes
   // every inconclusive check is a real gap, the high end assumes none is. The
   // instructor is being asked to close that gap, so it is the one number worth
@@ -373,13 +379,13 @@ function openReview(review){
         <span class="sub">${n} check${n === 1 ? "" : "s"} inconclusive &middot;
           between ${lo}% and ${hi}% of the deliberate breaks were caught</span>
       </span>
-      <a href="playground.html?slug=${encodeURIComponent(r.slug)}">Open</a>
+      <a href="${reviewHref(assignmentId, r.slug)}">Open</a>
     </li>`;
   }).join("");
   $("rvNow").textContent = review.length === 1
     ? "Review it now" : "Review the first one";
   $("rvNow").onclick = () => {
-    location.href = `playground.html?slug=${encodeURIComponent(review[0].slug)}`;
+    location.href = reviewHref(assignmentId, review[0].slug);
   };
   $("rvScrim").hidden = false;
   $("rvLater").focus();
@@ -541,12 +547,17 @@ async function toggleBreakdown(tr, a){
   }
   wrap.innerHTML = `<ul class="bdList">${probs.map(p => `
     <li>
-      <span class="pill ${p.ready ? "ok" : "bad"}">${p.ready ? "ready" : "blocked"}</span>
+      <span class="pill ${p.ready ? "ok" : /^Waiting on your review/.test(p.prepare_error || "")
+        ? "warn" : "bad"}">${p.ready ? "ready" : /^Waiting on your review/.test(p.prepare_error || "")
+        ? "your review" : "blocked"}</span>
       <span class="bdName">${esc(p.title || p.slug)}</span>
       <span class="bdWhy">${p.ready
         ? "Prepared and visible to students."
         : esc(p.prepare_error || "Preparation did not finish for this problem.")}</span>
-      ${p.ready ? "" : `<button class="ghost bdFix" type="button"
+      ${p.ready ? "" : /^Waiting on your review/.test(p.prepare_error || "")
+        ? `<button class="ghost bdFix bdReview" type="button"
+            data-href="${esc(reviewHref(a.id, p.slug))}">Review</button>`
+        : `<button class="ghost bdFix" type="button"
         data-slug="${esc(p.slug)}">Open and fix</button>`}
     </li>`).join("")}</ul>
     <div class="fixHost"></div>
@@ -556,7 +567,9 @@ async function toggleBreakdown(tr, a){
       : ""}`;
 
   const host = wrap.querySelector(".fixHost");
-  wrap.querySelectorAll(".bdFix").forEach(b =>
+  wrap.querySelectorAll("button.bdReview").forEach(b =>
+    b.onclick = () => { location.href = b.dataset.href; });
+  wrap.querySelectorAll("button.bdFix:not(.bdReview)").forEach(b =>
     b.onclick = () => openFix(host, a, b.dataset.slug,
                              probs.find(p => p.slug === b.dataset.slug)));
 }

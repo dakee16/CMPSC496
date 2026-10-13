@@ -630,6 +630,11 @@ def make_oracle_tests(problem: dict, n: int = 12) -> list[dict]:
 
     # Generate more inputs than needed so we have room to filter
     inputs = generate_test_inputs(problem, n=n)
+    # The teacher's own examples FIRST - see context.examples_as_inputs. A
+    # class's already arrive inside generate_test_inputs as its seed.
+    from main.context import examples_as_inputs
+    taught = examples_as_inputs(problem)
+    inputs = taught + [i for i in (inputs or []) if i not in taught]
     if not inputs:
         return []
 
