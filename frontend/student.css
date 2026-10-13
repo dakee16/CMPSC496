@@ -475,6 +475,13 @@
 #problems .pgroup .rname{display:block;font-weight:500;overflow-wrap:anywhere}
 #problems .pgroup .rmeta{display:block;font-size:12px;color:var(--text-subtle);margin-top:4px}
 #problems .gmembers{padding:16px}
+/* A CLASS CARD SPANS THE ROW (13 Oct, HW4). In a two-column grid a short
+   class (ContentItem, 1 method) sat beside a tall one (CacheList, 6), and the
+   next class had to start below the tallest - a screen-high gap. Full width,
+   with its methods in columns inside it: file order kept, no gaps. Problems
+   that are plain functions keep the two-column grid. */
+#problems.two>li.grouprow{grid-column:1/-1}
+#problems .pgroup .gmembers{grid-template-columns:repeat(auto-fill,minmax(260px,1fr))}
 /* The reading and coding areas lead. Navigation collapses to a rail while
    solving; the tutor docks below the workspace on laptop/tablet widths. */
 body.in-studio .page{padding:calc(var(--header-height) + 28px) 24px 40px;max-width:2000px}
