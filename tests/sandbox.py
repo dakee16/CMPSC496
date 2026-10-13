@@ -272,10 +272,13 @@ def _generate_blocks(problem: dict, cls: str, target: str,
 
     The model writes the PROGRAM; the teacher's solution supplies every expected
     value, exactly as everywhere else. It is never asked what the answer is."""
-    from main.context import (block_exercises, class_properties, constructor_needs,
-                              fixed_internals, uncall_properties)
+    from main.context import (argument_classes, block_exercises, class_properties,
+                              constructor_needs, fixed_internals, uncall_properties)
     allowed = sorted(fixed_internals(problem))
-    if not allowed:
+    # Objects the methods are handed (HW4's ContentItem): a program is the one
+    # place a test can build one, so these get programs whatever they may read.
+    handed = argument_classes(problem)
+    if not allowed and not handed:
         return []
     # What given code in the file's other classes fixes, read THROUGH the
     # object (HW4: `c.tail.previous`) - see context.fixed_internals.
@@ -286,22 +289,61 @@ def _generate_blocks(problem: dict, cls: str, target: str,
     props = class_properties(problem)
     public = ", ".join(m for m in methods
                        if not m.startswith("_") and m not in props) or "none"
+    # Where a call list cannot hold the arguments, these programs are the
+    # method's ONLY tests - ordinary use included - and "bad input" has to mean
+    # the failures the specification names: a None or a dict where a
+    # ContentItem goes crashes the teacher's code, and that run is dropped
+    # (off_spec). Every other class is asked exactly as before.
+    names = " / ".join(h["name"] for h in handed)
+    task = (f"Write {n} short Python programs. A call list cannot hold a {names}, "
+            f"so these programs are {target}'s only tests: some must use it the "
+            f"ordinary way, the rest reach what a call-and-compare test does not."
+            if handed else
+            f"Write {n} short Python programs that reach what an ordinary "
+            f"call-and-compare test does not.")
+    bad = ("4. FAILURES THE SPECIFICATION NAMES - an id that is not there, an "
+           "item too big to fit, one already present, an empty structure. Never "
+           "pass None, a dict or a wrong type: what the method does with those "
+           "is not specified, so it is not a test.\n\n"
+           if handed else
+           "4. BAD INPUT - feed it malformed or empty values that should send it "
+           "down its error path rather than its normal one, INCLUDING values that "
+           "make the work itself fail: dividing by zero, an empty collection, an "
+           "index past the end.\n\n")
+    half = ("- At least a THIRD of the programs must take a failure path the "
+            "specification names, then observe what was left behind.\n"
+            if handed else
+            "- At least HALF the programs must use INVALID input, so the failure "
+            "path runs: an undefined name, a malformed statement, an empty "
+            "value, a division by zero. Then observe what was left behind - a "
+            "method that is supposed to reset something on failure can only be "
+            "checked by failing it first.\n")
     prompt = (
         f"Class: {cls}\n\n"
         f"Specification:\n{(problem.get('group_description') or problem.get('description') or '')[:800]}\n\n"
-        f"The method under test is {cls}.{target}.\n"
+        + (f"What {target} itself must do:\n{(problem.get('description') or '')[:800]}\n\n"
+           if handed else "")
+        + f"The method under test is {cls}.{target}.\n"
         f"Public methods: {public}\n"
         + (f"PROPERTIES - read these WITHOUT parentheses, `x.{props[0]}` not "
            f"`x.{props[0]}()`: {', '.join(props)}\n" if props else "")
-        + 
-        f"Internal attributes you MAY read: {', '.join(allowed)}"
+        +
+        f"Internal attributes you MAY read: {', '.join(allowed) or 'none'}"
         + (f"; and, on the objects those hold, {', '.join(further)}" if further else "")
-        + "\n\n"
-        f"Write {n} short Python programs that reach what an ordinary "
-        f"call-and-compare test does not. Each is self-contained: build a "
+        + "\n"
+        + ("Objects it is handed - build them yourself, like this, never a dict "
+           "or None in their place: "
+           + "; ".join(f"{h['name']}({', '.join(h['params'])}), e.g. {h['example']}"
+                       for h in handed) + "\n" if handed else "")
+        + "\n"
+        f"{task} Each is self-contained: build a "
         f"{build} itself, exercise it, and END with expressions whose values "
         f"reveal what happened.\n\n"
         f"Cover these, one per program where they apply:\n"
+        + ("0. ORDINARY USE - several objects used the way the specification "
+           "describes, including a value exactly AT a limit and one just past "
+           "it.\n" if handed else "")
+        +
         f"1. STATE LEFT BEHIND - links updated or cleared, an object detached "
         f"after removal. Keep a reference BEFORE removing it - but ONLY to "
         f"something that LEAVES the object, like a node that was removed. "
@@ -315,29 +357,24 @@ def _generate_blocks(problem: dict, cls: str, target: str,
         f"3. REPEATED USE - call {target} twice in a row, and after the object "
         f"has already been used for something else, so anything it is supposed "
         f"to reset gets a chance to be wrong.\n"
-        f"4. BAD INPUT - feed it malformed or empty values that should send it "
-        f"down its error path rather than its normal one, INCLUDING values that "
-        f"make the work itself fail: dividing by zero, an empty collection, an "
-        f"index past the end.\n\n"
-        f"CRITICAL:\n"
+        + bad
+        + f"CRITICAL:\n"
         f"- Every program must exercise {cls}.{target}.\n"
         # 4 above says this, and all ten programs generated for
         # AdvancedCalculator still used valid input - leaving all twenty-two of
         # its surviving mutants (`self.states = {{}}` / `return None` on the
         # invalid branches) untouched. Repeated here as a hard quota because
         # that is the only form the model reliably obeys.
-        f"- At least HALF the programs must use INVALID input, so the failure "
-        f"path runs: an undefined name, a malformed statement, an empty "
-        f"value, a division by zero. Then observe what was left behind - a "
-        f"method that is supposed to reset something on failure can only be "
-        f"checked by failing it first.\n"
-        f"- To check something about an object that is REMOVED, keep a "
+        + half
+        + f"- To check something about an object that is REMOVED, keep a "
         f"reference to it BEFORE removing it.\n"
         f"- Read only the attributes listed above. Nothing else.\n"
         f"- Do NOT write expected values, asserts, prints or comments. Just the "
         f"statements; the last ones should be bare expressions.\n"
         f"- One statement per line, no blank lines, no imports.\n\n"
-        f'Return JSON only: {{"programs": ["x = {cls}()\\nx.push(1)\\n...", ...]}}'
+        # {build}, not {cls}(): `CacheList()` is an error (it takes a size), and
+        # for a class built with no arguments the two are the same text.
+        f'Return JSON only: {{"programs": ["x = {build}\\nx.push(1)\\n...", ...]}}'
     )
     try:
         raw = chat(GEN_MODEL, "You write short Python programs as strict JSON. "
@@ -392,6 +429,14 @@ def _generate_call_sequences(problem: dict, n: int) -> list[list]:
                   f'{", ".join(needed)}. Begin EVERY sequence with ["new", ...] '
                   f'supplying them' + (f', e.g. {json.dumps(example)}' if example
                                        else '') + '.\n')
+    # HW4 (13 Oct): handed a ContentItem, the writer made one up as a dict.
+    handed = context.argument_classes(problem)
+    if handed:
+        extra += (f'- Some methods are handed {" / ".join(h["name"] for h in handed)} '
+                  f'objects, which a call sequence cannot hold - never pass a JSON '
+                  f'object, or anything else, in place of one. Call only methods '
+                  f'whose arguments are plain values here; the rest are tested by '
+                  f'programs written separately.\n')
 
     prompt = (
         f"Class: {cls}\n\n"
@@ -449,8 +494,11 @@ def _generate_call_sequences(problem: dict, n: int) -> list[list]:
     # main/context.fixed_internals. A block reaching anywhere else would grade
     # something the teacher never specified, so it is discarded rather than run.
     blocks = []
-    if context.fixed_internals(problem):
-        blocks = [b for b in _generate_blocks(problem, cls, target, methods)
+    if context.fixed_internals(problem) or handed:
+        # Twice as many where a call list cannot hold the arguments: these
+        # programs are then the method's only ordinary tests as well.
+        blocks = [b for b in _generate_blocks(problem, cls, target, methods,
+                                              n=8 if handed else 4)
                   if context.block_is_permitted(problem, b)]
 
     # The seed goes FIRST and is never dropped: it is the one sequence in the
@@ -615,6 +663,63 @@ def _useless_block(inp: list, out, method: bool = True) -> bool:
                for o in out)
 
 
+def _hands_a_dict(inp) -> bool:
+    """Does this run hand a method a dict - a JSON object in a call list, a
+    `{...}` literal passed in a block?"""
+    if len(inp) == 1 and isinstance(inp[0], str):
+        try:
+            tree = ast.parse(inp[0])
+        except SyntaxError:
+            return False
+        return any(isinstance(a, ast.Dict)
+                   for c in ast.walk(tree) if isinstance(c, ast.Call)
+                   for a in c.args + [k.value for k in c.keywords])
+    seq = inp[0] if inp and isinstance(inp[0], list) else []
+
+    def has(v):
+        return isinstance(v, dict) or (isinstance(v, list) and any(map(has, v)))
+    return any(isinstance(c, list) and any(map(has, c[1:])) for c in seq)
+
+
+def off_spec(problem: dict):
+    """A check, `(input, expected) -> bool`: True for a run outside what the
+    problem specifies, which must never become a test - generated or found by
+    the counterexample search, since either way it is graded forever.
+
+    For a METHOD problem only (a plain function's crash never reached the
+    suite - see make_oracle_tests). Two kinds, both measured on HW4, 13 Oct:
+
+      * a dict handed in where the file's own object belongs (HW4's ContentItem
+        - see context.argument_classes). Even where the teacher's code does not
+        trip on it, a correct answer that reads the object in another order
+        does;
+      * a run the teacher's own code CRASHES on. Which exception, and where, is
+        a fact about that implementation, not the problem: HW4's __getitem__
+        hashed first (TypeError on a dict), a correct one read `content.cid`
+        first (AttributeError) and was graded incorrect. Unless the method
+        raises ON PURPOSE - a `raise` in its own body - in which case the crash
+        IS the answer (a stack's pop on empty).
+    ponytail: a `raise` anywhere in the method keeps every crash test, even one
+    the raise never produced; narrow to the raised type if that ever bites."""
+    from main.context import (ERROR_PREFIX, ERROR_SEP, argument_classes,
+                              is_method, solution_body)
+    if not is_method(problem):
+        return lambda inp, out: False
+    handed = bool(argument_classes(problem))
+    try:
+        on_purpose = any(isinstance(n, ast.Raise)
+                         for n in ast.walk(ast.parse(solution_body(problem))))
+    except SyntaxError:
+        on_purpose = False
+
+    def crashed(out):
+        return isinstance(out, list) and any(
+            isinstance(o, str) and o.startswith(ERROR_PREFIX) and ERROR_SEP in o
+            for o in out)
+    return lambda inp, out: ((handed and _hands_a_dict(inp))
+                             or (not on_purpose and crashed(out)))
+
+
 def make_oracle_tests(problem: dict, n: int = 12) -> list[dict]:
     """Generate inputs, run ground-truth to compute expected outputs.
     Filters out ambiguous inputs (multiple valid answers, duplicates that
@@ -651,8 +756,13 @@ def make_oracle_tests(problem: dict, n: int = 12) -> list[dict]:
         return []
 
     tests = []
+    outside = off_spec(problem)
     for inp, out, out2 in zip(inputs, run["results"], again["results"]):
         if isinstance(out, dict) and "__error__" in out:
+            continue
+        if outside(inp, out):
+            print(f"  [oracle] {problem.get('slug','?')}: dropped a run outside the "
+                  f"specification (a dict for an object, or the teacher's code crashed)")
             continue
         if _norm(out) != _norm(out2):
             print(f"  [oracle] {problem.get('slug','?')}: dropped an input whose "

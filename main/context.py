@@ -589,6 +589,47 @@ def constructor_needs(problem: dict) -> tuple[list[str], list | None]:
     return needed, next((c for c in seed if c[0] == "new" and len(c) > 1), None)
 
 
+def argument_classes(problem: dict) -> list[dict]:
+    """The file's OTHER classes this class's methods are handed - the ones the
+    teacher's `>>>` examples build - as [{"name", "params", "example"}], in the
+    order the examples first build them. [] for a plain function, and for a
+    class whose examples build nothing else (every HW3 class).
+
+    13 Oct, HW4. `put(content, ...)` takes a ContentItem. A call list holds
+    only plain values and neither test writer was told what a ContentItem is,
+    so they passed dicts; the teacher's code crashed on them, the crash was
+    saved as the answer, and 60 of cache-list-update's 64 tests checked
+    nothing else. The examples are where the file says what a method is
+    handed, and how to make one."""
+    if not is_method(problem):
+        return []
+    cls_name = problem.get("group_title")
+    try:
+        tree = ast.parse(build_program(problem, solution_body(problem)))
+    except SyntaxError:
+        return []
+    classes = {n.name: n for n in tree.body
+               if isinstance(n, ast.ClassDef) and n.name != cls_name}
+    found: dict[str, dict] = {}
+    for text in (problem.get("description"), problem.get("group_description")):
+        for ex in doctest.DocTestParser().get_examples(text or ""):
+            try:
+                calls = [n for n in ast.walk(ast.parse(ex.source))
+                         if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)]
+            except SyntaxError:
+                continue
+            for call in calls:
+                name = call.func.id
+                if name not in classes or name in found:
+                    continue
+                init = next((f for f in classes[name].body if isinstance(f, ast.FunctionDef)
+                             and f.name == "__init__"), None)
+                found[name] = {"name": name,
+                               "params": [a.arg for a in init.args.args[1:]] if init else [],
+                               "example": ast.unparse(call)}
+    return list(found.values())
+
+
 def solution_body(problem: dict) -> str:
     """The teacher's own body for this problem, at column 0.
 

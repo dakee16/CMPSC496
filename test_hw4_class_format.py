@@ -266,7 +266,10 @@ def test_the_record_of_which_tests_a_problem_gets_is_unchanged():
     # tested by calls alone - and must stay so, though Node and Chain now count.
     tally = _problems()["tally-count"]
     assert context.fixed_internals(tally) == set()
-    assert oracle_store.oracle_features(tally) == {"calls"}
+    # ...except that `count` is HANDED a Chain its example builds - HW4's
+    # shape (13 Oct, test_hw4_object_arguments) - so its suite is redone with
+    # real Chains. No HW3 class is handed one: their saved suites stay.
+    assert oracle_store.oracle_features(tally) == {"calls", "objects/1"}
     assert mutation._as_block(tally, [["count", None]]) is None
 
 

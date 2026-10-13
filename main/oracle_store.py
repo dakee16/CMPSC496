@@ -241,6 +241,14 @@ def oracle_features(problem: dict) -> set:
             # told to drive the error paths. Every suite generated before that
             # was measuring a different thing.
             feats.add("blocks/4")
+        # 13 Oct, HW4: a class whose methods are handed the file's own objects
+        # is now tested with real ones, never a dict standing in, and never a
+        # run the teacher's code crashes on (tests/sandbox.off_spec). Recorded
+        # so every suite saved before is redone at its next preparation - and
+        # only those: no HW3 or LAB1 class hands objects around.
+        from .context import argument_classes
+        if argument_classes(problem):
+            feats.add("objects/1")
     except Exception:
         pass
     return feats

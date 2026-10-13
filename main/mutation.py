@@ -36,6 +36,7 @@ from tests.sandbox import (
     _first_json_obj,
     _norm,
     _useless_block,
+    off_spec,
     make_oracle_tests,
     run_solution,
 )
@@ -417,10 +418,11 @@ def _method_input_spec(problem: dict) -> str:
     reset-on-failure branch without being told that reading the object
     afterwards is a thing it may do - which is exactly where the surviving
     mutants on these classes live."""
-    from .context import (class_methods, class_properties, constructor_needs,
-                           fixed_internals)
+    from .context import (argument_classes, class_methods, class_properties,
+                           constructor_needs, fixed_internals)
     cls = problem.get("group_title") or "Solution"
     needed, example = constructor_needs(problem)
+    handed = argument_classes(problem)
     props = set(class_properties(problem))
     methods = [m for m in class_methods(problem)
                if m != "__init__" and not m.startswith("__") and m not in props]
@@ -443,6 +445,15 @@ def _method_input_spec(problem: dict) -> str:
     if props:
         spec.append(f'   Read a @property with no arguments and no parentheses '
                     f'- ["{sorted(props)[0]}"]. Properties: {", ".join(sorted(props))}.')
+    if handed:
+        # HW4 (13 Oct): asked for inputs, the search wrote ContentItems as
+        # dicts and `o.put(1, 'a', 50)` - it had never been shown one.
+        spec.append(f'   Some methods are handed '
+                    f'{" / ".join(h["name"] for h in handed)} objects, which a '
+                    f'call list cannot hold - never pass a JSON object in place '
+                    f'of one. A run that needs one must be a BLOCK that builds '
+                    f'it: ' + "; ".join(f"{h['name']}({', '.join(h['params'])}), "
+                                        f"e.g. {h['example']}" for h in handed) + '.')
     if internals:
         spec.append(
             f'2. A BLOCK: a single string of Python statements, one per line, '
@@ -458,12 +469,16 @@ def _method_input_spec(problem: dict) -> str:
             f'returns. You may read: {", ".join(internals)}'
             + (f'; and, on the objects those hold, {", ".join(further)}'
                if further else '') + '. Nothing else.')
+    elif handed:
+        spec.append(f'2. A BLOCK: a single string of Python statements, one per '
+                    f'line, building its own {cls} and the objects above, and '
+                    f'ending in expressions whose values reveal what happened.')
     else:
         spec.append("2. There is no readable internal state on this class, so "
                     "use call lists only - a block could observe nothing a "
                     "call list cannot.")
     spec.append("Each input is a JSON array holding exactly ONE element: the "
-                + ("call list, or the block string.\n" if internals
+                + ("call list, or the block string.\n" if internals or handed
                    else "call list.\n"))
     return "\n".join(spec)
 
@@ -867,9 +882,13 @@ def _runnable(problem: dict, source: str) -> str:
 
 def _first_disagreement(original: str, mutant_code: str, entry: str | None,
                         candidates: list, seen: set,
-                        method: bool = False) -> dict | None:
+                        method: bool = False, off_spec=None) -> dict | None:
     """Run BOTH programs on `candidates` and compare the real results. Returns
     the first genuine disagreement as {"input", "expected"}, else None.
+
+    `off_spec` (tests/sandbox.off_spec) refuses a witness outside what the
+    problem specifies, exactly as generation does - a witness is a permanent
+    test, and on HW4 the search offered dicts where a ContentItem goes.
 
     Runs in chunks so a single non-terminating input costs its own chunk rather
     than the whole search - see _CHUNK."""
@@ -897,6 +916,8 @@ def _first_disagreement(original: str, mutant_code: str, entry: str | None,
             # mutant AND with the reference itself, scoring the suite STRONG and
             # then failing every student. Same rule as the generation path.
             if _useless_block(inp, expected, method):
+                continue
+            if off_spec and off_spec(inp, expected):
                 continue
             # A mutant that hangs where the original completed IS a real
             # difference, and the whole chunk failing is the only signal we get.
@@ -934,11 +955,12 @@ def _counterexample_test(problem: dict, original: str, mutant_code: str,
     `emit`, when given, narrates each phase for live UIs; None (the default,
     and the production path) changes nothing."""
     method = is_method(problem)
+    off = off_spec(problem)
     probes = _probe_inputs(tests, problem)
     if emit:
         emit({"type": "probes", "inputs": probes,
               "detail": "free deterministic boundary probes (no LLM cost)"})
-    found = _first_disagreement(original, mutant_code, entry, probes, seen, method)
+    found = _first_disagreement(original, mutant_code, entry, probes, seen, method, off)
     if found:
         if emit:
             emit({"type": "disagreement", "source": "probe",
@@ -958,7 +980,7 @@ def _counterexample_test(problem: dict, original: str, mutant_code: str,
         emit({"type": "sweep", "n": len(sweep),
               "detail": f"{len(sweep)} generated inputs, still free "
                         f"(deterministic, no LLM cost)"})
-    found = _first_disagreement(original, mutant_code, entry, sweep, seen, method)
+    found = _first_disagreement(original, mutant_code, entry, sweep, seen, method, off)
     if found:
         if emit:
             emit({"type": "disagreement", "source": "sweep",
@@ -971,7 +993,7 @@ def _counterexample_test(problem: dict, original: str, mutant_code: str,
     found = _first_disagreement(
         original, mutant_code, entry,
         _candidate_inputs(problem, original, mutant_code, emit=emit, focus=focus),
-        seen, method)
+        seen, method, off)
     if found:
         if emit:
             emit({"type": "disagreement", "source": "llm",
@@ -1013,7 +1035,7 @@ def _counterexample_test(problem: dict, original: str, mutant_code: str,
                   "detail": f"model says {var} must reach {target}; these are "
                             f"the inputs that computation could come from"})
         found = _first_disagreement(original, mutant_code, entry, derived, seen,
-                                    is_method(problem))
+                                    is_method(problem), off)
         if found:
             if emit:
                 emit({"type": "disagreement", "source": "inversion",
