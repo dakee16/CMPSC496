@@ -475,13 +475,25 @@
 #problems .pgroup .rname{display:block;font-weight:500;overflow-wrap:anywhere}
 #problems .pgroup .rmeta{display:block;font-size:12px;color:var(--text-subtle);margin-top:4px}
 #problems .gmembers{padding:16px}
-/* A CLASS CARD SPANS THE ROW (13 Oct, HW4). In a two-column grid a short
-   class (ContentItem, 1 method) sat beside a tall one (CacheList, 6), and the
-   next class had to start below the tallest - a screen-high gap. Full width,
-   with its methods in columns inside it: file order kept, no gaps. Problems
-   that are plain functions keep the two-column grid. */
+/* CLASS CARDS: A HEADER AND COMPACT METHOD ROWS (13 Oct, HW4). Two cards
+   side by side left a screen-high gap under the shorter one, and full-width
+   cards of big method tiles looked stretched and empty. A class is a list
+   with a header - rows read well at any width, and a one-method class is
+   simply a short card. Problems that are plain functions keep their tiles. */
 #problems.two>li.grouprow{grid-column:1/-1}
-#problems .pgroup .gmembers{grid-template-columns:repeat(auto-fill,minmax(260px,1fr))}
+#problems .pgroup{border-radius:var(--r-lg);overflow:hidden}
+#problems .pgroup>summary{padding:16px 20px}
+#problems .pgroup .gcount{display:flex;align-items:center;gap:10px}
+#problems .pgroup .gbar{width:96px;height:6px;border-radius:var(--r-pill);background:var(--border);overflow:hidden}
+#problems .pgroup .gbar i{display:block;height:100%;background:var(--success)}
+#problems .pgroup .gmembers{display:block;padding:0;margin:0;border-top:1px solid var(--border)}
+#problems .pgroup .gmembers>li{display:block}
+#problems .pgroup .gmembers>li+li{border-top:1px solid var(--border)}
+#problems .pgroup .gmembers .rowitem{min-height:0;padding:13px 20px;border:0;border-radius:0;background:transparent}
+#problems .pgroup .gmembers .rowitem:hover:not(:disabled){background:var(--surface-hover)}
+#problems .pgroup .gmembers .rname{font-family:var(--font-mono);font-size:.875rem}
+#problems .pgroup .gmembers .rmeta:not(:has(*)){display:none}  /* whitespace-only: :empty misses it */
+@media (max-width:520px){ #problems .pgroup .gbar{display:none} }
 /* The reading and coding areas lead. Navigation collapses to a rail while
    solving; the tutor docks below the workspace on laptop/tablet widths. */
 body.in-studio .page{padding:calc(var(--header-height) + 28px) 24px 40px;max-width:2000px}

@@ -1091,11 +1091,12 @@ function renderProblems(){
       <summary>
         <span class="rmain">
           <span class="rname">${esc(g.title)}</span>
-          <span class="rmeta"><span>${all.length} step${
+          <span class="rmeta"><span>${all.length} method${
             all.length === 1 ? "" : "s"}</span></span>
         </span>
-        <span class="gcount${complete ? " done" : ""}">${done} of ${
-          all.length} solved</span>
+        <span class="gcount${complete ? " done" : ""}"><span class="gbar"
+          aria-hidden="true"><i style="width:${all.length ? 100 * done / all.length : 0}%"></i></span>${
+          done} of ${all.length} solved</span>
         ${CHEV}
       </summary>
       <ul class="rows gmembers">${
