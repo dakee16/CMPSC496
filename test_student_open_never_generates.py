@@ -116,7 +116,10 @@ def test_an_outdated_test_set_still_serves_the_saved_roadmap_for_free(world):
 
     out = get_chunk_decomposition(dict(PROBLEM))
 
-    assert [c.step_id for c in out["chunks"]] == ["Part 1", "Part 2"]
+    # One of the SAVED roadmaps, served at random - since 14 Oct the pool holds
+    # different cuts, and asking for the 2-step one failed one open in three.
+    assert [c.reference for c in out["chunks"]] in [
+        [c["reference"] for c in r["chunks"]] for r in (ROADMAP, CUT_B, CUT_C)]
     assert world.calls == [], world.calls
     assert world.cache.read_text() == before, "opening must never rewrite the test set"
 

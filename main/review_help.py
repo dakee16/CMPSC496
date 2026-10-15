@@ -169,6 +169,25 @@ def insert_examples(solution: str, text: str, entry: str | None = None) -> str |
     return "\n".join(new) + ("\n" if solution.endswith("\n") else "")
 
 
+def statements_from(text: str) -> list[str]:
+    """A test case the teacher typed (15 Oct), as statements. Written like a
+    docstring - `>>> ` lines, `... ` carrying one on - any other line is an
+    answer they expect, and is dropped: the answers come from running their
+    solution, as for the model's. Without any `>>>`, every line that is not
+    blank or a comment is one statement."""
+    lines = [ln.rstrip() for ln in (text or "").splitlines()]
+    if any(ln.lstrip().startswith(">>>") for ln in lines):
+        out = []
+        for ln in lines:
+            s = ln.lstrip()
+            if s.startswith(">>>"):
+                out.append(s[3:].removeprefix(" "))
+            elif s.startswith("...") and out:
+                out[-1] += "\n" + s[3:].removeprefix(" ")
+        return [x for x in out if x.strip()]
+    return [ln.strip() for ln in lines if ln.strip() and not ln.strip().startswith("#")]
+
+
 def _programs(problem: dict, labels: list[str]) -> tuple[str, dict]:
     """The teacher's runnable program, and one per missed change by label."""
     from .mutation import _runnable, generate_mutants

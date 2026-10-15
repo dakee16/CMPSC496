@@ -281,3 +281,77 @@ def test_a_student_cannot_mark_anything_harmless(review):
     c = client()
     register(c, "abc123@psu.edu", PW)
     assert c.post(review.url + "/dismiss", json={"label": EDGE}).status_code == 403
+
+
+# ── your own test case (15 Oct) ──────────────────────────────────────────
+
+def test_your_own_test_case_is_run_on_every_change_for_free(review, monkeypatch):
+    """HW4 put: the model's suggestions aimed at the wrong limit, none caught
+    `>` -> `>=`, and the page said "may be harmless" with nothing to do but
+    edit by hand. The teacher's own exact-fit case, run on their solution and
+    on each change still slipping past - no model - and one click to add it."""
+    _live(review)
+    d = review.c.post(review.url + "/try", json={
+        "text": ">>> t = Tank(10)\n>>> t.fill(10)\n'whatever they typed'"}).json()
+    assert review.asked == [], "free"
+    assert d["ok"] and d["labels"] == [EDGE], d
+    assert len(d["catches"]) == 1 and len(d["missed"]) == 2
+    # The answers are the TEACHER's code's, never what was typed.
+    assert d["doctest"] == ">>> t = Tank(10)\n>>> t.fill(10)\n'OK'"
+    assert ">>> t.fill(10)" in d["edited_source"] and "whatever" not in d["edited_source"]
+    handed = []
+    monkeypatch.setattr("main.publish.prepare_problem",
+                        lambda p, emit=None, **_k: handed.append(p) or {
+                            "slug": p["slug"], "ready": True, "chunks": 2, "n_tests": 7,
+                            "stage": None, "error": None})
+    r = review.c.post("/teacher/problems/retry", json={
+        "assignment_id": "a-1", "slug": review.slug, "source": d["edited_source"],
+        "keep_live": True})
+    assert r.status_code == 200 and r.json()["ready"] is True, r.text
+    # Plain values become the call list a class's tests start from; objects
+    # handed around (HW4's ContentItem) the doctest block. Either is a test.
+    from main.context import calls_from_docstring, doctest_block
+    assert (["fill", 10] in calls_from_docstring(handed[0]["description"], "Tank")
+            or "t.fill(10)" in (doctest_block(handed[0]) or "")), "the case is not a test"
+
+
+def test_a_case_that_catches_nothing_says_so_and_offers_nothing(review):
+    d = review.c.post(review.url + "/try", json={"text": "t = Tank(10)\nt.fill(1)"}).json()
+    assert d["ok"] and d["labels"] == [] and d["edited_source"] is None
+    assert len(d["missed"]) == 3 and d["doctest"].endswith(">>> t.fill(1)\n'OK'")
+
+
+def test_a_change_marked_harmless_is_not_tried(review):
+    _live(review)
+    review.c.post(review.url + "/dismiss", json={"label": EDGE})
+    d = review.c.post(review.url + "/try", json={"text": "t = Tank(10)\nt.fill(10)"}).json()
+    assert d["labels"] == [] and len(d["missed"]) == 2
+
+
+@pytest.mark.parametrize("text, status, said", [
+    ("", 400, "at least one line"),
+    ("   \n>>>\n", 400, "at least one line"),
+    ("t = Tank(10\nt.fill(1)", 400, "line 1 is not valid Python"),
+    ("t.fill(1)", 200, "NameError"),                   # runs, and fails on THEIR code
+    ("\n".join(f"x{i} = {i}" for i in range(13)), 400, "12 lines"),
+])
+def test_a_case_that_cannot_be_used_is_said_plainly(review, text, status, said):
+    r = review.c.post(review.url + "/try", json={"text": text})
+    assert r.status_code == status, r.text
+    msg = r.json()["detail"]["message"] if status != 200 else r.json()["reason"]
+    assert said.lower() in msg.lower(), msg
+    if status == 200:
+        assert r.json()["ok"] is False
+
+
+def test_a_student_cannot_try_a_case(review):
+    c = client()
+    register(c, "abc123@psu.edu", PW)
+    assert c.post(review.url + "/try", json={"text": "t = Tank(10)"}).status_code == 403
+
+
+def test_a_typed_case_reads_like_a_docstring_or_plain_lines():
+    s = review_help.statements_from
+    assert s(">>> t = Tank(10)\n>>> for a in (1, 2):\n...     t.fill(a)\n'OK'\n>>> t.level") == [
+        "t = Tank(10)", "for a in (1, 2):\n    t.fill(a)", "t.level"]
+    assert s("    t = Tank(10)\n\n    # a comment\n    t.level\n") == ["t = Tank(10)", "t.level"]

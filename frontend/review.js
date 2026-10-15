@@ -12,6 +12,9 @@ const A = q.get("a") || "", SLUG = q.get("slug") || "";
 const $ = id => document.getElementById(id);
 let view = null;
 let notice = "";              // the last action's outcome, kept across redraws
+// The teacher's own test case (15 Oct): what they typed and what it caught,
+// kept across redraws until a new version is prepared.
+let mine = {text: "", out: null};
 
 mountHeader({variant: "instructor", active: "Assignments",
   crumbs: [{label: "Assignments", href: "teacher-assignments.html"},
@@ -123,6 +126,8 @@ function render(){
   // broke the row it sat in.
   document.querySelectorAll("pre[data-test]").forEach(pre =>
     pre.innerHTML = hlPython(v.help.tests[+pre.dataset.test].doctest));
+  if ($("trySrc")) $("trySrc").value = mine.text;
+  if ($("tryEx") && mine.out && mine.out.doctest) $("tryEx").innerHTML = hlPython(mine.out.doctest);
   wire();
 }
 
@@ -147,9 +152,9 @@ function testCards(){
       <p class="lbl">mistakes were caught. <strong>${missed} slipped past</strong>:
         a student who made one of them would be marked correct${
         h && h.examples_ok ? (gaps === missed ? "."
-          : gaps ? ` - we proved ${gaps} of them matter, and found no case where
-              the other ${missed - gaps} do.`
-          : " - but we found no case where any of them changes an answer.") : "."}</p>
+          : gaps ? ` - we proved ${gaps} of them matter. The suggested test cases
+              didn't catch the other ${missed - gaps}, which doesn't prove they're harmless.`
+          : ". The suggested test cases didn't catch any of them, which doesn't prove they're harmless.") : "."}</p>
     </section>
 
     <section class="card">
@@ -244,7 +249,7 @@ const said = t => esc(t).replace(/`([^`]+)`/g, "<code>$1</code>");
 function finding(c){
   const pill = {
     gap: `<span class="pill warn">real gap - we found a case where it matters</span>`,
-    maybe_harmless: `<span class="pill">no case found - may be harmless</span>`,
+    maybe_harmless: `<span class="pill">the suggested test cases missed it</span>`,
     unknown: ""}[c.verdict] || "";
   return `<article class="finding${c.verdict === "maybe_harmless" ? " maybe" : ""}">
     <div class="top">
@@ -295,12 +300,12 @@ function options(gaps, maybe){
       </div>
     </div>` : "";
   if (!testsInReview(view))            // the tests passed already: nothing to accept
-    return `${add}
+    return `${add}${yours(canAdd)}
     <div class="option">
       <h4>Leave it as it is</h4>
       <p>${canAdd ? (view.ready ? "Students keep working on it as it is now, and the wrong answers above keep passing."
           : "The tests stay as they are, and the wrong answers above keep passing.")
-        : "We found no test case that tells these apart from your solution - often they touch something no test can see. Leaving it is reasonable."}</p>
+        : "Only if no test could ever tell these apart from your solution - for example, a line that sets something to what it already is. If you're not sure, write your own test case first."}</p>
     </div>
     <div class="option">
       <h4>Edit the problem yourself</h4>
@@ -311,15 +316,11 @@ function options(gaps, maybe){
     </div>`;
   const why = canAdd
     ? `Here, we found cases where they do differ, so we don't recommend it.`
-    : h && h.examples_ok
-      ? `We tried examples and found no case where these changes give a
-         different answer - often they touch something no test can see, like a
-         node that has already been removed. That makes this a reasonable choice.`
-      : `Only if you are sure.`;
-  return `${add}
-    <div class="option${!canAdd && h && h.examples_ok ? " rec" : ""}">
-      <h4>These can't change the answer - publish anyway${!canAdd && h &&
-        h.examples_ok ? ` <span class="pill ok">reasonable here</span>` : ""}</h4>
+    : `The suggested test cases didn't tell them apart, but that is not proof -
+       write your own test case first if you're not sure.`;
+  return `${add}${yours(canAdd)}
+    <div class="option">
+      <h4>These can't change the answer - publish anyway</h4>
       <p>Only if you've read the lines above and no student answer could differ
         because of them. ${why} Your name is recorded against the decision.</p>
       <div class="acts"><button type="button" class="ghost" id="acceptGo">Publish anyway</button></div>
@@ -331,6 +332,61 @@ function options(gaps, maybe){
       <div class="acts"><button type="button" class="ghost" id="editGo">Open the editor</button></div>
       <div id="editor"></div>
     </div>`;
+}
+
+/* YOUR OWN TEST CASE (15 Oct). HW4 put: the suggested cases aimed at the
+   wrong limit and none caught `>` -> `>=`. The teacher's own case is run on
+   their solution and on every change above, free, and added like the
+   suggested ones. */
+function yours(canAdd){
+  return `
+    <div class="option${canAdd ? "" : " rec"}">
+      <h4>Write your own test case${canAdd ? "" : ` <span class="pill ok">recommended</span>`}</h4>
+      <p>Type it the way a docstring example looks - <code>&gt;&gt;&gt;</code> lines,
+        or plain lines of Python. We run it on your solution and on each wrong
+        answer above, and say which ones it catches. Your solution supplies the
+        answers, so you don't need to type them.</p>
+      <textarea class="rvEdit tryBox" id="trySrc" rows="4" spellcheck="false"
+        aria-label="Your test case"
+        placeholder="&gt;&gt;&gt; obj = YourClass(10)&#10;&gt;&gt;&gt; obj.method(10)"></textarea>
+      <div class="acts"><button type="button" class="ghost" id="tryGo">Check it</button>
+        <span class="cost">Free - nothing is changed until you add it.</span></div>
+      <div id="tryOut" aria-live="polite">${tryResult()}</div>
+    </div>`;
+}
+
+function tryResult(){
+  const o = mine.out;
+  if (!o) return "";
+  if (!o.ok) return `<div class="banner bad">${esc(o.reason || "It could not be checked.")}</div>`;
+  if (!o.catches.length)
+    return `<div class="banner warn">It didn't catch any of them - your solution and
+      every wrong answer above give the same results on it.</div>
+      <pre class="code ex" id="tryEx"></pre>`;
+  return `
+    <div class="tcase">
+      <div class="tchead"><span class="tcnum">Your test case</span>
+        <span class="tcatch">Catches: ${o.catches.map(esc).join("; ")}</span></div>
+      <pre class="code ex" id="tryEx"></pre>
+    </div>
+    <p class="note">${o.missed.length ? `Still not caught: ${o.missed.map(esc).join("; ")}.`
+      : "It catches every wrong answer above."}</p>
+    <div class="acts">
+      <button type="button" id="tryAdd">Add it and prepare again</button>
+      <button type="button" class="ghost" id="tryEdit">Edit it first</button>
+      <span class="cost">Prepares just this problem again - a minute or two.</span>
+    </div>
+    <div id="tryEditor"></div>`;
+}
+
+async function tryCase(btn){
+  mine.text = $("trySrc").value;
+  if (!mine.text.trim()) return;
+  setBusy(btn, true, "Checking…");
+  try { mine.out = await call(url() + "/try", "POST", {text: mine.text}); }
+  catch (e) { mine.out = {ok: false, reason: e.message}; }
+  setBusy(btn, false);
+  render();
 }
 
 function drawQueue(){
@@ -357,6 +413,10 @@ function wire(){
   if (rmAccept) rmAccept.onclick = () => keepRoadmaps(rmAccept);
   document.querySelectorAll("button.harmlessGo").forEach(b =>
     b.onclick = () => dismiss(b.dataset.label, b));
+  const tryGo = $("tryGo"), tryAdd = $("tryAdd"), tryEdit = $("tryEdit");
+  if (tryGo) tryGo.onclick = () => tryCase(tryGo);
+  if (tryAdd) tryAdd.onclick = () => prepare(mine.out.edited_source, tryAdd);
+  if (tryEdit) tryEdit.onclick = () => openEditor(mine.out.edited_source, "tryEditor");
 }
 
 function openEditor(text, host = "editor"){
@@ -474,6 +534,7 @@ const DONE = {
 
 async function after(d, kind = "tests"){
   const wasLive = !!view.ready;
+  mine.out = null;
   if (d.ready && wasLive){
     // Done on a live problem: say whether it worked, from the fresh view.
     try { view = await call(url()); } catch (e) { return fail(e); }

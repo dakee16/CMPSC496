@@ -2736,6 +2736,70 @@ def teacher_review_dismiss(assignment_id: str, slug: str, req: DismissRequest,
     return _review_view(assignment_id, slug)
 
 
+class TryCaseRequest(BaseModel, extra="forbid"):
+    text: str
+
+
+_TRY_MAX_LINES, _TRY_MAX_CHARS = 12, 4000
+
+
+@app.post("/teacher/review/{assignment_id}/{slug}/try")
+def teacher_review_try(assignment_id: str, slug: str, req: TryCaseRequest,
+                       request: Request):
+    """The teacher's OWN test case (15 Oct), run on their solution and on every
+    change still slipping past - exactly the check the model's suggestions get
+    (review_help.check). Free: no model.
+
+    HW4 put: the model's suggestions aimed at the remaining space where the
+    line compares the maximum size, none caught `>` -> `>=`, and the page said
+    "may be harmless" with nothing to do but edit by hand. A case that catches
+    something comes back as the docstring edit the page's Add button sends to
+    the retry route, like the model's."""
+    import ast
+    from main import review_help
+    require_teacher(request)
+
+    def bad(message):
+        raise HTTPException(status_code=400, detail={"reason_code": "bad_case",
+                                                     "message": message})
+    if len(req.text) > _TRY_MAX_CHARS:
+        bad(f"Keep it under {_TRY_MAX_CHARS} characters.")
+    stmts = review_help.statements_from(req.text)
+    if not stmts:
+        bad("Type at least one line of Python - for example, making an object "
+            "and calling the method on it.")
+    if len(stmts) > _TRY_MAX_LINES:
+        bad(f"Keep it to {_TRY_MAX_LINES} lines or fewer - one small case.")
+    for i, s in enumerate(stmts, 1):
+        try:
+            ast.parse(s)
+        except SyntaxError as e:
+            bad(f"Line {i} is not valid Python ({e.msg}): {s.splitlines()[0][:80]}")
+
+    _, row = _problem_for(assignment_id, slug)
+    problem = {**row, **_context_of(row)}
+    key = _row_key(row)
+    marks = review_help.dismissed(key)
+    open_ = [c for c in ((_findings_for(row) or {}).get("checks") or [])
+             if not c.get("settled") and c["label"] not in marks]
+    said = {c["label"]: c for c in ((review_help.cached(key) or {}).get("changes") or [])}
+
+    def title(c):
+        return (said.get(c["label"]) or {}).get("title") or c.get("phrasing") or c["label"]
+
+    v = review_help.check(problem, stmts, [c["label"] for c in open_])
+    if not v["ok"]:
+        return {"ok": False, "reason": f"It could not be used: {v['reason']}."}
+    caught = [c for c in open_ if v["caught"].get(c["label"])]
+    return {"ok": True, "doctest": v["doctest"],
+            "labels": [c["label"] for c in caught],
+            "catches": [title(c) for c in caught],
+            "missed": [title(c) for c in open_ if c not in caught],
+            "edited_source": (review_help.insert_examples(
+                row.get("solution") or "", v["doctest"], problem.get("entry_hint"))
+                if caught else None)}
+
+
 def _problem_for(assignment_id: str, slug: str) -> tuple[dict, dict]:
     """(stored problem, its row) - 404 when there is none."""
     rows = get_supabase().table("problems").select(
