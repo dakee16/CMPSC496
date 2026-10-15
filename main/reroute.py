@@ -459,6 +459,15 @@ def build(problem: dict, header: str, graph: dict, chat_log: list | None = None,
         if splitter.too_big(decomp):
             last = f"split has a {splitter.biggest_step(decomp)}-line step"
             continue
+        # GATE 5 - NOTHING A STUDENT MAY NOT USE, AND CLEAR QUESTIONS (13 Oct,
+        # gates.roadmap_faults). Built in the student's shape, so it is not the
+        # teacher's code (teachers=False) - but a step graded with `locals()`
+        # behind it can never pass, whoever's shape it is.
+        from .gates import roadmap_faults
+        faults = roadmap_faults(problem, decomp, teachers=False)
+        if faults:
+            last = "split " + "; ".join(faults)
+            continue
         return decomp
 
     if not transient:

@@ -2,16 +2,26 @@
  "before": {
   "assignment": {
    "id": "a-1",
-   "name": "Week 4 - Tanks"
+   "name": null
   },
   "slug": "tank-fill",
   "title": "fill",
   "ready": false,
   "in_review": true,
+  "gaps": false,
   "error": "Waiting on your review: a few checks on the generated tests came back inconclusive.",
   "total": 7,
   "caught": 4,
   "checks": [
+   {
+    "label": "line 5: > -> >=",
+    "line": 5,
+    "phrasing": "changing > to >=",
+    "code": "    if amount > room:",
+    "title": null,
+    "missing": null,
+    "verdict": "unknown"
+   },
    {
     "label": "line 5: remove `if amount > room:`",
     "line": 5,
@@ -29,17 +39,16 @@
     "title": null,
     "missing": null,
     "verdict": "unknown"
-   },
-   {
-    "label": "line 5: > -> >=",
-    "line": 5,
-    "phrasing": "changing > to >=",
-    "code": "    if amount > room:",
-    "title": null,
-    "missing": null,
-    "verdict": "unknown"
    }
   ],
+  "harmless": [],
+  "roadmaps": {
+   "cutoff": 60,
+   "best": null,
+   "review": false,
+   "below": false,
+   "list": []
+  },
   "help": null,
   "source": "def fill(self, amount):\n    \"\"\"Add amount if it fits and return 'OK'; return 'FULL' and change\n    nothing if it does not.\"\"\"\n    room = self.size - self.level\n    if amount > room:\n        return 'FULL'\n    self.level = self.level + amount\n    return 'OK'",
   "lines": [
@@ -56,16 +65,26 @@
  "after": {
   "assignment": {
    "id": "a-1",
-   "name": "Week 4 - Tanks"
+   "name": null
   },
   "slug": "tank-fill",
   "title": "fill",
   "ready": false,
   "in_review": true,
+  "gaps": false,
   "error": "Waiting on your review: a few checks on the generated tests came back inconclusive.",
   "total": 7,
   "caught": 4,
   "checks": [
+   {
+    "label": "line 5: > -> >=",
+    "line": 5,
+    "phrasing": "changing > to >=",
+    "code": "    if amount > room:",
+    "title": "A student could use >= instead of >",
+    "missing": "an amount that fits exactly",
+    "verdict": "maybe_harmless"
+   },
    {
     "label": "line 5: remove `if amount > room:`",
     "line": 5,
@@ -83,25 +102,39 @@
     "title": "A student could forget to raise the level",
     "missing": "reading the level after filling",
     "verdict": "gap"
-   },
-   {
-    "label": "line 5: > -> >=",
-    "line": 5,
-    "phrasing": "changing > to >=",
-    "code": "    if amount > room:",
-    "title": "A student could use >= instead of >",
-    "missing": "an amount that fits exactly",
-    "verdict": "maybe_harmless"
    }
   ],
+  "harmless": [],
+  "roadmaps": {
+   "cutoff": 60,
+   "best": null,
+   "review": false,
+   "below": false,
+   "list": []
+  },
   "help": {
    "written": true,
    "error": null,
    "examples_ok": true,
    "examples_reason": null,
-   "doctest": ">>> t = Tank(10)\n>>> t.fill(4)\n'OK'\n>>> t.fill(7)\n'FULL'\n>>> t.level\n4",
+   "doctest": ">>> t = Tank(10)\n>>> t.fill(4)\n'OK'\n>>> t.fill(7)\n'FULL'\n\n>>> t = Tank(10)\n>>> t.fill(4)\n'OK'\n>>> t.level\n4",
    "catches": 2,
-   "edited_source": "def fill(self, amount):\n    \"\"\"Add amount if it fits and return 'OK'; return 'FULL' and change\n    nothing if it does not.\n\n    >>> t = Tank(10)\n    >>> t.fill(4)\n    'OK'\n    >>> t.fill(7)\n    'FULL'\n    >>> t.level\n    4\n    \"\"\"\n    room = self.size - self.level\n    if amount > room:\n        return 'FULL'\n    self.level = self.level + amount\n    return 'OK'"
+   "tests": [
+    {
+     "doctest": ">>> t = Tank(10)\n>>> t.fill(4)\n'OK'\n>>> t.fill(7)\n'FULL'",
+     "catches": [
+      "A student could skip the room check",
+      "A student could forget to raise the level"
+     ]
+    },
+    {
+     "doctest": ">>> t = Tank(10)\n>>> t.fill(4)\n'OK'\n>>> t.level\n4",
+     "catches": [
+      "A student could forget to raise the level"
+     ]
+    }
+   ],
+   "edited_source": "def fill(self, amount):\n    \"\"\"Add amount if it fits and return 'OK'; return 'FULL' and change\n    nothing if it does not.\n\n    >>> t = Tank(10)\n    >>> t.fill(4)\n    'OK'\n    >>> t.fill(7)\n    'FULL'\n\n    >>> t = Tank(10)\n    >>> t.fill(4)\n    'OK'\n    >>> t.level\n    4\n    \"\"\"\n    room = self.size - self.level\n    if amount > room:\n        return 'FULL'\n    self.level = self.level + amount\n    return 'OK'"
   },
   "source": "def fill(self, amount):\n    \"\"\"Add amount if it fits and return 'OK'; return 'FULL' and change\n    nothing if it does not.\"\"\"\n    room = self.size - self.level\n    if amount > room:\n        return 'FULL'\n    self.level = self.level + amount\n    return 'OK'",
   "lines": [
@@ -112,6 +145,234 @@
    {
     "slug": "tank-fill",
     "title": "fill"
+   }
+  ]
+ },
+ "gaps": {
+  "assignment": {
+   "id": "a-1",
+   "name": null
+  },
+  "slug": "tank-fill",
+  "title": "fill",
+  "ready": true,
+  "in_review": false,
+  "gaps": true,
+  "error": null,
+  "total": 7,
+  "caught": 4,
+  "checks": [
+   {
+    "label": "line 5: > -> >=",
+    "line": 5,
+    "phrasing": "changing > to >=",
+    "code": "    if amount > room:",
+    "title": "A student could use >= instead of >",
+    "missing": "an amount that fits exactly",
+    "verdict": "maybe_harmless"
+   },
+   {
+    "label": "line 5: remove `if amount > room:`",
+    "line": 5,
+    "phrasing": "deleting `if amount > room:`",
+    "code": "    if amount > room:",
+    "title": "A student could skip the room check",
+    "missing": "an amount that does not fit",
+    "verdict": "gap"
+   },
+   {
+    "label": "line 7: remove `self.level = self.level + amount`",
+    "line": 7,
+    "phrasing": "deleting `self.level = self.level + amount`",
+    "code": "    self.level = self.level + amount",
+    "title": "A student could forget to raise the level",
+    "missing": "reading the level after filling",
+    "verdict": "gap"
+   }
+  ],
+  "harmless": [],
+  "roadmaps": {
+   "cutoff": 60,
+   "best": null,
+   "review": false,
+   "below": false,
+   "list": []
+  },
+  "help": {
+   "written": true,
+   "error": null,
+   "examples_ok": true,
+   "examples_reason": null,
+   "doctest": ">>> t = Tank(10)\n>>> t.fill(4)\n'OK'\n>>> t.fill(7)\n'FULL'\n\n>>> t = Tank(10)\n>>> t.fill(4)\n'OK'\n>>> t.level\n4",
+   "catches": 2,
+   "tests": [
+    {
+     "doctest": ">>> t = Tank(10)\n>>> t.fill(4)\n'OK'\n>>> t.fill(7)\n'FULL'",
+     "catches": [
+      "A student could skip the room check",
+      "A student could forget to raise the level"
+     ]
+    },
+    {
+     "doctest": ">>> t = Tank(10)\n>>> t.fill(4)\n'OK'\n>>> t.level\n4",
+     "catches": [
+      "A student could forget to raise the level"
+     ]
+    }
+   ],
+   "edited_source": "def fill(self, amount):\n    \"\"\"Add amount if it fits and return 'OK'; return 'FULL' and change\n    nothing if it does not.\n\n    >>> t = Tank(10)\n    >>> t.fill(4)\n    'OK'\n    >>> t.fill(7)\n    'FULL'\n\n    >>> t = Tank(10)\n    >>> t.fill(4)\n    'OK'\n    >>> t.level\n    4\n    \"\"\"\n    room = self.size - self.level\n    if amount > room:\n        return 'FULL'\n    self.level = self.level + amount\n    return 'OK'"
+  },
+  "source": "def fill(self, amount):\n    \"\"\"Add amount if it fits and return 'OK'; return 'FULL' and change\n    nothing if it does not.\"\"\"\n    room = self.size - self.level\n    if amount > room:\n        return 'FULL'\n    self.level = self.level + amount\n    return 'OK'",
+  "lines": [
+   5,
+   7
+  ],
+  "queue": [
+   {
+    "slug": "tank-fill",
+    "title": "fill"
+   }
+  ]
+ },
+ "roadmap_review": {
+  "assignment": {
+   "id": "a-1",
+   "name": null
+  },
+  "slug": "score-split",
+  "title": "Score",
+  "ready": false,
+  "in_review": true,
+  "gaps": false,
+  "error": "Waiting on your review: no roadmap reached the bar (the best scores 46/100; the bar is 60). The method is probably too long to cut into small steps.",
+  "total": 0,
+  "caught": 0,
+  "checks": [],
+  "harmless": [],
+  "roadmaps": {
+   "cutoff": 60,
+   "best": 46,
+   "review": true,
+   "below": false,
+   "list": [
+    {
+     "points": 46,
+     "parts": {
+      "biggest step": 10,
+      "balance": 8,
+      "number of steps": 1,
+      "clean starts": 15,
+      "values handed on": 12
+     },
+     "sizes": [
+      16,
+      3
+     ],
+     "faults": [],
+     "steps": [
+      "Write code that handles part 1 of the scoring as it goes through each word, and keep the result for the next step.",
+      "Write code that returns the final score."
+     ]
+    },
+    {
+     "points": 36,
+     "parts": {
+      "biggest step": 5,
+      "balance": 3,
+      "number of steps": 1,
+      "clean starts": 15,
+      "values handed on": 12
+     },
+     "sizes": [
+      18,
+      1
+     ],
+     "faults": [],
+     "steps": [
+      "Work out the score, and keep it for the next step.",
+      "Return the score."
+     ]
+    }
+   ]
+  },
+  "help": null,
+  "source": "def score(words):\n    total = 0\n    seen = []\n    for w in words:\n        w = w.strip().lower()\n        if not w:\n            continue\n        if w in seen:\n            total -= 1\n            continue\n        seen.append(w)\n        if w.isdigit():\n            total += int(w)\n        elif len(w) > 3:\n            total += 2\n        else:\n            total += 1\n    if total < 0:\n        total = 0\n    return total\n",
+  "lines": [],
+  "queue": [
+   {
+    "slug": "score-split",
+    "title": "Score"
+   }
+  ]
+ },
+ "roadmap_live": {
+  "assignment": {
+   "id": "a-1",
+   "name": null
+  },
+  "slug": "score-split",
+  "title": "Score",
+  "ready": true,
+  "in_review": false,
+  "gaps": false,
+  "error": null,
+  "total": 0,
+  "caught": 0,
+  "checks": [],
+  "harmless": [],
+  "roadmaps": {
+   "cutoff": 60,
+   "best": 46,
+   "review": false,
+   "below": true,
+   "list": [
+    {
+     "points": 46,
+     "parts": {
+      "biggest step": 10,
+      "balance": 8,
+      "number of steps": 1,
+      "clean starts": 15,
+      "values handed on": 12
+     },
+     "sizes": [
+      16,
+      3
+     ],
+     "faults": [],
+     "steps": [
+      "Write code that handles part 1 of the scoring as it goes through each word, and keep the result for the next step.",
+      "Write code that returns the final score."
+     ]
+    },
+    {
+     "points": 36,
+     "parts": {
+      "biggest step": 5,
+      "balance": 3,
+      "number of steps": 1,
+      "clean starts": 15,
+      "values handed on": 12
+     },
+     "sizes": [
+      18,
+      1
+     ],
+     "faults": [],
+     "steps": [
+      "Work out the score, and keep it for the next step.",
+      "Return the score."
+     ]
+    }
+   ]
+  },
+  "help": null,
+  "source": "def score(words):\n    total = 0\n    seen = []\n    for w in words:\n        w = w.strip().lower()\n        if not w:\n            continue\n        if w in seen:\n            total -= 1\n            continue\n        seen.append(w)\n        if w.isdigit():\n            total += int(w)\n        elif len(w) > 3:\n            total += 2\n        else:\n            total += 1\n    if total < 0:\n        total = 0\n    return total\n",
+  "lines": [],
+  "queue": [
+   {
+    "slug": "score-split",
+    "title": "Score"
    }
   ]
  }

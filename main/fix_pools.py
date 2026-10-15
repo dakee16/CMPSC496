@@ -41,7 +41,7 @@ from .gates import check_notes, check_prompts
 from .identity import content_hash
 from .reword_pools import _ready_problems, fingerprint, readiness
 from .run_phase1 import (_add_to_pool, _deserialize, _load_pool, _reading_saved_tests,
-                         _serialize, _usable)
+                         _serialize, _answerable as _usable)
 from .topup_pools import SpendCapReached, spend_cap
 
 _COST = {"unsafe": 0.017, "wording": 0.017, "notes": 0.010}   # $ per roadmap, one try each

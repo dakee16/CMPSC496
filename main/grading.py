@@ -1114,8 +1114,127 @@ def _is_literal_declaration(value, problem: dict, header: str = "") -> bool:
     except (ValueError, TypeError, SyntaxError, MemoryError, RecursionError):
         return False
 
+def _tail_reads_earlier_names(problem: dict, header: str, ref_tail: str) -> bool:
+    """Does the teacher's remaining code read a name some earlier step made?
+    Parameters, the module's own names and builtins are not earlier steps'.
+
+    A tail that carries on INSIDE a loop starts indented, and _names reads an
+    unparseable text as reading nothing - which here would mean "independent"
+    and convict a correct step (measured: HW3 calculateExpressions, a renamed
+    but correct step 2). So it is dedented first, and a tail that still cannot
+    be read counts as depending on earlier steps: never convict on a guess."""
+    import textwrap
+    tail = textwrap.dedent(ref_tail)
+    try:
+        _parse_body(tail)
+    except SyntaxError:
+        return True
+    tail_free = (_names(tail, ast.Load) - _names(tail, ast.Store)
+                 - _header_params(header) - _module_names(problem, header)
+                 - _SAFE_BUILTINS)
+    return bool(tail_free)
+
+
 def _hoistable_declarations(problem: dict, chunks: list, header: str,
-                            upto: str, ref_tail: str) -> list[str]:
+                            upto: str, ref_tail: str, idx: int | None = None,
+                            student_step: str | None = None) -> list[str]:
+    """What the trusted tail needs that the student did not make: the literal
+    declarations below, or else a value recomputed from the step being graded
+    (_recomputed_values). [] to change nothing."""
+    return (_literal_declarations(problem, chunks, header, upto, ref_tail)
+            or (_recomputed_values(problem, chunks, header, upto, ref_tail, idx, student_step)
+                if idx is not None else []))
+
+
+_PURE_CALLS = frozenset({"len", "abs", "min", "max", "str", "int", "float", "sum",
+                         "ord", "round", "bool"})
+
+
+def _recomputed_values(problem: dict, chunks: list, header: str, upto: str,
+                       ref_tail: str, idx: int, student_step: str | None) -> list[str]:
+    """A value the tail reads that a CORRECT step need not have stored (14 Oct).
+
+    HW4 update, step 2: the teacher writes `available_space = self.remainingSpace
+    + self.head.value.size` and checks `content.size > available_space`; a
+    student checks `content.size - self.head.value.size > self.remainingSpace`
+    - the same test, rearranged - and stores nothing. The teacher's step 3 reads
+    `available_space`, so the run died on NameError and a right answer went to
+    the paid model tiers. Matching the student's values (what Clara and SarfGen
+    do; our bridges already do it for renames) cannot help: the value never
+    exists in their code.
+
+    The teacher's own line is recomputed instead, ONLY when all of these hold:
+      * it is the name's one and only binding in the whole body, and it sits at
+        the top level of THE STEP BEING GRADED - it is this step's to make;
+      * its right-hand side is plain arithmetic on what exists (fields, names,
+        len/min/max/... - no method call can change anything);
+      * the value is only ever READ: never filled in or changed in place -
+        `counts = {}` that the step's loop then fills is the step's work, not
+        a value to recompute (it took the "your step never made what the next
+        step needs" message from an empty step, 14 Oct);
+      * that step ALSO does visible work - a check, a return, a change to an
+        object. A step that only sets values is entirely about those values:
+        recomputing them would do the student's work for them, and that is
+        how an earlier version of this idea accepted `pass` in 14 places;
+      * the student's step is not empty.
+    Measured on every HW3 and HW4 roadmap, AI off: the correct update answer is
+    graded free; 0 of 133 empty steps accepted; wrong answers accepted exactly
+    as before. It never REJECTS: a run that still fails goes on to the model
+    tiers, as it did without it (and see the free rejection, which a recomputed
+    tail never takes)."""
+    tail_free = (_names(ref_tail, ast.Load) - _names(ref_tail, ast.Store)
+                 - _header_params(header) - _module_names(problem, header)
+                 - _SAFE_BUILTINS)
+    needed = tail_free - _names(upto, ast.Store)
+    if not needed or not (0 <= idx < len(chunks)):
+        return []
+    try:
+        if student_step is not None and not any(
+                not isinstance(n, ast.Pass) for n in _parse_body(student_step).body[0].body):
+            return []                               # empty, or only `pass`
+        step = _parse_body(chunks[idx].get("reference") or "").body[0]
+        whole = _parse_body("\n".join((c.get("reference") or "") for c in chunks))
+    except SyntaxError:
+        return []
+
+    def sets_only(st):
+        return (isinstance(st, (ast.Assign, ast.AugAssign, ast.AnnAssign))
+                and all(isinstance(t, ast.Name) for t in
+                        (st.targets if isinstance(st, ast.Assign) else [st.target])))
+    if all(sets_only(st) for st in step.body):
+        return []                                   # the step IS those values
+
+    def pure(expr):
+        return not any(
+            (isinstance(n, ast.Call) and not (isinstance(n.func, ast.Name)
+                                              and n.func.id in _PURE_CALLS))
+            or isinstance(n, (ast.Lambda, ast.NamedExpr, ast.Await, ast.Yield, ast.YieldFrom))
+            for n in ast.walk(expr))
+    def changed_in_place(name):
+        for n in ast.walk(whole):
+            if (isinstance(n, (ast.Subscript, ast.Attribute)) and isinstance(n.ctx, (ast.Store, ast.Del))
+                    and isinstance(n.value, ast.Name) and n.value.id == name):
+                return True                         # name[...] = / name.x =
+            if (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+                    and isinstance(n.func.value, ast.Name) and n.func.value.id == name):
+                return True                         # name.append(...) and the like
+        return False
+    found = []
+    for name in sorted(needed):
+        if changed_in_place(name):
+            return []
+        binds = [n for n in ast.walk(whole)
+                 if isinstance(n, ast.Name) and n.id == name and isinstance(n.ctx, ast.Store)]
+        mine = [st for st in step.body if isinstance(st, ast.Assign) and len(st.targets) == 1
+                and isinstance(st.targets[0], ast.Name) and st.targets[0].id == name]
+        if len(binds) != 1 or len(mine) != 1 or not pure(mine[0].value):
+            return []                               # all or nothing
+        found.append(mine[0])
+    return [ast.unparse(n) for n in sorted(found, key=lambda n: (n.lineno, n.col_offset))]
+
+
+def _literal_declarations(problem: dict, chunks: list, header: str,
+                          upto: str, ref_tail: str) -> list[str]:
     """Declarations the trusted tail assumes, that the student has not made YET.
 
     The tail is the teacher's own code for the remaining steps, so it reads
@@ -1963,7 +2082,8 @@ def grade_submission(session: dict, student_code: str,
     # a correct answer to the Tier 3 model - computed ONCE, so the ordinary case
     # (nothing needed) costs nothing and the fixable one is fixed on the first
     # and only run.
-    hoisted = _hoistable_declarations(problem, chunks, header, upto, ref_tail)
+    hoisted = _hoistable_declarations(problem, chunks, header, upto, ref_tail,
+                                      idx=idx, student_step=student_code)
     if hoisted:
         ref_tail = "\n".join(hoisted) + "\n" + ref_tail
     res = classify_run(_assemble(problem, header, upto, ref_tail), tests, entry_name=entry)
@@ -2044,6 +2164,30 @@ def grade_submission(session: dict, student_code: str,
                    else _block_not_started(opener),
                    "block_not_started", consume_attempt=False)
 
+    # ── NOTHING FOR THE TAIL TO MISNAME: A FAILURE IS THEIRS (13 Oct) ───────
+    #    The model tiers exist because a failure joined to the teacher's tail
+    #    might be only a naming mismatch. When the tail reads NOTHING an earlier
+    #    step made - `return 'Cleared cache!'` - there is nothing to mismatch: the
+    #    student's own code, run with the teacher's untouched remaining steps,
+    #    gives a wrong answer, and that is the verdict. Free, and the same every
+    #    time. Measured on HW4's live roadmaps: 19 of the 35 wrong steps that
+    #    went to the model had a tail like this.
+    if not hoisted and not _tail_reads_earlier_names(problem, header, ref_tail):
+        shown = failing_cases(problem, tests, res.failures)
+        _trace(trace.record_route, corr, "execution-reference", "incorrect",
+               independent_tail=True)
+        return _ok("incorrect", "execution-reference",
+                   {"wrong_output": "Your step gives the wrong answer on at least "
+                                    "one case, with the rest of the solution after it.",
+                    "runtime_error": "Your step makes the solution crash, with the "
+                                     "rest of the solution after it.",
+                    "timeout": "Your step makes the solution take too long - it "
+                               "may loop forever."}.get(res.outcome,
+                                                        "Your step doesn't work yet."),
+                   "reference_fail_independent", execution_outcome=res.outcome,
+                   failures=res.failures, failing_cases=shown,
+                   failed_total=_failed_total(res, len(shown)))
+
     result = _model_tiers(problem, session, chunk, header, prefix, student_code,
                           upto, ref_tail, tests, entry, corr)
     # ── COULD NOT CONFIRM -> ASK, rather than leave them on a step nobody
@@ -2106,7 +2250,8 @@ def _written_ahead(problem, header, chunks, idx, upto, student_code, tests,
     for skip in range(len(chunks) - idx - 2, 0, -1):
         tail = "\n".join((chunks[j].get("reference") or "")
                          for j in range(idx + 1 + skip, len(chunks)))
-        hoisted = _hoistable_declarations(problem, chunks, header, upto, tail)
+        hoisted = _hoistable_declarations(problem, chunks, header, upto, tail,
+                                          idx=idx, student_step=student_code)
         if hoisted:
             tail = "\n".join(hoisted) + "\n" + tail
         if classify_run(_assemble(problem, header, upto, tail), tests,

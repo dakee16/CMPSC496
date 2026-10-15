@@ -29,8 +29,25 @@ ROADMAP = {"header": "def frequency(txt):", "chunks": [
                   "        counts[ch] = counts.get(ch, 0) + 1"},
     {"step_id": "Part 2", "prompt": "Hand back what you counted.",
      "expected_type": "code", "reference": "return counts"}]}
+# Two other cuts of the same code: saved roadmaps are different cuts, and a
+# copy of one already saved is not saved again (14 Oct).
+_LOOP = "for ch in txt:\n    if ch.isalpha():\n        counts[ch] = counts.get(ch, 0) + 1"
+CUT_B = {"header": "def frequency(txt):", "chunks": [
+    {"step_id": "Part 1", "prompt": "Start an empty tally, keeping it for the next step.",
+     "expected_type": "code", "reference": "counts = {}"},
+    {"step_id": "Part 2", "prompt": "Count each letter into the tally and hand it back.",
+     "expected_type": "code", "reference": _LOOP + "\nreturn counts"}]}
+CUT_C = {"header": "def frequency(txt):", "chunks": [
+    {"step_id": "Part 1", "prompt": "Start an empty tally, keeping it for the next step.",
+     "expected_type": "code", "reference": "counts = {}"},
+    {"step_id": "Part 2", "prompt": "Count each letter into the tally, keeping it for the next step.",
+     "expected_type": "code", "reference": _LOOP},
+    {"step_id": "Part 3", "prompt": "Hand back the tally.", "expected_type": "code",
+     "reference": "return counts"}]}
 SPLIT = json.dumps({"subproblems": [
     {"prompt": c["prompt"], "reference": c["reference"]} for c in ROADMAP["chunks"]]})
+SPLIT_C = json.dumps({"subproblems": [
+    {"prompt": c["prompt"], "reference": c["reference"]} for c in CUT_C["chunks"]]})
 # The modules whose model calls ARE test-set generation or mutation testing.
 GENERATION = ("tests.sandbox", "main.mutation")
 
@@ -78,7 +95,7 @@ def world(tmp_path, monkeypatch):
                                     else {content_hash(PROBLEM): entry}))
 
     def saved_roadmaps(n):
-        pool.write_text(json.dumps({content_hash(PROBLEM): [ROADMAP] * n}))
+        pool.write_text(json.dumps({content_hash(PROBLEM): [ROADMAP, CUT_B, CUT_C][:n]}))
 
     def generation():
         return [c for c in calls if c.startswith(GENERATION)]
@@ -121,18 +138,18 @@ def test_filling_the_pool_pays_for_a_roadmap_but_never_for_a_test_set(world):
     from main.identity import content_hash
     from main.run_phase1 import fill_pool
     world.saved_tests("outdated")
-    world.saved_roadmaps(4)
-    world.allowed["subproblem"] = SPLIT
+    world.saved_roadmaps(2)
+    world.allowed["subproblem"] = SPLIT_C            # a third, different cut
     before = world.cache.read_text()
 
-    assert fill_pool(dict(PROBLEM)) == 5
+    assert fill_pool(dict(PROBLEM)) == 3
     assert world.generation() == [], world.generation()
     # The build, and since 30 Sep its two-line step notes (main/step_notes.py)
     # - neither of them a test-set generation.
     assert set(world.calls) <= {"main.run_phase1.decompose_into_chunks",
                                 "main.step_notes._ask"}, world.calls
     assert "main.run_phase1.decompose_into_chunks" in world.calls
-    assert len(json.loads(world.pool.read_text())[content_hash(PROBLEM)]) == 5, \
+    assert len(json.loads(world.pool.read_text())[content_hash(PROBLEM)]) == 3, \
         "the new roadmap was built and saved"
     assert world.cache.read_text() == before
 

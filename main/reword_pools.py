@@ -38,7 +38,7 @@ from . import grading, splitter
 from .gates import assert_serveable, check_prompts, opens_unsaid
 from .identity import content_hash
 from .run_phase1 import (_add_to_pool, _deserialize, _load_pool,
-                         _reading_saved_tests, _sb, _usable)
+                         _reading_saved_tests, _sb, _answerable as _usable)
 from .sessions import CONTEXT_FIELDS, context_of
 from .topup_pools import SpendCapReached, spend_cap
 

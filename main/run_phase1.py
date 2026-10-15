@@ -15,10 +15,10 @@ from tests.sandbox import get_oracle_tests, passes_tests
 from .context import (build_program, header_of, solution_body,
                       surrounding_class)
 from .identity import content_hash, get_resolved_entry
-from .gates import (assert_serveable, check_necessity, check_prompts,
+from .gates import (assert_serveable, check_necessity, check_prompts, roadmap_faults,
                     shape_failures)
 from .prompts import DECOMPOSE_SYSTEM, EVAL_SYSTEM, CHUNK_DECOMPOSE_SYSTEM
-from . import splitter, step_notes
+from . import roadmap_score, splitter, step_notes
 
 
 load_dotenv()
@@ -64,8 +64,10 @@ _CHUNK_POOL_PATH = os.environ.get(
 # there used to be a 40% chance of building one more on every open anyway,
 # which made fresh roadmaps the largest normal cost on a busy day ($2.50 of
 # $6.71 on 25 Sep) and let the pool grow without bound (invert reached 10).
-# Five gated roadmaps is already the variety students see.
-_POOL_TARGET = 5
+# Five gated roadmaps is already the variety students see. THREE since 13 Oct
+# (Sanan): fewer to pay for and check, and a student whose plan differs gets
+# one built in their own shape (main/reroute) anyway.
+_POOL_TARGET = 3
 # Every pool write is load-modify-save of ONE file shared by every problem, so
 # two unlocked writers keep only the last save. ponytail: in-process lock, which
 # is enough because start.sh pins uvicorn to one worker.
@@ -685,15 +687,37 @@ def _reading_saved_tests(problem: dict) -> dict:
     return {**problem, "oracle_from": problem.get("oracle_from") or problem}
 
 
-def _usable(problem: dict, entries: list) -> list:
+def _answerable(problem: dict, entries: list) -> list:
     # SHAPE-FILTER BEFORE CHOOSING. Entries written before the shape gate
     # existed were never checked against it, and 4 of the 22 in the real pool
     # fail: each one convicts a student who copies the reference verbatim. The
     # filter is pure AST work with no oracle run, so screening the whole pool
-    # costs nothing.
+    # costs nothing. What main/fix_pools repairs from: it rewords the unclear
+    # ones _usable no longer serves, so it must still see them.
     return [e for e in entries
             if not shape_failures(problem, e.get("header", ""),
                                   _deserialize(e)["chunks"])]
+
+
+def _ranked(problem: dict, entries: list) -> list[tuple]:
+    """(entry, score) for every answerable, finishable, DIFFERENT saved
+    roadmap, best first (main/roadmap_score)."""
+    ranked = roadmap_score.rank(problem, _answerable(problem, entries), _deserialize)
+    # Code a student may not use is never served: every step is graded with
+    # the later ones behind it, so no answer could pass (13 Oct, HW4
+    # __contains__, `locals()`).
+    return [(e, s) for e, s in ranked if not any("students may not" in f for f in s["faults"])]
+
+
+def _usable(problem: dict, entries: list) -> list:
+    """What may be SERVED: the best three (14 Oct, Sanan - roadmap_score).
+
+    Unclear questions and REWRITES of the teacher's code rank below every
+    roadmap without a fault and never reach the cutoff, so they are served only
+    while nothing better exists - the old pools of HW3's one-line methods are
+    all rewrites, and work until re-preparing replaces them with one step of
+    the teacher's code."""
+    return roadmap_score.best(_ranked(problem, entries))
 
 
 def fill_pool(problem: dict, replace: bool = False) -> int:
@@ -714,10 +738,32 @@ def fill_pool(problem: dict, replace: bool = False) -> int:
     slug = problem.get("slug", "")
     key = content_hash(problem)
     problem = _reading_saved_tests(problem)
-    have = 0 if replace else len(_usable(problem, _load_pool().get(key, [])))
-    new = []
+    old = _ranked(problem, _load_pool().get(key, []))
+    saved = [] if replace else [_deserialize(e) for e, _ in old]
+    have = 0 if replace else sum(1 for _, sc in old if sc["points"] >= roadmap_score.CUTOFF)
+    new, below = [], []
 
     def keep(decomposition):
+        # THE RULES FIRST (13 Oct, gates.roadmap_faults): the teacher's code
+        # cut, never rewritten; nothing a student may not use; clear questions.
+        # A roadmap that breaks one is not saved, whoever built it.
+        faults = roadmap_faults(problem, decomposition)
+        if faults:
+            print(f"  ⚠️  Not saving a roadmap for {slug}: " + "; ".join(faults))
+            return False
+        # ...NOR A COPY OF ONE ALREADY SAVED (14 Oct: update's five saved
+        # roadmaps were one cut five times), NOR ONE UNDER THE BAR - that is
+        # kept aside, in case nothing reaches it (roadmap_score).
+        if any(roadmap_score._same(decomposition, d) for d in saved):
+            print(f"  ⚠️  Not saving a roadmap for {slug}: a copy of one already saved")
+            return False
+        graded = roadmap_score.score(problem, decomposition)
+        if graded["points"] < roadmap_score.CUTOFF:
+            print(f"  ⚠️  Not saving a roadmap for {slug} yet: it scores "
+                  f"{graded['points']}/100, under the bar of {roadmap_score.CUTOFF}")
+            below.append((graded["points"], decomposition))
+            return False
+        saved.append(decomposition)
         # Two plain lines under every step (main/step_notes.py, ~1c a roadmap).
         decomposition = step_notes.write_notes(problem, decomposition)
         new.append(_serialize(decomposition))
@@ -725,6 +771,7 @@ def fill_pool(problem: dict, replace: bool = False) -> int:
             # Saved as soon as it is paid for: a run stopped part way (a crash,
             # main.topup_pools' spending cap) keeps what it already bought.
             _add_to_pool(key, new[-1:])
+        return True
 
     for _ in range(_POOL_TARGET - have):
         try:
@@ -751,28 +798,61 @@ def fill_pool(problem: dict, replace: bool = False) -> int:
                   f"-line step (limit {splitter.MAX_STEP_LINES}); cutting the "
                   f"teacher's code instead.")
             break
-        keep(built)
+        if not keep(built):
+            break                       # a rewrite, unclear, a copy or under
+                                        # the bar: cut the teacher's code
     # THE SPLITTER FILLS WHAT THE MODEL COULD NOT: cuts of the teacher's own
     # code at statement boundaries, through the same serve gate - see
     # main/splitter.py. Its only model call words each step (~1c per roadmap).
     if have + len(new) < _POOL_TARGET:
         try:
-            for d in splitter.build(problem, want=_POOL_TARGET - have - len(new)):
+            for d in splitter.build(problem, want=_POOL_TARGET - have - len(new), avoid=saved):
                 keep(d)
         except (OracleNotStrongError, NoOracleTestsError):
             raise
         except RuntimeError as e:
             print(f"  ⚠️  Splitting the teacher's code failed for {slug}: {e}")
+    # TOO SHORT TO SPLIT: one step, the teacher's whole body (13 Oct). Only
+    # when no cut of the teacher's code is valid at all - a method that CAN be
+    # split but whose roadmaps were refused is not given one step instead.
+    if have + len(new) == 0 and not splitter.plan(problem, 1):
+        single = splitter.one_step(problem)
+        if single is not None:
+            keep(single)
     if have + len(new) == 0:
         try:
             # Gated inside (assert_serveable), so it is saved like any other.
             keep(decompose_into_chunks_best(problem))
         except RuntimeError as e:
             print(f"  ⚠️  Best-effort roadmap failed for {slug}: {e}")
+    # NOTHING REACHED THE BAR: the best of what was built is saved anyway, so
+    # the teacher's review has something to look at and publish - preparing
+    # stops at that review (publish.py), so no student is served it until then.
+    if not new and below and (replace or not old):
+        for _, d in sorted(below, key=lambda pd: -pd[0])[:roadmap_score.TOP]:
+            if not any(roadmap_score._same(d, x) for x in saved):
+                saved.append(d)
+                new.append(_serialize(step_notes.write_notes(problem, d)))
+                if not replace:
+                    _add_to_pool(key, new[-1:])
     if replace:
+        # A rebuild never makes a problem worse: the new set is swapped in
+        # only if its best is at least as good as the old set's best.
+        fresh = _ranked(problem, new)
+        if old and roadmap_score.best_points(fresh) < roadmap_score.best_points(old):
+            print(f"  ⚠️  {slug}: the rebuilt roadmaps score "
+                  f"{roadmap_score.best_points(fresh)}/100, under the old ones' "
+                  f"{roadmap_score.best_points(old)}; keeping the old ones")
+            return len(old)
         _add_to_pool(key, new, replace=True)
     print(f"  ✨ {slug}: {have + len(new)} roadmap(s) saved ({len(new)} new)")
     return have + len(new)
+
+
+def roadmap_grades(problem: dict) -> list[tuple]:
+    """(entry, score) for the problem's saved roadmaps, best first - what the
+    review page and the bar in publish.py read."""
+    return _ranked(_reading_saved_tests(problem), _load_pool().get(content_hash(problem), []))
 
 
 def get_chunk_decomposition(problem: dict) -> dict:

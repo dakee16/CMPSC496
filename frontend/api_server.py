@@ -1685,6 +1685,10 @@ class ProblemRetryRequest(BaseModel, extra="forbid"):
     assignment_id: str
     slug: str
     source: str
+    # A problem students can already see, re-prepared only to add tests (the
+    # review page, 13 Oct): if the new version does not come out ready, the
+    # one they see stays as it was instead of disappearing.
+    keep_live: bool = False
 
 
 @app.get("/assignment_template")
@@ -2070,9 +2074,15 @@ def teacher_assignment_problems(assignment_id: str, request: Request):
     prepare_error quotes the source file back."""
     require_teacher(request)
     res = get_supabase().table("problems").select(
-        _PUBLIC_PROBLEM_COLS + ", ready, prepare_error").eq(
+        _PUBLIC_PROBLEM_COLS + ", ready, prepare_error, description, solution, context").eq(
         "assignment_id", assignment_id).execute()
-    rows = res.data or []
+    # GAPS: deliberate mistakes the saved tests still do not catch (13 Oct).
+    # A problem can be "strong" - 85% caught - and ready with one left, as HW4's
+    # update was with `>` -> `>=`, and nothing anywhere said so. Read from the
+    # stored verdict; the solution used to find it is not sent back.
+    rows = [{**{k: v for k, v in r.items() if k != "solution"}, "gaps": _open_gaps(r),
+             "roadmaps_below": _roadmaps_below(r)}
+            for r in res.data or []]
     return {"problems": rows,
             "ready": sum(1 for r in rows if r["ready"]),
             "failed": sum(1 for r in rows if not r["ready"]),
@@ -2222,6 +2232,47 @@ def teacher_class_report(assignment_id: str, request: Request,
     assignment is still in the report rather than silently absent."""
     require_teacher(request)
     return _report_response(assignment_id, None, "class", download)
+
+
+def _row_key(row: dict) -> str:
+    from main.identity import content_hash
+    return content_hash({"description": row.get("description") or "",
+                         "solution": row.get("solution") or "", **_context_of(row)})
+
+
+def _open_gaps(row: dict) -> int:
+    """How many deliberate mistakes a READY problem's saved tests still miss,
+    less the ones its teacher marked harmless (14 Oct)."""
+    from main import review_help
+    if not row.get("ready"):
+        return 0
+    try:
+        f = _findings_for(row) or {}
+        harmless = review_help.dismissed(_row_key(row))
+    except Exception:
+        return 0
+    return sum(1 for c in f.get("checks") or []
+               if not c.get("settled") and c.get("label") not in harmless)
+
+
+def _roadmaps_below(row: dict) -> int | None:
+    """For a READY problem none of whose roadmaps reaches the bar (and its
+    teacher has not said the best will do): the best score. Else None. Such a
+    problem stays live - it is only pointed out (14 Oct, roadmap_score)."""
+    from main import roadmap_score
+    from main.publish import roadmaps_accepted
+    from main.run_phase1 import roadmap_grades
+    if not row.get("ready"):
+        return None
+    try:
+        problem = {**row, **_context_of(row)}
+        graded = roadmap_grades(problem)
+        best = roadmap_score.best_points(graded)
+        if graded and best < roadmap_score.CUTOFF and not roadmaps_accepted(problem):
+            return best
+    except Exception:
+        pass
+    return None
 
 
 def _findings_for(row: dict) -> dict | None:
@@ -2391,7 +2442,10 @@ def teacher_problem_retry(req: ProblemRetryRequest, request: Request):
     # that itself when `ready` is true.
     from main import transcripts
     tape: list = []
-    result = prepare_problem(problem, emit=tape.append)
+    # A WHOLE NEW SET OF ROADMAPS (14 Oct, Sanan): topping up kept HW4
+    # __contains__'s lopsided one forever. Swapped in only if no worse.
+    result = prepare_problem(problem, emit=tape.append, replace_roadmaps=True,
+                             live=bool(req.keep_live and row and row.get("ready")))
     try:
         transcripts.record(req.assignment_id, req.slug, tape, result)
     except Exception:
@@ -2402,6 +2456,11 @@ def teacher_problem_retry(req: ProblemRetryRequest, request: Request):
     # problem half new (description, solution) and half old (context) - a
     # problem whose hash matched nothing just prepared, which students would
     # have opened with no tests and no roadmap behind it.
+    if req.keep_live and row and row.get("ready") and not result["ready"]:
+        return blocked(result.get("stage") or "steps",
+                       "Nothing changed for students - they still see the version "
+                       f"they had. The new version did not come out ready: {result.get('error')}")
+
     cols = _group_columns(problem)
     for k in ("group_order", "member_order"):
         if row and row.get(k) is not None:
@@ -2455,11 +2514,18 @@ def _review_view(assignment_id: str, slug: str, explain: bool = False) -> dict:
                         "solution": row.get("solution") or "", **_context_of(row)})
     findings = _findings_for(row) or {}
     checks = findings.get("checks") or []
-    missed = [c for c in checks if not c.get("settled")]
+    missed_all = [c for c in checks if not c.get("settled")]
+    # Marked harmless by the teacher (14 Oct): shown apart, not counted.
+    marks = review_help.dismissed(key)
+    missed = [c for c in missed_all if c["label"] not in marks]
     in_review = (not row.get("ready")) and str(row.get("prepare_error") or "").startswith(_REVIEW)
+    # Ready, but with mistakes the tests still miss (13 Oct): reviewable too,
+    # to close them - there is just nothing to publish.
+    gaps = bool(row.get("ready")) and bool(missed)
+    roadmaps = _roadmap_view(row, problem, in_review)
 
     help_ = review_help.cached(key)
-    if explain and in_review and missed and help_ is None:
+    if explain and (in_review or gaps) and missed and help_ is None:
         try:
             help_ = review_help.explain(problem, key, [c["label"] for c in missed])
         except Exception as e:                    # outage, cap: the free part stands
@@ -2484,21 +2550,30 @@ def _review_view(assignment_id: str, slug: str, explain: bool = False) -> dict:
     edited = (review_help.insert_examples(row.get("solution") or "", ex["doctest"],
                                           problem.get("entry_hint"))
               if ex.get("ok") and any_gap else None)
+    titles = {c["label"]: c["title"] or c["phrasing"] for c in out_checks}
+    tests = [{"doctest": t["doctest"], "catches": [titles.get(lb, lb) for lb in t["catches"]]}
+             for t in ((help_ or {}).get("tests") or []) if t.get("catches")]
 
-    others = sb.table("problems").select("slug, title, ready, prepare_error").eq(
+    others = sb.table("problems").select(
+        "slug, title, ready, prepare_error, description, solution, context").eq(
         "assignment_id", assignment_id).execute().data or []
     queue = [{"slug": o["slug"], "title": o.get("title") or o["slug"]}
              for o in sorted(others, key=lambda o: o["slug"])
-             if not o.get("ready") and str(o.get("prepare_error") or "").startswith(_REVIEW)]
+             if (not o.get("ready") and str(o.get("prepare_error") or "").startswith(_REVIEW))
+             or _open_gaps(o) or _roadmaps_below(o) is not None]
     name = (sb.table("assignments").select("name").eq("id", assignment_id)
             .execute().data or [{}])[0].get("name")
     return {
         "assignment": {"id": assignment_id, "name": name},
         "slug": slug, "title": row.get("title") or slug,
-        "ready": bool(row.get("ready")), "in_review": in_review,
+        "ready": bool(row.get("ready")), "in_review": in_review, "gaps": gaps,
         "error": row.get("prepare_error"),
-        "total": len(checks), "caught": len(checks) - len(missed),
+        "total": len(checks), "caught": len(checks) - len(missed_all),
         "checks": out_checks,
+        "harmless": [{"label": c["label"], "line": c.get("line"), "phrasing": c.get("phrasing"),
+                      "by": marks[c["label"]]["by"]}
+                     for c in missed_all if c["label"] in marks],
+        "roadmaps": roadmaps,
         "help": None if help_ is None else {
             "written": "error" not in help_,
             "error": help_.get("error"),
@@ -2506,10 +2581,36 @@ def _review_view(assignment_id: str, slug: str, explain: bool = False) -> dict:
             "examples_reason": ex.get("reason"),
             "doctest": ex.get("doctest") if ex.get("ok") else None,
             "catches": sum(1 for c in out_checks if c["verdict"] == "gap"),
+            "tests": tests,
             "edited_source": edited},
         "source": row.get("solution") or "",
         "lines": sorted({c["line"] for c in out_checks if c.get("line")}),
         "queue": queue}
+
+
+def _roadmap_view(row: dict, problem: dict, in_review: bool) -> dict:
+    """The problem's roadmaps as the review page shows them: the ones served,
+    each with its grade (main/roadmap_score), and whether they are the reason
+    this problem is here."""
+    from main import roadmap_score
+    from main.publish import roadmaps_accepted
+    from main.run_phase1 import _deserialize, roadmap_grades
+    try:
+        graded = roadmap_grades(problem)
+    except Exception:
+        graded = []
+    best = roadmap_score.best_points(graded) if graded else None
+    served = roadmap_score.best(graded)
+    review = in_review and "no roadmap reached the bar" in str(row.get("prepare_error") or "")
+    below = (bool(row.get("ready")) and bool(graded) and best < roadmap_score.CUTOFF
+             and not roadmaps_accepted(problem))
+    return {
+        "cutoff": roadmap_score.CUTOFF, "best": best,
+        "review": review, "below": below,
+        "list": [{"points": sc["points"], "parts": sc["parts"], "sizes": sc["sizes"],
+                  "faults": sc["faults"],
+                  "steps": [c.prompt for c in _deserialize(e)["chunks"]]}
+                 for e, sc in graded if any(e is x for x in served)]}
 
 
 @app.get("/teacher/review/{assignment_id}/{slug}")
@@ -2612,6 +2713,119 @@ def teacher_problem_accept(req: ProblemAcceptRequest, request: Request):
             "n_tests": result.get("n_tests", 0),
             "accepted_by": cache[key]["accepted_by"],
             "checklist": checklist(result.get("stage"), result.get("error"))}
+
+
+class ProblemRefRequest(BaseModel, extra="forbid"):
+    assignment_id: str
+    slug: str
+
+
+class DismissRequest(BaseModel, extra="forbid"):
+    label: str
+
+
+@app.post("/teacher/review/{assignment_id}/{slug}/dismiss")
+def teacher_review_dismiss(assignment_id: str, slug: str, req: DismissRequest,
+                           request: Request):
+    """Mark one missed change as harmless (14 Oct): the teacher's call, named,
+    for this problem version. It stops counting as a gap. Free."""
+    from main import review_help
+    teacher = require_teacher(request)
+    _, row = _problem_for(assignment_id, slug)
+    review_help.dismiss(_row_key(row), req.label, teacher.get("username") or "instructor")
+    return _review_view(assignment_id, slug)
+
+
+def _problem_for(assignment_id: str, slug: str) -> tuple[dict, dict]:
+    """(stored problem, its row) - 404 when there is none."""
+    rows = get_supabase().table("problems").select(
+        "slug, title, description, solution, ready, prepare_error, context, "
+        "group_slug, group_title, group_description").eq(
+        "assignment_id", assignment_id).eq("slug", slug).execute().data
+    if not rows:
+        raise HTTPException(status_code=404, detail={
+            "reason_code": "problem_not_found",
+            "message": f"No problem '{slug}' in this assignment."})
+    stored = _stored_problem(assignment_id, slug) or {**rows[0], **_context_of(rows[0])}
+    return stored, rows[0]
+
+
+def _save_ready(assignment_id: str, slug: str, ready: bool, error) -> None:
+    get_supabase().table("problems").update(
+        {"ready": bool(ready), "prepare_error": error}).eq(
+        "assignment_id", assignment_id).eq("slug", slug).execute()
+
+
+@app.post("/teacher/problems/rebuild_roadmaps")
+def teacher_rebuild_roadmaps(req: ProblemRefRequest, request: Request):
+    """Build this ONE problem's roadmaps again, from scratch (14 Oct, Sanan:
+    "let preparing one problem replace its roadmaps"). The saved tests are
+    reused, so only the roadmaps are paid for - a few cents. The new set is
+    swapped in only if it is at least as good (run_phase1.fill_pool), and a
+    problem students can see stays visible whatever the result."""
+    from main import transcripts
+    from main.publish import checklist, prepare_problem
+    require_teacher(request)
+    stored, row = _problem_for(req.assignment_id, req.slug)
+    tape: list = []
+    result = prepare_problem(stored, emit=tape.append, replace_roadmaps=True,
+                             live=bool(row.get("ready")))
+    try:
+        transcripts.record(req.assignment_id, req.slug, tape, result)
+    except Exception:
+        pass
+    if row.get("ready") and not result["ready"]:
+        # Live, so it STAYS live. Its roadmaps may still have been swapped for
+        # better ones - only ever for ones at least as good (fill_pool).
+        why = str(result.get("error") or "").replace(_REVIEW + ": ", "")
+        return {"ready": False, "stage": result.get("stage"),
+                "error": f"Students can still see this problem. {why[:1].upper()}{why[1:]}".strip(),
+                "checklist": checklist(result.get("stage"), result.get("error"))}
+    _save_ready(req.assignment_id, req.slug, result["ready"], result.get("error"))
+    return {"ready": bool(result["ready"]), "stage": result.get("stage"),
+            "error": result.get("error"), "chunks": result.get("chunks", 0),
+            "checklist": checklist(result.get("stage"), result.get("error"))}
+
+
+@app.post("/teacher/problems/accept_roadmaps")
+def teacher_accept_roadmaps(req: ProblemRefRequest, request: Request):
+    """Publish with the best roadmaps found, though none reaches the bar - the
+    teacher's call, named and dated beside the tests' verdict (14 Oct). Nothing
+    is rebuilt: the roadmaps are already saved and checked, so this is free."""
+    from datetime import datetime, timezone
+    from main import roadmap_score
+    from main.identity import content_hash
+    from main.oracle_store import load_cache, save_cache
+    from main.run_phase1 import get_chunk_decomposition, roadmap_grades
+    teacher = require_teacher(request)
+    stored, row = _problem_for(req.assignment_id, req.slug)
+    graded = roadmap_grades(stored)
+    if not graded:
+        raise HTTPException(status_code=409, detail={
+            "reason_code": "no_roadmaps",
+            "message": f"'{req.slug}' has no roadmaps saved yet. Prepare it first."})
+    if roadmap_score.best_points(graded) >= roadmap_score.CUTOFF:
+        raise HTTPException(status_code=409, detail={
+            "reason_code": "nothing_to_accept",
+            "message": f"'{req.slug}' already has a roadmap above the bar."})
+    cache = load_cache()
+    key = content_hash(stored)
+    entry = cache.get(key)
+    if not (isinstance(entry, dict) and "strong" in entry):
+        raise HTTPException(status_code=409, detail={
+            "reason_code": "not_validated",
+            "message": f"'{req.slug}' has no tests saved yet. Prepare it first."})
+    cache[key] = {**entry, "roadmaps_accepted_by": teacher.get("username") or "instructor",
+                  "roadmaps_accepted_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+    save_cache(cache)
+    try:
+        get_chunk_decomposition(stored)          # the serve gate, as a student would
+    except Exception as e:
+        return {"ready": False, "stage": "steps", "error": str(e)[:300]}
+    if not row.get("ready"):
+        _save_ready(req.assignment_id, req.slug, True, None)
+    return {"ready": True, "stage": None, "error": None,
+            "accepted_by": cache[key]["roadmaps_accepted_by"]}
 
 
 @app.post("/teacher/split")

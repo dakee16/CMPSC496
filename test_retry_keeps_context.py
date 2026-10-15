@@ -60,7 +60,7 @@ def _saved(sb, slug):
 def _capture(monkeypatch):
     handed = []
     monkeypatch.setattr("main.publish.prepare_problem",
-                        lambda p, emit=None: handed.append(dict(p)) or {
+                        lambda p, emit=None, **_k: handed.append(dict(p)) or {
                             "slug": p["slug"], "ready": True, "chunks": 2,
                             "n_tests": 5, "stage": None, "error": None})
     return handed
