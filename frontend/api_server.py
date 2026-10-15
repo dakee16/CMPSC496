@@ -198,6 +198,26 @@ async def _bind_account(request: Request, call_next):
         account_cap.ACCOUNT.reset(token)
 
 
+@app.middleware("http")
+async def _bind_observability(request: Request, call_next):
+    """Tell main/observability.py who this request is for and which route it
+    is, so every model call it makes lands in ONE Langfuse trace under the
+    student's opaque students.id (never a name or an email). A no-op unless
+    Langfuse is configured. The trace id is minted here but costs nothing until
+    a model call uses it, so static files and model-free routes send nothing."""
+    from main import observability
+    if not observability.enabled():
+        return await call_next(request)
+    token = observability.REQUEST.set({
+        "user_id": (current_claims(request) or {}).get("sub"),
+        "route": f"{request.method} {request.url.path}",
+        "trace_id": observability.new_trace_id()})
+    try:
+        return await call_next(request)
+    finally:
+        observability.REQUEST.reset(token)
+
+
 class DecomposeRequest(BaseModel, extra="forbid"):
     # forbid, like ChunkRequest: an unrecognised field is a stale client, and
     # the one that used to be here was student_id. Ignoring it silently is how

@@ -29,7 +29,7 @@ from typing import Dict, List, Optional
 import requests
 from dotenv import load_dotenv
 
-from . import account_cap, trace
+from . import account_cap, observability, trace
 
 load_dotenv()
 
@@ -147,6 +147,7 @@ def _record_usage(backend: str, model: str, purpose: str, usage: dict,
                      input_tokens=tin, cached_input_tokens=cached,
                      output_tokens=tout,
                      estimated_cost_usd=trace._estimate(model, tin, tout))
+        observability.record_usage(tin, tout, cached, served)
     except Exception:
         pass
 
@@ -274,9 +275,19 @@ def chat(
         raise RuntimeError(
             f"image content routed to Ollama tag {model!r}, which cannot accept "
             f"it; use a vision-capable OpenAI model (MICROTUTOR_VISION_MODEL)")
-    if _is_ollama_tag(model):
-        return _ollama_chat(model, system, messages, temperature, fmt)
-    # `max_tokens` bounds the REPLY. Only passed when set, so every caller and
-    # every test double of _openai_chat that predates it is untouched.
-    return _openai_chat(model, system, messages, temperature, fmt,
-                        **({"max_tokens": max_tokens} if max_tokens else {}))
+    backend = "ollama" if _is_ollama_tag(model) else "openai"
+    # Mirrored to Langfuse when configured (main/observability.py); a no-op
+    # otherwise. Wraps BOTH backends so a retry storm or an outage shows up as
+    # one errored generation, not as silence.
+    with observability.generation(_caller(), backend, model, system, messages,
+                                  temperature, fmt, max_tokens) as gen:
+        if backend == "ollama":
+            out = _ollama_chat(model, system, messages, temperature, fmt)
+        else:
+            # `max_tokens` bounds the REPLY. Only passed when set, so every
+            # caller and every test double of _openai_chat that predates it is
+            # untouched.
+            out = _openai_chat(model, system, messages, temperature, fmt,
+                               **({"max_tokens": max_tokens} if max_tokens else {}))
+        gen.output(out)
+        return out
