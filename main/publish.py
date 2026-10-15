@@ -266,7 +266,7 @@ def prepare_problem(problem: dict, emit=None, replace_roadmaps: bool = False,
     # helpers or decide the best one we found will do (roadmaps_accepted).
     try:
         graded = roadmap_grades(problem)
-        best = roadmap_score.best_points(graded) if graded else roadmap_score.CUTOFF
+        best = roadmap_score.served_points(graded) if graded else roadmap_score.CUTOFF
     except Exception:
         best = roadmap_score.CUTOFF            # grading the roadmaps never blocks
     if best < roadmap_score.CUTOFF and not roadmaps_accepted(problem) and not live:

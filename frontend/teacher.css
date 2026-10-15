@@ -227,6 +227,9 @@ ul.items{list-style:none; padding:0; margin:0; display:grid; gap:var(--s2)}
 .bdWrap{padding:20px;background:var(--surface-raised)}
 .bdList li{background:var(--surface);flex-wrap:wrap;padding:14px}
 .bdList .bdName{flex:1 1 180px;min-width:0;overflow-wrap:anywhere}.bdList .bdWhy{flex:1 1 220px;font-size:13px}
+/* Same column for every row's explanation, Review button or not (15 Oct: a
+   button used to pull that row's text ~35px left of its neighbours). */
+@media (min-width:760px){.bdList li>.pill{min-width:86px;justify-content:center}.bdList .bdName{flex:0 0 36%}}
 .fixPanel{background:var(--surface)}
 .fixGrid textarea{font-size:13px;background:var(--code-bg);color:var(--code-text);color-scheme:dark}
 .rvBox{padding:28px}.rvLead{font-size:14px}.cmList li.cmOff{opacity:1;color:var(--text-subtle)}

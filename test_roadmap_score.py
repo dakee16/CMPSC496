@@ -226,3 +226,17 @@ def test_an_edit_to_a_live_problem_is_kept_though_its_roadmaps_are_under_the_bar
     assert '"""Score the words."""' in saved["solution"], "the edit is saved"
     listed = c.get("/teacher/assignments/a-1/problems").json()["problems"]
     assert [p["roadmaps_below"] for p in listed if p["slug"] == PROBLEM["slug"]][-1] is not None
+
+
+def test_the_best_grade_shown_is_of_a_roadmap_students_are_given(env, teacher):
+    """A faulty roadmap is ranked but not served while a fault-free one exists;
+    its capped 59 must not be reported as the problem's best."""
+    from main import identity, run_phase1
+    c, sb, row = teacher
+    row["ready"] = True
+    unclear = {**GOOD[0], "chunks": [{**ch, "prompt": "Do it."} for ch in GOOD[0]["chunks"]]}
+    run_phase1._add_to_pool(identity.content_hash(PROBLEM), [unclear, LOPSIDED], replace=True)
+    v = c.get(f"/teacher/review/a-1/{PROBLEM['slug']}").json()
+    assert v["roadmaps"]["best"] == _points(LOPSIDED) == v["roadmaps"]["list"][0]["points"], v["roadmaps"]
+    listed = c.get("/teacher/assignments/a-1/problems").json()["problems"]
+    assert [p["roadmaps_below"] for p in listed if p["slug"] == PROBLEM["slug"]] == [_points(LOPSIDED)]

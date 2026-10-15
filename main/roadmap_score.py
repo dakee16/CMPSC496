@@ -135,3 +135,12 @@ def best(ranked: list[tuple]) -> list:
 
 def best_points(ranked: list[tuple]) -> int:
     return max((s["points"] for _, s in ranked), default=0)
+
+
+def served_points(ranked: list[tuple]) -> int:
+    """The best grade among what students are actually GIVEN (best) - what the
+    teacher is told. A faulty roadmap ranked but never served (its score capped
+    at CUTOFF - 1) must not stand in for it: HW4 __contains__ would have read
+    "best 59" while serving a 50."""
+    chosen = best(ranked)
+    return max((s["points"] for e, s in ranked if any(e is c for c in chosen)), default=0)

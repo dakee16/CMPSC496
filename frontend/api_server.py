@@ -2267,7 +2267,7 @@ def _roadmaps_below(row: dict) -> int | None:
     try:
         problem = {**row, **_context_of(row)}
         graded = roadmap_grades(problem)
-        best = roadmap_score.best_points(graded)
+        best = roadmap_score.served_points(graded)
         if graded and best < roadmap_score.CUTOFF and not roadmaps_accepted(problem):
             return best
     except Exception:
@@ -2599,7 +2599,7 @@ def _roadmap_view(row: dict, problem: dict, in_review: bool) -> dict:
         graded = roadmap_grades(problem)
     except Exception:
         graded = []
-    best = roadmap_score.best_points(graded) if graded else None
+    best = roadmap_score.served_points(graded) if graded else None
     served = roadmap_score.best(graded)
     review = in_review and "no roadmap reached the bar" in str(row.get("prepare_error") or "")
     below = (bool(row.get("ready")) and bool(graded) and best < roadmap_score.CUTOFF
