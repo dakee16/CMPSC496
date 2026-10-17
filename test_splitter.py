@@ -56,6 +56,20 @@ LOPSIDED = {"header": "def score(words):", "chunks": [
     {"step_id": "Part 2", "prompt": "Return the score.", "expected_type": "code",
      "reference": "return total"}]}
 LIMIT = 6
+_BODY = [ln[4:] for ln in SOLUTION.splitlines()[1:]]
+
+
+def _cut(*starts):
+    """A roadmap of the teacher's own lines, cut at `starts` - worded the way
+    the prompt gate accepts."""
+    bounds = list(starts) + [len(_BODY)]
+    refs = ["\n".join(_BODY[a:b]) for a, b in zip(bounds, bounds[1:])]
+    return {"header": "def score(words):", "chunks": [
+        {"step_id": f"Part {i + 1}", "expected_type": "code", "reference": r,
+         "prompt": ("Write code that returns the final score." if i == len(refs) - 1 else
+                    f"Write code that handles part {i + 1} of the scoring as it goes "
+                    f"through each word, and keep the result for the next step.")}
+        for i, r in enumerate(refs)]}
 
 
 @pytest.fixture
@@ -98,9 +112,10 @@ def env(monkeypatch, tmp_path):
     def builder(result):
         def build(problem, *_a, **_k):
             log.built += 1
-            if isinstance(result, Exception):
-                raise result
-            return run_phase1._deserialize(result)
+            got = result[(log.built - 1) % len(result)] if isinstance(result, list) else result
+            if isinstance(got, Exception):
+                raise got
+            return run_phase1._deserialize(got)
         monkeypatch.setattr(run_phase1, "decompose_into_chunks", build)
 
     def best(*_a, **_k):
@@ -170,16 +185,15 @@ def test_an_upload_the_model_cannot_split_is_split_from_the_teachers_code(env):
 
 
 def test_a_normal_upload_never_uses_the_splitter(env, monkeypatch):
+    """The model gives three different cuts that reach the bar (14 Oct,
+    roadmap_score) - the [4, 6, 6, 3], [6, 4, 6, 3] and [2, 4, 4, 6, 3] cuts."""
     from main import publish
-    small = {"header": "def score(words):", "chunks": [
-        {**LOPSIDED["chunks"][0], "reference": LOPSIDED["chunks"][0]["reference"]},
-        LOPSIDED["chunks"][1]]}
     monkeypatch.setattr(env.splitter, "MAX_STEP_LINES", 50)
-    env.builder(small)
+    env.builder([_cut(0, 4, 10, 16), _cut(0, 6, 10, 16), _cut(0, 2, 6, 10, 16)])
     called = []
     monkeypatch.setattr(env.splitter, "build", lambda *a, **k: called.append(1) or [])
     assert publish.prepare_problem(dict(PROBLEM))["ready"] is True
-    assert called == [] and env.log.built == 5
+    assert called == [] and env.log.built == 3
 
 
 def test_resplit_replaces_only_oversized_roadmaps(env, monkeypatch):

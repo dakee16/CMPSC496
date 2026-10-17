@@ -551,10 +551,16 @@ async function toggleBreakdown(tr, a){
         ? "warn" : "bad"}">${p.ready ? "ready" : /^Waiting on your review/.test(p.prepare_error || "")
         ? "your review" : "blocked"}</span>
       <span class="bdName">${esc(p.title || p.slug)}</span>
-      <span class="bdWhy">${p.ready
-        ? "Prepared and visible to students."
+      <span class="bdWhy">${p.ready && (p.gaps || p.roadmaps_below != null)
+        ? "Visible to students, but " + [
+            p.gaps ? `${p.gaps} deliberate ${p.gaps === 1 ? "mistake still passes" : "mistakes still pass"} its tests` : "",
+            p.roadmaps_below != null ? `no roadmap reaches the bar (best ${p.roadmaps_below}/100)` : ""]
+          .filter(Boolean).join(", and ") + "."
+        : p.ready ? "Prepared and visible to students."
         : esc(p.prepare_error || "Preparation did not finish for this problem.")}</span>
-      ${p.ready ? "" : /^Waiting on your review/.test(p.prepare_error || "")
+      ${p.ready && (p.gaps || p.roadmaps_below != null) ? `<button class="ghost bdFix bdReview" type="button"
+            data-href="${esc(reviewHref(a.id, p.slug))}">Review</button>`
+        : p.ready ? "" : /^Waiting on your review/.test(p.prepare_error || "")
         ? `<button class="ghost bdFix bdReview" type="button"
             data-href="${esc(reviewHref(a.id, p.slug))}">Review</button>`
         : `<button class="ghost bdFix" type="button"

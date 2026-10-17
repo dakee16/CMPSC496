@@ -57,10 +57,18 @@
   .option .cost{font-size:.8125rem; color:var(--text-subtle)}
   .checks{list-style:none; margin:10px 0 0; padding:0; display:grid; gap:4px; font-size:.8125rem}
   .checks li::before{content:"✓"; color:var(--success); font-weight:700; margin-right:8px}
-  pre.code.ex{max-height:280px; overflow:auto; margin:10px 0 0}
+  pre.code.ex{max-height:280px; overflow:auto; margin:8px 0 0}
+  .tcases{list-style:none; margin:12px 0 0; padding:0; display:grid; gap:12px}
+  .tcase{border:1px solid var(--border); border-radius:var(--r-md); padding:12px 14px; background:var(--surface)}
+  .tchead{display:flex; gap:10px; flex-wrap:wrap; align-items:baseline; justify-content:space-between}
+  .tcnum{font-weight:600; font-size:.875rem}
+  .tcatch{font-size:.8125rem; color:var(--warning)}
   textarea.rvEdit{width:100%; min-height:320px; margin-top:10px; font-family:var(--font-mono); font-size:.8125rem;
     line-height:1.6; padding:12px; border-radius:var(--r-md); border:1px solid var(--border);
     background:var(--code-bg); color:var(--code-text); resize:vertical}
+  /* your own test case (15 Oct): a few lines, not a whole solution */
+  textarea.rvEdit.tryBox{min-height:96px}
+  #tryOut .tcase, #tryOut .banner{margin-top:12px}
 
   .solution pre{margin:0; padding:12px 0; border-radius:var(--r-md); background:var(--code-bg); overflow-x:auto;
     font-family:var(--font-mono); font-size:.8125rem; line-height:1.7}
@@ -70,6 +78,22 @@
   .solution .srow.hit{background:color-mix(in srgb, var(--warning) 18%, transparent)}
   .solution .srow.hit .n{color:var(--warning); font-weight:600}
   .note{font-size:.75rem; color:var(--text-subtle); margin-top:10px}
+  .finding .acts{display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:12px}
+  .finding .cost{font-size:.8125rem; color:var(--text-subtle)}
+  .rmaps{list-style:none; margin:0; padding:0; display:grid; gap:12px}
+  .rmap{border:1px solid var(--border); border-left:4px solid var(--warning); border-radius:var(--r-md);
+    padding:14px 16px; background:var(--surface)}
+  .rmhead{display:flex; gap:14px; align-items:baseline; flex-wrap:wrap}
+  .rmpts{font-family:var(--font-display); font-size:1.5rem; font-weight:600}
+  .rmpts small{font-size:.8125rem; color:var(--text-subtle); font-weight:500}
+  .rmshape{font-size:.875rem; color:var(--text-muted)}
+  .rmsteps{margin:10px 0 0; padding-left:20px; font-size:.875rem; line-height:1.55}
+  .rmsteps li{margin:2px 0}
+  .rmparts{margin:10px 0 0; font-size:.8125rem; color:var(--text-subtle); line-height:1.6}
+  .rmparts b{color:var(--text); font-weight:600}
+  .rmfault{margin:6px 0 0; font-size:.8125rem; color:var(--warning)}
+  .harmless{margin:0; padding-left:20px; font-size:.875rem; line-height:1.6; color:var(--text-muted)}
+  .hl-ln{color:var(--text-subtle)}
 </style>
 </head>
 <body>

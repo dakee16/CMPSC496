@@ -23,7 +23,7 @@ import sys
 from . import splitter
 from .identity import content_hash
 from .run_phase1 import (_POOL_TARGET, _add_to_pool, _load_pool,
-                         _reading_saved_tests, _sb, _serialize, _usable)
+                         _reading_saved_tests, _sb, _serialize, _answerable as _usable)
 from .sessions import context_of
 from .topup_pools import SpendCapReached, spend_cap
 

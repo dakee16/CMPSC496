@@ -63,8 +63,33 @@ def _save(store: dict) -> None:
             pass
 
 
+# v2 (13 Oct): separate test cases, each with what it catches. Answers stored
+# in the v1 shape are simply not found, and are written again once.
+_VERSION = "v2:"
+
+
 def cached(key: str) -> dict | None:
-    return _load().get(key)
+    return _load().get(_VERSION + key)
+
+
+# ── marked harmless, by the teacher (14 Oct) ─────────────────────────────
+# A missed change no test CAN catch - HW4's mruEvict unlinks a `previous` that
+# is always already empty - is not a gap. The teacher says so once, by name,
+# for this problem version, and it stops being counted.
+
+def dismissed(key: str) -> dict:
+    """{label: {"by", "at"}} for this problem version."""
+    return _load().get("dismissed:" + key) or {}
+
+
+def dismiss(key: str, label: str, by: str) -> dict:
+    from datetime import datetime, timezone
+    store = _load()
+    marks = store.get("dismissed:" + key) or {}
+    marks[label] = {"by": by, "at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+    store["dismissed:" + key] = marks
+    _save(store)
+    return marks
 
 
 # ── running example statements, free ─────────────────────────────────────
@@ -144,6 +169,25 @@ def insert_examples(solution: str, text: str, entry: str | None = None) -> str |
     return "\n".join(new) + ("\n" if solution.endswith("\n") else "")
 
 
+def statements_from(text: str) -> list[str]:
+    """A test case the teacher typed (15 Oct), as statements. Written like a
+    docstring - `>>> ` lines, `... ` carrying one on - any other line is an
+    answer they expect, and is dropped: the answers come from running their
+    solution, as for the model's. Without any `>>>`, every line that is not
+    blank or a comment is one statement."""
+    lines = [ln.rstrip() for ln in (text or "").splitlines()]
+    if any(ln.lstrip().startswith(">>>") for ln in lines):
+        out = []
+        for ln in lines:
+            s = ln.lstrip()
+            if s.startswith(">>>"):
+                out.append(s[3:].removeprefix(" "))
+            elif s.startswith("...") and out:
+                out[-1] += "\n" + s[3:].removeprefix(" ")
+        return [x for x in out if x.strip()]
+    return [ln.strip() for ln in lines if ln.strip() and not ln.strip().startswith("#")]
+
+
 def _programs(problem: dict, labels: list[str]) -> tuple[str, dict]:
     """The teacher's runnable program, and one per missed change by label."""
     from .mutation import _runnable, generate_mutants
@@ -187,21 +231,23 @@ def _prompt(problem: dict, labels: list[str]) -> str:
         f"mistake this change stands for.\n"
         f'- "missing": a few words naming the kind of test case that would tell '
         f'it apart, e.g. "a replacement that is too big to fit".\n'
-        f"Then write \"examples\": up to 10 Python statements, run in order in a "
-        f"fresh session where the file's classes and functions exist, that would "
-        f"show a different result for as many of the changes as you can. Build "
-        f"every object from scratch. End with plain expressions whose values "
-        f"reveal the result. Do NOT write outputs or comments.\n\n"
+        f"Then write \"tests\": one small test case per change (fewer if one "
+        f"case covers several). Each is a list of up to 8 Python statements, run "
+        f"in order in a fresh session where the file's classes and functions "
+        f"exist, that would show a different result if that change were made. "
+        f"Build every object from scratch inside each test. End with plain "
+        f"expressions whose values reveal the result. Do NOT write outputs or "
+        f"comments.\n\n"
         f'Return JSON only: {{"changes": [{{"n": 1, "title": "...", "missing": '
-        f'"..."}}], "examples": ["x = ...", "x.method(...)"]}}')
+        f'"..."}}], "tests": [["x = ...", "x.method(...)"], ["y = ...", "y.f()"]]}}')
 
 
 def explain(problem: dict, key: str, labels: list[str]) -> dict:
     """The review help for this problem version: remembered after the first
     time, so a page reopened does not pay again."""
     store = _load()
-    if key in store:
-        return store[key]
+    if _VERSION + key in store:
+        return store[_VERSION + key]
     raw = chat(MODEL, "You explain test gaps to teachers and write example code, "
                       "as strict JSON. No prose.",
                [{"role": "user", "content": _prompt(problem, labels)}],
@@ -215,15 +261,40 @@ def explain(problem: dict, key: str, labels: list[str]) -> dict:
                 "title": str((said.get(i) or {}).get("title") or "").strip()[:200] or None,
                 "missing": str((said.get(i) or {}).get("missing") or "").strip()[:160] or None}
                for i, lb in enumerate(labels, 1)]
-    statements = [s for s in (data.get("examples") or []) if isinstance(s, str) and s.strip()][:10]
-    try:
-        for s in statements:
-            ast.parse(s)
-    except SyntaxError:
-        statements = []
-    verdict = check(problem, statements, labels) if statements else \
-        {"ok": False, "reason": "no examples were suggested"}
-    out = {"changes": changes, "examples": verdict}
-    store[key] = out
+    raw_tests = data.get("tests") or ([data["examples"]] if data.get("examples") else [])
+    tests, seen, ran, why = [], set(), False, "no test cases were suggested"
+    for t in raw_tests[:8]:
+        stmts = t.get("statements") if isinstance(t, dict) else t
+        stmts = [x for x in (stmts or []) if isinstance(x, str) and x.strip()][:8]
+        try:
+            for x in stmts:
+                ast.parse(x)
+        except SyntaxError:
+            continue
+        if not stmts:
+            continue
+        v = check(problem, stmts, labels)
+        if not v["ok"]:
+            why = v["reason"]
+            continue
+        ran = True
+        catches = [lb for lb in labels if v["caught"].get(lb)]
+        if catches and v["doctest"] not in seen:
+            seen.add(v["doctest"])
+            tests.append({"doctest": v["doctest"], "catches": catches,
+                          "statements": stmts, "shown": v["shown"]})
+    # They go into the docstring as ONE run, so they are offered only if they
+    # show the same answers run together as run apart (a class counting its
+    # objects would not).
+    if tests:
+        together = run_examples(_programs(problem, [])[0], [x for t in tests for x in t["statements"]])
+        if together != [x for t in tests for x in t["shown"]]:
+            tests, ran, why = [], False, "the test cases change each other's answers when run together"
+    tests = [{"doctest": t["doctest"], "catches": t["catches"]} for t in tests]
+    caught = {lb: any(lb in t["catches"] for t in tests) for lb in labels}
+    examples = ({"ok": True, "doctest": "\n\n".join(t["doctest"] for t in tests), "caught": caught}
+                if ran else {"ok": False, "reason": why})
+    out = {"changes": changes, "tests": tests, "examples": examples}
+    store[_VERSION + key] = out
     _save(store)
     return out

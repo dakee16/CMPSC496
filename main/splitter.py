@@ -196,10 +196,15 @@ def _chunks(lines: list[str], starts: list[int], prompts=None) -> list[StepItem]
             for i, r in enumerate(refs)]
 
 
-def plan(problem: dict, want: int = 5) -> list[dict]:
+def plan(problem: dict, want: int = 5, spread: bool = False) -> list[dict]:
     """Up to `want` decompositions of the teacher's own code that pass the
     serve gate, per the rules in the module docstring. Prompts are
-    placeholders here - write_prompts fills them. No model call."""
+    placeholders here - write_prompts fills them. No model call.
+
+    `spread`: up to two from EVERY step count, 2 to MAX_STEPS, instead of the
+    fewest steps that work - for build(), which lets main/roadmap_score choose
+    (14 Oct: fewest-first offered a 19-line method four 2-step cuts, of 16 and
+    3 lines, and one 3-step cut - the only one that scored as a roadmap)."""
     header = header_for(problem)
     lines = [ln.rstrip() for ln in solution_body(problem).splitlines()]
     while lines and not lines[-1].strip():
@@ -232,10 +237,10 @@ def plan(problem: dict, want: int = 5) -> list[dict]:
     for limit in [MAX_STEP_LINES] + list(range(MAX_STEP_LINES + 1, total + 1)):
         found, first = [], None
         for k in range(2, MAX_STEPS + 1):
-            if first is not None and k > first + 1:
+            if first is not None and k > first + 1 and not spread:
                 break             # topping up adds at most one step: more only
                                   # chops the setup into 2-line pieces
-            got = passing(k, limit)[:want - len(found)]
+            got = passing(k, limit)[:min(want - len(found), 2 if spread else want)]
             if got and first is None:
                 first = k
             found += got
@@ -293,7 +298,32 @@ def write_prompts(problem: dict, decomposition: dict, tries: int = 3) -> dict:
     return {**decomposition, "chunks": chunks}
 
 
-def build(problem: dict, want: int = 5) -> list[dict]:
-    """`want` served-ready decompositions cut from the teacher's code, worded.
-    Model calls: write_prompts only, at most 2 per decomposition."""
-    return [write_prompts(problem, d) for d in plan(problem, want)]
+def one_step(problem: dict) -> dict | None:
+    """The teacher's whole body as ONE step, for a method no cut can split -
+    `return self.top is None` (13 Oct: Sanan, "one step, never rewrite").
+    Before this the model expanded such methods into two steps of its own
+    code, and the teacher's code is never rewritten. None when the body is too
+    big to be one step. No model call: the question is the statement's own
+    first sentence."""
+    body = solution_body(problem).strip("\n")
+    if not body.strip() or len(body.splitlines()) > MAX_STEP_LINES:
+        return None
+    said = " ".join((problem.get("description") or "").strip().split("\n\n")[0].split())
+    prompt = ("Write the whole method - it is one step. " + said).strip()
+    return {"header": header_for(problem),
+            "chunks": [StepItem(question_id=problem.get("slug") or "q", step_id="Part 1",
+                                prompt=prompt, expected_type="code", reference=body)]}
+
+
+def build(problem: dict, want: int = 5, avoid: list = ()) -> list[dict]:
+    """The `want` BEST served-ready decompositions cut from the teacher's code,
+    worded. Model calls: write_prompts only, at most 2 per decomposition.
+
+    Up to five cuts are found (free) and ranked by main/roadmap_score on their
+    code before any is worded, so the wording is paid for the best ones only
+    (14 Oct). A cut the same as one in `avoid` (already saved) is skipped."""
+    from .roadmap_score import _same, score
+    found = [d for d in plan(problem, max(want, 8), spread=True)
+             if not any(_same(d, a) for a in avoid)]
+    found.sort(key=lambda d: -score(problem, d, wording=False)["points"])
+    return [write_prompts(problem, d) for d in found[:want]]

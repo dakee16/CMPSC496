@@ -14,7 +14,12 @@ import requests
 
 from test_auth_routes import FakeSupabase
 from test_restart_reroute import ORACLE, PROBLEM
-from test_student_open_never_generates import ROADMAP, SPLIT
+from test_student_open_never_generates import CUT_B, CUT_C, ROADMAP, SPLIT_C
+
+# The model gives a different cut each build: a copy of one already saved is
+# not saved again (14 Oct), so a problem fills up with different roadmaps.
+SPLIT_B = json.dumps({"subproblems": [
+    {"prompt": c["prompt"], "reference": c["reference"]} for c in CUT_B["chunks"]]})
 
 
 def _problem(name):
@@ -47,8 +52,8 @@ def world(tmp_path, monkeypatch):
                  "kill_rate_direct": 1.0, "features": ["calls"], "final_tests": ORACLE}
     cache.write_text(json.dumps({content_hash(p): certified
                                  for p in (FULL, SHORT, NONE, DRAFT)}))
-    pool.write_text(json.dumps({content_hash(FULL): [ROADMAP] * 5,
-                                content_hash(SHORT): [ROADMAP] * 2,
+    pool.write_text(json.dumps({content_hash(FULL): [ROADMAP, CUT_B, CUT_C, ROADMAP, CUT_B],
+                                content_hash(SHORT): [ROADMAP] * 1,
                                 content_hash(DRAFT): [ROADMAP]}))
     sb = FakeSupabase()
     sb.problems.extend([{**FULL, "ready": True}, {**SHORT, "ready": True},
@@ -73,7 +78,7 @@ def world(tmp_path, monkeypatch):
         usage = {"prompt_tokens": 4000, "completion_tokens": 300}
         calls.append(usage)
         return Reply({"model": json["model"], "usage": usage,
-                      "choices": [{"message": {"content": SPLIT}}]})
+                      "choices": [{"message": {"content": (SPLIT_B, SPLIT_C)[(len(calls) - 1) % 2]}}]})
     monkeypatch.setattr(requests, "post", network)
 
     def saved(p):
@@ -92,28 +97,28 @@ def test_a_dry_run_lists_the_short_problem_and_spends_nothing(world, capsys):
     from main import topup_pools
     assert topup_pools.main([]) == 0
     out = capsys.readouterr().out
-    assert "freq-short: 2 saved, needs 3" in out
+    assert "freq-short: 1 saved, needs 2" in out
     assert "freq-none" in out and "Reprepare" in out
     assert "freq-full" not in out and "freq-draft" not in out
-    assert world.calls == [] and world.saved(SHORT) == 2
+    assert world.calls == [] and world.saved(SHORT) == 1
 
 
-def test_apply_brings_only_the_short_problem_up_to_five(world):
+def test_apply_brings_only_the_short_problem_up_to_three(world):
     from main import topup_pools
     assert topup_pools.main(["--apply"]) == 0
-    assert [world.saved(p) for p in (FULL, SHORT, NONE, DRAFT)] == [5, 5, 0, 1]
-    assert len(world.calls) == 3
+    assert [world.saved(p) for p in (FULL, SHORT, NONE, DRAFT)] == [5, 3, 0, 1]
+    assert len(world.calls) == 2
 
 
 def test_the_cap_stops_before_the_call_that_could_cross_it(world, capsys):
     """Each call here really costs ~1.3c. The cap must stop the run part way,
     never let the total pass it, and keep every roadmap already paid for."""
     from main import topup_pools
-    cap = 0.04
+    cap = 0.03                          # one build fits under it, two do not
     assert topup_pools.main(["--apply", "--max-dollars", str(cap)]) == 1
-    assert 0 < len(world.calls) < 3, world.calls
+    assert 0 < len(world.calls) < 2, world.calls
     assert _dollars(world.calls) <= cap
-    assert world.saved(SHORT) == 2 + len(world.calls), "a paid-for build was thrown away"
+    assert world.saved(SHORT) == 1 + len(world.calls), "a paid-for build was thrown away"
     assert "STOPPED" in capsys.readouterr().out
 
 

@@ -4,6 +4,19 @@
    to the Playground, which called them "failed" and "oracle too weak", and
    nothing anywhere said which checks were missed or what to do.
 
+   AND (13 Oct, HW4): update was READY with a wrong answer still passing, and
+   nothing said so. The page now also opens for a ready problem with gaps, and
+   shows each test case to add with the wrong answers it catches.
+
+   AND (14 Oct): roadmaps are graded (main/roadmap_score). A problem none of
+   whose roadmaps reaches the bar waits here, or - live - is pointed out here;
+   a missed change no test can catch can be marked harmless.
+
+   AND (15 Oct, HW4 put): the model's suggested cases aimed at the wrong limit,
+   none caught `>` -> `>=`, and the page called a real gap "may be harmless"
+   with a Mark-as-harmless button beside it. It now says the suggestions
+   missed, and the teacher can type their own case, checked for free.
+
    review.fixture.json is the REAL /teacher/review view of a small synthetic
    problem (Tank.fill), produced by main/review_help through the route - see
    test_review_page.py - so this checks the page against what the server
@@ -17,6 +30,11 @@ const read = name => fs.readFileSync(path.resolve(__dirname, '../../frontend', n
 const fixture = JSON.parse(fs.readFileSync(path.join(__dirname, 'review.fixture.json'), 'utf8'));
 const wait = (ms = 40) => new Promise(r => setTimeout(r, ms));
 const SLUG = fixture.after.slug;
+
+// FAILED UNTIL PROVEN OTHERWISE (13 Oct): a broken page once left a window
+// that never finished closing, and the suite exited 0 with no PASS and no
+// error - which run-all counts as passing.
+process.exitCode = 1;
 
 (async () => {
   const {Window} = await import(pathToFileURL(require.resolve('happy-dom')).href);
@@ -32,10 +50,10 @@ const SLUG = fixture.after.slug;
       const p = new URL(url, 'http://localhost');
       const method = (options.method || 'GET').toUpperCase();
       calls.push({path: p.pathname, method, body: options.body ? JSON.parse(options.body) : null});
-      const data = p.pathname === '/auth/me'
+      const {__status = 200, ...data} = p.pathname === '/auth/me'
         ? {student_id: 'teacher-fixture', name: 'Pat Teacher', role: 'teacher'}
-        : answer(p.pathname, method) || {};
-      return new w.Response(JSON.stringify(data), {status: 200, headers: {'Content-Type': 'application/json'}});
+        : answer(p.pathname, method, options.body ? JSON.parse(options.body) : null) || {};
+      return new w.Response(JSON.stringify(data), {status: __status, headers: {'Content-Type': 'application/json'}});
     };
     w.confirm = () => true;
     const script = file === 'review.html' ? 'review.js' : 'teacher.js';
@@ -60,14 +78,18 @@ const SLUG = fixture.after.slug;
     assert.equal(cards.length, 3, 'one card per change the tests missed');
     assert.ok(cards.some(c => /skip the room check/.test(c.textContent)), 'plain words shown');
     assert.equal(doc.querySelectorAll('.finding .pill.warn').length, 2, 'two proven gaps');
-    assert.match(doc.querySelector('.finding.maybe').textContent, /may be harmless/,
-      'an unproven one says exactly that');
+    assert.match(doc.querySelector('.finding.maybe .pill').textContent, /suggested test cases missed it/,
+      'an unproven one says exactly that - and never that it may be harmless');
     assert.ok(cards.every(c => c.querySelector('.where .src').textContent.trim()), 'each names its line');
     assert.ok(!/`/.test(doc.querySelector('.finding dd').innerHTML), 'code is code, not backticks');
-    // The examples carry the TEACHER's answers.
-    const ex = doc.querySelector('#ex').textContent;
-    assert.match(ex, /t\.fill\(7\)/);
-    assert.match(ex, /'FULL'/);
+    // One card per test case: the TEACHER's answers, and what each catches.
+    const tcs = [...doc.querySelectorAll('.tcase')];
+    assert.equal(tcs.length, fixture.after.help.tests.length);
+    assert.match(tcs[0].querySelector('pre').textContent, /t\.fill\(7\)/);
+    assert.match(tcs[0].querySelector('pre').textContent, /'FULL'/);
+    assert.match(tcs[0].querySelector('.tcatch').textContent, /Catches: .*skip the room check/);
+    assert.match(tcs[1].querySelector('.tcatch').textContent, /forget to raise the level/);
+    assert.doesNotMatch(tcs[1].querySelector('.tcatch').textContent, /room check/);
     // The solution: every line, the missed ones marked, none in the site's
     // own wrapping `.row` (which broke the docstring line).
     const rows = doc.querySelectorAll('#sol .srow');
@@ -79,11 +101,13 @@ const SLUG = fixture.after.slug;
     assert.match(doc.querySelector('#queue a').getAttribute('href'), /^review\.html\?a=a-1&slug=/);
 
     // The main button sends the checked edit to the one retry route.
+    assert.equal(doc.querySelector('#addGo').textContent.trim(), 'Add all 2 and prepare again');
+    assert.ok(doc.querySelector('#acceptGo'), 'not yet published: publishing anyway is a choice');
     doc.querySelector('#addGo').click();
     await wait(80);
     const retry = calls.find(c => c.path === '/teacher/problems/retry');
     assert.ok(retry, 'nothing was sent');
-    assert.deepEqual(retry.body, {assignment_id: 'a-1', slug: SLUG,
+    assert.deepEqual(retry.body, {assignment_id: 'a-1', slug: SLUG, keep_live: false,
                                   source: fixture.after.help.edited_source});
     assert.match(doc.querySelector('#actMsg').textContent, /ready and\s+visible to students/);
 
@@ -95,13 +119,150 @@ const SLUG = fixture.after.slug;
     const h = await make('review.html', `?a=a-1&slug=${SLUG}`, p =>
       p === view ? harmless : p === '/teacher/problems/accept' ? {ready: true} : null);
     await wait(60);
-    assert.equal(h.doc.querySelector('#addGo'), null, 'no fix offered that proves nothing');
-    assert.match(h.doc.querySelector('.option.rec').textContent, /publish anyway/i);
-    assert.match(h.doc.querySelector('.option.rec').textContent, /reasonable here/);
+    assert.ok(!h.doc.querySelector('#addGo'), 'no fix offered that proves nothing');
+    // The model's cases missing a change is no evidence it is harmless (15 Oct).
+    assert.doesNotMatch(h.doc.querySelector('#main').textContent, /may be harmless|reasonable here/);
+    assert.match(h.doc.querySelector('.lbl').textContent, /doesn't prove they're harmless/);
+    assert.ok(h.doc.querySelector('.option.rec #tryGo'), 'writing your own case is what is recommended');
     h.doc.querySelector('#acceptGo').click();
     await wait(80);
     assert.deepEqual(h.calls.find(c => c.path === '/teacher/problems/accept').body,
       {assignment_id: 'a-1', slug: SLUG});
+
+    // ── ready, with gaps: add the cases, never "publish anyway" ───────────
+    const fixed = JSON.parse(JSON.stringify(fixture.gaps));
+    fixed.gaps = false; fixed.checks = []; fixed.caught = fixed.total; fixed.help = null;
+    let retried = false;
+    const gp = await make('review.html', `?a=a-1&slug=${SLUG}`, p => {
+      if (p === view) return retried ? fixed : fixture.gaps;
+      if (p === '/teacher/problems/retry') { retried = true; return {ready: true}; }
+    });
+    await wait(60);
+    assert.equal(gp.calls.filter(c => c.path === view + '/explain').length, 0,
+      'the help is already written for this version: nothing to pay');
+    assert.match(gp.doc.querySelector('#eyebrow').textContent, /Ready, with gaps/);
+    assert.match(gp.doc.querySelector('#sub').textContent, /would still be marked correct/);
+    assert.ok(!gp.doc.querySelector('#acceptGo'), 'already published: nothing to accept');
+    assert.ok([...gp.doc.querySelectorAll('.option h4')].some(h => /Leave it as it is/.test(h.textContent)));
+    assert.equal(gp.doc.querySelectorAll('.tcase').length, 2);
+    gp.doc.querySelector('#addGo').click();
+    await wait(100);
+    assert.equal(gp.calls.find(c => c.path === '/teacher/problems/retry').body.keep_live, true,
+      'a live problem is never hidden by a failed re-prepare');
+    assert.match(gp.doc.querySelector('#main').textContent, /now\s+catch every wrong answer/);
+
+    // ...and when the new version does not come out ready, the page says the
+    // students' version is untouched - and keeps saying it after the redraw.
+    const kept = await make('review.html', `?a=a-1&slug=${SLUG}`, p => {
+      if (p === view) return fixture.gaps;
+      if (p === '/teacher/problems/retry') return {ready: false,
+        error: 'Nothing changed for students - they still see the version they had. The new version did not come out ready: x'};
+    });
+    await wait(60);
+    kept.doc.querySelector('#addGo').click();
+    await wait(100);
+    assert.match(kept.doc.querySelector('#actMsg').textContent, /Nothing changed for students/);
+    assert.ok(kept.doc.querySelector('#addGo') && !kept.doc.querySelector('#addGo').disabled,
+      'the buttons come back for another try');
+
+    // ── your own test case (15 Oct): what HW4 put needed ─────────────────
+    const putLike = JSON.parse(JSON.stringify(fixture.gaps));
+    putLike.checks.forEach(c => { c.verdict = 'maybe_harmless'; });
+    Object.assign(putLike.help, {tests: [], edited_source: null, catches: 0});
+    const answers = [fixture.try_none,
+                     {__status: 400, detail: {message: 'Line 1 is not valid Python (never closed): t = Tank(10'}},
+                     fixture.try_hit];
+    const tp = await make('review.html', `?a=a-1&slug=${SLUG}`, (p, m) => {
+      if (p === view) return putLike;
+      if (p === view + '/try' && m === 'POST') return answers.shift();
+      if (p === '/teacher/problems/retry') return {ready: true};
+    });
+    await wait(60);
+    const td = tp.doc;
+    assert.ok(td.querySelector('.option.rec #tryGo'), 'recommended when no suggestion caught anything');
+    assert.match(td.querySelector('#tryGo').parentElement.textContent, /Free/);
+    const tryIt = async text => {
+      td.querySelector('#trySrc').value = text;
+      td.querySelector('#tryGo').click();
+      await wait(80);
+    };
+    await tryIt('t = Tank(10)\nt.fill(1)');
+    assert.deepEqual(tp.calls.filter(c => c.path === view + '/try').at(-1).body, {text: 't = Tank(10)\nt.fill(1)'});
+    assert.match(td.querySelector('#tryOut').textContent, /didn't catch any of them/);
+    assert.ok(!td.querySelector('#tryAdd'), 'nothing to add that catches nothing');
+    assert.equal(td.querySelector('#trySrc').value, 't = Tank(10)\nt.fill(1)', 'what was typed survives the redraw');
+    await tryIt('t = Tank(10');
+    assert.match(td.querySelector('#tryOut .banner.bad').textContent, /not valid Python/);
+    await tryIt('>>> t = Tank(10)\n>>> t.fill(10)');
+    assert.match(td.querySelector('#tryOut .tcatch').textContent, /Catches: .*>= instead of >/);
+    assert.match(td.querySelector('#tryOut pre').textContent, /t\.fill\(10\)\s*'OK'/, "your solution's answer");
+    assert.match(td.querySelector('#tryOut').textContent, /Still not caught: .*room check/);
+    td.querySelector('#tryAdd').click();
+    await wait(100);
+    assert.deepEqual(tp.calls.find(c => c.path === '/teacher/problems/retry').body,
+      {assignment_id: 'a-1', slug: SLUG, keep_live: true, source: fixture.try_hit.edited_source},
+      'the checked edit, and a live problem is never hidden');
+
+    // ── marked harmless: one button per missed change, on a live problem ──
+    const marked = JSON.parse(JSON.stringify(fixture.gaps));
+    const gone = marked.checks.shift();
+    marked.harmless = [{label: gone.label, line: gone.line, phrasing: gone.phrasing, by: 'prof@psu.edu'}];
+    const hm = await make('review.html', `?a=a-1&slug=${SLUG}`, (p, m) =>
+      p === view ? fixture.gaps : p === view + '/dismiss' && m === 'POST' ? marked : null);
+    await wait(60);
+    const marks = [...hm.doc.querySelectorAll('button.harmlessGo')];
+    assert.equal(marks.length, fixture.gaps.checks.length, 'one per missed change');
+    marks[0].click();
+    await wait(80);
+    assert.deepEqual(hm.calls.find(c => c.path === view + '/dismiss').body, {label: gone.label});
+    assert.equal(hm.doc.querySelectorAll('.finding').length, fixture.gaps.checks.length - 1);
+    assert.match(hm.doc.querySelector('.harmless').textContent, /marked by prof@psu\.edu/);
+    assert.ok(!(await make('review.html', `?a=a-1&slug=${SLUG}`, p => p === view ? fixture.after : null))
+      .doc.querySelector('button.harmlessGo'), 'not on a problem still waiting on its tests');
+
+    // ── roadmaps under the bar, waiting on review ─────────────────────────
+    const RSLUG = fixture.roadmap_review.slug, rview = `/teacher/review/a-1/${RSLUG}`;
+    const rr = await make('review.html', `?a=a-1&slug=${RSLUG}`, (p, m) => {
+      if (p === rview) return fixture.roadmap_review;
+      if (p === '/teacher/problems/accept_roadmaps') return {ready: true, accepted_by: 'prof@psu.edu'};
+      if (p === '/teacher/problems/rebuild_roadmaps') return {ready: false, error: 'Waiting on your review: still'};
+    });
+    await wait(60);
+    assert.match(rr.doc.querySelector('#eyebrow').textContent, /Needs your review: roadmaps/);
+    assert.equal(rr.doc.querySelectorAll('.finding').length, 0, 'no test findings to show');
+    const maps = [...rr.doc.querySelectorAll('.rmap')];
+    assert.equal(maps.length, fixture.roadmap_review.roadmaps.list.length);
+    assert.match(maps[0].querySelector('.rmpts').textContent, new RegExp(`^${fixture.roadmap_review.roadmaps.best}`));
+    assert.match(maps[0].querySelector('.rmparts').textContent, /biggest step \d+\/30/);
+    assert.match(rr.doc.querySelector('#rmCard .banner').textContent, /None of this problem's roadmaps\s+reaches 60/);
+    assert.match(rr.doc.querySelector('#rmCard .option.rec').textContent, /helper methods/,
+      'a long step: splitting the method is what helps');
+    assert.equal(rr.doc.querySelector('#rmAccept').textContent.trim(), 'Publish with the best roadmap');
+    rr.doc.querySelector('#rmRebuild').click();
+    await wait(80);
+    assert.deepEqual(rr.calls.find(c => c.path === '/teacher/problems/rebuild_roadmaps').body,
+      {assignment_id: 'a-1', slug: RSLUG});
+    assert.match(rr.doc.querySelector('#actMsg').textContent, /still/);
+    rr.doc.querySelector('#rmAccept').click();
+    await wait(80);
+    assert.deepEqual(rr.calls.find(c => c.path === '/teacher/problems/accept_roadmaps').body,
+      {assignment_id: 'a-1', slug: RSLUG});
+    assert.match(rr.doc.querySelector('#actMsg').textContent, /ready and\s+visible to students/);
+
+    // ── roadmaps under the bar on a live problem: kept, never hidden ──────
+    let kept2 = false;
+    const settled = {...fixture.roadmap_live, roadmaps: {...fixture.roadmap_live.roadmaps, below: false}};
+    const rl = await make('review.html', `?a=a-1&slug=${RSLUG}`, p => {
+      if (p === rview) return kept2 ? settled : fixture.roadmap_live;
+      if (p === '/teacher/problems/accept_roadmaps') { kept2 = true; return {ready: true}; }
+    });
+    await wait(60);
+    assert.match(rl.doc.querySelector('#eyebrow').textContent, /Ready, with roadmaps under the bar/);
+    assert.match(rl.doc.querySelector('#rmCard .banner').textContent, /Students still get the best ones/);
+    assert.equal(rl.doc.querySelector('#rmAccept').textContent.trim(), 'Keep these roadmaps');
+    rl.doc.querySelector('#rmAccept').click();
+    await wait(100);
+    assert.match(rl.doc.querySelector('#main').textContent, /Kept: these roadmaps stay/);
 
     // ── the way in: Assignments sends a review to this page ───────────────
     const asg = await make('teacher-assignments.html', '', p => {
@@ -111,7 +272,10 @@ const SLUG = fixture.after.slug;
         {slug: SLUG, title: 'Tank Fill', ready: false,
          prepare_error: 'Waiting on your review: a few checks on the generated tests came back inconclusive.'},
         {slug: 'tank-drain', title: 'Tank Drain', ready: false,
-         prepare_error: 'Could not split this problem into steps that hold together.'}]};
+         prepare_error: 'Could not split this problem into steps that hold together.'},
+        {slug: 'tank-empty', title: 'Tank Empty', ready: true, gaps: 1},
+        {slug: 'tank-size', title: 'Tank Size', ready: true, gaps: 0},
+        {slug: 'tank-long', title: 'Tank Long', ready: true, gaps: 0, roadmaps_below: 46}]};
     });
     await wait(60);
     asg.doc.querySelector('[data-act="breakdown"]').click();
@@ -127,7 +291,23 @@ const SLUG = fixture.after.slug;
     assert.equal(blocked.querySelector('.pill').textContent.trim(), 'blocked');
     assert.equal(blocked.querySelector('button.bdFix').textContent.trim(), 'Open and fix',
       'a problem that really failed keeps the in-place fix panel');
+    const gapped = items.find(li => /Tank Empty/.test(li.textContent));
+    assert.equal(gapped.querySelector('.pill').textContent.trim(), 'ready');
+    assert.match(gapped.textContent, /1 deliberate mistake still passes/);
+    assert.equal(gapped.querySelector('button.bdReview').dataset.href, 'review.html?a=a-1&slug=tank-empty');
+    const long = items.find(li => /Tank Long/.test(li.textContent));
+    assert.match(long.textContent, /no roadmap reaches the bar \(best 46\/100\)/);
+    assert.equal(long.querySelector('button.bdReview').dataset.href, 'review.html?a=a-1&slug=tank-long');
+    const clean = items.find(li => /Tank Size/.test(li.textContent));
+    assert.ok(!clean.querySelector('button'), 'nothing to review on a ready problem without gaps');
 
-    console.log('PASS: review page - plain findings, proven gaps vs "may be harmless", the teacher\'s answers in the examples, solution lines, one retry with the checked edit, publish anyway when nothing is proven, and the way in from Assignments.');
+    process.exitCode = 0;
+    console.log('PASS: review page - plain findings, proven gaps vs "may be harmless", one card per test case with what it catches, solution lines, one retry with the checked edit, publish anyway when nothing is proven, ready-with-gaps (no publish, never hidden), marking a change harmless, your own test case checked for free and added, roadmaps under the bar (waiting, and live), and the way in from Assignments.');
+  } catch (e) {
+    // The stack only, said BEFORE closing (which can hang): an assertion's
+    // `actual` can be a page element, and printing one walks the whole page
+    // until the process is killed - silently.
+    console.error(String(e && e.stack || e));
+    process.exitCode = 1;
   } finally { for (const w of windows) await w.happyDOM.close(); }
 })().catch(e => { console.error(e); process.exitCode = 1; });

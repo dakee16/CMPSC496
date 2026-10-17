@@ -160,10 +160,14 @@ def test_identical_code_gets_an_identical_verdict_without_asking_again(env):
 # The teacher's step 1 also computes `n`, which step 2 reads - so a student
 # whose step 1 is ONLY the guard leaves the teacher's step 2 nothing to read,
 # and the step genuinely reaches the model tiers (the shape of the real `calculate` case).
+# `n` is measured by a METHOD call: since 14 Oct a plain value like `len(txt)`
+# that a guard step leaves unsaved is recomputed for free
+# (grading._recomputed_values - test_recompute_rule.py), and these tests are
+# about what tier 4 does when nothing free can settle the step.
 GUARD_SOLUTION = ("def g(txt):\n    if not isinstance(txt, str):\n        return None\n"
-                  "    n = len(txt)\n    return n\n")
+                  "    n = txt.__len__()\n    return n\n")
 GUARD_STEPS = [dict(step_id="Part 1", expected_type="code", prompt="Reject non-text.",
-                    reference="if not isinstance(txt, str):\n    return None\nn = len(txt)"),
+                    reference="if not isinstance(txt, str):\n    return None\nn = txt.__len__()"),
                dict(step_id="Part 2", expected_type="code", prompt="Measure it.",
                     reference="return n")]
 GUARD_ORACLE = [{"input": ["abc"], "expected": 3}, {"input": [5], "expected": None}]

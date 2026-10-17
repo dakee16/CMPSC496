@@ -294,6 +294,64 @@ def check_notes(chunks: list, problem: dict, header: str = "") -> dict:
     return {"status": "fail", "summary": "These notes break the rules:\n  " + "\n  ".join(bad)}
 
 
+def _body_of(problem: dict) -> str:
+    from .context import solution_body
+    return solution_body(problem)
+
+
+def _code_tokens(src: str) -> list:
+    """The code's tokens, without comments and blank lines - two texts that
+    differ only in those are the same code."""
+    import io
+    import tokenize
+    try:
+        return [(t.type, t.string) for t in tokenize.generate_tokens(io.StringIO(src).readline)
+                if t.type not in (tokenize.COMMENT, tokenize.NL)]
+    except (tokenize.TokenError, IndentationError, SyntaxError):
+        return [("raw", src)]
+
+
+def roadmap_faults(problem: dict, decomposition: dict, teachers: bool = True,
+                   wording: bool = True) -> list[str]:
+    """Why this roadmap must not be served to a student - [] when it may be.
+
+    13 Oct, HW4. Three roadmaps were served that never should have been:
+      * the model, splitting __contains__, REWROTE the teacher's code - its
+        last step became `return result if 'result' in locals() else False`.
+        A teacher's roadmap is the teacher's code cut into pieces, never
+        rewritten (`teachers`; False for a roadmap built in a student's own
+        shape - main/reroute - whose code the oracle verified instead);
+      * that rewrite used `locals()`, which student code may not, and every
+        step is graded with the roadmap's later steps behind it - so even the
+        teacher's own step 1 was refused, and no student could pass it;
+      * 13 of 48 had step questions that failed check_prompts and were served
+        "anyway".
+    Pure AST and text work - no oracle run, no model call - so it is cheap
+    enough to screen every saved roadmap on every open (run_phase1._usable).
+    `wording` False skips the questions: a cut not yet worded (main/roadmap_score
+    ranks the splitter's cuts before paying to word them)."""
+    from .context import build_program, solution_body
+    from .execution import PolicyViolation, check_policy
+    chunks = decomposition.get("chunks") or []
+    refs = [(c.get("reference") if isinstance(c, dict) else getattr(c, "reference", "")) or ""
+            for c in chunks]
+    out = []
+    if teachers and _code_tokens("\n".join(refs)) != _code_tokens(solution_body(problem)):
+        out.append("it rewrites the teacher's code")
+    try:
+        check_policy(build_program(problem, "\n".join(refs), decomposition.get("header") or ""))
+    except PolicyViolation as e:
+        out.append(f"its code uses something students may not ({e})")
+    if not wording:
+        return out
+    try:
+        if check_prompts(chunks, problem)["status"] != "pass":
+            out.append("its step questions are unclear")
+    except Exception:
+        out.append("its step questions could not be checked")
+    return out
+
+
 def _is_noop_reference(ref: str) -> bool:
     """True if the reference is empty or does nothing once comments are gone."""
     body = "\n".join(ln for ln in (ref or "").splitlines()
@@ -341,8 +399,12 @@ def assert_serveable(problem: dict, decomposition: dict) -> dict:
             f"necessity verdict on it would be unreliable. Strengthen the oracle "
             f"(python -m main.warmup) before serving this decomposition.")
 
-    # (b) Degenerate output.
-    if len(chunks) < _MIN_CHUNKS:
+    # (b) Degenerate output. ONE step is allowed exactly when it is the
+    #     teacher's whole body - a method too short to split (13 Oct,
+    #     splitter.one_step), never a model's summary of one.
+    whole = (len(chunks) == 1 and _code_tokens(
+        getattr(chunks[0], "reference", None) or "") == _code_tokens(_body_of(problem)))
+    if len(chunks) < _MIN_CHUNKS and not whole:
         raise DecompositionUnavailableError(
             f"'{slug}' produced {len(chunks)} chunk(s); at least {_MIN_CHUNKS} "
             f"are required. A single chunk is the whole problem restated, not a "

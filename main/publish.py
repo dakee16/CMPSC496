@@ -94,6 +94,7 @@ _ERROR_STAGE = (
     ("test generation failed",       "tests"),
     ("no usable test cases",         "tests"),
     ("not strong enough",            "strength"),
+    ("no roadmap reached the bar",   "steps"),
     ("waiting on your review",       "strength"),
     ("could not split this problem", "steps"),
 )
@@ -113,7 +114,24 @@ def stage_of_error(error: str | None) -> str | None:
     return PREPARE_STAGES[-1][0]
 
 
-def prepare_problem(problem: dict, emit=None, replace_roadmaps: bool = False) -> dict:
+def roadmap_review_message(best: int) -> str:
+    from .roadmap_score import CUTOFF
+    return (f"Waiting on your review: no roadmap reached the bar (the best scores "
+            f"{best}/100; the bar is {CUTOFF}). The method is probably too long to "
+            f"cut into small steps.")
+
+
+def roadmaps_accepted(problem: dict) -> bool:
+    """Has the teacher published this version with its best roadmaps anyway?
+    Recorded, named, beside the tests' verdict (api_server accept_roadmaps)."""
+    from .identity import content_hash
+    from .oracle_store import load_cache
+    entry = load_cache().get(content_hash(problem))
+    return isinstance(entry, dict) and bool(entry.get("roadmaps_accepted_by"))
+
+
+def prepare_problem(problem: dict, emit=None, replace_roadmaps: bool = False,
+                    live: bool = False) -> dict:
     """Make one problem student-ready. Returns {slug, ready, chunks, stage,
     error}, where `stage` names the gate it stopped at - None once it passed.
 
@@ -128,9 +146,16 @@ def prepare_problem(problem: dict, emit=None, replace_roadmaps: bool = False) ->
     and a failure inside a watcher must never fail an upload.
 
     `replace_roadmaps` (re-prepare) builds a whole new set of roadmaps and swaps
-    it in at the end, instead of topping up the saved ones."""
+    it in at the end, instead of topping up the saved ones.
+
+    `live`: students can already see this problem. Its roadmaps under the bar
+    are then only pointed out (the Assignments list, the review page), never
+    a reason to stop - a live problem is never hidden, and a teacher's edit to
+    it is never thrown away for its roadmaps (14 Oct: HW4 __contains__, whose
+    only cut of the teacher's code is 1 line then 15)."""
     from tests.sandbox import get_oracle_tests, is_oracle_certified
-    from .run_phase1 import fill_pool, get_chunk_decomposition
+    from . import roadmap_score
+    from .run_phase1 import fill_pool, get_chunk_decomposition, roadmap_grades
 
     slug = problem.get("slug", "?")
     emit = emit or (lambda ev: None)
@@ -234,6 +259,18 @@ def prepare_problem(problem: dict, emit=None, replace_roadmaps: bool = False) ->
         decomp = get_chunk_decomposition(problem)
     except Exception as e:
         return fail("steps", _reason(e))
+
+    # THE BAR (14 Oct, Sanan - main/roadmap_score). A problem none of whose
+    # roadmaps reaches it waits on its teacher: what is left is usually a
+    # method too long to cut into small steps, and only they can split it into
+    # helpers or decide the best one we found will do (roadmaps_accepted).
+    try:
+        graded = roadmap_grades(problem)
+        best = roadmap_score.served_points(graded) if graded else roadmap_score.CUTOFF
+    except Exception:
+        best = roadmap_score.CUTOFF            # grading the roadmaps never blocks
+    if best < roadmap_score.CUTOFF and not roadmaps_accepted(problem) and not live:
+        return fail("steps", roadmap_review_message(best))
 
     chunks = decomp.get("chunks") or []
     emit({"type": "chunks", "header": decomp.get("header", ""),

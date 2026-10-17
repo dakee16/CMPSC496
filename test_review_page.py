@@ -5,6 +5,11 @@ THE REPORT (8 Oct, HW4). Three problems sat at "your review" with nothing on
 screen but "a few checks came back inconclusive", and the button led to the
 Playground, which called them "failed" and "oracle too weak".
 
+AND (13 Oct, HW4). update was READY with `>` -> `>=` still passing its tests -
+"strong" is 85% caught - and nothing anywhere said so. Sanan: show the specific
+test cases to add, the wrong answers each catches, and one button to add them
+all and prepare that problem again.
+
 REAL: the review routes, the stored verdict they read, running the suggested
 examples on the teacher's code and on every missed change, inserting them into
 the docstring, and the retry route the page sends that to. FAKED: Supabase (in
@@ -51,8 +56,11 @@ LEVEL = "line 7: remove `self.level = self.level + amount`"
 WORDS = {GUARD: ("A student could skip the room check", "an amount that does not fit"),
          EDGE: ("A student could use >= instead of >", "an amount that fits exactly"),
          LEVEL: ("A student could forget to raise the level", "reading the level after filling")}
-# Statements only - and no exact fit, so the >= change stays unproven.
-EXAMPLES = ["t = Tank(10)", "t.fill(4)", "t.fill(7)", "t.level"]
+# Statements only - and no exact fit, so the >= change stays unproven. The
+# third case catches nothing and must not be offered.
+TESTS = [["t = Tank(10)", "t.fill(4)", "t.fill(7)"],
+         ["t = Tank(10)", "t.fill(4)", "t.level"],
+         ["t = Tank(5)", "t.fill(3)", "t.fill(1)"]]
 
 
 @pytest.fixture
@@ -60,6 +68,8 @@ def review(monkeypatch, tmp_path):
     from main import identity
     monkeypatch.setenv("MICROTUTOR_ORACLE_CACHE", str(tmp_path / "o.json"))
     monkeypatch.setenv("MICROTUTOR_TRACE_FILE", str(tmp_path / "t.jsonl"))
+    # The retry route records its run: never into the real data/transcripts.json.
+    monkeypatch.setenv("MICROTUTOR_TRANSCRIPTS", str(tmp_path / "tr.json"))
     monkeypatch.setattr(identity, "_RESOLVED_PATH", str(tmp_path / "r.json"))
     c, sb = teacher_client()
     p = parse_assignment_file(TANK, "tank.py")["problems"][0]
@@ -79,18 +89,20 @@ def review(monkeypatch, tmp_path):
                           {"label": lb, "status": "undetermined" if lb in (GUARD, EDGE, LEVEL)
                            else "killed"} for lb in sorted(labels)]}}})
     asked = []
+    R = type("R", (), {"c": c, "sb": sb, "slug": p["slug"], "asked": asked, "row": row,
+                       "tests": TESTS, "url": f"/teacher/review/a-1/{p['slug']}",
+                       "total": len(labels)})
 
     def chat(model, system, messages, **k):
         """Answers by the numbers in the prompt, as the model must."""
         asked.append(k.get("max_tokens"))
         import re
         listed = re.findall(r"^(\d+)\. (line .*)$", messages[0]["content"], re.M)
-        return json.dumps({"examples": EXAMPLES, "changes": [
+        return json.dumps({"tests": R.tests, "changes": [
             {"n": int(n), "title": WORDS[lb][0], "missing": WORDS[lb][1]}
             for n, lb in listed]})
     monkeypatch.setattr(review_help, "chat", chat)
-    return type("R", (), {"c": c, "sb": sb, "slug": p["slug"], "asked": asked,
-                          "url": f"/teacher/review/a-1/{p['slug']}", "total": len(labels)})
+    return R
 
 
 def test_the_free_view_names_every_missed_change_and_its_line(review):
@@ -102,6 +114,10 @@ def test_the_free_view_names_every_missed_change_and_its_line(review):
     assert got[GUARD]["code"].strip() == "if amount > room:" and got[GUARD]["line"] == 5
     assert all(c["verdict"] == "unknown" for c in d["checks"])
     assert d["queue"] == [{"slug": review.slug, "title": d["title"]}]
+    # Waiting on review is its own state: not also counted as "ready, with gaps".
+    (mine,) = [p for p in review.c.get("/teacher/assignments/a-1/problems").json()["problems"]
+               if p["slug"] == review.slug]
+    assert mine["gaps"] == 0
 
 
 def test_the_help_is_proven_on_the_teachers_code_and_remembered(review):
@@ -118,6 +134,12 @@ def test_the_help_is_proven_on_the_teachers_code_and_remembered(review):
     # The answers in the examples are the TEACHER's: the model gave none.
     assert ">>> t.fill(7)\n'FULL'" in h["doctest"] and ">>> t.level\n4" in h["doctest"]
     assert ">>> t.fill(7)" in h["edited_source"] and "def fill(self, amount):" in h["edited_source"]
+    # One card per test case, saying which wrong answers it catches - and the
+    # one that catches nothing is not offered.
+    assert [t["catches"] for t in h["tests"]] == [
+        [WORDS[GUARD][0], WORDS[LEVEL][0]], [WORDS[LEVEL][0]]]
+    assert h["tests"][0]["doctest"] == ">>> t = Tank(10)\n>>> t.fill(4)\n'OK'\n>>> t.fill(7)\n'FULL'"
+    assert "Tank(5)" not in h["edited_source"]
 
     again = review.c.post(review.url + "/explain").json()
     assert len(review.asked) == 1, "a reopened page paid again"
@@ -129,7 +151,7 @@ def test_adding_the_examples_prepares_the_problem_again_with_them(review, monkey
     edited = review.c.post(review.url + "/explain").json()["help"]["edited_source"]
     handed = []
     monkeypatch.setattr("main.publish.prepare_problem",
-                        lambda p, emit=None: handed.append(p) or {
+                        lambda p, emit=None, **_k: handed.append(p) or {
                             "slug": p["slug"], "ready": True, "chunks": 2, "n_tests": 7,
                             "stage": None, "error": None})
     r = review.c.post("/teacher/problems/retry", json={
@@ -166,3 +188,170 @@ def test_the_help_itself_is_written_once_per_problem_version(review):
     assert len(review.asked) == 1
     review_help.explain(p, "k-2", [GUARD])           # a new version is new work
     assert len(review.asked) == 2
+
+
+# ── ready, with gaps (13 Oct) ────────────────────────────────────────────
+
+def _live(review):
+    review.row["ready"], review.row["prepare_error"] = True, None
+
+
+def test_a_ready_problem_whose_tests_miss_mistakes_says_so_and_offers_the_cases(review):
+    _live(review)
+    listed = review.c.get("/teacher/assignments/a-1/problems").json()["problems"]
+    (mine,) = [p for p in listed if p["slug"] == review.slug]
+    assert mine["gaps"] == 3 and "solution" not in mine, "counted, and the answer key not sent"
+    d = review.c.get(review.url).json()
+    assert (d["in_review"], d["gaps"]) == (False, True)
+    assert d["queue"] == [{"slug": review.slug, "title": d["title"]}]
+    h = review.c.post(review.url + "/explain").json()["help"]
+    assert len(h["tests"]) == 2 and h["edited_source"], "the same help as a problem in review"
+
+
+def test_a_ready_problem_with_nothing_missed_is_not_flagged(review):
+    _live(review)
+    entry = __import__("main.oracle_store", fromlist=["x"]).load_cache()
+    for e in entry.values():
+        for m in e["breakdown"]["mutants"]:
+            m["status"] = "killed"
+    save_cache(entry)
+    (mine,) = [p for p in review.c.get("/teacher/assignments/a-1/problems").json()["problems"]
+               if p["slug"] == review.slug]
+    assert mine["gaps"] == 0
+    d = review.c.get(review.url).json()
+    assert d["gaps"] is False and d["queue"] == []
+    assert review.c.post(review.url + "/explain").json()["help"] is None and review.asked == []
+
+
+@pytest.mark.parametrize("comes_out_ready", [True, False])
+def test_adding_the_cases_to_a_live_problem_never_hides_it(review, monkeypatch, comes_out_ready):
+    """A problem students can see is re-prepared only to add tests. If the new
+    version does not come out ready, theirs stays exactly as it was."""
+    _live(review)
+    before = dict(review.row)
+    edited = review.c.post(review.url + "/explain").json()["help"]["edited_source"]
+    monkeypatch.setattr("main.publish.prepare_problem", lambda p, emit=None, **_k: {
+        "slug": p["slug"], "ready": comes_out_ready, "chunks": 2, "n_tests": 7,
+        "stage": None if comes_out_ready else "oracle",
+        "error": None if comes_out_ready else "Waiting on your review: still inconclusive."})
+    d = review.c.post("/teacher/problems/retry", json={
+        "assignment_id": "a-1", "slug": review.slug, "source": edited, "keep_live": True}).json()
+    saved = [p for p in review.sb.problems if p["slug"] == review.slug][-1]
+    if comes_out_ready:
+        assert d["ready"] and ">>> t.fill(7)" in saved["solution"]
+    else:
+        assert d["ready"] is False and "Nothing changed for students" in d["error"]
+        assert (saved["ready"], saved["solution"]) == (True, before["solution"])
+
+
+def test_test_cases_that_change_each_others_answers_are_not_offered(review):
+    """They go into the docstring as one run. A case that patches the class
+    would change the next one's answers there, and the docstring would be wrong."""
+    p = parse_assignment_file(TANK, "tank.py")["problems"][0]
+    review.tests = [["t = Tank(10)", "t.fill(4)", "t.level", "Tank.fill = lambda self, a: 'X'"],
+                    ["t = Tank(10)", "t.fill(4)", "t.fill(7)"]]
+    out = review_help.explain(p, "k-together", [GUARD, EDGE, LEVEL])
+    assert out["tests"] == [] and out["examples"]["ok"] is False
+    assert "each other" in out["examples"]["reason"]
+
+
+# ── marked harmless (14 Oct) ─────────────────────────────────────────────
+
+def test_a_change_marked_harmless_stops_counting_as_a_gap(review):
+    """HW4's mruEvict unlinks a `previous` that is always already empty: no
+    test can catch leaving it out, because it changes nothing. Sanan: "we can
+    just remove that issue showing up manually"."""
+    _live(review)
+    d = review.c.post(review.url + "/dismiss", json={"label": EDGE}).json()
+    assert EDGE not in [c["label"] for c in d["checks"]] and len(d["checks"]) == 2
+    assert d["harmless"] == [{"label": EDGE, "line": 5, "phrasing": d["harmless"][0]["phrasing"],
+                              "by": "prof@psu.edu"}]
+    assert (d["caught"], d["total"]) == (review.total - 3, review.total), "the tests' record is unchanged"
+    (mine,) = [p for p in review.c.get("/teacher/assignments/a-1/problems").json()["problems"]
+               if p["slug"] == review.slug]
+    assert mine["gaps"] == 2
+    for lb in (GUARD, LEVEL):
+        review.c.post(review.url + "/dismiss", json={"label": lb})
+    d = review.c.get(review.url).json()
+    assert d["gaps"] is False and d["queue"] == [] and len(d["harmless"]) == 3
+    assert review.asked == [], "free"
+
+
+def test_a_student_cannot_mark_anything_harmless(review):
+    c = client()
+    register(c, "abc123@psu.edu", PW)
+    assert c.post(review.url + "/dismiss", json={"label": EDGE}).status_code == 403
+
+
+# ── your own test case (15 Oct) ──────────────────────────────────────────
+
+def test_your_own_test_case_is_run_on_every_change_for_free(review, monkeypatch):
+    """HW4 put: the model's suggestions aimed at the wrong limit, none caught
+    `>` -> `>=`, and the page said "may be harmless" with nothing to do but
+    edit by hand. The teacher's own exact-fit case, run on their solution and
+    on each change still slipping past - no model - and one click to add it."""
+    _live(review)
+    d = review.c.post(review.url + "/try", json={
+        "text": ">>> t = Tank(10)\n>>> t.fill(10)\n'whatever they typed'"}).json()
+    assert review.asked == [], "free"
+    assert d["ok"] and d["labels"] == [EDGE], d
+    assert len(d["catches"]) == 1 and len(d["missed"]) == 2
+    # The answers are the TEACHER's code's, never what was typed.
+    assert d["doctest"] == ">>> t = Tank(10)\n>>> t.fill(10)\n'OK'"
+    assert ">>> t.fill(10)" in d["edited_source"] and "whatever" not in d["edited_source"]
+    handed = []
+    monkeypatch.setattr("main.publish.prepare_problem",
+                        lambda p, emit=None, **_k: handed.append(p) or {
+                            "slug": p["slug"], "ready": True, "chunks": 2, "n_tests": 7,
+                            "stage": None, "error": None})
+    r = review.c.post("/teacher/problems/retry", json={
+        "assignment_id": "a-1", "slug": review.slug, "source": d["edited_source"],
+        "keep_live": True})
+    assert r.status_code == 200 and r.json()["ready"] is True, r.text
+    # Plain values become the call list a class's tests start from; objects
+    # handed around (HW4's ContentItem) the doctest block. Either is a test.
+    from main.context import calls_from_docstring, doctest_block
+    assert (["fill", 10] in calls_from_docstring(handed[0]["description"], "Tank")
+            or "t.fill(10)" in (doctest_block(handed[0]) or "")), "the case is not a test"
+
+
+def test_a_case_that_catches_nothing_says_so_and_offers_nothing(review):
+    d = review.c.post(review.url + "/try", json={"text": "t = Tank(10)\nt.fill(1)"}).json()
+    assert d["ok"] and d["labels"] == [] and d["edited_source"] is None
+    assert len(d["missed"]) == 3 and d["doctest"].endswith(">>> t.fill(1)\n'OK'")
+
+
+def test_a_change_marked_harmless_is_not_tried(review):
+    _live(review)
+    review.c.post(review.url + "/dismiss", json={"label": EDGE})
+    d = review.c.post(review.url + "/try", json={"text": "t = Tank(10)\nt.fill(10)"}).json()
+    assert d["labels"] == [] and len(d["missed"]) == 2
+
+
+@pytest.mark.parametrize("text, status, said", [
+    ("", 400, "at least one line"),
+    ("   \n>>>\n", 400, "at least one line"),
+    ("t = Tank(10\nt.fill(1)", 400, "line 1 is not valid Python"),
+    ("t.fill(1)", 200, "NameError"),                   # runs, and fails on THEIR code
+    ("\n".join(f"x{i} = {i}" for i in range(13)), 400, "12 lines"),
+])
+def test_a_case_that_cannot_be_used_is_said_plainly(review, text, status, said):
+    r = review.c.post(review.url + "/try", json={"text": text})
+    assert r.status_code == status, r.text
+    msg = r.json()["detail"]["message"] if status != 200 else r.json()["reason"]
+    assert said.lower() in msg.lower(), msg
+    if status == 200:
+        assert r.json()["ok"] is False
+
+
+def test_a_student_cannot_try_a_case(review):
+    c = client()
+    register(c, "abc123@psu.edu", PW)
+    assert c.post(review.url + "/try", json={"text": "t = Tank(10)"}).status_code == 403
+
+
+def test_a_typed_case_reads_like_a_docstring_or_plain_lines():
+    s = review_help.statements_from
+    assert s(">>> t = Tank(10)\n>>> for a in (1, 2):\n...     t.fill(a)\n'OK'\n>>> t.level") == [
+        "t = Tank(10)", "for a in (1, 2):\n    t.fill(a)", "t.level"]
+    assert s("    t = Tank(10)\n\n    # a comment\n    t.level\n") == ["t = Tank(10)", "t.level"]

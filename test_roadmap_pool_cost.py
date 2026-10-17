@@ -35,10 +35,26 @@ ORACLE = [{"input": ["aab"], "expected": {"a": 2, "b": 1}},
           {"input": ["xyzx"], "expected": {"x": 2, "y": 1, "z": 1}},
           {"input": [""], "expected": {}}]
 ROADMAP = {"header": "def frequency(txt):", "chunks": [
-    {"step_id": "Part 1", "prompt": "Tally the characters.", "expected_type": "code",
+    {"step_id": "Part 1", "prompt": "Tally the characters, keeping the tally for the next step.", "expected_type": "code",
      "reference": "counts = {}\nfor ch in txt:\n    counts[ch] = counts.get(ch, 0) + 1"},
     {"step_id": "Part 2", "prompt": "Hand back the tally.", "expected_type": "code",
      "reference": "return counts"}]}
+# Two other cuts of the same code. The model gives a different cut each build;
+# the same one twice is a copy, and copies are not saved (14 Oct).
+CUT_2 = {"header": "def frequency(txt):", "chunks": [
+    {"step_id": "Part 1", "prompt": "Start an empty tally, keeping it for the next step.",
+     "expected_type": "code", "reference": "counts = {}"},
+    {"step_id": "Part 2", "prompt": "Count every character into the tally and hand it back.",
+     "expected_type": "code",
+     "reference": "for ch in txt:\n    counts[ch] = counts.get(ch, 0) + 1\nreturn counts"}]}
+CUT_3 = {"header": "def frequency(txt):", "chunks": [
+    {"step_id": "Part 1", "prompt": "Start an empty tally, keeping it for the next step.",
+     "expected_type": "code", "reference": "counts = {}"},
+    {"step_id": "Part 2", "prompt": "Count every character into the tally, keeping it for the next step.",
+     "expected_type": "code", "reference": "for ch in txt:\n    counts[ch] = counts.get(ch, 0) + 1"},
+    {"step_id": "Part 3", "prompt": "Hand back the tally.", "expected_type": "code",
+     "reference": "return counts"}]}
+CUTS = [ROADMAP, CUT_2, CUT_3]
 
 
 @pytest.fixture
@@ -65,8 +81,9 @@ def pool(monkeypatch, tmp_path):
     built = []
 
     def fresh(problem, *_a, **_k):
+        n = built.count(problem["slug"])
         built.append(problem["slug"])
-        return run_phase1._deserialize(ROADMAP)
+        return run_phase1._deserialize(CUTS[n % len(CUTS)])
     monkeypatch.setattr(run_phase1, "decompose_into_chunks", fresh)
     # Every coin flip comes up "build a new one" - the old rule's worst case.
     monkeypatch.setattr(random, "random", lambda: 0.0)
@@ -140,20 +157,23 @@ def test_students_opening_together_build_nothing(pool, monkeypatch):
     assert pool.count() == 1
 
 
-def test_an_upload_saves_five_roadmaps_and_preparing_again_adds_none(pool):
+def test_an_upload_saves_three_roadmaps_and_preparing_again_adds_none(pool):
+    """Three since 13 Oct (run_phase1._POOL_TARGET)."""
     from main import publish
     pool.saved(0)
     assert publish.prepare_problem(dict(PROBLEM))["ready"] is True
-    assert len(pool.built) == 5 and pool.count() == 5
+    assert len(pool.built) == 3 and pool.count() == 3
     # Retry / accept run the same pipeline: a full pool is final.
     assert publish.prepare_problem(dict(PROBLEM))["ready"] is True
-    assert len(pool.built) == 5 and pool.count() == 5
+    assert len(pool.built) == 3 and pool.count() == 3
 
 
 def test_an_upload_stops_at_the_first_failed_build(pool, monkeypatch):
     """The money bound. A problem the model cannot split this time costs one
-    failed build and one best-effort try - what an upload cost before - not a
-    retry per missing roadmap."""
+    failed build - not a retry per missing roadmap. And when no cut of the
+    teacher's code is valid either, it gets ONE step of the teacher's own code
+    (13 Oct, Sanan: "one step, never rewrite") - free - rather than the paid
+    best-effort try that used to follow."""
     from main import publish, run_phase1
     tried = []
 
@@ -174,8 +194,11 @@ def test_an_upload_stops_at_the_first_failed_build(pool, monkeypatch):
 
     result = publish.prepare_problem(dict(PROBLEM))
 
-    assert result["ready"] is False and result["stage"] == "steps"
-    assert tried == ["build", "best"], tried
+    assert tried == ["build"], tried
+    assert result["ready"] is True and result["chunks"] == 1
+    (only,) = pool.entries()
+    assert only["chunks"][0]["reference"].strip() == \
+        "\n".join(ln[4:] for ln in SOLUTION.splitlines()[1:]).strip(), "the teacher's code, whole"
 
 
 def test_reprepare_swaps_new_roadmaps_in_with_no_gap_for_students(pool, monkeypatch, tmp_path):
@@ -209,7 +232,7 @@ def test_reprepare_swaps_new_roadmaps_in_with_no_gap_for_students(pool, monkeypa
             except Exception as e:
                 during[0] = type(e).__name__
         pool.built.append(problem["slug"])
-        return run_phase1._deserialize(ROADMAP)
+        return run_phase1._deserialize(CUTS[(len(pool.built) - 1) % len(CUTS)])
     monkeypatch.setattr(run_phase1, "decompose_into_chunks", fresh)
 
     r = c.post("/teacher/assignments/a-1/reprepare")
@@ -219,7 +242,7 @@ def test_reprepare_swaps_new_roadmaps_in_with_no_gap_for_students(pool, monkeypa
     assert done.get("event") == "done" and done.get("ready") == 1, done
     assert during[0].startswith("OLD"), f"a student mid-rebuild got: {during[0]}"
     prompts = [e["chunks"][0]["prompt"] for e in pool.entries()]
-    assert len(prompts) == 5 and not any(p.startswith("OLD") for p in prompts), prompts
+    assert len(prompts) == 3 and not any(p.startswith("OLD") for p in prompts), prompts
 
 
 def test_two_uploads_saving_at_once_keep_both_sets(pool, monkeypatch):
@@ -243,7 +266,7 @@ def test_two_uploads_saving_at_once_keep_both_sets(pool, monkeypatch):
     [t.join() for t in threads]
 
     saved = real_load()
-    assert [len(saved.get(identity.content_hash(p), [])) for p in (PROBLEM, other)] == [5, 5]
+    assert [len(saved.get(identity.content_hash(p), [])) for p in (PROBLEM, other)] == [3, 3]
 
 
 def test_a_pool_write_that_dies_part_way_keeps_every_saved_roadmap(pool, monkeypatch):
