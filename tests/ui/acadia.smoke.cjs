@@ -72,8 +72,6 @@ const server = http.createServer((req,res) => {
       else if(pathname.includes('plan_graph')) json={nodes:[],edges:[]};
       else if(pathname==='/assignment_template') json={template:'# Assignment'};
       else if(pathname==='/teacher/assignments/lab1/grades') json={students:[],problems:3,total_steps:9};
-      else if(pathname==='/playground/problems') json={problems:[]};
-      else if(pathname==='/playground/params') json={};
       else {unknown.push(pathname);status=404;}
       await route.fulfill({status,contentType:'application/json',body:JSON.stringify(json)});
     });
@@ -248,7 +246,7 @@ const server = http.createServer((req,res) => {
     }
     await page.setViewportSize({width:1600,height:1000});
     role='teacher';
-    for(const name of ['teacher','teacher-review','teacher-assignments','grades','playground']){
+    for(const name of ['teacher','teacher-review','teacher-assignments','grades']){
       await page.goto(base+'/'+name+'.html');
       await page.waitForFunction(()=>!document.querySelector('.skelRow'));
       assert.match(await page.title(),/ACADIA/);

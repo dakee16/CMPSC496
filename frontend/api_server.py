@@ -362,20 +362,6 @@ class MarkSolvedRequest(BaseModel, extra="forbid"):
     session_id: str
 
 
-class LiveRunRequest(BaseModel):
-    # Either a curated slug (solution looked up in the DB) or a fully custom
-    # problem with the ground truth pasted in. Same rule as /decompose_chunks:
-    # no ground truth, no run.
-    slug: str
-    title: str | None = None
-    description: str | None = None
-    solution: str | None = None
-    # Playground knob overrides, keyed by PLAYGROUND_PARAMS keys. Values are
-    # clamped server-side to each knob's registered bounds; unknown keys are
-    # dropped. Omitting this runs the pipeline exactly as production does.
-    params: dict | None = None
-
-
 @app.get("/health")
 def health():
     return {"status": "ok", "message": "MicroTutor API running"}
@@ -1214,321 +1200,13 @@ def reopen_step_route(req: ReopenRequest, request: Request):
     return state
 
 
-# ── playground (read-only showcase) ───────────────────────────────────────
-# These serve the step-through demo in frontend/playground.html. They REPLAY
-# cached results and never trigger validation, decomposition, or any LLM call
-# a demo must not stall for minutes on a click. The only things computed on read
-# are the AST mutants and their knockouts, which are deterministic, model-free
-# and sub-second; they are recomputed because evaluate_oracle's per-mutant
-# breakdown is not currently persisted (only the aggregate rates are).
-
-@app.get("/playground/problems")
-def playground_problems(request: Request):
-    """Every problem in Supabase, with its whole pipeline story in one row:
-    did preparation succeed, where did it stop, is there a validated oracle,
-    how many pooled decompositions exist. This is the troubleshooter's list -
-    teacher-gated, because the page it feeds also shows ground truths."""
-    require_teacher(request)
-    from main.identity import content_hash
-    from main.publish import stage_of_error
-    from main.run_phase1 import _load_pool
-    from tests.sandbox import _load_cache
-
-    sb = get_supabase()
-    rows = sb.table("problems").select(
-        "slug, title, difficulty, description, solution, ready, prepare_error,"
-        " assignment_id, context, group_slug, group_title, group_description"
-        ).execute().data or []
-    asg = {a["id"]: a["name"] for a in (sb.table("assignments").select(
-        "id, name").execute().data or [])}
-    cache = _load_cache()
-    pool = _load_pool()
-
-    out = []
-    for p in rows:
-        # Must include the class context: content_hash folds context_prefix and
-        # context_suffix in, so hashing description+solution alone never matches
-        # a method's cached verdict - every class problem read "no oracle yet".
-        key = content_hash({"description": p.get("description") or "",
-                            "solution": p.get("solution") or "",
-                            **_context_of(p)})
-        oracle = cache.get(key)
-        # Three states, not two. "review" is a suite that may well be fine but
-        # carries checks nothing could decide; calling that "weak" sends the
-        # instructor rewriting a problem that might need no change at all.
-        oracle_state = (None if not (isinstance(oracle, dict) and "strong" in oracle)
-                        else "strong" if oracle["strong"]
-                        # A one-line getter generates no mutants at all, so it
-                        # can never be strong. Shown as its own state rather
-                        # than as "weak": nothing about it is weak, and sending
-                        # the instructor to rewrite a correct `return self.count`
-                        # is the one thing this list must not do.
-                        else "doctest" if oracle.get("status") == "doctest_verified"
-                        else "review" if oracle.get("status") == "needs_review"
-                        else "weak")
-        out.append({
-            "slug": p["slug"], "title": p.get("title") or p["slug"],
-            "difficulty": p.get("difficulty"),
-            "assignment": asg.get(p.get("assignment_id"), ""),
-            "assignment_id": p.get("assignment_id"),
-            "ready": bool(p.get("ready")),
-            "prepare_error": p.get("prepare_error"),
-            # Which gate preparation stopped at ("parses"/"runs"/"tests"/
-            # "strength"/"steps"), or None once it passed - same mapping the
-            # teacher's fix panel uses.
-            "stage": None if p.get("ready") else stage_of_error(p.get("prepare_error")),
-            "has_solution": bool((p.get("solution") or "").strip()),
-            "oracle": oracle_state,
-            "kill_rate_direct": (oracle or {}).get("kill_rate_direct")
-                                if oracle_state else None,
-            "kill_rate_lower": (oracle or {}).get("kill_rate_lower"),
-            "kill_rate_upper": (oracle or {}).get("kill_rate_upper"),
-            "undetermined": (oracle or {}).get("undetermined"),
-            "pool_entries": len(pool.get(key) or []),
-        })
-    # Broken first - this list exists to find them.
-    return {"problems": sorted(out, key=lambda r: (r["ready"], r["slug"]))}
-
-
-@app.get("/playground/params")
-def playground_params(request: Request):
-    """The tunable-knob registry, straight from the pipeline. The page builds
-    its sliders from this, so bounds and defaults have exactly one home
-    (main/live_playground.PLAYGROUND_PARAMS)."""
-    require_teacher(request)
-    from main.live_playground import current_params
-    return {"params": current_params()}
-
-
-@app.get("/playground/problem/{slug}")
-def playground_problem(slug: str, request: Request):
-    """One problem WITH its ground truth, for the troubleshooter's left panel.
-    Teacher-gated for exactly that reason - this is the one read path that
-    hands a solution to a browser."""
-    require_teacher(request)
-    from main.identity import content_hash
-    from main.run_phase1 import _load_pool
-    from tests.sandbox import _load_cache
-
-    row = get_supabase().table("problems").select(
-        "slug, title, description, difficulty, solution, ready, prepare_error, "
-        "context, group_slug, group_title, group_description"
-    ).eq("slug", slug).execute().data
-    if not row:
-        raise HTTPException(status_code=404, detail=f"Problem '{slug}' not found.")
-    p = row[0]
-    key = content_hash({"description": p.get("description") or "",
-                        "solution": p.get("solution") or "",
-                        **_context_of(p)})
-    oracle = _load_cache().get(key)
-    if not (isinstance(oracle, dict) and "strong" in oracle):
-        oracle = None
-    return {"slug": p["slug"], "title": p.get("title") or p["slug"],
-            "description": p.get("description") or "",
-            "difficulty": p.get("difficulty"),
-            "solution": p.get("solution") or "",
-            "ready": bool(p.get("ready")),
-            "prepare_error": p.get("prepare_error"),
-            "oracle": None if oracle is None else {
-                "strong": bool(oracle["strong"]),
-                "kill_rate_direct": oracle.get("kill_rate_direct", 0.0),
-                "n_tests": len(oracle.get("final_tests", [])),
-                "validated_at": oracle.get("validated_at", "")},
-            "pool_entries": len(_load_pool().get(key) or [])}
-
-
-@app.get("/playground/{slug}")
-def playground_detail(slug: str, request: Request):
-    """One problem's full journey, assembled from cache. Never recomputes an
-    oracle or a decomposition; returns nulls the UI renders as 'not yet'.
-
-    Teacher-gated like every other playground route. It withholds `solution`,
-    which is what made it look safe - but it returns the decomposition, and a
-    decomposition carries every step's private reference answer. Ungated, the
-    complete answer key was one guessed slug away from any signed-out visitor."""
-    import json as _json
-    import os as _os
-    from main.identity import content_hash, get_resolved_entry
-    from main.mutation import _disagrees, generate_mutants
-    from tests.sandbox import _load_cache, passes_tests, run_solution
-
-    require_teacher(request)
-    row = get_supabase().table("problems").select(
-        "slug, title, description, difficulty, solution, context, group_slug, "
-        "group_title, group_description").eq("slug", slug).execute().data
-    if not row:
-        raise HTTPException(status_code=404, detail=f"Problem '{slug}' not found.")
-    # get_resolved_entry and the mutant replay below both EXECUTE this problem,
-    # so it has to carry its class context or a method resolves to a bare
-    # `def pop(self)` that cannot run.
-    problem = {**row[0], **_context_of(row[0])}
-    solution = problem.get("solution") or ""
-    # The solution is needed BELOW to recompute mutants, but it must not be
-    # returned. Everything sent back is built from `public_problem`.
-    public_problem = {k: v for k, v in problem.items() if k != "solution"}
-
-    cached = _load_cache().get(content_hash(problem))
-    if not (isinstance(cached, dict) and "strong" in cached):
-        return {"problem": public_problem, "oracle": None, "mutants": [],
-                "chunks": None, "necessity": [], "grading": None,
-                "note": "not yet validated"}
-
-    tests = cached.get("final_tests", [])
-    entry = get_resolved_entry(problem)["entry_name"]
-
-    # Stage 2 - prefer the breakdown persisted at validation time; only fall
-    # back to recomputing for entries written before it was stored.
-    breakdown = cached.get("breakdown")
-    if isinstance(breakdown, dict) and breakdown.get("mutants"):
-        # "killed" means the suite AS HANDED IN caught it; killed_on_retry means
-        # it only died after the search added a test, i.e. it slipped past the
-        # suite the student would have faced.
-        mutants = [{"label": m["label"], "caught": m["status"] == "killed",
-                    "status": m["status"]}
-                   for m in breakdown["mutants"]]
-        source = "cached"
-    else:
-        base = run_solution(solution, [t["input"] for t in tests], entry_name=entry)
-        expected = base["results"] if base["ok"] else []
-        mutants = []
-        for m in generate_mutants(solution):
-            caught = bool(expected) and _disagrees(
-                m["code"], entry, [t["input"] for t in tests], expected)
-            mutants.append({"label": m["label"], "caught": caught,
-                            "status": "killed" if caught else "survived"})
-        source = "recomputed"
-
-    # Stages 3/4 - pooled decomposition, if one exists.
-    chunks, necessity = None, []
-    pool_path = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
-                              "main", "chunk_pool.json")
-    if _os.path.exists(pool_path):
-        try:
-            pool = _json.load(open(pool_path))
-        except Exception:
-            pool = {}
-        pooled = (pool.get(content_hash(problem)) or [None])[0]
-        if pooled:
-            chunks = pooled["chunks"]
-            header = pooled["header"]
-            body = [c.get("reference", "") for c in chunks]
-            for i, c in enumerate(chunks):
-                knocked = list(body)
-                knocked[i] = "pass"
-                code = header + "\n" + "\n".join(
-                    "    " + ln for ref in knocked for ln in (ref or "").splitlines())
-                res = passes_tests(code, tests, entry_name=entry)
-                necessity.append({
-                    "step_id": c.get("step_id", f"Part {i + 1}"),
-                    "broke": (not res["ok"]) or res["fraction"] < 1.0,
-                    "passed": res.get("passed", 0), "total": res.get("total", 0)})
-
-    # Stage 5 - a right and a wrong submission, decided by EXECUTION only.
-    grading = None
-    if tests:
-        wrong = "def _f(*a, **k):\n    return None"
-        ok = passes_tests(solution, tests, entry_name=entry)
-        bad = passes_tests(wrong, tests, entry_name="_f")
-        grading = {
-            "correct": {"tier": "Tier 2 - executed against the oracle",
-                        "verdict": ok["ok"] and ok["fraction"] == 1.0,
-                        "passed": ok.get("passed", 0), "total": ok.get("total", 0)},
-            "incorrect": {"tier": "Tier 2 - executed against the oracle",
-                          "verdict": bad["ok"] and bad["fraction"] == 1.0,
-                          "passed": bad.get("passed", 0), "total": bad.get("total", 0)},
-        }
-
-    # Why is it weak? Without this the UI can show "100% caught" beside a WEAK
-    # badge - true but self-contradictory-looking - when the real reason is that
-    # the solution yielded too few mutants to judge at all.
-    from main.mutation import _MIN_MUTANTS, CUTOFF_1_KILL_RATE
-    weak_reason = None
-    if cached.get("status") == "doctest_verified":
-        weak_reason = None                  # not weak - see oracle_store.certified
-    elif not cached["strong"]:
-        if len(mutants) < _MIN_MUTANTS:
-            weak_reason = (f"only {len(mutants)} way(s) to break this solution could be "
-                           f"found - too few to judge the tests fairly "
-                           f"(need at least {_MIN_MUTANTS})")
-        else:
-            weak_reason = (f"{round(cached.get('kill_rate_direct', 0.0) * 100)}% of cheaters "
-                           f"caught is below the {round(CUTOFF_1_KILL_RATE * 100)}% bar")
-
-    # Chunk PROMPTS are public; chunk REFERENCES are the answer to each step and
-    # never leave the server. The showcase only ever needed the prompts and the
-    # knockout result, so dropping the references costs it nothing.
-    if chunks:
-        chunks = [{k: v for k, v in c.items() if k != "reference"} for c in chunks]
-
-    return {"problem": public_problem,
-            "oracle": {"n_tests": len(tests), "tests": tests[:6],
-                       "kill_rate_direct": cached.get("kill_rate_direct", 0.0),
-                       "kill_rate": cached.get("kill_rate", 0.0),
-                       "strong": bool(cached["strong"]),
-                       "weak_reason": weak_reason,
-                       "validated_at": cached.get("validated_at", "")},
-            "mutants": mutants, "breakdown": breakdown,
-            "breakdown_source": source, "chunks": chunks,
-            "necessity": necessity, "grading": grading, "note": None}
-
-
-# ── playground LIVE (real pipeline run, streamed) ─────────────────────────
-# The read-only endpoints above replay cache; this one runs the REAL pipeline
-# (fresh oracle generation, mutation testing + repair, verdict, decomposition,
-# Gate 1) and streams every step as a newline-delimited JSON event the moment
-# it happens. Served with fetch()+ReadableStream on the frontend - the
-# one-directional SSE pattern, delivered over POST because the ground-truth
-# solution rides in the request body (EventSource can only GET).
-#
-# COSTS REAL MONEY per click: same OpenAI usage as a warmup pass on one
-# problem. It also persists its verdict to tests/tests_cache.json exactly as
-# warmup would, so a live run is never wasted work.
-
-@app.get("/teacher/prepare/live/{assignment_id}/{slug}")
-def prepare_live_mirror(assignment_id: str, slug: str, request: Request):
-    """Watch one problem being prepared by an upload that is ALREADY running.
-
-    The mirror half of /playground/live. That route STARTS a pipeline run; this
-    one attaches to the run an upload is in the middle of, replaying what has
-    happened so far and then following along - see main/prepare_bus.py for why
-    a second run would be the wrong answer (it costs a second set of model calls
-    and races the first one to write the same oracle cache entry).
-
-    Teacher-gated for the same reason /playground/live is: the transcript
-    carries the ground truth, the oracle suite and every chunk reference, which
-    together are the complete answer key."""
-    import json as _json
-    from fastapi.responses import StreamingResponse
-    from main.prepare_bus import is_open, key, subscribe
-
-    require_teacher(request)
-    k = key(assignment_id, slug)
-    if not is_open(k):
-        raise HTTPException(status_code=404, detail={
-            "reason_code": "no_run_to_watch",
-            "message": (f"Nothing is preparing '{slug}' right now. A run can "
-                        f"only be watched while it is happening - if the upload "
-                        f"has finished, open the problem in the playground to "
-                        f"run it again.")})
-
-    def events():
-        # None is a heartbeat: an idle connection has to put something on the
-        # wire or a proxy closes it, and the readers already skip blank lines.
-        for ev in subscribe(k):
-            yield "\n" if ev is None else _json.dumps(ev) + "\n"
-
-    return StreamingResponse(events(), media_type="application/x-ndjson",
-                             headers={"Cache-Control": "no-cache",
-                                      "X-Accel-Buffering": "no"})
-
-
 @app.get("/teacher/problems/{assignment_id}/{slug}/transcript")
 def problem_transcript(assignment_id: str, slug: str, request: Request):
     """The saved narration of the run that blocked this problem.
 
-    The after-the-fact half of /teacher/prepare/live: that one attaches to a run
-    in progress, this one replays a run that has already finished. Only problems
-    that did NOT pass have one - see main/transcripts.py.
+    Replays a preparation run that has already finished. Only problems that did
+    NOT pass have one - see main/transcripts.py. (The live "watch" view of a run
+    in progress went with the Playground, 19 Oct.)
 
     Teacher-gated like every other route that carries a transcript: it contains
     the ground truth, the oracle suite and the chunk references."""
@@ -1543,50 +1221,6 @@ def problem_transcript(assignment_id: str, slug: str, request: Request):
                         f"for problems that did not pass, and are cleared once "
                         f"a problem is fixed.")})
     return saved
-
-
-@app.post("/playground/live")
-def playground_live(req: LiveRunRequest, request: Request):
-    from fastapi.responses import StreamingResponse
-
-    # Teacher-gated: the stream narrates the ground truth, the oracle suite and
-    # every chunk reference - the complete answer key for the problem.
-    require_teacher(request)
-
-    problem = {"slug": req.slug, "title": req.title or req.slug,
-               "description": req.description or "",
-               "solution": (req.solution or "").strip()}
-
-    # Same contract as /decompose_chunks: curated problems keep their ground
-    # truth in the DB; uploads carry it in the request. No ground truth = no
-    # oracle = nothing to watch - hard error, not a degraded run.
-    # The context blob is fetched UNCONDITIONALLY, not only when the solution is
-    # missing. A method problem without it is not a degraded problem, it is the
-    # WRONG problem: is_method() goes false, main/context.py stops assembling the
-    # class around the method, and the entry point resolves to `pop` instead of
-    # the sequence driver. Every class problem then dies at oracle generation
-    # with "no usable test cases", because a bare `def pop(self)` cannot be run.
-    row = get_supabase().table("problems").select(
-        "slug, title, description, solution, context, group_slug, group_title, "
-        "group_description").eq("slug", req.slug).execute().data
-    if row:
-        problem["solution"] = problem["solution"] or (row[0].get("solution") or "").strip()
-        problem["description"] = problem["description"] or (row[0].get("description") or "")
-        problem["title"] = req.title or row[0].get("title") or req.slug
-        problem.update(_context_of(row[0]))
-    if not problem["solution"]:
-        raise HTTPException(
-            status_code=400,
-            detail=(f"No reference solution for '{req.slug}'. A live run cannot "
-                    f"start without ground truth - oracle tests, mutation "
-                    f"validation and Gate 1 all depend on it. Supply `solution` "
-                    f"with the request."))
-
-    from main.live_playground import ndjson_stream
-    return StreamingResponse(
-        ndjson_stream(problem, req.params),
-        media_type="application/x-ndjson",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 @app.get("/problems")
@@ -1774,8 +1408,8 @@ def upload_assignment(req: AssignmentUpload, request: Request):
 
     Preparation (oracle generation, mutation validation, decomposition) is
     minutes of work, so this streams NDJSON as each problem finishes instead of
-    holding the connection silent. Same one-directional pattern as
-    /playground/live, delivered over POST because the file rides in the body."""
+    holding the connection silent, delivered over POST because the file rides
+    in the body."""
     import json as _json
     from fastapi.responses import StreamingResponse
     from main.assignments import AssignmentParseError, parse_assignment_file
@@ -2996,7 +2630,6 @@ def manual_split(req: ManualSplitRequest, request: Request):
     sb.table("problems").update(
         {"ready": True, "prepare_error": None}).eq("slug", req.slug).execute()
     return out
-
 
 
 # ══════════════════════════════════════════════════════════════════════════

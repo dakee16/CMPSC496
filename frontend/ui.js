@@ -335,7 +335,6 @@ function mountHeader({active = "", wide = false, variant = "", crumbs = null} = 
     ? navItem("Overview",roleHome,"grid","Home","homeBtn")
       + navItem("Assignments","teacher-assignments.html","book","Assignments")
       + navItem("Grades","grades.html","chart","Grades")
-      + navItem("Playground","playground.html","lab","Playground")
     : navItem("Dashboard",roleHome,"grid","Dashboard","homeBtn")
       + navItem("My assignments","student.html","book","Assignments");
   // NO GRADES TAB FOR STUDENTS. This is not the course's LMS, and a number

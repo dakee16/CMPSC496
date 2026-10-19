@@ -874,6 +874,67 @@ def rename(problem: dict, header: str, chunks: list, idx: int, upto: str,
     return None
 
 
+def renamed_failure(problem: dict, header: str, chunks: list, idx: int, upto: str,
+                    tests: list, entry: str, ambient: set):
+    """The run of THEIR step with the teacher's remaining steps in THEIR names,
+    when that run fails and the pairing is UNAMBIGUOUS - every name the rest
+    needs has exactly one partner set up the same way. None otherwise.
+
+    For showing a case, never for a verdict (19 Oct, Sanan "B"): GPT's HW4
+    lruEvict step said `discarded` for the teacher's `node` and then took the
+    wrong link; the teacher's next step, joined as written, crashed on `node`
+    - our crash, never shown - and the student was told only "could not
+    confirm". A renamed step that fails can still be RIGHT and ahead (the
+    swapped-in rest then repeats what it already did), so this is evidence to
+    trace, not proof. An ambiguous pairing is a guess, and gives nothing."""
+    from .execution import classify_run              # local: avoid a cycle
+
+    refs = [(c.get("reference") or "") for c in chunks]
+    tail = "\n".join(r for r in refs[idx + 1:] if r.strip())
+    names = _tail_names(upto, tail) if tail.strip() and tests else None
+    if names is None or not is_applicable(problem, entry, [upto] + refs):
+        return None
+    reads, binds = names
+    teacher = _first_setups("\n".join(r for r in refs[:idx + 1] if r.strip()), ambient)
+    student = _first_setups(upto, ambient)
+    missing = reads - ambient - stores(upto) - binds
+    if not missing or not missing <= teacher.keys():
+        return None
+    cands = {t: sorted(s for s, key in student.items()
+                       if key == teacher[t] and s not in reads | binds)
+             for t in missing}
+    if any(len(c) != 1 for c in cands.values()):
+        return None
+    mapping = {t: c[0] for t, c in cands.items()}
+    if len(set(mapping.values())) != len(mapping):
+        return None
+    program = build_program(problem, upto + "\n" + _renamed(tail, mapping), header)
+    res = classify_run(program, tests, entry_name=entry)
+    if res.outcome == "pass":
+        return None
+    if res.outcome == "wrong_output" and res.failures:
+        return res
+    # ONE TEST AT A TIME, to find WHICH case: a whole-batch timeout or crash
+    # names none. HW4 lruEvict, wrong link: the list breaks and put's eviction
+    # loop then never ends - the batch timed out with nothing to show. Bounded:
+    # the first _ALONE_LIMIT tests, stopping at the first that fails.
+    import types
+    for i, t in enumerate(tests[:_ALONE_LIMIT]):
+        one = classify_run(program, [t], entry_name=entry)
+        if one.outcome == "pass":
+            continue
+        if one.outcome == "timeout":
+            fails = [{"index": i, "timeout": True}]
+        else:
+            fails = [{**f, "index": i} for f in (one.failures or [])][:1]
+        return types.SimpleNamespace(outcome=one.outcome, failures=fails,
+                                     passed=0, total=1) if fails else None
+    return None
+
+
+_ALONE_LIMIT = 12
+
+
 def bridge_lines(mapping: dict) -> str:
     """The mapping as ONE simultaneous assignment.
 

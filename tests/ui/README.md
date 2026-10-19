@@ -79,7 +79,7 @@ are saved when `UI_ARTIFACTS` is set and require visual review.
   reading/planning/coding, assignment handbacks, approval gating, step review,
   focus mode, tutor visibility, non-overlapping work/tutor panels, inline
   reference bounds, metric alignment, compact sign-in notes, and seven viewport
-  widths across student/instructor/grades/playground/login screens.
+  widths across student/instructor/grades/login screens.
 
 Happy DOM cannot verify physical layout, real editor measurements, sticky
 positioning, pointer dragging, or screenshots. The browser suite covers those

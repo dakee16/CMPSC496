@@ -244,7 +244,10 @@ def _render_case(problem: dict, test: dict, failure: dict) -> str:
         lines.append(f"{name}({', '.join(repr(a) for a in inp)})")
 
     out = ["\n".join(lines)]
-    if failure.get("error"):
+    if failure.get("timeout"):
+        # 19 Oct: a case found on its own because the whole run timed out.
+        out.append("\nthis case never finished - a loop kept going.")
+    elif failure.get("error"):
         out.append(f"\nyour code crashed: {failure['error']}")
     else:
         # Expected first: where the teacher's method raises on purpose, the
@@ -2348,6 +2351,25 @@ def grade_submission(session: dict, student_code: str,
                                       "tracing by hand.",
                     "failing_cases": shown,
                     "failed_total": _failed_total(res, len(shown))})
+        # STILL NOTHING TO SHOW, AND THEY RENAMED (19 Oct, Sanan "B"): the rest
+        # of the solution joined as written crashed on a name of ours, which is
+        # never shown. Run with THEIR names in it, when the pairing is
+        # unambiguous, and show that case. Evidence, not a verdict - the
+        # attempt still is not used; a renamed step can be right and ahead.
+        if result.tier == "unconfirmed" and not result.needs_diagnosis \
+                and not result.failing_cases and result.reason_code == "unconfirmed":
+            own = bridge.renamed_failure(problem, header, chunks, idx, upto, tests, entry,
+                                         set(resolved["params"]) | _header_params(header)
+                                         | _module_names(problem, header) | _SAFE_BUILTINS)
+            if own is not None and own.outcome in ("wrong_output", "runtime_error", "timeout"):
+                shown = failing_cases(problem, tests, own.failures)
+                if shown:
+                    result = result.model_copy(update={
+                        "student_reason": _EVIDENCE_ONLY + " - but the case below, run "
+                                          "with your own names in the rest of the "
+                                          "solution, is worth tracing by hand.",
+                        "failing_cases": shown,
+                        "failed_total": _failed_total(own, len(shown))})
     return result
 
 

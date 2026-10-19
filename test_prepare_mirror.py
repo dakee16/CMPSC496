@@ -9,8 +9,8 @@ write the same content-hash entry in the oracle cache.
 
 What is worth testing here:
 
-  * the narration is in main/live_playground.py's event vocabulary, because the
-    page that renders it is the playground, unchanged;
+  * the narration keeps its fixed event vocabulary (it was rendered by the
+    Playground page until that was removed, 19 Oct; transcripts still use it);
   * a failure is narrated, not just returned - a watcher whose stream stops
     cannot tell "failed" from "hung";
   * narration NEVER changes what preparation returns, and a broken watcher
@@ -76,8 +76,8 @@ def test_a_successful_run_is_narrated_in_the_playgrounds_vocabulary(stub_pipelin
     assert result["ready"] is True
 
     kinds = [e["type"] for e in events]
-    # Every type here has a handler in frontend/playground.html; an unknown one
-    # would render as a raw log line instead of a panel.
+    # The fixed vocabulary saved transcripts are written in (the Playground page
+    # that rendered it live was removed, 19 Oct).
     assert set(kinds) <= {"stage", "ground_truth", "entry", "oracle_tests",
                           "verdict", "chunks", "blocked"}, kinds
 

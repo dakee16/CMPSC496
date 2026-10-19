@@ -339,17 +339,10 @@ function handle(ev){
 function addRow(slug, state, title, why){
   if (run.rows[slug]) return setRow(slug, state, why);
   const li = document.createElement("li");
-  // The link stays after the problem finishes: a completed run replays its
-  // whole transcript, so this is also how a teacher reads back what happened
-  // to a problem that came out "needs work".
-  const watch = (state === "run" && run.assignmentId)
-    ? `<a class="watch" target="_blank" rel="noopener"
-         href="playground.html?watch=${encodeURIComponent(run.assignmentId)}&slug=${encodeURIComponent(slug)}"
-         title="Watch this problem being prepared, in a new tab">watch</a>`
-    : "";
+  // (A "watch" link opened the run in the Playground; that went, 19 Oct.)
   li.innerHTML = `<span class="pill"></span>
     <div class="body"><div class="nm"></div><div class="why"></div></div>
-    ${watch}<span class="el"></span>`;
+    <span class="el"></span>`;
   $("items").appendChild(li);
   run.rows[slug] = li;
   run.starts[slug] = Date.now();
