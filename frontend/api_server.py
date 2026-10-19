@@ -2864,9 +2864,13 @@ def teacher_review_try(assignment_id: str, slug: str, req: TryCaseRequest,
             "labels": [c["label"] for c in caught],
             "catches": [title(c) for c in caught],
             "missed": [title(c) for c in open_ if c not in caught],
-            "edited_source": (review_help.insert_examples(
-                row.get("solution") or "", v["doctest"], problem.get("entry_hint"))
-                if caught else None)}
+            # OFFERED EVEN WHEN IT CATCHES NO KNOWN SLIP (18 Oct): the slips are
+            # one-line changes to the teacher's own code, and a different wrong
+            # answer is not one - HW4 clear accepted `while self.remainingSpace
+            # < self.maxSize`, which leaves a zero-size item behind. The case
+            # that shows it catches none of the slips and is still worth adding.
+            "edited_source": review_help.insert_examples(
+                row.get("solution") or "", v["doctest"], problem.get("entry_hint"))}
 
 
 def _problem_for(assignment_id: str, slug: str) -> tuple[dict, dict]:

@@ -560,7 +560,9 @@ async function toggleBreakdown(tr, a){
         : esc(p.prepare_error || "Preparation did not finish for this problem.")}</span>
       ${p.ready && (p.gaps || p.roadmaps_below != null) ? `<button class="ghost bdFix bdReview" type="button"
             data-href="${esc(reviewHref(a.id, p.slug))}">Review</button>`
-        : p.ready ? "" : /^Waiting on your review/.test(p.prepare_error || "")
+        : p.ready ? `<button class="ghost bdFix bdReview" type="button"
+            data-href="${esc(reviewHref(a.id, p.slug))}">Edit</button>`
+        : /^Waiting on your review/.test(p.prepare_error || "")
         ? `<button class="ghost bdFix bdReview" type="button"
             data-href="${esc(reviewHref(a.id, p.slug))}">Review</button>`
         : `<button class="ghost bdFix" type="button"

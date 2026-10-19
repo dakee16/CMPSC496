@@ -106,3 +106,43 @@ def test_setup_wording_and_real_loop_starts_are_left_alone():
              StepItem(question_id="t", step_id="Part 2", prompt="Insert it.",
                       reference="return 'INSERTED'")]
     assert claims_unstarted(check) == []
+
+
+# ── a step that RETURNS its answer, worded as keeping it (18 Oct) ────────
+# GPT's round 2, HW4 __getitem__: the step's code ends `return cache_list.head`
+# on a hit, and the question said "Keep the updated node for the next step" -
+# the next step being only `return 'Cache miss!'`. A student kept the node,
+# and the finished answer said "Cache miss!" for items that were there.
+GET = [StepItem(question_id="t", step_id="Part 1", reference=
+                "cache_list = self.hierarchy[hash(content)]\n"
+                "if content.cid in cache_list:\n    return cache_list.head",
+                prompt="Find the cache level based on the content header and check if the "
+                       "content id exists in that level, updating the node's position if "
+                       "found. Keep the updated node for the next step."),
+       StepItem(question_id="t", step_id="Part 2", reference="return 'Cache miss!'",
+                prompt="Handle the case where the content id is not found.")]
+
+
+def test_a_step_that_returns_its_answer_but_says_keep_it_is_refused():
+    from main.gates import keeps_what_it_returns
+    assert keeps_what_it_returns(GET) == [0]
+    out = check_prompts(GET, {"description": "Look the content up in its level."})
+    assert out["status"] == "fail" and "Part 1" in out["summary"], out
+
+
+def test_guards_that_return_a_fixed_value_may_still_keep_the_result():
+    """Measured on the live pool (18 Oct, 180 non-final steps): seven guards
+    `return False` / `return None` on bad input and keep the result otherwise -
+    worded correctly. Only a COMPUTED return is the step's answer."""
+    from main.gates import keeps_what_it_returns
+    guard = [StepItem(question_id="t", step_id="Part 1",
+                      reference="if not word or not word[0].isalpha():\n    return False",
+                      prompt="Write code that checks if the word is non-empty and starts with "
+                             "a letter, and keep the result for the next step."),
+             StepItem(question_id="t", step_id="Part 2", prompt="Check the rest.",
+                      reference="return all(ch.isalnum() for ch in word)")]
+    assert keeps_what_it_returns(guard) == []
+    said = [GET[0].model_copy(update={"prompt": "Find the content's cache level; if the "
+                                      "content id is there, return the node at the front. "
+                                      "Otherwise leave the miss for the next step."})] + GET[1:]
+    assert keeps_what_it_returns(said) == []

@@ -552,7 +552,7 @@ def {SEQ_ENTRY}(calls):
 
 def capture(problem: dict, header: str, body: str, names: list,
             inputs: list, entry: str, human: bool = False,
-            with_owners: bool = False):
+            with_owners: bool = False, with_early: bool = False):
     """{name: value-signature across every input}, or None if unusable.
 
     A signature is the tuple of that name's encoded value on each input, so two
@@ -560,12 +560,12 @@ def capture(problem: dict, header: str, body: str, names: list,
     on which the body returned early contributes the returned value instead,
     which keeps a partial match from looking total."""
     if not names:
-        return ({}, []) if with_owners else {}
+        return ({}, []) if with_owners else ({}, set()) if with_early else {}
     status, results, _ = run_student_code(
         _capture_program(problem, header, body, names, human), inputs,
         entry_name=entry)
     if status != "ok" or len(results) != len(inputs):
-        return (None, []) if with_owners else None
+        return (None, []) if with_owners else (None, set()) if with_early else None
     # A METHOD yields one snapshot per CALL, not one per input: the driver
     # replays a recorded sequence against a single instance and returns the list
     # of per-call results, so the capture appears wherever that method was
@@ -599,21 +599,35 @@ def capture(problem: dict, header: str, body: str, names: list,
     else:
         sig = {n: tuple(repr((row or {}).get(n, UNBOUND)) for row in per_input)
                for n in names}
+    if with_early:
+        # Positions where the body returned BEFORE the boundary - the input is
+        # finished there, and nothing at the boundary was ever reached.
+        return sig, {p for p, row in enumerate(per_input) if row is None}
     return (sig, owners) if with_owners else sig
 
 
-def _candidates(ref_sig: dict, stu_sig: dict) -> dict:
+def _candidates(ref_sig: dict, stu_sig: dict, early: frozenset = frozenset()) -> dict:
     """{reference name: [student names whose signature matches exactly]}.
 
     A name whose value is UNBOUND on every input matches nothing: an absent
     variable is not a value, and treating two absences as equal would bridge
-    names that were never there."""
+    names that were never there.
+
+    `early` (18 Oct): positions where the STUDENT's step had already returned.
+    That input is finished - nothing there for the next step to continue - so
+    it is no evidence either way and is not compared. GPT's HW4 __contains__:
+    a search that returned False on a miss held the very node the roadmap's
+    `current` did on every hit, and was never paired because a miss read
+    "missing" against None. Pairing only proposes; the composite's run on
+    every test still decides. Positions left to compare must hold evidence."""
     out = {}
     for r, sig in ref_sig.items():
-        if all(v == repr(UNBOUND) for v in sig):
+        keep = [i for i in range(len(sig)) if i not in early]
+        if all(sig[i] == repr(UNBOUND) for i in keep):
             out[r] = []
             continue
-        out[r] = sorted(s for s, ss in stu_sig.items() if ss == sig)
+        out[r] = sorted(s for s, ss in stu_sig.items()
+                        if len(ss) == len(sig) and all(ss[i] == sig[i] for i in keep))
     return out
 
 
@@ -668,7 +682,8 @@ def find(problem: dict, header: str, chunks: list, idx: int, upto: str,
     if not inputs:
         return None
 
-    stu_sig = capture(problem, header, upto, sorted(stores(upto)), inputs, entry)
+    stu_sig, early = capture(problem, header, upto, sorted(stores(upto)), inputs, entry,
+                             with_early=True)
     if stu_sig is None:
         return None                 # their code did not run cleanly; not ours to judge
 
@@ -684,7 +699,7 @@ def find(problem: dict, header: str, chunks: list, idx: int, upto: str,
                           needed, inputs, entry)
         if ref_sig is None:
             continue
-        for mapping in assignments(_candidates(ref_sig, stu_sig)):
+        for mapping in assignments(_candidates(ref_sig, stu_sig, early)):
             body = "\n".join(p for p in (upto, bridge_lines(mapping), tail)
                              if p.strip())
             res = classify_run(build_program(problem, body, header), tests,
@@ -767,7 +782,17 @@ def _first_setups(body: str, ambient: set) -> dict:
         if isinstance(p, ast.Tuple) and parent.get(p) is not None:
             pos, p, n = p.elts.index(n), parent[p], p
         if isinstance(p, ast.Assign) and len(p.targets) == 1 and p.targets[0] is n:
-            key = _setup_key(p.value, ambient, out, inline)
+            value = p.value
+            # `a, b = x, y` sets a to x and b to y - their own values, not
+            # "part 0 of (x, y)" (18 Oct, GPT's HW4 round 2: `retired,
+            # self.head = self.head, self.head.next` never paired with the
+            # teacher's `node = self.head`). A tuple from ONE value keeps
+            # pairing by position, as before.
+            if (pos is not None and isinstance(value, (ast.Tuple, ast.List))
+                    and len(value.elts) == len(n.elts)
+                    and not any(isinstance(e, ast.Starred) for e in value.elts + n.elts)):
+                value, pos = value.elts[pos], None
+            key = _setup_key(value, ambient, out, inline)
             how = "value" if pos is None else f"part {pos} of"
         elif isinstance(p, ast.For) and p.target is n:
             key = _setup_key(p.iter, ambient, out, inline)
@@ -777,7 +802,7 @@ def _first_setups(body: str, ambient: set) -> dict:
         if key:
             out[name] = key if how == "value" else f"{how} {key}"
             if how == "value":
-                inline[name] = p.value
+                inline[name] = value          # the element, for `a, b = x, y`
     return out
 
 

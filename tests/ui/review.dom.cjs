@@ -188,8 +188,10 @@ process.exitCode = 1;
     };
     await tryIt('t = Tank(10)\nt.fill(1)');
     assert.deepEqual(tp.calls.filter(c => c.path === view + '/try').at(-1).body, {text: 't = Tank(10)\nt.fill(1)'});
-    assert.match(td.querySelector('#tryOut').textContent, /didn't catch any of them/);
-    assert.ok(!td.querySelector('#tryAdd'), 'nothing to add that catches nothing');
+    assert.match(td.querySelector('#tryOut').textContent, /didn't catch any of the wrong answers/);
+    // 18 Oct: still offered - a student's mistake need not be one of our slips.
+    assert.match(td.querySelector('#tryOut').textContent, /You can still add it/);
+    assert.ok(td.querySelector('#tryAdd'), 'a case that catches no slip can still be added');
     assert.equal(td.querySelector('#trySrc').value, 't = Tank(10)\nt.fill(1)', 'what was typed survives the redraw');
     await tryIt('t = Tank(10');
     assert.match(td.querySelector('#tryOut .banner.bad').textContent, /not valid Python/);
@@ -202,6 +204,28 @@ process.exitCode = 1;
     assert.deepEqual(tp.calls.find(c => c.path === '/teacher/problems/retry').body,
       {assignment_id: 'a-1', slug: SLUG, keep_live: true, source: fixture.try_hit.edited_source},
       'the checked edit, and a live problem is never hidden');
+
+    // ── EDIT: a ready problem with nothing waiting (18 Oct, HW4 clear) ────
+    // It had no way to be changed: the editor and the box lived only on a
+    // flagged problem, and `clear` accepted a wrong loop the tests lacked.
+    const cl = await make('review.html', `?a=a-1&slug=${SLUG}`, (p, m) => {
+      if (p === view) return fixture.clean;
+      if (p === view + '/try' && m === 'POST') return fixture.clean_try;
+      if (p === '/teacher/problems/retry') return {ready: true};
+    });
+    await wait(60);
+    assert.match(cl.doc.querySelector('#main .banner.ok').textContent, /Nothing is waiting on you/);
+    assert.ok(cl.doc.querySelector('#editCard #trySrc'), 'the box is there');
+    assert.ok(cl.doc.querySelector('#editCard #editGo'), 'and the editor');
+    assert.match(cl.doc.querySelector('#editCard').textContent, /it becomes a test/);
+    assert.equal(cl.calls.filter(c => c.path === view + '/explain').length, 0, 'nothing to explain, nothing paid');
+    cl.doc.querySelector('#trySrc').value = 't = Tank(3)\nt.fill(3)\nt.fill(1)';
+    cl.doc.querySelector('#tryGo').click(); await wait(80);
+    assert.match(cl.doc.querySelector('#tryOut').textContent, /You can still add it/);
+    cl.doc.querySelector('#tryAdd').click(); await wait(100);
+    assert.deepEqual(cl.calls.find(c => c.path === '/teacher/problems/retry').body,
+      {assignment_id: 'a-1', slug: SLUG, keep_live: true, source: fixture.clean_try.edited_source},
+      'the case, added to the live problem without hiding it');
 
     // ── marked harmless: one button per missed change, on a live problem ──
     const marked = JSON.parse(JSON.stringify(fixture.gaps));
@@ -299,10 +323,12 @@ process.exitCode = 1;
     assert.match(long.textContent, /no roadmap reaches the bar \(best 46\/100\)/);
     assert.equal(long.querySelector('button.bdReview').dataset.href, 'review.html?a=a-1&slug=tank-long');
     const clean = items.find(li => /Tank Size/.test(li.textContent));
-    assert.ok(!clean.querySelector('button'), 'nothing to review on a ready problem without gaps');
+    const edit = clean.querySelector('button.bdReview');
+    assert.ok(edit && edit.textContent.trim() === 'Edit', 'a ready problem with nothing waiting can be edited');
+    assert.equal(edit.dataset.href, 'review.html?a=a-1&slug=tank-size');
 
     process.exitCode = 0;
-    console.log('PASS: review page - plain findings, proven gaps vs "may be harmless", one card per test case with what it catches, solution lines, one retry with the checked edit, publish anyway when nothing is proven, ready-with-gaps (no publish, never hidden), marking a change harmless, your own test case checked for free and added, roadmaps under the bar (waiting, and live), and the way in from Assignments.');
+    console.log('PASS: review page - plain findings, proven gaps vs "may be harmless", one card per test case with what it catches, solution lines, one retry with the checked edit, publish anyway when nothing is proven, ready-with-gaps (no publish, never hidden), marking a change harmless, your own test case checked for free and added (even one that catches no slip), Edit for a problem with nothing waiting, roadmaps under the bar (waiting, and live), and the way in from Assignments.');
   } catch (e) {
     // The stack only, said BEFORE closing (which can hang): an assertion's
     // `actual` can be a page element, and printing one walks the whole page

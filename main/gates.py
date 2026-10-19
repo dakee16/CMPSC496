@@ -219,6 +219,36 @@ def claims_unstarted(chunks: list) -> list[int]:
     return out
 
 
+# "Keep ... for the next step" - a question handing a value on.
+_KEEPS_IT = re.compile(r"\b(?:keep|keeps|keeping|store|stores|storing|hold|holds|"
+                       r"save|saves)\b[^.]*\bnext step", re.I)
+
+
+def keeps_what_it_returns(chunks: list) -> list[int]:
+    """Steps whose code RETURNS a computed answer on some path, while their
+    question says to keep it for the next step and never says to return it
+    (18 Oct). GPT's round 2, HW4 __getitem__: `return cache_list.head` on a hit,
+    asked as "Keep the updated node for the next step" - a student kept it, and
+    the next step (only `return 'Cache miss!'`) then answered every hit wrong.
+    A guard returning a FIXED value (`return False` on bad input) is not the
+    step's answer: measured on the live pool, 7 such steps are worded rightly,
+    and this finds only __getitem__'s."""
+    out = []
+    for i in range(len(chunks) - 1):
+        prompt = getattr(chunks[i], "prompt", "") or ""
+        if not _KEEPS_IT.search(prompt) or re.search(r"\breturn", prompt, re.I):
+            continue
+        try:
+            tree = ast.parse("def _w():\n" + "\n".join(
+                "    " + ln for ln in (getattr(chunks[i], "reference", "") or "").splitlines()))
+        except SyntaxError:
+            continue
+        if any(isinstance(n, ast.Return) and n.value is not None
+               and not isinstance(n.value, ast.Constant) for n in ast.walk(tree)):
+            out.append(i)
+    return out
+
+
 def check_prompts(chunks: list, problem: dict) -> dict:
     """Gate 2. {"status": "pass"|"fail", "summary": str}.
 
@@ -232,10 +262,19 @@ def check_prompts(chunks: list, problem: dict) -> dict:
     bad = []
     opens = set(opens_unsaid(chunks))
     starts = set(claims_unstarted(chunks))
+    keeps = set(keeps_what_it_returns(chunks))
     for i, c in enumerate(chunks):
         prompt = getattr(c, "prompt", "") or ""
         step = getattr(c, "step_id", "?")
         reference = getattr(c, "reference", "") or ""
+
+        if i in keeps:
+            bad.append(f"{step}: its code returns the answer on some path, but its "
+                       f"question says to keep it for the next step and never says to "
+                       f"return it - a student will keep it, and the next step does "
+                       f"not finish the job for them. Say when this step returns, and "
+                       f"what.")
+            continue
 
         if i in starts:
             bad.append(f"{step}: its question says it starts going through the items, "

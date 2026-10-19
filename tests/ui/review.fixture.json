@@ -401,6 +401,64 @@
    "A student could skip the room check",
    "A student could forget to raise the level"
   ],
-  "edited_source": null
+  "edited_source": "def fill(self, amount):\n    \"\"\"Add amount if it fits and return 'OK'; return 'FULL' and change\n    nothing if it does not.\n\n    >>> t = Tank(10)\n    >>> t.fill(1)\n    'OK'\n    \"\"\"\n    room = self.size - self.level\n    if amount > room:\n        return 'FULL'\n    self.level = self.level + amount\n    return 'OK'"
+ },
+ "clean": {
+  "assignment": {
+   "id": "a-1",
+   "name": null
+  },
+  "slug": "tank-fill",
+  "title": "fill",
+  "ready": true,
+  "in_review": false,
+  "gaps": false,
+  "error": null,
+  "total": 7,
+  "caught": 7,
+  "checks": [],
+  "harmless": [],
+  "roadmaps": {
+   "cutoff": 60,
+   "best": null,
+   "review": false,
+   "below": false,
+   "list": []
+  },
+  "help": {
+   "written": true,
+   "error": null,
+   "examples_ok": true,
+   "examples_reason": null,
+   "doctest": ">>> t = Tank(10)\n>>> t.fill(4)\n'OK'\n>>> t.fill(7)\n'FULL'\n\n>>> t = Tank(10)\n>>> t.fill(4)\n'OK'\n>>> t.level\n4",
+   "catches": 0,
+   "tests": [
+    {
+     "doctest": ">>> t = Tank(10)\n>>> t.fill(4)\n'OK'\n>>> t.fill(7)\n'FULL'",
+     "catches": [
+      "line 5: remove `if amount > room:`",
+      "line 7: remove `self.level = self.level + amount`"
+     ]
+    },
+    {
+     "doctest": ">>> t = Tank(10)\n>>> t.fill(4)\n'OK'\n>>> t.level\n4",
+     "catches": [
+      "line 7: remove `self.level = self.level + amount`"
+     ]
+    }
+   ],
+   "edited_source": null
+  },
+  "source": "def fill(self, amount):\n    \"\"\"Add amount if it fits and return 'OK'; return 'FULL' and change\n    nothing if it does not.\"\"\"\n    room = self.size - self.level\n    if amount > room:\n        return 'FULL'\n    self.level = self.level + amount\n    return 'OK'",
+  "lines": [],
+  "queue": []
+ },
+ "clean_try": {
+  "ok": true,
+  "doctest": ">>> t = Tank(3)\n>>> t.fill(3)\n'OK'\n>>> t.fill(1)\n'FULL'",
+  "labels": [],
+  "catches": [],
+  "missed": [],
+  "edited_source": "def fill(self, amount):\n    \"\"\"Add amount if it fits and return 'OK'; return 'FULL' and change\n    nothing if it does not.\n\n    >>> t = Tank(3)\n    >>> t.fill(3)\n    'OK'\n    >>> t.fill(1)\n    'FULL'\n    \"\"\"\n    room = self.size - self.level\n    if amount > room:\n        return 'FULL'\n    self.level = self.level + amount\n    return 'OK'"
  }
 }

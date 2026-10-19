@@ -315,10 +315,43 @@ def test_your_own_test_case_is_run_on_every_change_for_free(review, monkeypatch)
             or "t.fill(10)" in (doctest_block(handed[0]) or "")), "the case is not a test"
 
 
-def test_a_case_that_catches_nothing_says_so_and_offers_nothing(review):
+def test_a_case_that_catches_nothing_says_so_and_is_still_offered(review):
+    """18 Oct: the slips are one-line changes to the teacher's code; a
+    student's mistake need not be one, so a case catching none of them can
+    still be worth adding (HW4 clear and its zero-size item)."""
     d = review.c.post(review.url + "/try", json={"text": "t = Tank(10)\nt.fill(1)"}).json()
-    assert d["ok"] and d["labels"] == [] and d["edited_source"] is None
-    assert len(d["missed"]) == 3 and d["doctest"].endswith(">>> t.fill(1)\n'OK'")
+    assert d["ok"] and d["labels"] == [] and len(d["missed"]) == 3
+    assert d["doctest"].endswith(">>> t.fill(1)\n'OK'")
+    assert ">>> t.fill(1)" in d["edited_source"]
+
+
+def test_a_ready_problem_with_nothing_waiting_can_still_get_a_case(review, monkeypatch):
+    """HW4 clear (GPT's round 2): the tests passed `while self.remainingSpace <
+    self.maxSize` - nothing was flagged, so there was no way in to add the case
+    that shows it. Edit opens this page for any ready problem."""
+    _live(review)
+    entry = __import__("main.oracle_store", fromlist=["x"]).load_cache()
+    for e in entry.values():
+        for m in e["breakdown"]["mutants"]:
+            m["status"] = "killed"
+    save_cache(entry)
+    view = review.c.get(review.url).json()
+    assert view["ready"] and not view["gaps"] and view["checks"] == [] and view["source"]
+    d = review.c.post(review.url + "/try", json={"text": "t = Tank(3)\nt.fill(3)\nt.fill(1)"}).json()
+    assert d["ok"] and d["catches"] == [] and d["missed"] == [], d
+    handed = []
+    monkeypatch.setattr("main.publish.prepare_problem",
+                        lambda p, emit=None, **_k: handed.append(p) or {
+                            "slug": p["slug"], "ready": True, "chunks": 2, "n_tests": 7,
+                            "stage": None, "error": None})
+    r = review.c.post("/teacher/problems/retry", json={
+        "assignment_id": "a-1", "slug": review.slug, "source": d["edited_source"],
+        "keep_live": True})
+    assert r.status_code == 200 and r.json()["ready"] is True, r.text
+    from main.context import calls_from_docstring, doctest_block
+    assert (["fill", 1] in calls_from_docstring(handed[0]["description"], "Tank")
+            or "t.fill(1)" in (doctest_block(handed[0]) or "")), "the case is not a test"
+    assert review.asked == [], "free until it is prepared"
 
 
 def test_a_change_marked_harmless_is_not_tried(review):

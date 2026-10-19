@@ -134,3 +134,28 @@ def test_unpacked_parts_pair_by_position():
     t = bridge._first_setups("for s in self.items:\n    name, expr = s.split('=', 1)", amb)
     u = bridge._first_setups("for line in self.items:\n    left, right = line.split('=', 1)", amb)
     assert (t["name"], t["expr"]) == (u["left"], u["right"]) and t["name"] != u["right"]
+
+
+# ── `a, b = x, y` IS `a = x` AND `b = y` (18 Oct, GPT's HW4 round 2) ─────
+# mruEvict: `retired, self.head = self.head, self.head.next` for the teacher's
+# `node = self.head` / `self.head = node.next` - correct, and "could not
+# confirm" after three model calls. The pairing read `retired` as "part 0 of
+# (self.head, self.head.next)", which pairs with nothing the teacher wrote.
+
+def test_a_name_set_from_a_tuple_of_values_pairs_with_its_own_value():
+    from main import bridge
+    amb = {"self"}
+    theirs = bridge._first_setups("retired, self.head = self.head, self.head.next", amb)
+    ours = bridge._first_setups("node = self.head\nself.head = node.next", amb)
+    assert theirs["retired"] == ours["node"], (theirs, ours)
+    # A tuple from ONE value is still split by position, as before.
+    t = bridge._first_setups("a, b = self.pair", amb)
+    assert t["a"] != t["b"] and "part 0" in t["a"], t
+
+
+def test_a_renamed_step_written_as_one_tuple_assignment_is_confirmed(grade):
+    own = WHILE["chunks"][0]["reference"].replace("counts = {}\ni = 0", "tally, i = {}, 0")
+    own = own.replace("counts", "tally")
+    assert own.startswith("tally, i = {}, 0"), own
+    r = grade(own)
+    assert (r.verdict, r.tier) == ("correct", "execution-bridged"), (r.tier, r.student_reason)

@@ -239,3 +239,18 @@ def test_listing_finds_a_setup_step_worded_as_starting_the_loop(world, capsys):
     out = capsys.readouterr().out
     assert "1 roadmap(s)" in out and said in out, out
     assert world.calls == []
+
+
+def test_a_step_that_returns_its_answer_worded_as_keeping_it_is_reworded():
+    """HW4 __getitem__ (18 Oct, gates.keeps_what_it_returns): the tool that
+    re-words loop wording re-words this too."""
+    from main import reword_pools
+    entry = {"header": "def get(self, content):", "chunks": [
+        {"step_id": "Part 1", "expected_type": "code",
+         "prompt": "Check if the content id exists in its level. Keep the updated node "
+                   "for the next step.",
+         "reference": "cache_list = self.hierarchy[hash(content)]\n"
+                      "if content.cid in cache_list:\n    return cache_list.head"},
+        {"step_id": "Part 2", "expected_type": "code", "prompt": "Handle a miss.",
+         "reference": "return 'Cache miss!'"}]}
+    assert reword_pools._unsaid(entry) == [0]
