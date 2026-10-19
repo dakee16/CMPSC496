@@ -246,9 +246,15 @@ class ReplanRequest(BaseModel, extra="forbid"):
     whether the design was approved are all decided server-side - the browser
     is not authoritative about any of them. `code` is evidence, not
     instruction: it is compared against the step's own reference and can only
-    ever make a rebuild be ATTEMPTED, never accepted."""
+    ever make a rebuild be ATTEMPTED, never accepted.
+
+    `force` is the student's "These steps don't match my plan" (18 Oct): build
+    from their plan whatever the shape check says - the check counts loops,
+    branches and returns, and a plan to search from the TAIL counts the same as
+    the teacher's head-first loop (GPT's audit of HW4 __contains__)."""
     slug: str
     code: str | None = None
+    force: bool = False
 
 class ReopenRequest(BaseModel, extra="forbid"):
     """A step the student wants back. Only an opaque session id and an index:
@@ -449,6 +455,27 @@ def _server_problem(slug: str, title: str | None = None,
     return problem
 
 
+# Rebuilds a student ASKED for, by (student, problem version, plan): a rebuild
+# that seated, or came back the same, is not paid for twice. In-process and
+# bounded, like reroute._NO_ROUTE - a restart only costs one more rebuild.
+_ASKED_REBUILDS: set = set()
+_ASKED_LIMIT = 2048
+_ALREADY_FOLLOWS = ("These steps already follow your plan - they were built from "
+                    "it. If your approach has changed, update your plan with the "
+                    "tutor first, then ask again.")
+
+
+def _plan_fingerprint(plan: dict) -> str:
+    import hashlib
+    return hashlib.sha256(json.dumps(plan, sort_keys=True, default=str).encode()).hexdigest()[:16]
+
+
+def _remember_asked(key) -> None:
+    if len(_ASKED_REBUILDS) >= _ASKED_LIMIT:
+        _ASKED_REBUILDS.clear()
+    _ASKED_REBUILDS.add(key)
+
+
 @app.post("/replan")
 def replan(req: ReplanRequest, request: Request):
     """WHOSE ROADMAP? - asked at the only moment the answer can be known.
@@ -503,6 +530,12 @@ def replan(req: ReplanRequest, request: Request):
     from main.sessions import abandon_active, create_session, find_resumable
 
     quiet = {"rerouted": False}
+
+    def told(reason: str, message: str) -> dict:
+        """What a student who ASKED is told when nothing changed. An unasked
+        check stays {"rerouted": False}: nobody is waiting on it."""
+        return {**quiet, "reason": reason, "message": message} if req.force else quiet
+    asked = None
     try:
         problem = _server_problem(req.slug)
     except HTTPException:
@@ -514,13 +547,23 @@ def replan(req: ReplanRequest, request: Request):
     try:
         current = find_resumable(claims["sub"], content_hash(problem))
         if current is None:
-            return quiet
+            return told("no_session", "Open the problem again, then ask - there are "
+                                      "no steps here to rebuild yet.")
 
         sb = get_supabase()
         plan = latest_plan_graph(sb, claims["sub"], req.slug,
                                  since=_restart_marker(sb, claims["sub"], req.slug))
         if not plan:
-            return quiet
+            return told("no_plan", "We couldn't find a plan of yours for this problem "
+                                   "to build steps from. Talk your approach through "
+                                   "with the tutor and submit it, then ask again.")
+        if req.force:
+            # THE SAME PLAN, ASKED TWICE, IS ANSWERED FROM MEMORY. A rebuild is
+            # up to a minute of model work; once it has been built from this
+            # plan (or come back the same), building it again buys nothing.
+            asked = (claims["sub"], content_hash(problem), _plan_fingerprint(plan))
+            if asked in _ASKED_REBUILDS:
+                return told("same", _ALREADY_FOLLOWS)
         # reroute.effective_header, NOT header_of: the latter returns "" for a
         # plain function by design, and an empty header makes the oracle gate
         # inside build() test whatever the model named its function rather than
@@ -539,7 +582,7 @@ def replan(req: ReplanRequest, request: Request):
         # means no tier could attribute anything, which is the state a genuinely
         # different approach produces. Comparing it to that step's own reference
         # is like with like, so it can be strict where the plan check cannot.
-        diverged = not reroute.follows_reference(problem, header, plan)
+        diverged = req.force or not reroute.follows_reference(problem, header, plan)
         if not diverged and req.code:
             diverged = reroute.diverges_from_roadmap(
                 current.get("chunks") or [], current.get("index") or 0,
@@ -549,11 +592,12 @@ def replan(req: ReplanRequest, request: Request):
         result = reroute.build(problem, header, plan)
     except reroute.RouteUnavailable as e:
         print(f"  🧭 Kept the reference roadmap for {req.slug}: {e.reason}")
-        return quiet
+        return told("unavailable", reroute.student_message())
     except Exception as e:
         print(f"  🧭 /replan errored for {req.slug}, keeping the reference "
               f"roadmap: {e!r}")
-        return quiet
+        return told("error", "Something went wrong building new steps - you still "
+                             "have the steps you had. Try again in a minute.")
 
     # A REBUILD THAT LANDS ON THE SAME ROADMAP IS NOT A REROUTE. Found by an
     # audit: a student planned the ordinary count-based approach, was approved,
@@ -575,7 +619,9 @@ def replan(req: ReplanRequest, request: Request):
         if before and before == after:
             print(f"  🧭 Rebuilt roadmap for {req.slug} is the one they already "
                   f"have; left the session alone.")
-            return quiet
+            if asked:
+                _remember_asked(asked)
+            return told("same", _ALREADY_FOLLOWS)
     except Exception:
         pass            # cannot compare -> fall through and seat it as before
 
@@ -608,10 +654,13 @@ def replan(req: ReplanRequest, request: Request):
         # would have been anyway.
         print(f"  🧭 /replan could not seat the rebuilt roadmap for "
               f"{req.slug}: {e!r}")
-        return quiet
+        return told("error", "Something went wrong setting up the new steps - "
+                             "open the problem again to carry on.")
 
+    if asked:
+        _remember_asked(asked)
     print(f"  🧭 Rebuilt the roadmap for {req.slug} around this student's own "
-          f"plan ({len(result['chunks'])} steps).")
+          f"plan ({len(result['chunks'])} steps){' - asked for' if req.force else ''}.")
     return {"rerouted": True, "carried": carried,
             **_gate_steps(claims["sub"], req.slug, public)}
 

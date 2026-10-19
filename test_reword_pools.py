@@ -214,3 +214,28 @@ def test_the_wording_request_marks_the_step_that_starts_the_loop(monkeypatch):
     assert "STEP 1 CODE (STARTS A REPETITION" in asked[0]
     assert "STEP 2 CODE (STARTS A REPETITION" not in asked[0]
     assert "STEP 3 CODE (STARTS A REPETITION" not in asked[0]
+
+
+def test_listing_finds_a_setup_step_worded_as_starting_the_loop(world, capsys):
+    """The reverse (18 Oct, gates.claims_unstarted): live HW4 __contains__ asks
+    `current = self.head` as "starts checking each node", and a student wrote
+    the loop's first line there. The tool that re-words the one kind re-words
+    the other."""
+    from main.identity import content_hash
+    said = "Write code that starts checking each character of the text, and keep " \
+           "the tally for the next step."
+    setup_first = {"header": "def frequency(txt):", "chunks": [
+        {"step_id": "Part 1", "expected_type": "code", "prompt": said, "reference": "counts = {}"},
+        {"step_id": "Part 2", "expected_type": "code",
+         "prompt": "Go through each letter of the text, adding one to its tally, and keep "
+                   "the tally for the next step.",
+         "reference": "for ch in txt:\n    if ch.isalpha():\n"
+                      "        counts[ch] = counts.get(ch, 0) + 1"},
+        {"step_id": "Part 3", "expected_type": "code",
+         "prompt": "Write code that returns how many times each letter appears.",
+         "reference": "return counts"}]}
+    world.pool.write_text(json.dumps({content_hash(PROBLEM): [setup_first, CLEAR]}))
+    assert world.run([]) == 0
+    out = capsys.readouterr().out
+    assert "1 roadmap(s)" in out and said in out, out
+    assert world.calls == []

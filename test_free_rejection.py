@@ -95,3 +95,95 @@ def test_a_tail_inside_a_loop_is_never_read_as_independent(grade):
     for the tally must not be convicted because the tail could not be parsed."""
     r = grade(IN_LOOP, 0, "if not nums:\n    return None\nrunning = 0\nk = 0\nfor n in nums:\n    k += 1")
     assert r.verdict != "incorrect", r
+
+
+DRAIN = ("def drain(n):\n"
+         "    if n < 0:\n"
+         "        return 'BAD'\n"
+         "    while n != 0:\n"
+         "        n -= 1\n"
+         "    return 'DONE'\n")
+
+
+def test_a_step_that_lets_a_later_loop_run_forever_is_not_told_it_loops(monkeypatch, tmp_path):
+    """GPT's audit of HW4 put (15 Oct): a missing guard step let the
+    teacher's eviction loop run forever, and the student - whose answer has no
+    loop - was told "Your step makes the solution take too long - it may loop
+    forever"."""
+    from main import grading, identity, ollama_client, sessions
+    monkeypatch.setenv("MICROTUTOR_SESSION_DB", str(tmp_path / "s.sqlite3"))
+    monkeypatch.setenv("MICROTUTOR_TRACE_FILE", str(tmp_path / "t.jsonl"))
+    monkeypatch.setattr(identity, "_RESOLVED_PATH", str(tmp_path / "r.json"))
+    monkeypatch.setattr(ollama_client, "_openai_chat",
+                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("no model")))
+    problem = {"slug": "drain", "title": "Drain", "solution": DRAIN, "entry_hint": "drain",
+               "description": "Count n down to zero and say DONE; 'BAD' for a negative n."}
+    steps = ["if n < 0:\n    return 'BAD'", "while n != 0:\n    n -= 1\nreturn 'DONE'"]
+    decomp = {"header": "def drain(n):", "chunks": [
+        types.SimpleNamespace(step_id=f"Part {i + 1}", expected_type="code", prompt="p",
+                              reference=r) for i, r in enumerate(steps)]}
+    sid = sessions.create_session(dict(problem), decomp, "h-drain", student_id="stu")["session_id"]
+    grading._VERDICT_MEMO.clear()
+    # A guard on the wrong side: -1 gets past it and the loop never ends.
+    # (`pass` alone is now named as no code before anything runs.)
+    r = grading.grade_submission(sessions.load_session(sid), "if n > 100:\n    return 'BAD'",
+                                 oracle_loader=lambda p: [
+        {"input": [3], "expected": "DONE"}, {"input": [0], "expected": "DONE"},
+        {"input": [-1], "expected": "BAD"}])
+    assert (r.verdict, r.deterministic) == ("incorrect", True), r
+    said = r.student_reason
+    assert "never" in said and "later" in said, said
+    assert "Your step makes the solution take too long" not in said, said
+
+
+FIND = ("def find(items, target):\n"
+        "    i = 0\n"
+        "    while i < len(items):\n"
+        "        if items[i] == target:\n"
+        "            return i\n"
+        "        i += 1\n"
+        "    return -1\n")
+FIND_STEPS = ["i = 0", "while i < len(items):\n    if items[i] == target:\n        return i\n"
+                       "    i += 1\nreturn -1"]
+
+
+@pytest.mark.parametrize("tail, depends", [
+    (FIND_STEPS[1], True),                          # reads i, then sets it
+    ("total += 5\nreturn total", True),             # += reads before it sets
+    ("count += 1\nreturn 'ok'", True),              # ...even with no other read
+    ("node = self.head\nwhile node:\n    node = node.next\nreturn node", False),
+    ("for n in items:\n    print(n)\nreturn 'done'", False),
+    ("return 'Cleared cache!'", False),
+])
+def test_a_name_the_tail_reads_before_it_sets_it_is_an_earlier_steps(tail, depends):
+    """GPT's audit of HW4 __contains__ (15 Oct): the tail `while current is not
+    None: ... current = current.next` READS current and also SETS it, and
+    subtracting every name it sets read it as depending on nothing - so a
+    tail-first `probe = self.tail` was rejected for free, never reaching the
+    tiers that can follow another route."""
+    from main import grading
+    header = "def f(self, items, target):"
+    assert grading._tail_reads_earlier_names({"slug": "x", "solution": header + "\n    pass"},
+                                             header, tail) is depends
+
+
+def test_searching_from_the_other_end_is_not_rejected_for_free(monkeypatch, tmp_path):
+    from main import grading, identity, ollama_client, sessions
+    monkeypatch.setenv("MICROTUTOR_SESSION_DB", str(tmp_path / "s.sqlite3"))
+    monkeypatch.setenv("MICROTUTOR_TRACE_FILE", str(tmp_path / "t.jsonl"))
+    monkeypatch.setattr(identity, "_RESOLVED_PATH", str(tmp_path / "r.json"))
+    monkeypatch.setattr(ollama_client, "_openai_chat",
+                        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("no model")))
+    monkeypatch.setattr(grading, "_request_adaptation", lambda *a, **k: ("", []))
+    monkeypatch.setattr(grading, "_request_completion", lambda *a, **k: "")
+    problem = {"slug": "find", "title": "Find", "solution": FIND, "entry_hint": "find",
+               "description": "The index of target in items, or -1."}
+    decomp = {"header": "def find(items, target):", "chunks": [
+        types.SimpleNamespace(step_id=f"Part {i + 1}", expected_type="code", prompt="p",
+                              reference=r) for i, r in enumerate(FIND_STEPS)]}
+    sid = sessions.create_session(dict(problem), decomp, "h-find", student_id="stu")["session_id"]
+    grading._VERDICT_MEMO.clear()
+    r = grading.grade_submission(sessions.load_session(sid), "i = len(items) - 1", oracle_loader=lambda p: [
+        {"input": [[4, 5, 6], 4], "expected": 0}, {"input": [[4, 5, 6], 9], "expected": -1},
+        {"input": [[], 1], "expected": -1}])
+    assert r.reason_code != "reference_fail_independent", r

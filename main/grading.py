@@ -255,6 +255,20 @@ def _render_case(problem: dict, test: dict, failure: dict) -> str:
         got, crashes = _crashes_in(failure.get("got"), same=set(raises))
         out.append(f"\nexpected: {expected}")
         out.append(f"you gave: {got}")
+        # WHERE THEY PART, when the summaries above were cut before it (15 Oct,
+        # GPT's audit of HW4 put): both lines read the same up to the cut, and
+        # the exact fit that differed was the last call of twelve.
+        at = failure.get("at")
+        if isinstance(at, int) and "<truncated>" in expected + got:
+            call = labels[at] if 0 <= at < len(labels) and labels[at] else None
+            e_at = (_crashes_in(failure["expected_at"], expected=True)[0]
+                    if failure.get("expected_at") is not None else "(nothing)")
+            g_at = (_crashes_in(failure["got_at"], same=set(raises))[0]
+                    if failure.get("got_at") is not None else "(nothing)")
+            out.append(f"\nthey first differ at output {at + 1}"
+                       + (f", from {call}" if call else "") + ":")
+            out.append(f"expected: {e_at}")
+            out.append(f"you gave: {g_at}")
         # WHICH CALL CRASHED, AND WHY, in words. The recorded value is only the
         # exception's name; a student shown `'!AttributeError'` spent nine
         # attempts on a one-character typo the message would have named.
@@ -730,6 +744,18 @@ def _indent_message(student_code: str) -> str | None:
         on_line = 1 <= n <= len(lines)
         quoted = lines[n - 1].strip() if on_line else ""
         raw = (e.msg or "").lower()
+        # A BLOCK OPENED ON THE LAST LINE. Python points at the opener itself
+        # when nothing follows it, and the advice below - written for the line
+        # UNDER an opener - then blamed the line above it: GPT's audit of HW4
+        # __contains__ (15 Oct), `probe = self.tail` / `while probe is not
+        # None:`, was told an assignment "opens a block".
+        opener = re.search(r"after '\w+' statement on line (\d+)", e.msg or "")
+        k = int(opener.group(1)) - 1 if opener else 0      # their numbering
+        if 1 <= k <= len(lines) and not any(ln.strip() for ln in lines[k:]):
+            return (f"Line {k} of your answer - `{lines[k - 1].strip()}` - opens a "
+                    f"block, but nothing comes under it. Put the lines that belong "
+                    f"inside it under it, indented further - or, if that part is "
+                    f"for a later step, leave this line for that step too.")
         head = ("Your indentation doesn't line up"
                 + (f" on line {n} of your answer" if on_line else "")
                 + (f" - `{quoted}`." if quoted else "."))
@@ -825,6 +851,45 @@ def _has_no_statements(student_code: str) -> bool:
     if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
         return False
     return len(fn.body) == 1     # the sentinel, and nothing of their own
+
+
+_PLACEHOLDER_SAID = ("There is no code in this answer yet - `pass` (and `...`) only "
+                     "hold a place and do nothing when they run, so this step's work "
+                     "is still to do.")
+
+
+def _covered_said(covers: int) -> str:
+    """An accepted step, and how many of the steps after it its code already
+    did - those are marked done and skipped. Said as a person would (18 Oct):
+    "what the next 1 step(s) asked for" read as a form letter."""
+    if covers <= 1:
+        return "Correct - your step works with the rest of the solution."
+    if covers == 2:
+        return ("Correct - and you have already written what the next step asked "
+                "for, so we have marked it done too.")
+    return (f"Correct - and you have already written what the next {covers - 1} "
+            f"steps asked for, so we have marked those done too.")
+
+
+def _placeholder_only(student_code: str) -> bool:
+    """Their answer is `pass` or `...` and nothing else (15 Oct, Sanan OK).
+
+    _has_no_statements leaves `pass` to the tiers on purpose, as a statement -
+    and on HW4 put a `pass` guard then let the teacher's later loop run forever,
+    so the student heard about a loop their answer does not have (GPT's audit).
+    NOT a verdict on its own: a student whose earlier step already did this
+    one's work answers `pass` rightly (test_step_seating). So it is asked only
+    after the run that would have accepted that has failed."""
+    try:
+        tree = _parse_body(student_code)
+    except SyntaxError:
+        return False
+    body = tree.body[0].body if tree.body else []
+    return bool(body) and all(
+        isinstance(s, ast.Pass)
+        or (isinstance(s, ast.Expr) and isinstance(s.value, ast.Constant)
+            and s.value.value is Ellipsis)
+        for s in body)
 
 
 def _redefines_enclosing(student_code: str, header: str) -> str | None:
@@ -1126,13 +1191,53 @@ def _tail_reads_earlier_names(problem: dict, header: str, ref_tail: str) -> bool
     import textwrap
     tail = textwrap.dedent(ref_tail)
     try:
-        _parse_body(tail)
+        tree = _parse_body(tail)
     except SyntaxError:
         return True
-    tail_free = (_names(tail, ast.Load) - _names(tail, ast.Store)
+    tail_free = (_read_before_set(tree.body[0].body)
                  - _header_params(header) - _module_names(problem, header)
                  - _SAFE_BUILTINS)
     return bool(tail_free)
+
+
+def _read_before_set(body: list) -> set:
+    """Names a block READS before it has surely set them itself.
+
+    Subtracting every name the tail sets (13 Oct) was wrong: HW4 __contains__'s
+    tail `while current is not None: ... current = current.next` reads current
+    first and only then moves it, and `total += n` reads total - an AugAssign's
+    target is a Store, with no Load at all. Both read as depending on nothing,
+    so a step the tail DOES continue from was rejected for free (GPT's audit,
+    15 Oct: a tail-first `probe = self.tail`, never shown to the tiers that can
+    follow another route). A name counts as the block's own only when a
+    TOP-LEVEL assignment sets it on an earlier line than its first read - set
+    inside a loop or a branch it may never have run - or a top-level `for` sets
+    it for the reads inside that loop. Anything else is an earlier step's."""
+    reads: dict[str, list[int]] = {}
+    for n in ast.walk(ast.Module(body=body, type_ignores=[])):
+        if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load):
+            reads.setdefault(n.id, []).append(n.lineno)
+        elif isinstance(n, ast.AugAssign) and isinstance(n.target, ast.Name):
+            reads.setdefault(n.target.id, []).append(n.lineno)
+    sets: dict[str, int] = {}                 # first top-level assignment line
+    loops: dict[str, list[tuple]] = {}        # top-level for targets: (first, last) line
+    for st in body:
+        if isinstance(st, (ast.Assign, ast.AnnAssign)) and getattr(st, "value", None) is not None:
+            targets = st.targets if isinstance(st, ast.Assign) else [st.target]
+            for t in targets:
+                for n in ast.walk(t):
+                    if isinstance(n, ast.Name):
+                        sets.setdefault(n.id, st.lineno)
+        elif isinstance(st, (ast.For, ast.AsyncFor)):
+            for n in ast.walk(st.target):
+                if isinstance(n, ast.Name):
+                    loops.setdefault(n.id, []).append((st.lineno, st.end_lineno))
+
+    def own(name, line):
+        return (sets.get(name, line) < line
+                or any(a < line <= b for a, b in loops.get(name, ())))
+    return {name for name, lines in reads.items()
+            if not all(own(name, ln) for ln in lines)}
 
 
 def _hoistable_declarations(problem: dict, chunks: list, header: str,
@@ -2004,6 +2109,14 @@ def grade_submission(session: dict, student_code: str,
                        divergent=False)
         if res.outcome == "harness_error":
             return _system("harness_error", res.internal_error)
+        if _placeholder_only(student_code):        # see the non-last case below
+            shown = failing_cases(problem, tests, res.failures)
+            _trace(trace.record_route, corr, "execution-final", "incorrect",
+                   placeholder=True)
+            return _ok("incorrect", "execution-final", _PLACEHOLDER_SAID,
+                       "placeholder_only", execution_outcome=res.outcome,
+                       failures=res.failures, failing_cases=shown,
+                       failed_total=_failed_total(res, len(shown)))
         msg = {"wrong_output": "Your solution runs but gives the wrong answer on "
                                "at least one case.",
                "runtime_error": "Your solution crashes while running.",
@@ -2098,13 +2211,24 @@ def grade_submission(session: dict, student_code: str,
         _trace(trace.record_route, corr, "execution-reference", "correct",
                hoisted=hoisted or [], covers=covers)
         return _ok("correct", "execution-reference",
-                   "Correct - your step works with the rest of the solution."
-                   if covers == 1 else
-                   f"Correct - and you have already written what the next "
-                   f"{covers - 1} step(s) asked for, so we have marked those "
-                   f"done too.",
+                   _covered_said(covers),
                    "reference_pass_hoisted" if hoisted else "reference_pass",
                    execution_outcome="pass", covers_chunks=covers)
+
+    # ── ONLY A PLACEHOLDER, AND IT IS NOT ENOUGH (15 Oct, Sanan OK) ─────────
+    #    `pass` can be right - a student whose earlier step already did this
+    #    one's work (test_step_seating) - and that passed just above. Here it
+    #    did not, so it is said as what it is, before any model is asked and
+    #    before the timeout wording: on HW4 put a `pass` guard let the
+    #    teacher's later loop run forever and the student heard about a loop.
+    if _placeholder_only(student_code):
+        _trace(trace.record_route, corr, "execution-reference", "incorrect",
+               placeholder=True)
+        shown = failing_cases(problem, tests, res.failures)
+        return _ok("incorrect", "execution-reference", _PLACEHOLDER_SAID,
+                   "placeholder_only", execution_outcome=res.outcome,
+                   failures=res.failures, failing_cases=shown,
+                   failed_total=_failed_total(res, len(shown)))
     if res.outcome == "harness_error":
         return _system("harness_error", res.internal_error)
     if res.outcome == "policy_violation":
@@ -2138,11 +2262,7 @@ def grade_submission(session: dict, student_code: str,
         # acquitted is our business; what they need to know is that their step
         # works. The tier is still on the result for telemetry.
         return _ok("correct", "execution-bridged",
-                   "Correct - your step works with the rest of the solution."
-                   if covers == 1 else
-                   f"Correct - and you have already written what the next "
-                   f"{covers - 1} step(s) asked for, so we have marked those "
-                   f"done too.",
+                   _covered_said(covers),
                    "bridged_pass", execution_outcome="pass",
                    divergent=True, covers_chunks=covers)
 
@@ -2181,8 +2301,13 @@ def grade_submission(session: dict, student_code: str,
                                     "one case, with the rest of the solution after it.",
                     "runtime_error": "Your step makes the solution crash, with the "
                                      "rest of the solution after it.",
-                    "timeout": "Your step makes the solution take too long - it "
-                               "may loop forever."}.get(res.outcome,
+                    # Said about the WHOLE solution, not their step: HW4 put's
+                    # `pass` guard let a later loop run forever, and an answer
+                    # with no loop in it was told it "may loop forever" (15 Oct).
+                    "timeout": "With your step in place, the finished solution never "
+                               "stops on at least one case - a loop in a later part "
+                               "keeps going. Your step may be missing something that "
+                               "part relies on, like a check that returns early."}.get(res.outcome,
                                                         "Your step doesn't work yet."),
                    "reference_fail_independent", execution_outcome=res.outcome,
                    failures=res.failures, failing_cases=shown,

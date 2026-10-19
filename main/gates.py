@@ -177,6 +177,48 @@ def opens_unsaid(chunks: list) -> list[int]:
     return out
 
 
+# "STARTS checking each node" - a step claiming to begin the going-through.
+# Measured on the live pool (18 Oct, 310 steps): with "start/begin" required,
+# it finds exactly the 2 misworded HW4 __contains__ set-ups; on "each" alone
+# it also refused three well-worded steps ("gets ready to go through each
+# node", two put checks), and a refused question caps a roadmap below the bar.
+_SAYS_IT_STARTS = re.compile(
+    r"\b(?:start|starts|starting|begin|begins|beginning)\s+(?:to\s+)?"
+    r"(?:go|going|work|working|process|processing|handle|handling|check|checking|"
+    r"read|reading|look|looking|walk|walking|loop|looping|visit|visiting|"
+    r"search|searching|scan|scanning|travers\w*|iterat\w*)\b", re.I)
+
+
+def _has_loop(reference: str) -> bool:
+    """Any repetition in the step's own code. Unreadable code counts as having
+    one - never refuse wording on a guess."""
+    try:
+        tree = ast.parse("def _w():\n" + "\n".join("    " + ln for ln in reference.splitlines()))
+    except SyntaxError:
+        return True
+    return any(isinstance(n, (ast.For, ast.While, ast.AsyncFor, ast.ListComp,
+                              ast.SetComp, ast.DictComp, ast.GeneratorExp))
+               for n in ast.walk(tree))
+
+
+def claims_unstarted(chunks: list) -> list[int]:
+    """The reverse of opens_unsaid (18 Oct): steps whose question says they
+    START going through the items when their code only sets up - no loop of
+    their own, not inside one, and opening nothing the next step continues.
+    GPT's audit of HW4 __contains__: `current = self.head` asked as "Write code
+    that starts checking each node in the list..." was answered with the loop's
+    first line, and the next step's loop then had nothing under it."""
+    out = []
+    for i in range(len(chunks) - 1):
+        here = getattr(chunks[i], "reference", "") or ""
+        nxt = getattr(chunks[i + 1], "reference", "") or ""
+        if base_indent(here) or base_indent(nxt) > base_indent(here) or _has_loop(here):
+            continue
+        if _SAYS_IT_STARTS.search(getattr(chunks[i], "prompt", "") or ""):
+            out.append(i)
+    return out
+
+
 def check_prompts(chunks: list, problem: dict) -> dict:
     """Gate 2. {"status": "pass"|"fail", "summary": str}.
 
@@ -189,10 +231,19 @@ def check_prompts(chunks: list, problem: dict) -> dict:
                            (problem.get("group_description") or "")).lower()))
     bad = []
     opens = set(opens_unsaid(chunks))
+    starts = set(claims_unstarted(chunks))
     for i, c in enumerate(chunks):
         prompt = getattr(c, "prompt", "") or ""
         step = getattr(c, "step_id", "?")
         reference = getattr(c, "reference", "") or ""
+
+        if i in starts:
+            bad.append(f"{step}: its question says it starts going through the items, "
+                       f"but its code only sets up where to begin - going through them "
+                       f"is the next step's job. A student will write the start of the "
+                       f"loop here, and the next step cannot continue it. Say only what "
+                       f"it sets up, and that the next step goes through the items.")
+            continue
 
         if i in opens:
             bad.append(f"{step}: its code starts going through the items that the "

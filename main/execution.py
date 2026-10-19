@@ -218,6 +218,18 @@ def brief(v, cap=160):
         r = r[:cap] + "...<truncated>"
     return {"repr": r, "type": t, "len": n}
 
+def first_diff(got, exp):
+    """Where a run of call results first parts from the expected one - None
+    for anything but two sequences, or two that do not part. brief() cuts each
+    value at its START, so a long run that goes wrong only at its end (HW4
+    put's exact fit, 15 Oct) arrived as two identical cut summaries."""
+    if not (isinstance(got, (list, tuple)) and isinstance(exp, (list, tuple))):
+        return None
+    for i, (g, e) in enumerate(zip(got, exp)):
+        if norm(g) != norm(e):
+            return i
+    return min(len(got), len(exp)) if len(got) != len(exp) else None
+
 def crashed(v):
     """Does a recorded value hold a crash? A method call that raised is
     recorded as "!Name" + NUL + message (main/context.py, ERROR_SEP).
@@ -277,8 +289,14 @@ def main():
                 # check reads them, and an unfinished step's plain wrong answers
                 # used to fill all five slots before the crash in test 7 - is-
                 # number's `splitted[0]` IndexError went unseen three times.
-                failures.append({"index": i, "got": brief(got),
-                                 "expected": brief(t["expected"])})
+                rec = {"index": i, "got": brief(got), "expected": brief(t["expected"])}
+                at = first_diff(got, t["expected"])
+                if at is not None:
+                    rec["at"] = at
+                    rec["got_at"] = brief(got[at]) if at < len(got) else None
+                    rec["expected_at"] = (brief(t["expected"][at])
+                                          if at < len(t["expected"]) else None)
+                failures.append(rec)
         emit({"status": "compared", "passed": passed, "total": len(tests),
               "failures": failures, "raised": raised})
         return

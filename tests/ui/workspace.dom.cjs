@@ -74,6 +74,7 @@ const graph = {nodes:[{id:'n0',kind:'start',label:'Read records'},{id:'n1',kind:
     assert.equal(doc.querySelector('#chatcol').parentElement.id,'tutorDock');
     assert.equal(doc.querySelector('#tutorDock').hidden,false,'Tutor is available from the question opening');
     assert.equal(doc.querySelector('#cform').inert,false);
+    assert.equal(doc.querySelector('#notMyPlanRow').hidden,true,'no steps to dispute before a plan is approved');
     assert.equal(doc.querySelector('#tabCode').getAttribute('aria-disabled'),'true');
     doc.querySelector('#tabCode').click();
     assert.deepEqual(visibleStage(),['stageRead']);
@@ -422,6 +423,42 @@ const graph = {nodes:[{id:'n0',kind:'start',label:'Read records'},{id:'n1',kind:
     assert.equal(window.inspect('accepted.length'),0);
     replanAnswer=null;verdict='incorrect';
 
+    // "THESE STEPS DON'T MATCH MY PLAN" (18 Oct). GPT's audit of HW4
+    // __contains__: an approved plan to search from the TAIL counts the same
+    // loops, branches and returns as the teacher's head-first one, so the
+    // router kept the teacher's steps. The student can now ask - same server
+    // gates, and nothing changes unless a roadmap clears them.
+    approved=true;
+    await window.start(problem);await tick();
+    await window.submitPlanGraph();await tick();
+    doc.querySelector('#planContinue').click();
+    const ask=doc.querySelector('#notMyPlan');
+    assert(ask&&!ask.closest('[hidden]'),'the button is on screen while coding');
+    const realConfirm=window.confirm;let asked=0;
+    window.confirm=()=>{asked++;return true;};
+    replanAnswer={rerouted:false,reason:'same',
+                  message:'These steps already follow your plan - they were built from it.'};
+    ask.click();await tick();await tick();
+    assert.equal(asked,1,'it says it takes a while before starting');
+    const askSent=calls.filter(c=>c.route==='/replan').pop();
+    assert.equal(JSON.parse(askSent.body).force,true,'it asks for steps built from the plan');
+    assert(doc.querySelector('#msg').textContent.includes('already follow your plan'),
+      'msg was: '+JSON.stringify(doc.querySelector('#msg').textContent));
+    assert.equal(ask.disabled,false,'the button comes back for a changed plan');
+    replanAnswer={rerouted:true,session_id:'sess-asked',total_chunks:2,
+                  chunks:[{prompt:'Start from the far end.',indent:0},
+                          {prompt:'Hand it back.',indent:0}]};
+    value='    probe = records';
+    ask.click();await tick();await tick();await tick();
+    assert.equal(window.inspect('sessionId'),'sess-asked','the page moves to the rebuilt steps');
+    assert(doc.querySelector('#msg').textContent.includes('follow the approach you described'),
+      'msg was: '+JSON.stringify(doc.querySelector('#msg').textContent));
+    assert(value.includes('probe = records'),'what they were writing stays: '+value);
+    window.confirm=()=>false;
+    const before=calls.length;ask.click();await tick();
+    assert(!calls.slice(before).some(c=>c.route==='/replan'),'cancelled means nothing is asked');
+    window.confirm=realConfirm;replanAnswer=null;
+
     // A SESSION THAT IS NOT OURS IS NOT A DEAD END. Reported from testing:
     // "That session belongs to someone else." appeared over the editor with no
     // way out, because every !r.ok was shown and nothing more. The ownership
@@ -502,7 +539,7 @@ const graph = {nodes:[{id:'n0',kind:'start',label:'Read records'},{id:'n1',kind:
     assert.notEqual(doc.querySelector('#submit').style.display,'none');
     assert(value.includes('records.copy()'),'with the step they chose back in the editor');
     resumeAccepted=resumeIndex=reopenCopy=null;
-    console.log('PASS: Question+Plan → Code → Reflect; the question rides every stage; persistent tutor; inline references keep code/chat available; both planning methods; approval gates; draft/chat/file preservation; keyboard resizing; replies preserve editor focus; paced steps; grading errors; comparison retry; reopening an accepted step; a finished problem reopening with its code; restart; loading failures; restored work.');
+    console.log('PASS: Question+Plan → Code → Reflect; the question rides every stage; persistent tutor; inline references keep code/chat available; both planning methods; approval gates; draft/chat/file preservation; keyboard resizing; replies preserve editor focus; paced steps; grading errors; comparison retry; asking for steps built from your plan; reopening an accepted step; a finished problem reopening with its code; restart; loading failures; restored work.');
     console.log('DOM behavior only. Browser layout and real CodeMirror still require Chromium.');
   } finally {await window.happyDOM.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});

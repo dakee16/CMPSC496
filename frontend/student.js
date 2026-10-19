@@ -214,6 +214,46 @@ async function offerRoadmapForTheirCode(code){
   }
 }
 
+/* "THESE STEPS DON'T MATCH MY PLAN" (18 Oct). Whose roadmap a student gets is
+   decided by the SHAPE of their plan - how many loops, branches and returns -
+   and a plan to search from the tail counts the same as the teacher's
+   head-first loop (GPT's audit of HW4 __contains__), so it was given the
+   teacher's steps. The student can ask instead: the same /replan, told to
+   build from their plan whatever the shape says. Every gate still applies on
+   the server, nothing changes unless a roadmap clears them, and the same plan
+   asked twice is answered without rebuilding. */
+async function rebuildFromPlan(btn){
+  if (!openProblem || !sessionId) return;
+  if (!confirm("Build new steps from your approved plan?\n\nThis can take up to a "
+      + "minute. Code you have already had accepted comes with you into the editor."))
+    return;
+  const mine = workspaceEpoch;
+  setBusy(btn, true, "Building steps from your plan\u2026");
+  show("info", "Building steps that follow your plan - this can take up to a minute.");
+  let res = null, failed = "";
+  try {
+    const r = await fetch(`${API}/replan`, {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({slug: openProblem.slug, force: true})
+    });
+    if (r.ok) res = await r.json();
+    else failed = ((await r.json().catch(() => ({}))).detail || {}).message
+                  || "Your steps are unchanged.";
+  } catch (e) { failed = "Could not reach the server. Your steps are unchanged."; }
+  setBusy(btn, false);
+  if (mine !== workspaceEpoch) return;     // another problem is open now
+  const seed = adoptRoadmap(res);
+  if (seed !== null){
+    render();
+    await loadSteps();                     // clears #msg, so it is said after
+    if (editor && seed) { editor.setValue(seed); saveDraft(); }
+    show("ok", "These steps follow the approach you described. What you had "
+             + "written is in the editor.");
+    return;
+  }
+  show("warn", (res && res.message) || failed || "Your steps are unchanged.");
+}
+
 /* Fetch the step prompts, which the server withholds until the design is
    accepted. Until then `chunks` carries empty prompts - the right count, the
    right indents, and nothing that gives the answer away. */
@@ -1608,6 +1648,7 @@ function renderStepper(){
 /* Reviewing swaps the code surface for a read-only listing, so there is never
    an editor on screen that silently refuses to accept the step you are in. */
 function setReviewMode(on){
+  if (on) $("notMyPlanRow").hidden = true;
   $("codestack").hidden = on;
   $("workControls").hidden = on;
   $("reviewControls").hidden = !on;
@@ -1723,6 +1764,7 @@ async function reworkStep(i, btn){
    and Start over is where it always was. */
 function showFinished(){
   $("prompt").textContent = "";
+  $("notMyPlanRow").hidden = true;
   $("editorWrap").hidden = true;
   $("submit").style.display = "none";
   $("ctx").style.maxHeight = "none";
@@ -1786,6 +1828,7 @@ function render(){
     : "";
   $("prompt").textContent = cur ? undash(cur.prompt) : "";
   renderStepNotes(cur, idx === chunks.length - 1);
+  $("notMyPlanRow").hidden = !(cur && cur.prompt && sessionId && tutorReleased);
   $("attempts").textContent = "";
 
   const shown = renderContext();
@@ -1890,6 +1933,8 @@ function hash32(text){
   }
   return h.toString(36);
 }
+
+$("notMyPlan").onclick = () => rebuildFromPlan($("notMyPlan"));
 
 $("submit").onclick = async () => {
   const code = editor ? editor.getValue() : "";

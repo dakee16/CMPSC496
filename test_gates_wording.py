@@ -52,3 +52,57 @@ def test_plain_english_is_not_a_leaked_name_but_code_shaped_names_are():
     steps[0] = steps[0].model_copy(update={"prompt": steps[0].prompt.replace(
         "the previous year's records", "prev_records")})
     assert check_prompts(steps, problem)["status"] == "fail"
+
+
+# ── the reverse (18 Oct): a set-up step worded as STARTING the loop ──────
+SEARCH = [StepItem(question_id="t", step_id="Part 1", prompt="", reference="current = self.head"),
+          StepItem(question_id="t", step_id="Part 2", prompt="Go through each node ...",
+                   reference="while current is not None:\n    if current.value.cid == cid:\n"
+                             "        return True\n    current = current.next"),
+          StepItem(question_id="t", step_id="Part 3", prompt="Return False.",
+                   reference="return False")]
+# The two the live pool held (18 Oct, 2 of 310 steps - both HW4 __contains__).
+LIVE_WRONG = ("Write code that starts checking each node in the list, beginning from the "
+              "head, and leave the rest of the work on each one for the next step.",
+              "Write code that starts going through each node in the CacheList, beginning "
+              "with the head, and leave the rest of the work on each one for the next step")
+
+
+def _setup(prompt):
+    return [SEARCH[0].model_copy(update={"prompt": prompt})] + SEARCH[1:]
+
+
+def test_a_setup_step_worded_as_starting_the_loop_is_refused():
+    """GPT's audit of HW4 __contains__ (15 Oct): asked LIVE_WRONG[0] for
+    `current = self.head`, a student wrote the loop's first line there - and
+    then the next step's loop had nothing under it. The gate made a step that
+    STARTS the loop say so, and never checked the reverse."""
+    from main.gates import claims_unstarted
+    for q in LIVE_WRONG:
+        assert claims_unstarted(_setup(q)) == [0], q
+        out = check_prompts(_setup(q), {"description": "Search the list for cid."})
+        assert out["status"] == "fail" and "Part 1" in out["summary"], out
+
+
+def test_setup_wording_and_real_loop_starts_are_left_alone():
+    """What the live pool already words well (18 Oct): a rule on "each" alone
+    would have refused these - and a refused question caps a roadmap below the
+    bar."""
+    from main.gates import claims_unstarted
+    for q in ("Write code that gets ready to go through each node in the CacheList, "
+              "starting from the head, and leave the rest of the work on each one for "
+              "the next step.",
+              "Write code that finds where in the list to begin, and keep it for the next step."):
+        assert claims_unstarted(_setup(q)) == [], q
+    # A step that really starts the loop is the other rule's, never this one's.
+    assert claims_unstarted(_first("Start going through each statement, and keep the "
+                                   "report for the next step.")) == []
+    # A step with a check and no loop, worded as a check.
+    check = [StepItem(question_id="t", step_id="Part 1", reference=
+                      "if content.size > self.maxSize:\n    return 'Insertion not allowed'",
+                      prompt="Check whether the content item can be inserted into the "
+                             "cache. Reject the content if it's too large or is already in "
+                             "the list, without executing any further steps."),
+             StepItem(question_id="t", step_id="Part 2", prompt="Insert it.",
+                      reference="return 'INSERTED'")]
+    assert claims_unstarted(check) == []
