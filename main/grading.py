@@ -2342,7 +2342,13 @@ def grade_submission(session: dict, student_code: str,
         # or nothing of theirs to show) - so show the case itself, as tier 3's
         # evidence does, rather than the bare "could not confirm" (Ashwin, 1 Oct:
         # five of those in a row on a tokenizer that broke on negative numbers).
-        if wrong and result.tier == "unconfirmed" and not result.needs_diagnosis \
+        # NOT A CRASH ON A NAME OF OURS (19 Oct, GPT's round 3, mruEvict): the
+        # rest of the solution reads the teacher's `node`; a student who said
+        # `evicted` was shown "<crashed: NameError>", about a name they never
+        # chose. Their own names in the rest come first (below); this case is
+        # the fallback when that cannot be had.
+        named = _crashed_on_a_name(res.failures)
+        if wrong and not named and result.tier == "unconfirmed" and not result.needs_diagnosis \
                 and not result.failing_cases and result.reason_code == "unconfirmed":
             shown = failing_cases(problem, tests, res.failures)
             if shown:
@@ -2370,7 +2376,25 @@ def grade_submission(session: dict, student_code: str,
                                           "solution, is worth tracing by hand.",
                         "failing_cases": shown,
                         "failed_total": _failed_total(own, len(shown))})
+        # Nothing of theirs could be run: the name-crash case beats nothing.
+        if wrong and named and result.tier == "unconfirmed" and not result.needs_diagnosis \
+                and not result.failing_cases and result.reason_code == "unconfirmed":
+            shown = failing_cases(problem, tests, res.failures)
+            if shown:
+                result = result.model_copy(update={
+                    "student_reason": _EVIDENCE_ONLY + " - but the case below is worth "
+                                      "tracing by hand.",
+                    "failing_cases": shown,
+                    "failed_total": _failed_total(res, len(shown))})
     return result
+
+
+def _crashed_on_a_name(failures) -> bool:
+    """Did the run crash on a NAME somewhere - the rest of the solution reading
+    one the student called something else? Read off EVERY recorded field: the
+    summaries are cut at 160 characters, and on HW4's long cases the crash sat
+    past the cut, only in the first-difference item (`got_at`)."""
+    return any("NameError" in str(f) for f in failures or [])
 
 
 _EVIDENCE_ONLY = ("We ran your step together with the rest of the solution and the "
