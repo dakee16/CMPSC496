@@ -42,7 +42,11 @@ def chat(monkeypatch, tmp_path):
                                         "ValueError -> False; None -> TypeError"
                                         " -> False" if ok else ""})
         if '"offtrack"' in system:                          # the tutor
+            # Nothing is missing: all four points covered. A tutor that names a
+            # gap IS put to the reviewer now (test_tutor_defers_to_review), so a
+            # stub that reported no points would be naming one.
             return json.dumps({"reply": "What does your plan do with ' 7 '?",
+                               "covered": ["state", "processing", "result", "edges"],
                                "offtrack": state.offtrack, "ready": False,
                                # tutor.reply drops a flag with a shorter reason
                                "offtrack_reason": "the plan never handles text "

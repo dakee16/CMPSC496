@@ -9,8 +9,10 @@ from datetime import datetime, timezone
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+import collections
 import json
+import threading
 from dotenv import load_dotenv
 import os
 from supabase import create_client
@@ -324,6 +326,10 @@ class TutorChatRequest(BaseModel, extra="forbid"):
     # neither, and a student told Dr. Saha "the tutor is no help since I don't
     # think the tutor can see the entire code file".
     code: str = ""
+    # Names THIS request, so a Submit pressed while it is still being answered
+    # can supersede it - see _supersede. Opaque, set by the page, and only ever
+    # compared for equality with what the same student sent.
+    call_id: str = Field("", max_length=64)
 
 
 class PlanGraphRequest(BaseModel, extra="forbid"):
@@ -346,6 +352,11 @@ class PlanSubmitRequest(BaseModel, extra="forbid"):
     graph: dict
     history: list[dict] = []
     messages: list[dict] = []
+    # Set by the page ONLY when a tutor reply was still in flight at Submit:
+    # that request's id, and the student's own message it was answering. See
+    # _supersede and _fold_in_latest. Both optional - an older page sends neither.
+    superseded: str = Field("", max_length=64)
+    latest: str = Field("", max_length=20000)
 
 
 class GraphsRequest(BaseModel, extra="forbid"):
@@ -892,6 +903,66 @@ def _recorded_chat(student_id: str, slug: str) -> tuple[list, list]:
                 and (not since or (m.get("created_at") or "") > since)]
 
     return turns("tutor")[-40:], turns("design")[-12:]
+
+
+# A TUTOR REPLY THE STUDENT HAS MOVED PAST (26 Oct). The tutor's turn is archived
+# only when its reply is DONE, so a student who pressed Submit while it was still
+# answering had their plan judged without the message being answered - and then
+# the reply landed, and was archived, under an approved plan. The page tags each
+# tutor request with an id and, on Submit, stops it and sends that id here. The
+# id is remembered for the student, the late request sees it and drops its
+# reply, and the message goes to the reviewer and the archive through the submit
+# (_fold_in_latest) instead - once.
+#
+# Per student, so an id means nothing to anyone else. In process and bounded: a
+# restart forgets it, and a request that was in flight across a restart is gone.
+MAX_SUPERSEDED = 2000
+_SUPERSEDED: "collections.OrderedDict[tuple, bool]" = collections.OrderedDict()
+_SUPERSEDED_LOCK = threading.Lock()
+
+
+def _supersede(student_id: str, call_id: str) -> None:
+    if not student_id or not call_id:
+        return
+    with _SUPERSEDED_LOCK:
+        _SUPERSEDED[(student_id, call_id)] = True
+        _SUPERSEDED.move_to_end((student_id, call_id))
+        while len(_SUPERSEDED) > MAX_SUPERSEDED:
+            _SUPERSEDED.popitem(last=False)
+
+
+def _was_superseded(student_id: str, call_id: str) -> bool:
+    if not student_id or not call_id:
+        return False
+    with _SUPERSEDED_LOCK:
+        return (student_id, call_id) in _SUPERSEDED
+
+
+def _fold_in_latest(student_id: str, slug: str, turns: list, latest: str) -> list:
+    """`turns` plus the student's latest message, when the archive does not hold
+    it yet - and it is archived here, so it is on the record once.
+
+    ONLY AFTER the caller's "is there a conversation at all" check (see
+    design_review_plan): this is the student's own message and nothing more, but
+    a plan with no chat behind it must still be refused, and a crafted request
+    must not be able to supply the chat itself. Compared with the last archived
+    turn rather than searched for, so a student who really does say the same
+    thing twice is not recorded twice by this path's own race.
+
+    ponytail: an identical repeat ("ok", "ok") is treated as already on the
+    record. The cost is one lost duplicate line; the alternative is a duplicate
+    on every race."""
+    from main.archive import save_messages
+    from main.tutor import MAX_MESSAGE_CHARS
+    latest = (latest or "").strip()[:MAX_MESSAGE_CHARS]
+    if not latest:
+        return turns
+    last = next((m["content"] for m in reversed(turns) if m["role"] == "user"), "")
+    if last.strip() == latest:
+        return turns
+    save_messages(get_supabase(), student_id, slug, "tutor",
+                  [{"role": "user", "content": latest}])
+    return turns + [{"role": "user", "content": latest}]
 
 
 def _owned_session(request: Request, session_id: str) -> tuple[dict, dict]:
@@ -3014,6 +3085,20 @@ def tutor_chat(req: TutorChatRequest, request: Request):
             "message": "The tutor is unavailable right now. Try again shortly.",
             "detail": str(e)[:120]})
 
+    # THE STUDENT SUBMITTED WHILE THIS WAS BEING ANSWERED. Nothing below is
+    # wanted: not the reply, not the gate lookups that would only decide what to
+    # say, and not the archive row - the submit already carries their message.
+    # Checked here, before the guards spend a reviewer call, and again before the
+    # write, because a submit can land during the guards too.
+    def superseded() -> bool:
+        return _was_superseded(claims["sub"], req.call_id)
+
+    def dropped() -> dict:
+        return {"reply": "", "ready": False, "offtrack": False,
+                "offtrack_reason": "", "discarded": True}
+    if superseded():
+        return dropped()
+
     # ── THE TUTOR DOES NOT GET TO PROMISE WHAT THE GATE WILL SAY ──────────
     #
     # Twice now a student was told "sounds like you have a plan", submitted it,
@@ -3038,22 +3123,38 @@ def tutor_chat(req: TutorChatRequest, request: Request):
     # this call can only ever HOLD a release (the branch below fires on
     # `not approved`), so a forged transcript can buy nothing. The gate itself
     # is /design_review/plan, which reads the archive.
+    #
+    # ONE VERDICT PER TURN. This guard, the box below and the release guard
+    # after it all need the gate's answer about the same conversation; asking
+    # three times would pay three times and, worse, could get three answers.
+    # `gate()` asks at most once, and design_review remembers the answer for the
+    # submit that follows (it is per student and per conversation).
+    asked_gate = []
+
+    def gate():
+        """The real gate's verdict on this plan and chat, or None when it could
+        not be reached - which every guard reads as "say nothing"."""
+        if not asked_gate:
+            try:
+                from main.design_review import review_plan_graph
+                asked_gate.append(review_plan_graph(
+                    row[0], req.plan, [], chat_log=req.messages,
+                    who=claims["sub"], note=False))
+            except Exception:
+                asked_gate.append(None)
+        return asked_gate[0]
+
     if out.get("ready") and not approved and (req.plan or {}).get("nodes"):
-        try:
-            from main.design_review import review_plan_graph
-            verdict = review_plan_graph(row[0], req.plan, [],
-                                        chat_log=req.messages)
-            if not verdict.get("approved"):
-                # offtrack stays FALSE here. The fork offers "carry on and it
-                # may come out wrong", and this plan cannot carry on at all -
-                # the design gate is about to reject exactly it. The reviewer's
-                # own objection is the message that belongs on screen.
-                out = {**out, "ready": False, "reply": verdict["reply"],
-                       "offtrack": False, "held_by_review": True}
-        except Exception:
-            # The gate being unreachable must not strand a student mid-chat.
-            # They keep the tutor's reply; the real gate still runs on submit.
-            pass
+        verdict = gate()
+        if verdict is not None and not verdict.get("approved"):
+            # offtrack stays FALSE here. The fork offers "carry on and it
+            # may come out wrong", and this plan cannot carry on at all -
+            # the design gate is about to reject exactly it. The reviewer's
+            # own objection is the message that belongs on screen.
+            out = {**out, "ready": False, "reply": verdict["reply"],
+                   "offtrack": False, "held_by_review": True}
+        # An unreachable gate must not strand a student mid-chat: they keep
+        # the tutor's reply, and the real gate still runs on submit.
 
     # ── NOR DOES IT GET TO WARN ALONE ─────────────────────────────────────
     #
@@ -3068,14 +3169,50 @@ def tutor_chat(req: TutorChatRequest, request: Request):
     if out.get("offtrack"):
         rejected = False
         if (req.plan or {}).get("nodes"):
-            try:
-                from main.design_review import review_plan_graph
-                rejected = not review_plan_graph(row[0], req.plan, [],
-                                                 chat_log=req.messages).get("approved")
-            except Exception:
-                pass                    # an unreachable gate warns nobody
+            verdict = gate()            # an unreachable gate warns nobody
+            rejected = verdict is not None and not verdict.get("approved")
         if not rejected:
             out = {**out, "offtrack": False, "offtrack_reason": ""}
+
+    # ── NOR DOES IT GET TO HOLD WHAT THE GATE WOULD PASS ──────────────────
+    #
+    # The two guards above stop the tutor promising what the gate will refuse.
+    # This is the other direction, and it was missing: a student told "you have
+    # not said what it starts out as" could press Submit and have the plan
+    # approved, and then asked the tutor what to believe. Measured on the live
+    # archive (26 Oct): 79 of 210 approvals came with the tutor's last message
+    # still a question; those students solved the problem as often as everyone
+    # else (91% against 94%), so it was the tutor's hold that was out of step.
+    #
+    # The reviewer is the one authority - it is the gate, and the tutor's
+    # `ready` has never opened anything. So when the tutor names a gap (or
+    # demands the walk-through) and a plan is on the table, the gate is asked,
+    # and if it approves the tutor releases instead of asking. Same question,
+    # same answer, in both places: the verdict is remembered for the submit.
+    #
+    # Left alone, deliberately:
+    #   * a hold with all four points covered (no `gap`): that is the tutor's
+    #     question floor, not a claim that something is absent;
+    #   * "try something else" - the student just chose to rethink, and being
+    #     released over that choice would contradict it;
+    #   * a message that asks the tutor something: the reply answers it, and
+    #     swapping it for a release line would leave the question unanswered.
+    #     The next message that is not a question reaches this guard.
+    # One call (~1c), only on a turn the tutor holds on a named gap.
+    last_said = next((m.get("content") or "" for m in reversed(req.messages)
+                      if m.get("role") == "user"), "")
+    if (not out.get("ready") and out.get("gap") and not out.get("held_by_review")
+            and not approved and not req.offtrack_hint
+            and "?" not in last_said and (req.plan or {}).get("nodes")):
+        verdict = gate()
+        if verdict is not None and verdict.get("approved"):
+            from main.tutor import RELEASED_BY_REVIEW
+            out = {**out, "ready": True, "reply": RELEASED_BY_REVIEW,
+                   "offtrack": False, "offtrack_reason": "",
+                   "released_by_review": True}
+
+    if superseded():
+        return dropped()
 
     # Archive only the NEW turns - the student's last message and this reply.
     # The client resends the whole history every call, so writing all of it
@@ -3086,7 +3223,8 @@ def tutor_chat(req: TutorChatRequest, request: Request):
         tail = [m for m in req.messages[-1:] if m.get("role") == "user"]
         save_messages(get_supabase(), _student, req.slug, "tutor",
                       tail + [{"role": "assistant", "content": out["reply"]}])
-    return out
+    # `gap` is for the guards above; the page has never been sent it.
+    return {k: v for k, v in out.items() if k != "gap"}
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -3207,6 +3345,8 @@ async def design_review(request: Request,
                         slug: str = Form(...),
                         history: str = Form("[]"),
                         chat: str = Form("[]"),
+                        superseded: str = Form(""),
+                        latest: str = Form(""),
                         design: UploadFile = File(...)):
     """Review a student's uploaded design before they may write any code.
 
@@ -3224,6 +3364,8 @@ async def design_review(request: Request,
     from main.design_review import DesignRejected, review_design
 
     claims = require_student(request)
+    # See design_review_plan: the tutor request this supersedes is still running.
+    _supersede(claims["sub"], superseded[:64])
     row = get_supabase().table("problems").select(
         "slug, title, description").eq("slug", slug).execute().data
     if not row:
@@ -3242,6 +3384,7 @@ async def design_review(request: Request,
     # the artifact being judged is a picture the server received, not a
     # structure the browser composed.
     tutor_chat, prior = _recorded_chat(claims["sub"], slug)
+    tutor_chat = _fold_in_latest(claims["sub"], slug, tutor_chat, latest)
 
     blob = await design.read()
     try:
@@ -3485,6 +3628,9 @@ def design_review_plan(req: PlanSubmitRequest, request: Request):
     from main.design_review import DesignRejected, review_plan_graph
 
     claims = require_student(request)
+    # FIRST, before anything slow: the tutor request this submit supersedes is
+    # still running and will look for its id when it finishes.
+    _supersede(claims["sub"], req.superseded)
     row = get_supabase().table("problems").select(
         "slug, title, description").eq("slug", req.slug).execute().data
     if not row:
@@ -3510,8 +3656,12 @@ def design_review_plan(req: PlanSubmitRequest, request: Request):
             "message": "There is no plan to submit yet. Talk through your "
                        "approach in the chat first - the plan builds itself as "
                        "you explain it."})
+    # The plan is judged on the conversation up to their LATEST message, even if
+    # the tutor had not finished answering it - see _fold_in_latest.
+    tutor_turns = _fold_in_latest(claims["sub"], req.slug, tutor_turns, req.latest)
     try:
-        out = review_plan_graph(row[0], req.graph, prior, chat_log=tutor_turns)
+        out = review_plan_graph(row[0], req.graph, prior, chat_log=tutor_turns,
+                                who=claims["sub"])
     except DesignRejected as e:
         raise HTTPException(status_code=400, detail={
             "reason_code": "design_rejected", "message": str(e)})

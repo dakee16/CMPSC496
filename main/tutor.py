@@ -808,6 +808,13 @@ _FALLBACK = {
 }
 
 
+# What the tutor says when the real gate (design_review) has just approved the
+# plan it was about to hold the student on. Fixed text, not a model's: it must
+# claim nothing the gate did not decide (no "go code" - coding opens only when
+# the plan is SUBMITTED and approved) and ask nothing. See api_server.tutor_chat.
+RELEASED_BY_REVIEW = "Your plan covers what it needs to - I don't see anything missing."
+
+
 def _first_gap(covered: set) -> str:
     """The first rubric point the student has not stated, or "" when none.
 
@@ -1232,6 +1239,7 @@ def reply(problem: dict, history: list[dict],
         if proposed:
             return {"reply": _init_question(proposed), "ready": False,
                     "offtrack": False, "offtrack_reason": "",
+                    "gap": "state",
                     "questions_asked": asked + 1,
                     "min_questions": MIN_PROBING_QUESTIONS}
         # Every "new" structure this turn was rejected, not proposed - nothing
@@ -1336,6 +1344,7 @@ def reply(problem: dict, history: list[dict],
                 pass                      # malformed retry: keep the first turn
 
     gap = ""
+    trace_held = False
     try:
         if data is None:
             raise ValueError(unparsed or "no JSON")
@@ -1382,6 +1391,7 @@ def reply(problem: dict, history: list[dict],
             ready, text = False, _FALLBACK[gap]
         if ready and len(str(data.get("trace") or "").strip()) < MIN_TRACE_CHARS:
             ready = False
+            trace_held = True
             text = ("Before you write it - walk your plan through the smallest "
                     "example in the problem statement, one step at a time. What "
                     "does it give you at the end?")
@@ -1440,7 +1450,15 @@ def reply(problem: dict, history: list[dict],
     # A release and a dead end are contradictory verdicts on the same plan. The
     # release wins: it is the one the model had to produce a hand-trace for.
     flagged = offtrack and not ready
-    return {"reply": text, "ready": ready, "offtrack": flagged,
+    # WHAT THE TUTOR SAYS IS MISSING, for the server (it never reaches the
+    # student as a field). "" when the plan is released, or when the tutor holds
+    # only to meet its question floor with all four points covered - that is a
+    # probing question, not a claim that something is absent. A release refused
+    # for want of a hand-trace is a demand too: "trace". The caller puts a
+    # NON-EMPTY gap to the real gate before the student hears it - see
+    # api_server.tutor_chat.
+    held_for = "" if ready else (gap or ("trace" if trace_held else ""))
+    return {"reply": text, "ready": ready, "offtrack": flagged, "gap": held_for,
             # Never leaked outside a genuine flag - a diagnosis with nowhere to
             # aim (offtrack False) is not the page's business either way.
             "offtrack_reason": offtrack_diag if flagged else "",

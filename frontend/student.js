@@ -9,6 +9,7 @@ let sessionId = null, chunks = [], idx = 0, accepted = [], editor = null, header
 const BODY_INDENT = 4;
 // The tutor is scoped to whatever is open on the LEFT. No problem, no chat.
 let openProblem = null, chatLog = [], chatBusy = false;
+let tutorCall = null;   // {ctl, id, text} while a tutor request is being answered
 // The wrong-direction fork's own memory. `lastOfftrackReason` is the tutor's
 // OWN prior diagnosis (main/tutor.py offtrack_reason), echoed back only when
 // the student explicitly asks to try something else - never shown on screen,
@@ -497,6 +498,13 @@ async function uploadDesign(){
   // workable came back rejected for a step the student had already explained.
   fd.append("chat", JSON.stringify(chatLog));
   fd.append("design", designFileRef);
+  // Stop a tutor reply still being written, and hand its message to the review:
+  // see stopTutor.
+  const stopped = stopTutor();
+  if (stopped){
+    fd.append("superseded", stopped.id);
+    fd.append("latest", stopped.text);
+  }
 
   // A verdict on THIS problem's design. Approval unlocks the coding stage, so
   // a review that lands after the student opened something else would open the
@@ -568,6 +576,9 @@ async function submitPlanGraph(){
   setBusy(btn, true, "Reviewing…");
   designMsg("info", "Reading your plan and preparing your steps. This can "
                   + "take up to a minute.");
+  // A tutor reply still being written is stopped HERE, before anything slow:
+  // it must not land mid-review, and its message goes with the submit instead.
+  const stopped = stopTutor();
   try {
     // CATCH THE GRAPH UP FIRST. It is drawn in the background while the student
     // reads each reply, so the last thing they said is routinely not in it yet -
@@ -584,7 +595,9 @@ async function submitPlanGraph(){
     const r = await fetch(`${API}/design_review/plan`, {
       method: "POST", headers: {"Content-Type": "application/json"},
       body: JSON.stringify({slug: openProblem.slug, graph: planGraph,
-                            history: designLog, messages: chatLog})
+                            history: designLog, messages: chatLog,
+                            ...(stopped ? {superseded: stopped.id,
+                                           latest: stopped.text} : {})})
     });
     const data = await r.json();
     if (reviewing !== workspaceEpoch) return;
@@ -2470,6 +2483,37 @@ function resetChat(title){
   // The stage introduction now provides the guidance once given by a popup.
 }
 
+/* One id per tutor request, so a Submit pressed while it is still being
+   answered can say WHICH request it superseded. Opaque: the server only ever
+   compares it with what the same student sent. */
+function newCallId(){
+  return (typeof crypto !== "undefined" && crypto.randomUUID)
+    ? crypto.randomUUID()
+    : Date.now().toString(36) + Math.random().toString(36).slice(2, 12);
+}
+
+/* Stop the tutor request that is still being answered, because the student has
+   submitted their plan: the plan is judged on everything they have said, and
+   a reply to a message the verdict already covers would only land underneath it
+   as a question about a plan that was just approved (or refused).
+
+   Returns what the server needs - that request's id and the message it was
+   answering, which has not been archived yet - or null when nothing was in
+   flight. The message stays in the chat; only the reply is dropped. */
+function stopTutor(){
+  if (!tutorCall) return null;
+  const call = tutorCall;
+  tutorCall = null;
+  call.ctl.abort();
+  return {id: call.id, text: call.text};
+}
+
+/* A tutor bubble that will never get its text: the whole row goes, not just the
+   dots, or an empty "Tutor 3:04 PM" is left standing in the conversation. */
+function dropBubble(body){
+  (body.closest(".bub") || body).remove();
+}
+
 async function sendToTutor(text, extra = {}){
   // They found the chat on their own, so the tip has done its job.
   dismissCoach(true);
@@ -2494,12 +2538,17 @@ async function sendToTutor(text, extra = {}){
   chatLog.push({role: "user", content: text});
   const thinking = bubble("bot", "");
   thinking.innerHTML = '<span class="think"><i></i><i></i><i></i></span>';
+  const ctl = new AbortController();
+  tutorCall = {ctl, id: newCallId(), text};
+  const callId = tutorCall.id;
   try {
     const r = await fetch(`${API}/tutor_chat`, {
       method: "POST",
+      signal: ctl.signal,
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({
         slug: openProblem.slug,
+        call_id: callId,
         // A WINDOW, not the whole log. The server rejects a conversation past
         // MAX_TURNS*2 with "start a fresh one", and the only recovery the page
         // offered was Start over - which wipes the plan, the design and every
@@ -2528,6 +2577,8 @@ async function sendToTutor(text, extra = {}){
       chatLog.pop();                       // do not poison the next turn
       return;
     }
+    // The server dropped this reply because a Submit superseded the request.
+    if (data.discarded){ dropBubble(thinking); return; }
     renderLearningText(thinking, data.reply);
     chatLog.push({role: "assistant", content: data.reply});
     // Planning only. Once the design is approved they are implementing a plan
@@ -2555,10 +2606,14 @@ async function sendToTutor(text, extra = {}){
                   + "or upload your own drawing as a PNG, JPEG, or PDF.");
     }
   } catch (e) {
+    // Stopped by a Submit (stopTutor), not a failure: the student's message
+    // stays in the chat and the reply simply does not come.
+    if (e && e.name === "AbortError"){ dropBubble(thinking); return; }
     if (asked !== workspaceEpoch) return;
     thinking.textContent = "Could not reach the tutor. Check your connection.";
     chatLog.pop();
   } finally {
+    if (tutorCall && tutorCall.ctl === ctl) tutorCall = null;
     // Cleanup is state too: clearing chatBusy here after the student moved on
     // would free a request belonging to the workspace now open, and let a
     // second message go out under it. resetWorkspace() clears the flag for the

@@ -23,7 +23,10 @@ Approval is one-way per attempt: once `approved` comes back true the coding UI
 unlocks and the tutor drops into helper mode (see tutor.reply(phase=...)).
 """
 import base64
+import collections
+import hashlib
 import re
+import threading
 
 from .ollama_client import TUTOR_MODEL, VISION_MODEL, chat
 from .prompts import WORKABLE_PLAN, json_flag
@@ -151,6 +154,15 @@ MAX_GRAPH_CHARS = 8000
 _MARKERS = {"[submitted a design]", "[submitted the plan from my chat]"}
 
 
+def _said_turns(chat_log: list[dict] | None) -> list[str]:
+    """The student's own turns, in order: never the tutor's, never a button press.
+    One definition for what the reviewer reads and for what its verdict is
+    remembered by - they must not be able to disagree about it."""
+    return [m.get("content", "") for m in (chat_log or [])
+            if m.get("role") == "user" and isinstance(m.get("content"), str)
+            and m["content"].strip() and m["content"].strip() not in _MARKERS]
+
+
 def _already_said(chat_log: list[dict] | None, primary: bool = False) -> str:
     """What the STUDENT has already explained to the tutor, in their own words.
 
@@ -165,9 +177,7 @@ def _already_said(chat_log: list[dict] | None, primary: bool = False) -> str:
     the answer - that is what a probing question IS - and crediting them would
     let the reviewer approve a design the tutor described rather than one the
     student did. That is the whole thing this gate exists to prevent."""
-    said = [m.get("content", "") for m in (chat_log or [])
-            if m.get("role") == "user" and isinstance(m.get("content"), str)
-            and m["content"].strip() and m["content"].strip() not in _MARKERS]
+    said = _said_turns(chat_log)
     if not said:
         return ""
     joined = "\n".join(f"- {t.strip()}" for t in said)[-MAX_CHAT_CHARS:]
@@ -467,9 +477,64 @@ def _necessity_note(source: str, target: str) -> str:
         return ""
 
 
+# ONE ANSWER PER CONVERSATION (26 Oct). A student reported being told by the
+# tutor that something was missing and then having the plan approved; measured
+# on the live archive, 79 of 210 approvals came with the tutor's last message
+# still a question. The tutor now asks THIS gate before it holds a student on a
+# gap (frontend/api_server.tutor_chat), and the gate must then say the same
+# thing at the submit that follows: the same words, judged twice, used to be two
+# dice - one click could pass what the last one failed. So the verdict is
+# remembered by what the STUDENT SAID (the step list is a redrawing of it and
+# the prompt already says the words win) and handed back, free, for the same
+# words. A changed conversation is a new key; the round count is never cached.
+#
+# Per student, so one student's reply is never another's. In process, so a
+# restart forgets - at worst one more model call. Only a verdict that was read
+# properly is kept: a slip of the model must not stick.
+#
+# ponytail: in-process and bounded, not a table. Move it to the database if the
+# app ever runs more than one worker.
+MAX_VERDICTS = 2000
+_VERDICTS: "collections.OrderedDict[tuple, tuple[str, bool]]" = collections.OrderedDict()
+_VERDICTS_LOCK = threading.Lock()
+
+
+def _verdict_key(who: str | None, problem: dict, chat_log: list[dict] | None):
+    said = _said_turns(chat_log)
+    if not who or not said:
+        return None                     # nobody to attribute it to: ask every time
+
+    def digest(text: str) -> str:
+        return hashlib.sha256(text.encode("utf-8")).hexdigest()[:24]
+    joined = "\n".join(f"- {t.strip()}" for t in said)[-MAX_CHAT_CHARS:]
+    return (who, problem.get("slug"), digest(problem.get("description") or ""),
+            digest(joined))
+
+
+def _recall(key) -> tuple[str, bool] | None:
+    if key is None:
+        return None
+    with _VERDICTS_LOCK:
+        hit = _VERDICTS.get(key)
+        if hit is not None:
+            _VERDICTS.move_to_end(key)
+        return hit
+
+
+def _remember(key, text: str, approved: bool) -> None:
+    if key is None:
+        return
+    with _VERDICTS_LOCK:
+        _VERDICTS[key] = (text, approved)
+        _VERDICTS.move_to_end(key)
+        while len(_VERDICTS) > MAX_VERDICTS:
+            _VERDICTS.popitem(last=False)
+
+
 def review_plan_graph(problem: dict, graph: dict,
                       history: list[dict] | None = None,
-                      chat_log: list[dict] | None = None) -> dict:
+                      chat_log: list[dict] | None = None,
+                      who: str | None = None, note: bool = True) -> dict:
     """Review the plan graph the page built from the student's own chat.
 
     Same bar, same prompt, same fail-closed parse as review_design - the only
@@ -485,7 +550,11 @@ def review_plan_graph(problem: dict, graph: dict,
     It is NOT a way around the gate. The graph is built only from what the
     student themselves said (main/graphs.plan_graph reads their turns, never the
     tutor's), it is judged against the same WORKABLE_PLAN rubric, and a thin
-    plan is rejected here exactly as a thin drawing is."""
+    plan is rejected here exactly as a thin drawing is.
+
+    `who` is the student's id: given, the verdict is remembered for that
+    student's words and returned for the same words without a model call (see
+    _VERDICTS). `note=False` skips the optional simplification tip."""
     import json as _json
 
     drawn = render_graph_text(graph)
@@ -523,6 +592,12 @@ def review_plan_graph(problem: dict, graph: dict,
     from .graphs import redundant_structure
     hit = redundant_structure(graph)
 
+    # The same words, the same answer - see _VERDICTS. Looked up only now: the
+    # empty-plan refusal and the round cap above never depend on it, and the
+    # round count is this request's own, never a remembered one.
+    key = _verdict_key(who, problem, chat_log)
+    settled = _recall(key)
+
     ask = ("Here is my plan for this problem. Above are the messages where I "
            "described it; below is the same plan as the page drew it:"
            if not prior else
@@ -536,7 +611,7 @@ def review_plan_graph(problem: dict, graph: dict,
                          f"{ask}\n\n<<<PLAN_STEPS (student data)\n"
                          f"{drawn}\n>>>END_PLAN_STEPS"}]
 
-    raw = chat(TUTOR_MODEL,
+    raw = None if settled else chat(TUTOR_MODEL,
                _SYSTEM
                + "\n\nTHIS PLAN ARRIVED AS THE STUDENT'S OWN MESSAGES, plus a step "
                  "list the page drew from them - not as a picture, because the "
@@ -556,18 +631,25 @@ def review_plan_graph(problem: dict, graph: dict,
                  "problem statement in this system prompt and from nowhere else."
                + _context(problem) + _already_said(chat_log, primary=True),
                messages, temperature=0.2, fmt="json")
-    try:
-        data = _json.loads(raw)
-        text = str(data.get("reply", "")).strip()
-        approved = _approval_stands(data)
-        if not approved:
-            text = _no_prescription(text)
-    except Exception:
-        text, approved = (raw or "").strip(), False   # fail closed
+    readable = False
+    if settled:
+        text, approved = settled
+    else:
+        try:
+            data = _json.loads(raw)
+            text = str(data.get("reply", "")).strip()
+            approved = _approval_stands(data)
+            if not approved:
+                text = _no_prescription(text)
+            readable = True
+        except Exception:
+            text, approved = (raw or "").strip(), False   # fail closed
 
     if not text:
         text, approved = ("I could not read that plan. Add a little more detail "
                           "in the chat and try again.", False)
+    elif readable:
+        _remember(key, text, approved)
 
     # THE NECESSITY NOTE, if any - a SEPARATE call, made only once approval is
     # already locked in. Nothing this call returns can withhold approval: see
@@ -579,12 +661,15 @@ def review_plan_graph(problem: dict, graph: dict,
     # confirmation: keep the plan as it is, or go back and try to simplify it)
     # rather than a one-line aside buried in the approval message that most
     # students would skim past without ever acting on.
+    #
+    # `note=False` is the tutor asking whether it may release: it reads only the
+    # verdict, so buying the tip there would be paying for something thrown away.
     redundant = None
-    if hit and approved:
+    if note and hit and approved:
         source, _node_id, target = hit
-        note = _necessity_note(source, target)
-        if note:
-            redundant = {"source": source, "target": target, "note": note}
+        tip = _necessity_note(source, target)
+        if tip:
+            redundant = {"source": source, "target": target, "note": tip}
 
     return {"reply": text, "approved": approved, "round": rounds + 1,
             "redundant": redundant}
