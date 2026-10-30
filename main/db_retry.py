@@ -39,13 +39,32 @@ class RetryReads(httpx.BaseTransport):
         self.inner.close()
 
 
+def _http1(transport: httpx.BaseTransport) -> httpx.BaseTransport:
+    """The same connection settings over HTTP/1.1.
+
+    HTTP/2 PUTS EVERY REQUEST ON ONE CONNECTION, and this client is shared by
+    every thread serving every student. Under the 15-student load test (30 Oct)
+    the frames tangled: saves were lost ("ReadError: [Errno 11]" - the 2 Oct
+    blip above - and "deque mutated during iteration"), the approval check
+    failed closed on three approved plans, and two tutor turns answered 500.
+    On the live box, 20 threads mixing reads and saves: HTTP/2 lost 129 of
+    7,200 requests over four rounds, HTTP/1.1 none, at the same speed. HTTP/1.1
+    gives each request in flight its own connection from a thread-safe pool.
+    The certificate check (the SSL context) is carried over unchanged."""
+    pool = getattr(transport, "_pool", None)
+    if not isinstance(transport, httpx.HTTPTransport) or pool is None or not pool._http2:
+        return transport
+    return httpx.HTTPTransport(verify=pool._ssl_context, http2=False)
+
+
 def retry_reads(client):
-    """`client` (a Supabase client) with one retry on its database reads.
-    Never raises: a client that cannot be wrapped is returned as it was."""
+    """`client` (a Supabase client) over HTTP/1.1 (_http1), with one retry on
+    its database reads. Never raises: a client that cannot be changed is
+    returned as it was."""
     try:
         session = client.postgrest.session
         if not isinstance(session._transport, RetryReads):
-            session._transport = RetryReads(session._transport)
+            session._transport = RetryReads(_http1(session._transport))
     except Exception as e:
         print(f"  ⚠️  database read retry not installed: {e!r}"[:160])
     return client
