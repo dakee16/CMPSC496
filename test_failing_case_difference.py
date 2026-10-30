@@ -93,3 +93,79 @@ def test_a_short_case_is_shown_as_it_was(grade):
                                {"got": {"repr": "[1, 2]", "type": "list"}, "expected": {"repr": "[1, 3]", "type": "list"}, "at": 1,
                                 "got_at": {"repr": "2", "type": "int"}, "expected_at": {"repr": "3", "type": "int"}})
     assert "first differ" not in out, out
+
+
+# ── THE CRASH'S OWN WORDS, where the answers part (27 Oct, a TA on HW4) ──────
+# contains, written with `current.prev` for the starter's `current.previous`.
+# The case ended "you gave: <crashed: AttributeError>" and nothing else: the
+# message naming `prev` sat past the cut, and the first-difference lines kept
+# only the exception's name. The TA found the typo by rewriting the method.
+# A dunder run by a statement block, as HW4's are - no crash verdict can name
+# the line there, so this case is all the student gets.
+SHELF_IN = '''"""Shelves"""
+
+
+class Shelf:
+    """
+        >>> s = Shelf()
+        >>> s.add('pen')
+        'ADDED: pen - the shelf now holds 1 items'
+        >>> 'pen' in s
+        True
+    """
+    # --- steps: __contains__ ---
+    def __init__(self):
+        self.items = []
+        self.front = None
+
+    def add(self, name):
+        self.items.append(name)
+        return 'ADDED: ' + name + ' - the shelf now holds ' + str(len(self.items)) + ' items'
+
+    def __contains__(self, name):
+        """True when name is on the shelf, which also makes it the front item."""
+        if name not in self.items:
+            return False
+        self.front = name
+        return True
+'''
+IN_STEPS = ["if name not in self.items:\n    return False", "self.front = name\nreturn True"]
+IN_BLOCK = ("s = Shelf()\n" + "".join(f"s.add('{n}')\n" for n in NAMES)
+            + "'alpha' in s\n'zulu' in s\ns.front")
+IN_EXPECTED = ([None] + [f"ADDED: {n} - the shelf now holds {i} items" for i, n in enumerate(NAMES, 1)]
+               + [True, False, "alpha"])
+
+
+@pytest.fixture
+def grade_in(monkeypatch, tmp_path):
+    from main import grading, identity, ollama_client, sessions
+    from main.assignments import parse_assignment_file
+    monkeypatch.setenv("MICROTUTOR_SESSION_DB", str(tmp_path / "s.sqlite3"))
+    monkeypatch.setenv("MICROTUTOR_TRACE_FILE", str(tmp_path / "t.jsonl"))
+    monkeypatch.setattr(identity, "_RESOLVED_PATH", str(tmp_path / "r.json"))
+    monkeypatch.setattr(ollama_client, "_openai_chat",
+                        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("no model")))
+    monkeypatch.setattr(grading, "_request_adaptation", lambda *a, **k: ("", []))
+    monkeypatch.setattr(grading, "_request_completion", lambda *a, **k: "")
+    monkeypatch.setattr(grading, "_with_diagnosis", lambda result, *a, **k: result)
+    problem = parse_assignment_file(SHELF_IN, "shelf.py")["problems"][0]
+
+    def run(code):
+        decomp = {"header": "def __contains__(self, name):", "chunks": [
+            types.SimpleNamespace(step_id=f"Part {i + 1}", expected_type="code", prompt="p",
+                                  reference=r) for i, r in enumerate(IN_STEPS)]}
+        sid = sessions.create_session(dict(problem), decomp, "h-shelf-in", student_id="stu")["session_id"]
+        grading._VERDICT_MEMO.clear()
+        return grading.grade_submission(sessions.load_session(sid), code,
+                                        oracle_loader=lambda p: [{"input": [IN_BLOCK], "expected": IN_EXPECTED}])
+    return run
+
+
+def test_a_crash_where_the_answers_part_says_what_crashed(grade_in):
+    r = grade_in("if name not in self.itemz:\n    return False")
+    assert r.verdict != "correct", r
+    (case,) = r.failing_cases
+    tail = case.split("first differ", 1)[-1]
+    assert "<crashed: AttributeError>" in tail, case
+    # The words that name the typo, under the line that shows the crash.
+    assert "has no attribute 'itemz'" in tail, case

@@ -221,6 +221,13 @@ def _render_case(problem: dict, test: dict, failure: dict) -> str:
     lines, labels = [], []      # labels[i]: the call that produced output i
     if is_method(problem) and inp and isinstance(inp[0], str):
         lines.append(inp[0].rstrip())          # a block test IS a program
+        # One output per top-level statement (context.py), so each statement
+        # labels its own: "from lst.__contains__(1)" beats "at output 9".
+        try:
+            labels = [(ast.get_source_segment(inp[0], st) or "").splitlines()[0] or None
+                      for st in ast.parse(inp[0]).body]
+        except (SyntaxError, IndexError):
+            labels = []
     elif is_method(problem) and inp and isinstance(inp[0], list):
         cls = problem.get("group_title") or "Solution"
         lines.append(f"x = {cls}()")
@@ -246,7 +253,11 @@ def _render_case(problem: dict, test: dict, failure: dict) -> str:
     out = ["\n".join(lines)]
     if failure.get("timeout"):
         # 19 Oct: a case found on its own because the whole run timed out.
-        out.append("\nthis case never finished - a loop kept going.")
+        # 27 Oct: and the call it got stuck on, when that was found.
+        k = failure.get("stuck")
+        call = labels[k] if isinstance(k, int) and 0 <= k < len(labels) else None
+        out.append(f"\nthis case never finished: it got stuck at {call} - a loop kept going."
+                   if call else "\nthis case never finished - a loop kept going.")
     elif failure.get("error"):
         out.append(f"\nyour code crashed: {failure['error']}")
     else:
@@ -266,12 +277,20 @@ def _render_case(problem: dict, test: dict, failure: dict) -> str:
             call = labels[at] if 0 <= at < len(labels) and labels[at] else None
             e_at = (_crashes_in(failure["expected_at"], expected=True)[0]
                     if failure.get("expected_at") is not None else "(nothing)")
-            g_at = (_crashes_in(failure["got_at"], same=set(raises))[0]
-                    if failure.get("got_at") is not None else "(nothing)")
+            g_at, g_crash = (_crashes_in(failure["got_at"], same=set(raises))
+                             if failure.get("got_at") is not None else ("(nothing)", []))
             out.append(f"\nthey first differ at output {at + 1}"
                        + (f", from {call}" if call else "") + ":")
             out.append(f"expected: {e_at}")
             out.append(f"you gave: {g_at}")
+            # ...AND WHY IT CRASHED (27 Oct, a TA on HW4 contains): the message
+            # naming their `prev` for the starter's `previous` sat past the cut,
+            # so "<crashed: AttributeError>" was all they were shown. Once: a
+            # crash the full summary still holds is listed below already.
+            listed = {m for _, m in crashes}
+            for _, msg in g_crash:
+                if msg not in listed:
+                    out.append(f"  ({call or 'that call'} crashed: {msg})")
         # WHICH CALL CRASHED, AND WHY, in words. The recorded value is only the
         # exception's name; a student shown `'!AttributeError'` spent nine
         # attempts on a one-character typo the message would have named.
@@ -645,6 +664,52 @@ def failing_cases(problem: dict, tests: list, failures: list,
         except Exception:
             continue
     return out
+
+
+# ── WHICH CASE NEVER FINISHED (27 Oct, a TA on HW4 put) ──────────────────────
+# A run that times out is killed with nothing to report, so there is no failure
+# to render: a step-1 answer without put's "too big" check was told only that
+# "a loop in a later part keeps going", and the TA could not tell what went
+# wrong. So the cases are tried one at a time to find the one that hangs, and
+# then its calls (a block's statements, or a call list) a prefix at a time to
+# find the one it gets stuck on - `lst.put(ContentItem(3, 101, ...))` names the
+# missing check by itself. Bounded like bridge.renamed_failure; a lone case
+# gets a shorter limit: one of HW4 put's takes about 40ms to finish.
+_HUNG_TRIED = 12
+_HUNG_TIMEOUT = 2.0
+
+
+def _hung_case(problem: dict, program: str, tests: list, entry) -> list:
+    """[failure] for the first test that never finishes on its own, with
+    `stuck` - the call it got stuck on - when that can be found; else []."""
+    from .context import is_method
+    try:
+        for i, t in enumerate((tests or [])[:_HUNG_TRIED]):
+            if classify_run(program, [t], entry_name=entry,
+                            timeout=_HUNG_TIMEOUT).outcome != "timeout":
+                continue
+            hung = {"index": i, "timeout": True}
+            inp, exp = t.get("input") or [], t.get("expected")
+            if not (is_method(problem) and inp and isinstance(exp, list)):
+                return [hung]
+            if isinstance(inp[0], str):
+                lines = inp[0].splitlines()
+                ends = [st.end_lineno for st in ast.parse(inp[0]).body]
+                part = lambda k: "\n".join(lines[:ends[k]])        # noqa: E731
+            elif isinstance(inp[0], list):
+                ends = inp[0]
+                part = lambda k: inp[0][:k + 1]                     # noqa: E731
+            else:
+                return [hung]
+            for k in range(len(ends) - 1):
+                one = {**t, "input": [part(k)] + list(inp[1:]), "expected": exp[:k + 1]}
+                if classify_run(program, [one], entry_name=entry,
+                                timeout=_HUNG_TIMEOUT).outcome == "timeout":
+                    return [{**hung, "stuck": k}]
+            return [{**hung, "stuck": len(ends) - 1}]
+    except Exception:
+        pass                            # a hint is never worth breaking grading
+    return []
 
 
 def _failed_total(res, shown: int) -> int:
@@ -2202,7 +2267,8 @@ def grade_submission(session: dict, student_code: str,
                                       idx=idx, student_step=student_code)
     if hoisted:
         ref_tail = "\n".join(hoisted) + "\n" + ref_tail
-    res = classify_run(_assemble(problem, header, upto, ref_tail), tests, entry_name=entry)
+    joined = _assemble(problem, header, upto, ref_tail)
+    res = classify_run(joined, tests, entry_name=entry)
     if res.outcome == "pass":
         # ALWAYS, not just when something was hoisted. `hoisted` stays on the
         # event so telemetry can still count how often the ordering difference
@@ -2227,6 +2293,8 @@ def grade_submission(session: dict, student_code: str,
     if _placeholder_only(student_code):
         _trace(trace.record_route, corr, "execution-reference", "incorrect",
                placeholder=True)
+        if res.outcome == "timeout" and not res.failures:
+            res = res.model_copy(update={"failures": _hung_case(problem, joined, tests, entry)})
         shown = failing_cases(problem, tests, res.failures)
         return _ok("incorrect", "execution-reference", _PLACEHOLDER_SAID,
                    "placeholder_only", execution_outcome=res.outcome,
@@ -2296,6 +2364,8 @@ def grade_submission(session: dict, student_code: str,
     #    time. Measured on HW4's live roadmaps: 19 of the 35 wrong steps that
     #    went to the model had a tail like this.
     if not hoisted and not _tail_reads_earlier_names(problem, header, ref_tail):
+        if res.outcome == "timeout" and not res.failures:
+            res = res.model_copy(update={"failures": _hung_case(problem, joined, tests, entry)})
         shown = failing_cases(problem, tests, res.failures)
         _trace(trace.record_route, corr, "execution-reference", "incorrect",
                independent_tail=True)
@@ -2386,6 +2456,18 @@ def grade_submission(session: dict, student_code: str,
                                       "tracing by hand.",
                     "failing_cases": shown,
                     "failed_total": _failed_total(res, len(shown))})
+        # IT NEVER FINISHED (27 Oct, Anuroop on HW4 contains): a step-1 loop
+        # that never moved `current` on hung joined to the rest, a hang leaves no
+        # failure to show, and he was told "could not confirm" twice running.
+        # The case that hangs, and the call it sticks on (_hung_case).
+        if res.outcome == "timeout" and result.tier == "unconfirmed" \
+                and not result.needs_diagnosis and not result.failing_cases \
+                and result.reason_code == "unconfirmed":
+            shown = failing_cases(problem, tests, _hung_case(problem, joined, tests, entry))
+            if shown:
+                result = result.model_copy(update={
+                    "student_reason": _HUNG_ONLY, "failing_cases": shown,
+                    "failed_total": len(shown)})
     return result
 
 
@@ -2400,6 +2482,10 @@ def _crashed_on_a_name(failures) -> bool:
 _EVIDENCE_ONLY = ("We ran your step together with the rest of the solution and the "
                   "finished answer came out wrong on at least one case. We can't be "
                   "certain the fault is in this step, so your attempt was not used")
+_HUNG_ONLY = ("We ran your step together with the rest of the solution and it never "
+              "finished on at least one case - a loop kept going. We can't be certain "
+              "the fault is in this step, so your attempt was not used - but the case "
+              "below is worth tracing by hand.")
 
 
 def _written_ahead(problem, header, chunks, idx, upto, student_code, tests,

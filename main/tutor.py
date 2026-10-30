@@ -858,6 +858,46 @@ def _new_structures(clean: list[dict]) -> set:
     return _structures(turns[-1]) - seen_before
 
 
+# NAMED, NOT MADE (27 Oct, a TA on HW4's Cache.insert, __getitem__, __setitem__).
+# A plan saying "...then call put on that cache list" was answered "You just
+# mentioned a list. What does it start out as?" - about one of the CacheLists
+# the starter already built into every Cache. Nobody is making it, so it starts
+# out as nothing; the TA, three problems running: "My approach never mentioned
+# accessing a list." The question is for a container the student BRINGS IN.
+#
+# So a family the statement already has - in its words, or inside a class name
+# (CacheList reads as "cache list") - is left alone unless the student's own
+# words bring in a new one: "a list", "a new list", "an extra dictionary". A
+# class name spelled out ("cache list", "linked list") is a name, not a family.
+# The tutor itself still asks about state when it is missing; only the canned
+# question steps aside. Words, so free.
+_NEW_ONE = (r"\b(?:a|an|new|another|empty|own|separate|extra|second|temporary|"
+            r"temp|local|fresh)\s+(?:\w+\s+)?(?:{})\b")
+_CAMEL = re.compile(r"\b[A-Z][a-z0-9]+(?:[A-Z][a-z0-9]+)+\b")
+
+
+def _already_there(structs: set, problem: dict, said: str) -> set:
+    """Of `structs`, the families `said` only REFERS to - see above."""
+    stmt = " ".join(str(problem.get(k) or "") for k in ("title", "description"))
+    names = set(_CAMEL.findall(stmt))
+    given = _structures(stmt + " " + " ".join(
+        re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", n) for n in names))
+    # Their spelling of a class name, any spacing: CacheList, cache list, cache_list.
+    for n in names:
+        parts = re.findall(r"[A-Z][a-z0-9]+", n)
+        said = re.sub(r"\b" + r"[\s_-]*".join(parts) + r"s?\b", " ", said, flags=re.I)
+    if "list" in given:
+        said = re.sub(r"\b(?:doubly[\s-]+)?linked[\s-]+lists?\b", " ", said, flags=re.I)
+    out = set()
+    for name in structs:
+        pattern = _STRUCTURE_WORDS[name]
+        if not re.search(r"\b(?:" + pattern + r")\b", said, re.I):
+            out.add(name)               # only ever inside a class name
+        elif name in given and not re.search(_NEW_ONE.format(pattern), said, re.I):
+            out.add(name)
+    return out
+
+
 def _proposed_structures(new_structs: set, clean: list[dict]) -> set:
     """Of the structures _new_structures flagged, which ones the student is
     actually PROPOSING to use - not rejecting.
@@ -1230,6 +1270,12 @@ def reply(problem: dict, history: list[dict],
     if new_structs and (_states_expectation(_last_said)
                         or _states_initial_value(_last_said)):
         new_structs = set()
+    # ...and never about one the problem already has (_already_there). A fault
+    # in it falls back to asking, as before - never a broken turn.
+    try:
+        new_structs -= _already_there(new_structs, problem, _last_said)
+    except Exception:
+        pass
     if new_structs:
         # ONE MORE CHECK before this commits to a canned reply: is the student
         # actually proposing these, or did they just reject one in the same

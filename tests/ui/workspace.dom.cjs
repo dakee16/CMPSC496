@@ -99,12 +99,24 @@ const graph = {nodes:[{id:'n0',kind:'start',label:'Read records'},{id:'n1',kind:
     doc.querySelector('#planUpload').open=false;
     await window.sendToTutor('I will copy the records and update the salaries.');
     await window.inspect('planQueue');
+    // ONE DRAWING PER THING SAID (27 Oct, a TA on HW4 __hash__: "the same plan
+    // in multiple different formats"). The plan was redrawn on Submit and again
+    // after approval with nothing new said, and each redraw came out a little
+    // different. Both submits below say nothing new, so neither may redraw.
+    const drawn=()=>calls.filter(c=>c.route==='/plan_graph').length;
+    const drawnOnce=drawn();
+    assert(drawnOnce>=1,'the reply drew the plan');
     assert(doc.querySelector('#fork'),'The tutor’s alternative-approach choices remain available');
     assert.equal(doc.querySelector('#planSubmitBtn').disabled,false);
     assert.equal(doc.querySelector('#planEmpty').hidden,true);
     await window.submitPlanGraph();
     assert.equal(doc.querySelector('#tabCode').getAttribute('aria-disabled'),'true');
     assert(doc.querySelector('#designMsg').textContent.includes('preserve'));
+    // ...while a NEW thing said is drawn, once.
+    await window.sendToTutor('I keep the earlier records exactly as they were.');
+    await window.inspect('planQueue');
+    assert.equal(drawn(),drawnOnce+1,'a new message redraws the plan');
+    const drawnTwice=drawn();
     approved=true;
     // WHOSE ROADMAP? is asked HERE, once, and nowhere else. It used to be
     // decided inside /decompose_chunks, which start(p) calls the moment a
@@ -113,6 +125,8 @@ const graph = {nodes:[{id:'n0',kind:'start',label:'Read records'},{id:'n1',kind:
     // Approval is the first moment the plan exists and the last moment no code
     // has been written.
     await window.submitPlanGraph(); await tick();
+    await window.inspect('planQueue');
+    assert.equal(drawn(),drawnTwice,'the plan was redrawn with nothing new said');
     assert(calls.some(c=>c.route==='/replan'),'the roadmap is chosen at approval');
     // Nothing was rebuilt, so the session and the steps stand as they were.
     assert(doc.querySelector('#codeOrientation').textContent.includes('unlocked'),
@@ -186,6 +200,13 @@ const graph = {nodes:[{id:'n0',kind:'start',label:'Read records'},{id:'n1',kind:
     assert(doc.querySelector('#msg .failCase summary').textContent.includes('2 of the 5'),
       doc.querySelector('#msg .failCase summary').textContent);
     assert(doc.querySelector('#msg .failMore').textContent.includes('3 more'),'The hidden ones are counted');
+    // WHERE IT WENT WRONG, without opening anything (27 Oct, a TA on HW4 put:
+    // "it doesn't make clear what went wrong"). The first case's result lines
+    // sit above the closed disclosure; the program that produced them stays in it.
+    const key=doc.querySelector('#msg .failKey');
+    assert(key && !key.closest('details'),'the key lines are outside the closed disclosure');
+    assert(key.textContent.includes('expected: {}') && key.textContent.includes('you gave: None'),key&&key.textContent);
+    assert(!key.textContent.includes('employee_update'),'only the result lines, not the whole case');
     assert.equal(value,'    draft = records.copy()');
     verdict='indeterminate';await doc.querySelector('#submit').onclick();
     assert.equal(value,'    draft = records.copy()');
@@ -299,6 +320,11 @@ const graph = {nodes:[{id:'n0',kind:'start',label:'Read records'},{id:'n1',kind:
     comparisonFailure=false;doc.querySelector('#comparisonStatus button').click();await tick();
     assert.equal(doc.querySelector('#dualCard').hidden,false);
     assert.equal(doc.querySelector('#comparisonStatus').textContent,'');
+    // No "% structural match" (27 Oct, a TA on HW4): it counted boxes, not
+    // meaning, and a plan saying exactly what put's code does scored 58%.
+    assert(!/match|%/i.test(doc.querySelector('#dualWrap .graphMeta').textContent),
+      'the plan-vs-code percentage is back');
+    assert(doc.querySelector('#gCode') && doc.querySelector('#gPlan'), 'both charts still drawn');
 
     // Upload approval, unavailable step instructions, retry and a safe restart.
     approved=true;await window.start(problem);

@@ -187,3 +187,106 @@ def test_searching_from_the_other_end_is_not_rejected_for_free(monkeypatch, tmp_
         {"input": [[4, 5, 6], 4], "expected": 0}, {"input": [[4, 5, 6], 9], "expected": -1},
         {"input": [[], 1], "expected": -1}])
     assert r.reason_code != "reference_fail_independent", r
+
+
+# ── WHICH CASE NEVER FINISHED, AND WHERE (27 Oct, a TA on HW4 put) ───────────
+# Step 1 without the "too big" check: the teacher's eviction loop then runs
+# forever on an oversized item, and the student was told only that "a loop in
+# a later part keeps going" - no case, because a run that times out reports no
+# failures. The TA: "it doesn't make clear what went wrong". The case that
+# hangs is found alone, and in a block test, the statement it stops at.
+BIN = '''"""Bins"""
+
+
+class Bin:
+    """
+        >>> b = Bin(10)
+        >>> b.add(4)
+        'ADDED 4'
+    """
+    # --- steps: add ---
+    def __init__(self, cap):
+        self.cap = cap
+        self.items = []
+
+    def free(self):
+        return self.cap - sum(self.items)
+
+    def evict(self):
+        if self.items:
+            self.items.pop(0)
+
+    def add(self, size):
+        """Add an item of `size`, evicting the oldest until it fits; 'TOO BIG'
+        when it could never fit."""
+        if size > self.cap:
+            return 'TOO BIG'
+        while self.free() < size:
+            self.evict()
+        self.items.append(size)
+        return 'ADDED ' + str(size)
+'''
+BIN_STEPS = ["if size > self.cap:\n    return 'TOO BIG'",
+             "while self.free() < size:\n    self.evict()\nself.items.append(size)\nreturn 'ADDED ' + str(size)"]
+BIN_TESTS = [
+    {"input": ["b = Bin(10)\nb.add(4)\nb.add(5)"], "expected": [None, "ADDED 4", "ADDED 5"]},
+    {"input": ["b = Bin(10)\nb.add(4)\nb.add(5)\nb.add(11)\nb.add(3)"],
+     "expected": [None, "ADDED 4", "ADDED 5", "TOO BIG", "ADDED 3"]},
+]
+
+
+def test_a_step_that_makes_a_later_loop_hang_is_shown_the_case_and_the_call(monkeypatch, tmp_path):
+    from main import grading, identity, ollama_client, sessions
+    from main.assignments import parse_assignment_file
+    monkeypatch.setenv("MICROTUTOR_SESSION_DB", str(tmp_path / "s.sqlite3"))
+    monkeypatch.setenv("MICROTUTOR_TRACE_FILE", str(tmp_path / "t.jsonl"))
+    monkeypatch.setattr(identity, "_RESOLVED_PATH", str(tmp_path / "r.json"))
+    monkeypatch.setattr(ollama_client, "_openai_chat",
+                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("no model")))
+    problem = parse_assignment_file(BIN, "bin.py")["problems"][0]
+    decomp = {"header": "def add(self, size):", "chunks": [
+        types.SimpleNamespace(step_id=f"Part {i + 1}", expected_type="code", prompt="p",
+                              reference=r) for i, r in enumerate(BIN_STEPS)]}
+    sid = sessions.create_session(dict(problem), decomp, "h-bin", student_id="stu")["session_id"]
+    grading._VERDICT_MEMO.clear()
+    r = grading.grade_submission(sessions.load_session(sid), "if size < 0:\n    return 'TOO BIG'",
+                                 oracle_loader=lambda p: list(BIN_TESTS))
+    assert (r.verdict, r.deterministic) == ("incorrect", True), r
+    assert "never stops" in r.student_reason, r.student_reason
+    (case,) = r.failing_cases
+    assert "b.add(11)" in case and "never finished" in case, case
+    # The call it got stuck on, not just the whole case.
+    assert "stuck at b.add(11)" in case, case
+
+
+def test_a_step_whose_loop_never_moves_on_is_shown_the_case(monkeypatch, tmp_path):
+    """Anuroop, HW4 contains (27 Oct): step 1 written ahead as a `while` loop
+    that never moved `current` on. The rest of the solution reads `current`, so
+    no free verdict - and joined to it the program hung, which leaves no failure
+    to show. Twice in a row he was told only "We could not confirm this step".
+    Evidence, not a verdict: the attempt is still not used."""
+    from main import grading, identity, ollama_client, sessions
+    monkeypatch.setenv("MICROTUTOR_SESSION_DB", str(tmp_path / "s.sqlite3"))
+    monkeypatch.setenv("MICROTUTOR_TRACE_FILE", str(tmp_path / "t.jsonl"))
+    monkeypatch.setattr(identity, "_RESOLVED_PATH", str(tmp_path / "r.json"))
+    monkeypatch.setattr(ollama_client, "_openai_chat",
+                        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("no model")))
+    monkeypatch.setattr(grading, "_request_adaptation", lambda *a, **k: ("", []))
+    monkeypatch.setattr(grading, "_request_completion", lambda *a, **k: "")
+    monkeypatch.setattr(grading, "_with_diagnosis", lambda result, *a, **k: result)
+    problem = {"slug": "find", "title": "Find", "solution": FIND, "entry_hint": "find",
+               "description": "Where target first sits in items, or -1."}
+    decomp = {"header": "def find(items, target):", "chunks": [
+        types.SimpleNamespace(step_id=f"Part {i + 1}", expected_type="code", prompt="p",
+                              reference=r) for i, r in enumerate(FIND_STEPS)]}
+    sid = sessions.create_session(dict(problem), decomp, "h-find", student_id="stu")["session_id"]
+    grading._VERDICT_MEMO.clear()
+    r = grading.grade_submission(
+        sessions.load_session(sid),
+        "i = 0\nwhile i < len(items):\n    if items[i] == target:\n        return i",
+        oracle_loader=lambda p: [{"input": [[4], 4], "expected": 0},
+                                 {"input": [[1, 2, 3], 3], "expected": 2}])
+    assert (r.verdict, r.consume_attempt) == ("indeterminate", False), r
+    assert "never finished" in r.student_reason, r.student_reason
+    (case,) = r.failing_cases
+    assert "find([1, 2, 3], 3)" in case and "never finished" in case, case

@@ -316,6 +316,11 @@ let designFileRef = null;
 // refresh because it belongs to a STUDENT and there is nobody to key it to yet
 // - see main/archive.py for where it goes once PSU login is live.
 let planGraph = null, planSeen = new Set();
+// The student's own words the drawing on screen was made from. Same words,
+// same drawing: no new request (27 Oct, a TA on HW4 __hash__ saw "the same
+// plan in multiple different formats" - Submit and approval each redrew it
+// with nothing new said, and each redraw came out a little different).
+let planSaid = "";
 // Refreshes run one at a time, in order, and NONE IS EVER DROPPED.
 //
 // This was a plain `planBusy` flag with `if (planBusy) return;`, which threw
@@ -380,6 +385,12 @@ async function drawPlanGraph(){
   // student was approved on - and the later the conversation goes, the less it
   // is about the plan at all, so the redraw gets worse as it gets less welcome.
   if (planFrozen || !openProblem) return;
+  // Button presses are not words: the server leaves the same two out
+  // (design_review._MARKERS).
+  const said=JSON.stringify(chatLog.concat(designLog)
+    .filter(m=>m.role==="user"&&!/^\[submitted (a design|the plan from my chat)\]$/.test(m.content))
+    .map(m=>m.content));
+  if (planGraph?.nodes?.length && said===planSaid) return;
   const drawing=workspaceEpoch;planUpdating=true;workspaceSync();
   if(!planGraph?.nodes?.length)renderGraphLoading($("planLive"),"Building your working plan…");
   try {
@@ -394,6 +405,7 @@ async function drawPlanGraph(){
     if(drawing!==workspaceEpoch||planFrozen)return;
     if (g && g.nodes && g.nodes.length){
       planGraph = g;
+      planSaid = said;
       paintPlan(g);
     }
   } catch(e){
@@ -1240,6 +1252,7 @@ async function start(p){
   tutorReleased = false;
   designLog = [];
   planGraph = null;
+  planSaid = "";
   planSeen = new Set();
   planFrozen = false;
   planNudged = false;
@@ -2170,7 +2183,14 @@ function failingCasesHTML(res){
   const head = hidden > 0
     ? `Show ${cases.length} of the ${total} ${noun(total)} it failed`
     : `Show the ${total > 1 ? total + " " : ""}${noun(total)} it failed`;
-  return `<details class="failCase">
+  // WHERE IT WENT WRONG, in sight (27 Oct, a TA on HW4 put: "it doesn't make
+  // clear what went wrong" - the case sat in the closed disclosure). The last
+  // paragraph of the first case is its result: "they first differ at ...",
+  // "got stuck at ...", or expected/you gave. The program stays below.
+  const parts = String(cases[0]).split("\n\n");
+  const key = parts.length > 1 ? parts[parts.length - 1].trim() : "";
+  return `${key ? `<pre class="code failKey">${esc(key)}</pre>` : ""}
+    <details class="failCase">
       <summary>${esc(head)}</summary>
       ${cases.map(c => `<pre class="code">${esc(c)}</pre>`).join("")}
       ${hidden > 0 ? `<p class="failMore">${esc(
