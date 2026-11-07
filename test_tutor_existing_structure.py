@@ -34,6 +34,9 @@ GETITEM = ("Retrieve a node by content id from the correct level of a Cache. "
            "Select self.hierarchy[hash(content)]. Use that CacheList's membership "
            "operation to find content.cid.")
 
+CONTAINS = ("Search an initialized CacheList for an integer content id. Return True "
+            "if a node with value.cid == cid exists, and move that same node to the front.")
+
 
 @pytest.fixture
 def chat(monkeypatch, tmp_path):
@@ -61,7 +64,8 @@ def chat(monkeypatch, tmp_path):
     register(c, "stu@psu.edu")
     for slug, title, text in (("cache-insert", "insert", INSERT),
                               ("cache-getitem", "__getitem__", GETITEM),
-                              ("frequency", "Frequency", "Count letters.")):
+                              ("frequency", "Frequency", "Count letters."),
+                              ("cache-list-contains", "__contains__", CONTAINS)):
         sb.problems.append({"slug": slug, "title": title, "description": text})
 
     def say(slug, said):
@@ -95,3 +99,22 @@ def test_a_list_the_problem_already_has_is_not_asked_about(chat, said, slug):
 def test_a_container_they_bring_in_is_still_asked_about(chat, slug, said, word):
     reply = chat.say(slug, said)
     assert reply == f"You just mentioned a {word}. {CANNED}", reply
+
+
+# "SET" THE VERB, SAID THE LONG WAY (6 Nov, the class on contains). "set the
+# node's .previous and .next to none" was asked "You just mentioned a set. What
+# does it start out as?" - twice. The verb check looked for "to" within three
+# words of "set"; students name what they set at more length than that.
+@pytest.mark.parametrize("said", [
+    "you want to set .previous of the node to None for starters",
+    "when you find the matching node, set the node's .previous and .next to none",
+    "then I set current.next = self.head and move on",
+])
+def test_set_the_verb_is_not_asked_about(chat, said):
+    reply = chat.say("cache-list-contains", said)
+    assert CANNED not in reply, reply
+
+
+def test_a_real_set_is_still_asked_about(chat):
+    reply = chat.say("cache-list-contains", "I'll keep a set of the ids I have seen")
+    assert reply == f"You just mentioned a set. {CANNED}", reply

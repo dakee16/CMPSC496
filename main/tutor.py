@@ -448,7 +448,9 @@ _STRUCTURE_WORDS = {
 # and a plan-graph label with NO determiner at all ("Loop through set") still
 # needs to match, which is why the exclusion requires "to" nearby rather than
 # requiring a determiner outright.
-_SET_AS_VERB = re.compile(r"\bsets?\b(?:\s+\S+){0,3}?\s+\bto\b", re.I)
+# Six words, not three (6 Nov, the class on contains): "set the node's
+# .previous and .next to none" was asked what its set starts out as, twice.
+_SET_AS_VERB = re.compile(r"\bsets?\b(?:\s+\S+){0,6}?\s+\bto\b", re.I)
 # The same verb in ASSIGNMENT form, which the "to" pattern above cannot reach.
 # "I will loop over d.items(), set result[value] = key" answered an ordinary
 # dictionary plan with "You just mentioned a set. What does it start out as?" -

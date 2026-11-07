@@ -290,3 +290,39 @@ def test_a_step_whose_loop_never_moves_on_is_shown_the_case(monkeypatch, tmp_pat
     assert "never finished" in r.student_reason, r.student_reason
     (case,) = r.failing_cases
     assert "find([1, 2, 3], 3)" in case and "never finished" in case, case
+
+
+def test_a_run_that_times_out_shows_the_first_case_that_goes_wrong(monkeypatch, tmp_path):
+    """Class, HW4 mruEvict (6 Nov): joined to the rest the step timed out on
+    one of 34 cases - past the first 12, the only ones searched for a hang -
+    while 8 of those 12 already came out WRONG on their own. Those were thrown
+    away and the student was told only "We could not confirm this step", four
+    times. The first case that goes wrong at all is shown, worded as what it
+    is: a wrong answer here, not a hang."""
+    from main import grading, identity, ollama_client, sessions
+    monkeypatch.setenv("MICROTUTOR_SESSION_DB", str(tmp_path / "s.sqlite3"))
+    monkeypatch.setenv("MICROTUTOR_TRACE_FILE", str(tmp_path / "t.jsonl"))
+    monkeypatch.setattr(identity, "_RESOLVED_PATH", str(tmp_path / "r.json"))
+    monkeypatch.setattr(ollama_client, "_openai_chat",
+                        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("no model")))
+    monkeypatch.setattr(grading, "_request_adaptation", lambda *a, **k: ("", []))
+    monkeypatch.setattr(grading, "_request_completion", lambda *a, **k: "")
+    monkeypatch.setattr(grading, "_with_diagnosis", lambda result, *a, **k: result)
+    problem = {"slug": "find", "title": "Find", "solution": FIND, "entry_hint": "find",
+               "description": "Where target first sits in items, or -1."}
+    decomp = {"header": "def find(items, target):", "chunks": [
+        types.SimpleNamespace(step_id=f"Part {i + 1}", expected_type="code", prompt="p",
+                              reference=r) for i, r in enumerate(FIND_STEPS)]}
+    sid = sessions.create_session(dict(problem), decomp, "h-find2", student_id="stu")["session_id"]
+    grading._VERDICT_MEMO.clear()
+    fine = [{"input": [[1, 2, 3], t], "expected": [1, 2, 3].index(t) if t in (1, 2, 3) else -1}
+            for t in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13)]          # 13 that pass
+    r = grading.grade_submission(
+        sessions.load_session(sid),
+        "i = 0\nif target == 99:\n    while True:\n        pass\nif target == 50:\n    return 7",
+        oracle_loader=lambda p: fine + [{"input": [[1, 2], 50], "expected": -1},
+                                        {"input": [[1], 99], "expected": -1}])
+    assert (r.verdict, r.consume_attempt) == ("indeterminate", False), r
+    assert "came out wrong" in r.student_reason, r.student_reason
+    (case,) = r.failing_cases
+    assert "find([1, 2], 50)" in case and "expected: -1" in case and "you gave: 7" in case, case

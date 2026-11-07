@@ -673,20 +673,32 @@ def failing_cases(problem: dict, tests: list, failures: list,
 # wrong. So the cases are tried one at a time to find the one that hangs, and
 # then its calls (a block's statements, or a call list) a prefix at a time to
 # find the one it gets stuck on - `lst.put(ContentItem(3, 101, ...))` names the
-# missing check by itself. Bounded like bridge.renamed_failure; a lone case
-# gets a shorter limit: one of HW4 put's takes about 40ms to finish.
-_HUNG_TRIED = 12
+# missing check by itself. A lone case gets a shorter limit: one of HW4 put's
+# takes about 40ms to finish.
+#
+# EVERY CASE, NOT THE FIRST 12 (6 Nov, the class on mruEvict): its step timed
+# out on one of 34 cases, past the 12 that were searched, so nothing was shown -
+# while 8 of those 12 had come out WRONG on their own. `any_failure` keeps the
+# first case that goes wrong at all; a passing case costs ~40ms, so all 34 are
+# under 2 seconds, and the search stops at the first failure.
+_HUNG_TRIED = 60
 _HUNG_TIMEOUT = 2.0
 
 
-def _hung_case(problem: dict, program: str, tests: list, entry) -> list:
+def _hung_case(problem: dict, program: str, tests: list, entry,
+               any_failure: bool = False) -> list:
     """[failure] for the first test that never finishes on its own, with
-    `stuck` - the call it got stuck on - when that can be found; else []."""
+    `stuck` - the call it got stuck on - when that can be found; else [].
+    `any_failure`: the first test that fails on its own in any way - wrong,
+    crashed or stuck - as the sandbox reported it."""
     from .context import is_method
     try:
         for i, t in enumerate((tests or [])[:_HUNG_TRIED]):
-            if classify_run(program, [t], entry_name=entry,
-                            timeout=_HUNG_TIMEOUT).outcome != "timeout":
+            one_run = classify_run(program, [t], entry_name=entry, timeout=_HUNG_TIMEOUT)
+            if any_failure and one_run.outcome in ("wrong_output", "runtime_error") \
+                    and one_run.failures:
+                return [{**one_run.failures[0], "index": i}]
+            if one_run.outcome != "timeout":
                 continue
             hung = {"index": i, "timeout": True}
             inp, exp = t.get("input") or [], t.get("expected")
@@ -2463,11 +2475,13 @@ def grade_submission(session: dict, student_code: str,
         if res.outcome == "timeout" and result.tier == "unconfirmed" \
                 and not result.needs_diagnosis and not result.failing_cases \
                 and result.reason_code == "unconfirmed":
-            shown = failing_cases(problem, tests, _hung_case(problem, joined, tests, entry))
+            first = _hung_case(problem, joined, tests, entry, any_failure=True)
+            shown = failing_cases(problem, tests, first)
             if shown:
                 result = result.model_copy(update={
-                    "student_reason": _HUNG_ONLY, "failing_cases": shown,
-                    "failed_total": len(shown)})
+                    "student_reason": _HUNG_ONLY if first[0].get("timeout") else
+                    _EVIDENCE_ONLY + " - but the case below is worth tracing by hand.",
+                    "failing_cases": shown, "failed_total": len(shown)})
     return result
 
 
