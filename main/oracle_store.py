@@ -13,7 +13,7 @@ absent oracle must never be silently accepted as a basis for a verdict.
 import json
 import os
 
-from . import pyvalue
+from . import docstore, pyvalue
 
 # Backend data location. Overridable for local development.
 DEFAULT_ORACLE_PATH = os.path.join(
@@ -115,6 +115,7 @@ class OracleUnusableError(RuntimeError):
 # before, so every existing cache file loads unchanged and no problem needs
 # re-preparing.
 _TESTS_SRC = "final_tests_src"
+_NS = "oracle"                      # this store's namespace in main/docstore.py
 
 
 def _encode_entry(entry):
@@ -141,6 +142,8 @@ def _decode_entry(entry):
 
 
 def load_cache() -> dict:
+    if docstore.enabled():
+        return {k: _decode_entry(v) for k, v in docstore.load_all(_NS).items()}
     path = cache_path()
     if os.path.exists(path):
         try:
@@ -153,6 +156,12 @@ def load_cache() -> dict:
 
 def save_cache(cache: dict) -> None:
     """Authoring-side only. Never called from a grading request."""
+    if docstore.enabled():
+        try:
+            docstore.save_all(_NS, {k: _encode_entry(v) for k, v in cache.items()})
+        except Exception as e:
+            print(f"  ⚠️  Could not save oracle cache: {e}")
+        return
     path = cache_path()
     # WRITTEN WHOLE OR NOT AT ALL (9 Oct). It was dumped straight into the live
     # file, so a restart mid-write - a deploy during an upload - could leave
@@ -173,6 +182,14 @@ def save_cache(cache: dict) -> None:
         except OSError:
             pass
         print(f"  ⚠️  Could not save oracle cache: {e}")
+
+
+def load_entry(key: str):
+    """One problem's entry. On the shared store this reads a single row, which
+    is why the grading path uses it instead of load_cache()."""
+    if docstore.enabled():
+        return _decode_entry(docstore.get(_NS, key))
+    return load_cache().get(key)
 
 
 def entry_tests(entry) -> list[dict]:
@@ -322,7 +339,7 @@ def load_strong_cached_oracle(problem: dict) -> list[dict]:
     never writes."""
     from .identity import content_hash
 
-    entry = load_cache().get(content_hash(problem))
+    entry = load_entry(content_hash(problem))
     slug = problem.get("slug") or problem.get("title") or "<unnamed problem>"
 
     if entry is None:

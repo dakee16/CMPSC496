@@ -29,7 +29,7 @@ from typing import Dict, List, Optional
 import requests
 from dotenv import load_dotenv
 
-from . import account_cap, observability, trace
+from . import account_cap, admission, observability, shared, trace
 
 load_dotenv()
 
@@ -68,6 +68,33 @@ TUTOR_MODEL = os.environ.get("MICROTUTOR_TUTOR_MODEL", "gpt-4o")
 # model. Split from TUTOR_MODEL so the image reviewer can be changed without
 # touching the conversational tutor.
 VISION_MODEL = os.environ.get("MICROTUTOR_VISION_MODEL", "gpt-4o")
+
+# The live plan drawing on the student page (main/graphs.plan_graph). It runs
+# after EVERY tutor turn, and its job is transcription - the student's own
+# sentences into labelled boxes - not judgement, so it does not need the
+# tutor's model. Split from TUTOR_MODEL so it can be cheap; set it back to
+# gpt-4o if the drawings get worse. Nothing gates on it: the plan reviewer
+# reads the student's messages and treats the drawing as a summary.
+PLAN_MODEL = os.environ.get("MICROTUTOR_PLAN_MODEL", "gpt-4o-mini")
+
+# Sent as OpenAI's `prompt_cache_key`, which routes requests that share a
+# prompt prefix to the same cache so the cached-input discount actually lands.
+# The feature that asked is the key: calls from one feature share their system
+# prompt. MICROTUTOR_PROMPT_CACHE_KEY=0 stops sending it.
+_CACHE_KEY = os.environ.get("MICROTUTOR_PROMPT_CACHE_KEY", "1") != "0"
+
+# AN IDENTICAL QUESTION GETS THE REMEMBERED ANSWER. Only for call sites that
+# opt in with memo=True - the deterministic transcriptions and the plan
+# review, where the same plan reviewed twice must get the same verdict anyway
+# (tutor_chat's pre-check and the real gate often send the exact same request
+# seconds apart). Never the tutor's own turn, which is meant to vary. Keyed on
+# the ENTIRE request, so any change at all - one more message, another model -
+# is a new question. In-process is enough: start.sh pins one worker.
+_MEMO: dict = {}
+_MEMO_LIMIT = 512
+_MEMO_TTL = 15 * 60
+# How long a call may queue for a free slot (admission.py) before being refused.
+_LLM_QUEUE_WAIT = 20.0
 
 # WHAT EVERY CALL COSTS, so the server can say what it spent instead of us
 # estimating it after the bill arrives. On 24 Sep 2026 the OpenAI account was
@@ -169,6 +196,9 @@ def _openai_chat(model: str, system: str, messages: List[Dict[str, str]],
     }
     if max_tokens:
         payload["max_completion_tokens"] = int(max_tokens)
+    purpose = _caller()
+    if _CACHE_KEY:
+        payload["prompt_cache_key"] = purpose[:64]
     if fmt == "json":
         payload["response_format"] = {"type": "json_object"}
         # OpenAI rejects json_object mode outright unless the word "json"
@@ -179,7 +209,6 @@ def _openai_chat(model: str, system: str, messages: List[Dict[str, str]],
 
     headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
     last_error: Exception = RuntimeError("No attempts made")
-    purpose = _caller()
     # A capped test account (account_cap.py) is refused here, before anything
     # is sent; everyone else gets None and nothing changes.
     hold = account_cap.reserve(model, payload["messages"], LIST_PRICES.get(model))
@@ -256,6 +285,7 @@ def chat(
     temperature: float = 0.2,
     fmt: Optional[str] = None,
     max_tokens: Optional[int] = None,
+    memo: bool = False,
 ) -> str:
     """Send a system+messages exchange and return the assistant's text.
 
@@ -276,6 +306,17 @@ def chat(
             f"image content routed to Ollama tag {model!r}, which cannot accept "
             f"it; use a vision-capable OpenAI model (MICROTUTOR_VISION_MODEL)")
     backend = "ollama" if _is_ollama_tag(model) else "openai"
+    key = _memo_key(model, system, messages, temperature, fmt, max_tokens) \
+        if memo else None
+    if key is not None:
+        hit = _memo_get(key)
+        if hit is not None:
+            try:
+                trace.record(kind="model_memo_hit", backend=backend,
+                             model=model, purpose=_caller())
+            except Exception:
+                pass
+            return hit
     # Mirrored to Langfuse when configured (main/observability.py); a no-op
     # otherwise. Wraps BOTH backends so a retry storm or an outage shows up as
     # one errored generation, not as silence.
@@ -287,7 +328,47 @@ def chat(
             # `max_tokens` bounds the REPLY. Only passed when set, so every
             # caller and every test double of _openai_chat that predates it is
             # untouched.
-            out = _openai_chat(model, system, messages, temperature, fmt,
-                               **({"max_tokens": max_tokens} if max_tokens else {}))
+            with admission.slot("the model service",
+                                "MICROTUTOR_LLM_MAX_INFLIGHT", _LLM_QUEUE_WAIT):
+                admission.require_rate("the model service", "MICROTUTOR_LLM_RPM")
+                out = _openai_chat(model, system, messages, temperature, fmt,
+                                   **({"max_tokens": max_tokens} if max_tokens else {}))
         gen.output(out)
-        return out
+    if key is not None:
+        _memo_put(key, out)
+    return out
+
+
+def _memo_get(key: str) -> Optional[str]:
+    """The remembered answer: this process first, then the rest of the fleet.
+    A shared miss or a Redis error is only a paid call, never a failure."""
+    hit = _MEMO.get(key)
+    if hit and time.time() - hit[0] < _MEMO_TTL:
+        return hit[1]
+    r = shared.client()
+    if r is None:
+        return None
+    try:
+        return r.get(shared.key("memo", key))
+    except Exception:
+        return None
+
+
+def _memo_put(key: str, out: str) -> None:
+    if len(_MEMO) >= _MEMO_LIMIT:
+        _MEMO.clear()           # cheap bound; correctness never depends on it
+    _MEMO[key] = (time.time(), out)
+    r = shared.client()
+    if r is not None:
+        try:
+            r.setex(shared.key("memo", key), _MEMO_TTL, out)
+        except Exception:
+            pass
+
+
+def _memo_key(model, system, messages, temperature, fmt, max_tokens) -> str:
+    import hashlib
+    import json
+    raw = json.dumps([model, system, messages, temperature, fmt, max_tokens],
+                     sort_keys=True, default=str)
+    return hashlib.sha256(raw.encode()).hexdigest()

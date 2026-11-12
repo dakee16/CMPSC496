@@ -1,0 +1,193 @@
+# The web tier: API + frontend/, any number of replicas. Safe to scale only
+# because DATABASE_URL and REDIS_URL are set (SCALING.md); start.sh refuses
+# WEB_CONCURRENCY > 1 without them.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: acadia-app
+  labels:
+    app.kubernetes.io/name: acadia-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: acadia-app
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: acadia-app
+        # Read by network-policies.yaml: which stores this pod may reach.
+        acadia.io/db-client: "true"
+        acadia.io/redis-client: "true"
+        acadia.io/runner-client: "true"
+      annotations:
+        # A changed secret restarts the pods; deploy.sh fills this in.
+        acadia.io/config-checksum: __CONFIG_SHA__
+    spec:
+      automountServiceAccountToken: false
+      # Teacher uploads stream for minutes (frontend/api_server.py). uvicorn
+      # finishes in-flight requests on SIGTERM; this is how long it may take.
+      terminationGracePeriodSeconds: 900
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: app
+          image: __IMAGE__
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8000
+          # acadia-app = your .env; acadia-generated = DATABASE_URL (test
+          # overlay) and the runner token. Later sources win.
+          envFrom:
+            - secretRef:
+                name: acadia-app
+            - secretRef:
+                name: acadia-generated
+          env:
+            - name: PORT
+              value: "8000"
+            - name: WEB_CONCURRENCY
+              value: "2"
+            - name: MICROTUTOR_THREADS
+              value: "100"
+            - name: REDIS_URL
+              value: redis://acadia-redis:6379/0
+            - name: MICROTUTOR_RUNNER_URL
+              value: http://acadia-runner:8100
+            # Per worker: pods x WEB_CONCURRENCY x DB_POOL_MAX must stay under
+            # Postgres max_connections (200 in the in-cluster database).
+            - name: DB_POOL_MAX
+              value: "5"
+            - name: MICROTUTOR_MAX_RUNS
+              value: "16"
+            - name: MICROTUTOR_LLM_MAX_INFLIGHT
+              value: "50"
+            # start.sh still insists these point at a volume. With the shared
+            # stores on they are mostly unused, so an emptyDir is enough.
+            - name: MICROTUTOR_SESSION_DB
+              value: /data/grading_sessions.sqlite3
+            - name: MICROTUTOR_ORACLE_CACHE
+              value: /data/oracles/tests_cache.json
+            - name: MICROTUTOR_TRANSCRIPTS
+              value: /data/transcripts.json
+            - name: MICROTUTOR_CHUNK_POOL
+              value: /data/chunk_pool.json
+            - name: MICROTUTOR_TRACE_FILE
+              value: /data/model_trace.jsonl
+            - name: MICROTUTOR_ACCOUNT_SPEND
+              value: /data/account_spend.json
+          resources:
+            requests:
+              cpu: 250m
+              memory: 384Mi
+            limits:
+              cpu: "2"
+              memory: 1536Mi
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 5
+            failureThreshold: 36
+          # /ready fails when Postgres or Redis is unreachable, so traffic
+          # stops coming here without the pod being killed.
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          # Lenient on purpose: /health runs on the same thread pool as model
+          # calls, and a busy pod must not be restarted for being busy.
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 5
+          lifecycle:
+            preStop:
+              # Let the ingress drop this pod before it stops accepting.
+              exec:
+                command: ["sleep", "10"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          emptyDir:
+            sizeLimit: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: acadia-app
+spec:
+  selector:
+    app.kubernetes.io/name: acadia-app
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+# CPU only: Python never hands memory back, so a memory target would scale up
+# and never come down.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: acadia-app
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: acadia-app
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+  behavior:
+    scaleUp:
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 60
+    scaleDown:
+      # Not mid-lab: a removed pod waits for its uploads, but nobody wants
+      # the churn.
+      stabilizationWindowSeconds: 600
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 120
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: acadia-app
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: acadia-app

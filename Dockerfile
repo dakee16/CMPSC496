@@ -3,7 +3,7 @@
 # Portable across Render / Railway / Fly: all three build a Dockerfile and
 # inject $PORT. Nothing here is host-specific.
 #
-# ONE WORKER, deliberately - see start.sh.
+# One worker unless the shared stores are configured - see start.sh.
 FROM python:3.13-slim
 
 # Student code runs as a subprocess of this process (main/execution.py). The

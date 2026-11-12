@@ -26,9 +26,12 @@ is nothing left to watch and nothing worth persisting. Both the backlog and the
 number of channels are bounded - an upload of two hundred problems must not be
 able to grow this without limit.
 """
+import json
 import queue
 import threading
 from collections import OrderedDict, deque
+
+from . import shared
 
 # One problem's narration is a few hundred events; mutation testing on a
 # solution with many mutants is the outlier. Far above a normal run, low enough
@@ -37,6 +40,10 @@ MAX_BACKLOG = 5000
 # Roughly ten uploads of twenty problems still being held. Oldest FINISHED
 # channel is evicted first - a live one is never dropped out from under a run.
 MAX_CHANNELS = 200
+# With REDIS_URL set, channels are streams and these replace the channel cap.
+_RUN_TTL = 6 * 60 * 60
+_FINISHED_TTL = 60 * 60
+_POLL_SECONDS = 1.0
 
 _SENTINEL = object()
 _lock = threading.Lock()
@@ -72,10 +79,53 @@ def _evict_locked() -> None:
             return                      # nothing evictable; let it run over
 
 
+def _stream(k: str) -> str:
+    return shared.key("bus", k)
+
+
+def _shared_append(r, k: str, fields: dict, ttl: int) -> None:
+    pipe = r.pipeline()
+    pipe.xadd(_stream(k), fields, maxlen=MAX_BACKLOG, approximate=True)
+    pipe.expire(_stream(k), ttl)
+    pipe.execute()
+
+
+def _subscribe_shared(r, k: str, heartbeat: float):
+    """subscribe() over a Redis stream, so the watcher can be on any worker.
+    Reading from id 0 replays the backlog with no window to lose an event in.
+    Short polls because the shared client has a short socket timeout."""
+    last, idle = "0", 0.0
+    while True:
+        batch = r.xread({_stream(k): last}, block=int(_POLL_SECONDS * 1000), count=500)
+        if not batch:
+            if not r.exists(_stream(k)):
+                return
+            idle += _POLL_SECONDS
+            if idle >= heartbeat:
+                idle = 0.0
+                yield None
+            continue
+        idle = 0.0
+        for entry_id, fields in batch[0][1]:
+            last = entry_id
+            if fields.get("kind") == "end":
+                return
+            if fields.get("kind") == "event":
+                yield json.loads(fields["data"])
+
+
 def open_channel(k: str) -> None:
     """Begin a run. Replaces any previous channel at this address - a re-upload
     is a new run, and replaying the old one's transcript under it would be a
     lie about what is currently happening."""
+    r = shared.client()
+    if r is not None:
+        try:
+            r.delete(_stream(k))
+            _shared_append(r, k, {"kind": "open"}, _RUN_TTL)
+        except Exception as e:
+            print(f"  ⚠️  could not open watch channel: {e!r}"[:160])
+        return
     with _lock:
         _channels[k] = _Channel()
         _channels.move_to_end(k)
@@ -89,6 +139,14 @@ def publish(k: str, event: dict) -> None:
     pipeline, and a broken or slow watcher must not be able to affect the run it
     is watching. A subscriber whose queue cannot take the event loses it rather
     than stalling preparation."""
+    r = shared.client()
+    if r is not None:
+        try:
+            _shared_append(r, k, {"kind": "event",
+                                  "data": json.dumps(event, default=str)}, _RUN_TTL)
+        except Exception:
+            pass
+        return
     with _lock:
         ch = _channels.get(k)
         if ch is None or ch.done:
@@ -104,6 +162,13 @@ def publish(k: str, event: dict) -> None:
 
 def finish(k: str) -> None:
     """Mark the run over and release every subscriber's stream."""
+    r = shared.client()
+    if r is not None:
+        try:
+            _shared_append(r, k, {"kind": "end"}, _FINISHED_TTL)
+        except Exception:
+            pass
+        return
     with _lock:
         ch = _channels.get(k)
         if ch is None:
@@ -118,6 +183,12 @@ def finish(k: str) -> None:
 
 
 def is_open(k: str) -> bool:
+    r = shared.client()
+    if r is not None:
+        try:
+            return bool(r.exists(_stream(k)))
+        except Exception:
+            return False
     with _lock:
         return k in _channels
 
@@ -132,6 +203,13 @@ def subscribe(k: str, heartbeat: float = 15.0):
 
     Ends when the run finishes. An address with no channel ends immediately,
     which is the honest answer to "watch a run that is not happening"."""
+    r = shared.client()
+    if r is not None:
+        try:
+            yield from _subscribe_shared(r, k, heartbeat)
+        except Exception as e:
+            print(f"  ⚠️  watch channel lost: {e!r}"[:160])
+        return
     q: queue.Queue = queue.Queue(maxsize=MAX_BACKLOG)
     with _lock:
         ch = _channels.get(k)

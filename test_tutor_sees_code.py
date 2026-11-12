@@ -8,7 +8,7 @@ be answered by guessing.
 
 REAL: /tutor_chat, the design gate it reads, the session store the accepted
 steps come from, the tutor's prompt assembly. FAKED: Supabase (in memory) and
-the model (it records the system prompt it was sent).
+the model (it records the whole prompt it was sent).
 """
 import json
 import types
@@ -32,7 +32,10 @@ def site(monkeypatch, tmp_path):
     seen = []
 
     def chat(model, system, messages, **_k):
-        seen.append(system)
+        # Everything the model is sent, not only the system prompt: per-turn
+        # context (their code) rides after the history so the prompt caches.
+        seen.append("\n".join([system] + [m["content"] for m in messages
+                                          if isinstance(m.get("content"), str)]))
         return json.dumps({"reply": "Which line hands back the total?", "ready": False})
     monkeypatch.setattr(tutor, "chat", chat)
     c = client()

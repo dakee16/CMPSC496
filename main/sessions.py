@@ -15,6 +15,7 @@ import secrets
 import sqlite3
 from datetime import datetime, timedelta, timezone
 
+from . import pg
 from .indent import base_indent
 
 _DEFAULT_DB = os.path.join(
@@ -72,6 +73,10 @@ def _is_stale(created_at: str) -> bool:
 
 
 def _connect(db_path: str | None = None) -> sqlite3.Connection:
+    # An explicit path always means SQLite: it is how the self-check, the tests
+    # and main/migrate_shared.py name a specific local file.
+    if db_path is None and pg.enabled():
+        return pg.connect()
     path = db_path or os.environ.get("MICROTUTOR_SESSION_DB") or _DEFAULT_DB
     os.makedirs(os.path.dirname(path), exist_ok=True)
     conn = sqlite3.connect(path, timeout=15, isolation_level=None)
@@ -133,6 +138,12 @@ def _connect(db_path: str | None = None) -> sqlite3.Connection:
             created_at    TEXT NOT NULL,
             PRIMARY KEY (session_id, submission_id)
         )""")
+    # Every resume and every file download looks sessions up by student. Without
+    # these each one scans the table, which only went unnoticed while it was small.
+    conn.execute("CREATE INDEX IF NOT EXISTS sessions_student_hash"
+                 " ON sessions (student_id, content_hash)")
+    conn.execute("CREATE INDEX IF NOT EXISTS sessions_student_slug"
+                 " ON sessions (student_id, slug, state)")
     return conn
 
 

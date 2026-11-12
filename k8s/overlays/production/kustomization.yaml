@@ -1,0 +1,34 @@
+# Production: no database in the cluster - DATABASE_URL in k8s/secrets/app.env
+# points at a managed Postgres, ideally behind a transaction-mode pooler - and
+# student code under gVisor. Do not deploy this until every node has runsc
+# installed: a pod asking for a missing runtime never starts.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: acadia
+
+resources:
+  - ../../base
+  - runtimeclass-gvisor.yaml
+
+patches:
+  - target:
+      kind: Deployment
+      name: acadia-runner
+    patch: |-
+      - op: add
+        path: /spec/template/spec/runtimeClassName
+        value: gvisor
+  - target:
+      kind: HorizontalPodAutoscaler
+      name: acadia-app
+    patch: |-
+      - op: replace
+        path: /spec/maxReplicas
+        value: 10
+  - target:
+      kind: HorizontalPodAutoscaler
+      name: acadia-runner
+    patch: |-
+      - op: replace
+        path: /spec/maxReplicas
+        value: 20

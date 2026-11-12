@@ -22,6 +22,15 @@ let lastOfftrackReason = "", offtrackForkCount = 0;
 // (main/tutor.MAX_TURNS * 2), so a long conversation is trimmed on the way out
 // rather than refused on arrival.
 const TUTOR_WINDOW = 60;
+// The window's START moves in steps of this many messages, never one at a
+// time: sliding it every turn changed the first message the model sees, which
+// voids OpenAI's prompt cache for the whole conversation (see main/tutor.py,
+// _window). Between TUTOR_WINDOW - TUTOR_WINDOW_STEP and TUTOR_WINDOW travel.
+const TUTOR_WINDOW_STEP = 20;
+function tutorWindow(log){
+  const over = log.length - TUTOR_WINDOW;
+  return over > 0 ? log.slice(Math.ceil(over / TUTOR_WINDOW_STEP) * TUTOR_WINDOW_STEP) : log.slice();
+}
 // What one message may carry. main/tutor.MAX_MESSAGE_CHARS truncates past this
 // SILENTLY - a student who pasted a long trace had the end of it quietly
 // removed and was answered on the half that survived. Enforced here where it
@@ -2462,7 +2471,7 @@ async function sendToTutor(text, extra = {}){
         // only the last MAX_TURNS turns (main/tutor.reply), so sending more was
         // never doing anything except bringing that wall closer. The full log
         // stays on screen and in the archive; only what travels is trimmed.
-        messages: chatLog.slice(-TUTOR_WINDOW),
+        messages: tutorWindow(chatLog),
         chunk_prompt: chunks[idx] ? chunks[idx].prompt : null,
         // Their code box, so the tutor can see what they are writing; the
         // server adds their accepted steps (api_server.tutor_chat).

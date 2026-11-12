@@ -1,0 +1,66 @@
+# docker-compose.scale.yml - the scaled-out shape, on one host. See SCALING.md.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.scale.yml up -d --build
+#
+# Needs in .env: DATABASE_URL, MICROTUTOR_RUNNER_TOKEN. Beyond one host, run the
+# same three images (app, runner, redis) on your orchestrator instead.
+
+services:
+  app:
+    deploy:
+      replicas: ${APP_REPLICAS:-4}
+    environment:
+      WEB_CONCURRENCY: ${WEB_CONCURRENCY:-2}
+      REDIS_URL: redis://redis:6379/0
+      MICROTUTOR_RUNNER_URL: http://runner:8100
+      MICROTUTOR_THREADS: ${MICROTUTOR_THREADS:-200}
+      # Per worker, so fleet total = replicas x workers x this.
+      MICROTUTOR_MAX_RUNS: ${MICROTUTOR_MAX_RUNS:-64}
+      MICROTUTOR_LLM_MAX_INFLIGHT: ${MICROTUTOR_LLM_MAX_INFLIGHT:-100}
+      # Set below your OpenAI account's limit. Fleet-wide.
+      MICROTUTOR_LLM_RPM: ${MICROTUTOR_LLM_RPM:-5000}
+      DB_POOL_MAX: ${DB_POOL_MAX:-10}
+    networks: [default, runner-net]
+    depends_on: [redis, runner]
+
+  runner:
+    build: .
+    restart: unless-stopped
+    # Explicit environment only and no env_file: student code runs here, so
+    # the app's secrets must never be in this container.
+    environment:
+      MICROTUTOR_RUNNER_TOKEN: ${MICROTUTOR_RUNNER_TOKEN:?set MICROTUTOR_RUNNER_TOKEN in .env}
+      MICROTUTOR_MAX_RUNS: ${RUNNER_MAX_RUNS:-4}
+    command: ["uvicorn", "main.runner_service:app", "--host", "0.0.0.0", "--port", "8100"]
+    user: "1000:1000"
+    read_only: true
+    tmpfs: ["/tmp:size=512m"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 512
+    deploy:
+      replicas: ${RUNNER_REPLICAS:-2}
+    # Install gVisor on the host and uncomment before exposing this publicly.
+    # execution.py is explicit that its harness is not a security boundary.
+    # runtime: runsc
+    networks: [runner-net]
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--maxmemory", "512mb", "--maxmemory-policy", "volatile-ttl", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+
+  caddy:
+    volumes:
+      - ./Caddyfile.scale:/etc/caddy/Caddyfile:ro
+
+networks:
+  # internal: containers on it have no route out, so a student's program cannot
+  # reach the internet, Supabase or OpenAI.
+  runner-net:
+    internal: true
+
+volumes:
+  redis-data:

@@ -18,7 +18,7 @@ from .identity import content_hash, get_resolved_entry
 from .gates import (assert_serveable, check_necessity, check_prompts, roadmap_faults,
                     shape_failures)
 from .prompts import DECOMPOSE_SYSTEM, EVAL_SYSTEM, CHUNK_DECOMPOSE_SYSTEM
-from . import roadmap_score, splitter, step_notes
+from . import docstore, roadmap_score, splitter, step_notes
 
 
 load_dotenv()
@@ -69,8 +69,9 @@ _CHUNK_POOL_PATH = os.environ.get(
 # one built in their own shape (main/reroute) anyway.
 _POOL_TARGET = 3
 # Every pool write is load-modify-save of ONE file shared by every problem, so
-# two unlocked writers keep only the last save. ponytail: in-process lock, which
-# is enough because start.sh pins uvicorn to one worker.
+# two unlocked writers keep only the last save. In-process lock: on the shared
+# store (main/docstore.py) saves merge per problem, so workers cannot erase each
+# other's problems.
 _POOL_LOCK = threading.Lock()
 
 
@@ -507,6 +508,8 @@ def decompose_into_chunks(problem: dict, max_tries: int = 5) -> dict:
 
 
 def _load_pool() -> dict:
+    if docstore.enabled():
+        return docstore.load_all("pool")
     if os.path.exists(_CHUNK_POOL_PATH):
         try:
             return json.load(open(_CHUNK_POOL_PATH))
@@ -524,11 +527,25 @@ def pooled_step_count(problem: dict) -> int:
     pool holds what they WOULD have been served. Never triggers generation:
     an instructor loading a grade sheet must not start minutes of model work.
     Newest entry wins, matching what get_chunk_decomposition would serve."""
-    entries = _load_pool().get(content_hash(problem), [])
+    entries = _pool_entries(content_hash(problem))
     return len(entries[-1].get("chunks", [])) if entries else 0
 
 
+def _pool_entries(key: str) -> list:
+    """One problem's roadmaps, for the paths a student's request runs. On the
+    shared store this is one row rather than every problem's pool."""
+    if docstore.enabled():
+        return docstore.get("pool", key, [])
+    return _load_pool().get(key, [])
+
+
 def _save_pool(pool: dict) -> None:
+    if docstore.enabled():
+        try:
+            docstore.save_all("pool", pool)
+        except Exception as e:
+            print(f"  ⚠️  Could not save chunk pool: {e}")
+        return
     # WRITE, THEN RENAME. Opening the pool for writing empties it, so a failure
     # part way (disk full, a crash) left every problem with no roadmaps - and
     # students are only ever served saved ones. A rename is all or nothing:
@@ -852,7 +869,7 @@ def fill_pool(problem: dict, replace: bool = False) -> int:
 def roadmap_grades(problem: dict) -> list[tuple]:
     """(entry, score) for the problem's saved roadmaps, best first - what the
     review page and the bar in publish.py read."""
-    return _ranked(_reading_saved_tests(problem), _load_pool().get(content_hash(problem), []))
+    return _ranked(_reading_saved_tests(problem), _pool_entries(content_hash(problem)))
 
 
 def get_chunk_decomposition(problem: dict) -> dict:
@@ -863,7 +880,7 @@ def get_chunk_decomposition(problem: dict) -> dict:
     slug = problem.get("slug", "")      # for humans reading the logs only
     key = content_hash(problem)         # pool identity: content, not title
     problem = _reading_saved_tests(problem)
-    entries = _load_pool().get(key, [])
+    entries = _pool_entries(key)
     usable = _usable(problem, entries)
     if not usable:
         raise DecompositionUnavailableError(

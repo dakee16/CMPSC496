@@ -97,10 +97,11 @@ Generate a **fresh** session secret; do not reuse the local one.
 Do **not** set the three `/data` paths here - `docker-compose.yml:19-21` pins
 them, so they cannot be mistyped on a new box.
 
-Do **not** set `DATABASE_URL`, `MICROTUTOR_EXECUTION_BACKEND`, or anything under
-"NOT WIRED UP" in `.env.example`. `main/config.py` is imported by nothing, so
-those change no behaviour and only create a false belief that its production
-checks run.
+Do **not** set `MICROTUTOR_EXECUTION_BACKEND` or anything under "NOT WIRED UP"
+in `.env.example`. `main/config.py` is imported by nothing, so those change no
+behaviour and only create a false belief that its production checks run. Leave
+`DATABASE_URL` and `REDIS_URL` empty on a single box; they switch the app to the
+scaled-out stores described in `SCALING.md`.
 
 ## 5. Start
 
@@ -216,10 +217,8 @@ risky, not after.
 
 ## Operational notes
 
-- **One worker, deliberately** (`start.sh`). `prepare_bus.py`, the per-account
-  brute-force counter (`auth.py:294`) and the trace ring are process-local and
-  wrong with a second worker. Scale up, not out; scaling out means moving those
-  three to Postgres first.
+- **One worker on a single box** (`start.sh`). More workers need the shared
+  stores, and `start.sh` refuses to start without them. See `SCALING.md`.
 - **The app is not published to the host** - `expose`, not `ports`. Publishing
   8000 would serve it on `http://<ip>:8000`, past both TLS and the fence.
 - **Student code runs as non-root.** The container starts as root only to chown

@@ -37,7 +37,7 @@ import re
 import textwrap
 
 from .indent import dedent_block
-from .ollama_client import TUTOR_MODEL, chat
+from .ollama_client import PLAN_MODEL, chat
 
 # The shared vocabulary. Both producers emit only these, which is what lets a
 # prose plan and a parsed AST be diffed against each other at all.
@@ -46,6 +46,7 @@ KINDS = ("start", "step", "branch", "loop", "return", "end")
 MAX_LABEL = 60          # a node box, not a paragraph
 MAX_NODES = 60          # a graph past this is unreadable; stop drawing
 MAX_CHAT_CHARS = 6000   # what the extractor is shown of the conversation
+PLAN_MAX_TOKENS = 4000  # ~ a full MAX_NODES graph; bounds a runaway reply at 1/4 of the 16k max
 
 
 def _empty(source: str) -> dict:
@@ -352,8 +353,11 @@ def plan_graph(problem: dict, messages: list[dict],
         f"{student_said[-MAX_CHAT_CHARS:]}\n\n"
         f"Draw their plan as a flowchart. JSON only.")
     try:
-        raw = chat(TUTOR_MODEL, _PLAN_SYSTEM, [{"role": "user", "content": prompt}],
-                   temperature=0.1, fmt="json")
+        # memo: the page asks again on reopen and after a design upload with
+        # the same words, and the answer to the same words is the same drawing.
+        raw = chat(PLAN_MODEL, _PLAN_SYSTEM, [{"role": "user", "content": prompt}],
+                   temperature=0.1, fmt="json", max_tokens=PLAN_MAX_TOKENS,
+                   memo=True)
         out = _normalise(json.loads(raw), "plan")
     except Exception:
         return current or _empty("plan")
@@ -396,7 +400,7 @@ def graph_from_design(problem: dict, image_bytes: bytes, mime: str) -> dict:
         raw = chat(VISION_MODEL, _PLAN_SYSTEM, [{"role": "user", "content": [
             {"type": "text", "text": text},
             {"type": "image_url", "image_url": {"url": data_url}}]}],
-            temperature=0.1, fmt="json")
+            temperature=0.1, fmt="json", max_tokens=PLAN_MAX_TOKENS)
         # Tagged "design", not "plan", so /plan_graph can tell a drawn plan from
         # a typed one on later turns and not silently replace it.
         return _normalise(json.loads(raw), "design")

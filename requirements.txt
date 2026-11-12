@@ -56,6 +56,10 @@ yarl==1.23.0
 zstandard==0.25.0
 python-multipart==0.0.32
 langfuse==5.0.1
+# Only imported when DATABASE_URL / REDIS_URL are set (SCALING.md).
+psycopg[binary]==3.2.13
+psycopg-pool==3.2.8
+redis==6.4.0
 
 # Microsoft/Entra sign-in (main/psu_auth.py) is ON HOLD, waiting on Azure
 # credentials from PSU IT. The live path is username + password (main/auth.py),

@@ -36,11 +36,14 @@ import hashlib
 import hmac
 import json
 import os
+import secrets
 import time
 from typing import Any, Dict, Optional
 
 import bcrypt
 from dotenv import load_dotenv
+
+from . import shared
 
 load_dotenv()
 
@@ -383,8 +386,10 @@ def register_student(sb, username: str, password: str,
 # account is locking that one account, which is also exactly what we want to
 # happen while they are hammering it.
 #
-# ponytail: per-process dict, so N uvicorn workers means N times the budget.
-# Move the counter into Postgres (or Redis) if this ever runs multi-worker.
+# Kept in Redis when REDIS_URL is set, so the budget is one budget however many
+# workers there are. This dict is the store without Redis, and the fallback if
+# Redis fails: per-process counting is weaker, but locking every student out of
+# sign-in because a cache is down would be worse.
 _failures: Dict[str, list] = {}
 
 # An attacker guessing usernames would otherwise grow this dict forever. The
@@ -395,6 +400,14 @@ _MAX_TRACKED = 10_000
 def _recent_failures(username: str, now: float) -> list:
     """Failure timestamps still inside the window, pruning as it reads. The
     prune is what makes the limit self-healing: nobody has to expire a lock."""
+    r = shared.client()
+    if r is not None:
+        try:
+            name = _failure_key(username)
+            r.zremrangebyscore(name, 0, now - FAIL_WINDOW)
+            return [score for _, score in r.zrange(name, 0, -1, withscores=True)]
+        except Exception as e:
+            print(f"  ⚠️  shared login limiter unavailable: {e!r}"[:160])
     stamps = [t for t in _failures.get(username, ()) if now - t < FAIL_WINDOW]
     if stamps:
         _failures[username] = stamps
@@ -403,7 +416,33 @@ def _recent_failures(username: str, now: float) -> list:
     return stamps
 
 
+def _failure_key(username: str) -> str:
+    return shared.key("login_fail", username)
+
+
+def _clear_failures(username: str) -> None:
+    _failures.pop(username, None)
+    r = shared.client()
+    if r is not None:
+        try:
+            r.delete(_failure_key(username))
+        except Exception as e:
+            print(f"  ⚠️  shared login limiter unavailable: {e!r}"[:160])
+
+
 def _record_failure(username: str, now: float) -> None:
+    r = shared.client()
+    if r is not None:
+        try:
+            name = _failure_key(username)
+            pipe = r.pipeline()
+            # Unique members: two failures in one instant are two failures.
+            pipe.zadd(name, {secrets.token_hex(8): now})
+            pipe.expire(name, int(FAIL_WINDOW) + 1)
+            pipe.execute()
+            return
+        except Exception as e:
+            print(f"  ⚠️  shared login limiter unavailable: {e!r}"[:160])
     if len(_failures) > _MAX_TRACKED:
         for name in [k for k, v in _failures.items()
                      if all(now - t >= FAIL_WINDOW for t in v)]:
@@ -429,7 +468,7 @@ def authenticate(sb, username: str, password: str) -> Dict[str, Any]:
         raise NotAuthorized("This account is not authorized.",
                             detail=f"not on the roster: {username!r}")
     wrong = AuthError("Incorrect username or password.")
-    now = time.monotonic()
+    now = time.time()               # wall clock: compared across machines
 
     stamps = _recent_failures(username, now)
     if len(stamps) >= FAIL_LIMIT:
@@ -456,7 +495,7 @@ def authenticate(sb, username: str, password: str) -> Dict[str, Any]:
 
     # Clear on success, so a student who fumbles a password four times and then
     # gets it right starts the next session with a full budget.
-    _failures.pop(username, None)
+    _clear_failures(username)
     return row
 
 

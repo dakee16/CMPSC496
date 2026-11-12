@@ -1,0 +1,6 @@
+# A Postgres inside the cluster, for a test environment. Production points
+# DATABASE_URL at a managed database (with backups) instead - see KUBERNETES.md.
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+resources:
+  - postgres.yaml

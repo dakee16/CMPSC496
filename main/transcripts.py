@@ -37,6 +37,8 @@ import json
 import os
 import time
 
+from . import docstore
+
 DEFAULT_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     "data", "transcripts.json")
@@ -66,6 +68,8 @@ def key(assignment_id, slug: str) -> str:
 
 
 def _load_all() -> dict:
+    if docstore.enabled():
+        return docstore.load_all("transcripts")
     p = path()
     if os.path.exists(p):
         try:
@@ -77,6 +81,9 @@ def _load_all() -> dict:
 
 
 def _save_all(data: dict) -> None:
+    if docstore.enabled():
+        docstore.save_all("transcripts", data)
+        return
     p = path()
     os.makedirs(os.path.dirname(p), exist_ok=True)
     tmp = p + ".tmp"

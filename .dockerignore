@@ -37,3 +37,7 @@ test_*.py
 # main/run_phase1.py:12 imports research.student_agent at module level, and
 # frontend/api_server.py:23 imports run_phase1 - so dropping it breaks the
 # container at import time, and only in the built image, never locally.
+
+# Kubernetes manifests are not part of the image, and k8s/secrets/ holds the
+# same keys as .env - the reason this file exists at all.
+k8s/

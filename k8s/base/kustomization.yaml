@@ -1,0 +1,19 @@
+# The scaled-out shape of docker-compose.scale.yml, on Kubernetes. See
+# KUBERNETES.md. Never applied on its own: an overlay adds the database and
+# k8s/scripts/deploy.sh fills the __PLACEHOLDERS__.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: acadia
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: acadia
+    includeSelectors: false
+
+resources:
+  - namespace.yaml
+  - app.yaml
+  - runner.yaml
+  - redis.yaml
+  - ingress.yaml
+  - network-policies.yaml

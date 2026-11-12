@@ -43,13 +43,14 @@ if [ ! -e "$MICROTUTOR_ORACLE_CACHE" ] && [ -e data/oracles/tests_cache.json ]; 
     echo "seeded oracle cache from the image -> $MICROTUTOR_ORACLE_CACHE"
 fi
 
-# ONE WORKER, not a tuning oversight. Three stores live in process memory and
-# are wrong the moment a second worker exists:
-#   main/prepare_bus.py  the channel a teacher watches is in THIS process
-#   main/auth.py:294     the brute-force counter; N workers = N x the budget
-#   main/trace.py        the in-memory trace ring
-# Scale by making the instance bigger, or move those three to Postgres first.
-UVICORN="uvicorn frontend.api_server:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1"
+# One worker unless the shared stores exist. Without them the session store,
+# the login limiter and the teacher's live channel are each per-machine or
+# per-process, and wrong the moment a second worker exists. See SCALING.md.
+WORKERS="${WEB_CONCURRENCY:-1}"
+if [ "$WORKERS" -gt 1 ] && { [ -z "$REDIS_URL" ] || [ -z "$DATABASE_URL" ]; }; then
+    fail "WEB_CONCURRENCY=$WORKERS needs both REDIS_URL and DATABASE_URL - see SCALING.md."
+fi
+UVICORN="uvicorn frontend.api_server:app --host 0.0.0.0 --port ${PORT:-8000} --workers $WORKERS"
 
 # Student code runs as a subprocess of this process (main/execution.py), and
 # that module says plainly it is a hardened harness, not a secure sandbox. Not

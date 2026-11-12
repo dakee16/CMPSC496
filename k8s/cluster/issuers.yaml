@@ -1,0 +1,49 @@
+# Certificate issuers, chosen per deploy with TLS_ISSUER (k8s/secrets/deploy.env).
+#
+#   selfsigned           works with no DNS name; the browser warns once.
+#   letsencrypt-staging  real ACME flow, untrusted certificate: test DNS + port 80.
+#   letsencrypt          the real thing, once staging has worked.
+#
+# Port 80 must stay open to the whole internet for Let's Encrypt, exactly as
+# DEPLOY.md says for Caddy. deploy.sh applies the two ACME issuers only when
+# ACME_EMAIL is set.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-staging
+  labels:
+    acadia.io/acme: "true"
+spec:
+  acme:
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+    email: __ACME_EMAIL__
+    privateKeySecretRef:
+      name: letsencrypt-staging-account
+    solvers:
+      - http01:
+          ingress:
+            ingressClassName: traefik
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt
+  labels:
+    acadia.io/acme: "true"
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: __ACME_EMAIL__
+    privateKeySecretRef:
+      name: letsencrypt-account
+    solvers:
+      - http01:
+          ingress:
+            ingressClassName: traefik

@@ -1,0 +1,49 @@
+# Seeds Postgres from the image, once per deploy (deploy.sh). Without it a new
+# database has no oracle tests and every published problem is ungradeable -
+# the same failure start.sh's cache seeding guards on one box.
+#
+# main/migrate_shared.py only fills gaps (ON CONFLICT DO NOTHING), so running
+# it on every deploy is safe, and data imported from Lightsail first wins.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: acadia-migrate
+  labels:
+    app.kubernetes.io/part-of: acadia
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        acadia.io/db-client: "true"
+    spec:
+      restartPolicy: OnFailure
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+      containers:
+        - name: migrate
+          image: __IMAGE__
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-m", "main.migrate_shared", "--sqlite", "/nonexistent/sessions.sqlite3"]
+          envFrom:
+            - secretRef:
+                name: acadia-app
+            - secretRef:
+                name: acadia-generated
+          env:
+            # The oracles that ship in the repo. The pool and transcripts in
+            # the image are dev leftovers, so those point nowhere.
+            - name: MICROTUTOR_ORACLE_CACHE
+              value: /app/data/oracles/tests_cache.json
+            - name: MICROTUTOR_CHUNK_POOL
+              value: /nonexistent/chunk_pool.json
+            - name: MICROTUTOR_TRANSCRIPTS
+              value: /nonexistent/transcripts.json
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]

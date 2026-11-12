@@ -21,6 +21,9 @@ import subprocess
 import sys
 import tempfile
 
+import requests
+
+from . import admission
 from .context import SEQ_ENTRY
 from .pyvalue import SOURCE as _PYVALUE_SRC, dumps as _dumps, loads as _loads
 from .schemas import ExecutionResult
@@ -57,6 +60,12 @@ _MAX_OUTPUT_BYTES = 4 * 1024 * 1024
 _DEFAULT_TIMEOUT = 6.0
 _MEM_BYTES = 512 * 1024 * 1024
 _CPU_SECONDS = 5
+# How long a run may queue for a free slot before being refused. Short: the
+# student is watching, and a retry is free because overload uses no attempt.
+_RUN_QUEUE_WAIT = 5.0
+_runner_http = requests.Session()
+_runner_http.mount("http://", requests.adapters.HTTPAdapter(pool_maxsize=128))
+_runner_http.mount("https://", requests.adapters.HTTPAdapter(pool_maxsize=128))
 
 
 # OUR module-level helpers, spliced into the program next to the student's
@@ -334,6 +343,40 @@ def run_student_code(code: str, inputs: list, entry_name: str | None = None,
     except SyntaxError as e:
         return "syntax", [], f"{e.msg} (line {e.lineno})"
 
+    # Overload is harness_error by design: OUR failure, reported as "could not
+    # check" and never charged to the student as an attempt.
+    try:
+        with admission.slot("the code runner", "MICROTUTOR_MAX_RUNS", _RUN_QUEUE_WAIT):
+            url = os.environ.get("MICROTUTOR_RUNNER_URL", "").strip()
+            if url:
+                return _run_remote(url, code, inputs, entry_name, timeout, tests)
+            return _run_local(code, inputs, entry_name, timeout, tests)
+    except admission.Busy as e:
+        return "harness_error", [], str(e)
+
+
+def _run_remote(url: str, code: str, inputs: list, entry_name: str | None,
+                timeout: float, tests: list | None) -> tuple[str, list, str | None]:
+    """The same run, on main/runner_service.py. Never retried: a run that may
+    have happened is reported as our failure, and the student resubmits."""
+    try:
+        r = _runner_http.post(
+            url.rstrip("/") + "/run",
+            data=_dumps({"code": code, "inputs": inputs, "entry_name": entry_name,
+                         "timeout": timeout, "tests": tests}).encode(),
+            headers={"X-Runner-Token": os.environ.get("MICROTUTOR_RUNNER_TOKEN", ""),
+                     "Content-Type": "text/plain"},
+            timeout=(2.0, timeout + _RUN_QUEUE_WAIT + 5.0))
+        if r.status_code != 200:
+            return "harness_error", [], f"runner answered {r.status_code}"
+        status, results, error = _loads(r.text)
+        return status, results, error
+    except Exception as e:
+        return "harness_error", [], repr(e)[:200]
+
+
+def _run_local(code: str, inputs: list, entry_name: str | None, timeout: float,
+               tests: list | None) -> tuple[str, list, str | None]:
     workdir = tempfile.mkdtemp(prefix="mt_student_")
     payload_path = os.path.join(workdir, "payload.txt")
     try:

@@ -1,0 +1,28 @@
+# Caddyfile.scale - Caddyfile, balancing across every app replica.
+# Used only by docker-compose.scale.yml.
+
+{$MICROTUTOR_DOMAIN} {
+	@campus remote_ip {$MICROTUTOR_ALLOWED_CIDRS}
+
+	handle @campus {
+		reverse_proxy {
+			dynamic a app 8000 {
+				refresh 5s
+			}
+			lb_policy least_conn
+			health_uri /ready
+			health_interval 5s
+			# Keep teacher upload streams flowing as they are written.
+			flush_interval -1
+		}
+	}
+
+	handle {
+		respond "Not available from this network. Connect to the Penn State VPN and reload." 403
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

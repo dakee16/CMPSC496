@@ -378,7 +378,7 @@ def question(problem: dict, chunk: dict, student_code: str,
                            for f in example["student_state"]))
     try:
         raw = chat(TUTOR_MODEL, _SYSTEM, [{"role": "user", "content": payload}],
-                   temperature=0, fmt="json")
+                   temperature=0, fmt="json", max_tokens=400, memo=True)
         msg = str(json.loads(raw).get("message", "")).strip()
     except Exception:
         return _fallback(example)

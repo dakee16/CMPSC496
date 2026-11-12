@@ -25,6 +25,7 @@ import ast
 import json
 import os
 
+from . import docstore
 from .context import _entry_def, is_method, reference_program
 from .ollama_client import OPENAI_MODEL, chat
 
@@ -41,6 +42,10 @@ def _path() -> str:
 
 
 def _load() -> dict:
+    # Shared when DATABASE_URL is set: a teacher's "harmless" marks are state,
+    # not just a cache, and must be seen by every instance (SCALING.md).
+    if docstore.enabled():
+        return docstore.load_all("review_help")
     try:
         with open(_path()) as f:
             return json.load(f)
@@ -49,6 +54,9 @@ def _load() -> dict:
 
 
 def _save(store: dict) -> None:
+    if docstore.enabled():
+        docstore.save_all("review_help", store)
+        return
     path = _path()
     tmp = f"{path}.{os.getpid()}.tmp"
     try:

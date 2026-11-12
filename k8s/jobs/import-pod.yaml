@@ -1,0 +1,30 @@
+# A throwaway pod that copies a Lightsail /data tarball into Postgres. Created
+# and deleted by deploy.sh when IMPORT_DATA is set; never left running.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: acadia-import
+  labels:
+    app.kubernetes.io/part-of: acadia
+    acadia.io/db-client: "true"
+spec:
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+  containers:
+    - name: import
+      image: __IMAGE__
+      imagePullPolicy: IfNotPresent
+      command: ["sleep", "3600"]
+      envFrom:
+        - secretRef:
+            name: acadia-app
+        - secretRef:
+            name: acadia-generated
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]

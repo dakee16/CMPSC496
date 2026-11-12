@@ -1,0 +1,103 @@
+# Grading sessions plus the oracle cache, chunk pool, transcripts and review
+# help (main/pg.py, main/docstore.py). The app creates its own tables.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: acadia-postgres
+  labels:
+    app.kubernetes.io/name: acadia-postgres
+    acadia.io/tier: data
+spec:
+  serviceName: acadia-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: acadia-postgres
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: acadia-postgres
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          # Sized for the app's pools: pods x WEB_CONCURRENCY x DB_POOL_MAX.
+          args: ["-c", "max_connections=200", "-c", "shared_buffers=256MB"]
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              value: acadia
+            - name: POSTGRES_DB
+              value: acadia
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: acadia-postgres
+                  key: POSTGRES_PASSWORD
+            # A subdirectory, because a fresh volume's lost+found makes initdb
+            # refuse the mount point itself.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              memory: 1Gi
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "acadia", "-d", "acadia"]
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "acadia", "-d", "acadia"]
+            periodSeconds: 30
+            failureThreshold: 5
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: acadia-postgres
+  labels:
+    acadia.io/tier: data
+spec:
+  selector:
+    app.kubernetes.io/name: acadia-postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: acadia-postgres-clients
+  labels:
+    acadia.io/tier: data
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: acadia-postgres
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              acadia.io/db-client: "true"
+      ports:
+        - port: 5432
+          protocol: TCP

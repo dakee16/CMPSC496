@@ -1,0 +1,36 @@
+# One test server: Postgres in the cluster, and limits sized for a single
+# 4 vCPU / 8 GB node. Autoscaling still happens, just within that node.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: acadia
+
+resources:
+  - ../../base
+
+components:
+  - ../../components/in-cluster-postgres
+
+patches:
+  - target:
+      kind: HorizontalPodAutoscaler
+      name: acadia-app
+    patch: |-
+      - op: replace
+        path: /spec/maxReplicas
+        value: 4
+  - target:
+      kind: HorizontalPodAutoscaler
+      name: acadia-runner
+    patch: |-
+      - op: replace
+        path: /spec/maxReplicas
+        value: 4
+  - target:
+      kind: Deployment
+      name: acadia-runner
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests
+        value:
+          cpu: 250m
+          memory: 512Mi

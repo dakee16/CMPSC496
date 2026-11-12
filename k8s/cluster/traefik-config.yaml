@@ -1,0 +1,23 @@
+# Overrides for the Traefik that k3s installs. k3s watches this object and
+# redeploys Traefik when it changes; install-server.sh applies it.
+#
+#   externalTrafficPolicy: Local  keeps the student's real IP, which the
+#                                 optional CIDR allowlist matches against
+#                                 (the same check DEPLOY.md asks of Caddy).
+#   readTimeout / writeTimeout    a teacher upload streams its NDJSON for
+#                                 minutes; the defaults would cut it at 60 s.
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: traefik
+  namespace: kube-system
+spec:
+  valuesContent: |-
+    service:
+      spec:
+        externalTrafficPolicy: Local
+    additionalArguments:
+      - "--entryPoints.web.transport.respondingTimeouts.readTimeout=900s"
+      - "--entryPoints.web.transport.respondingTimeouts.writeTimeout=0s"
+      - "--entryPoints.websecure.transport.respondingTimeouts.readTimeout=900s"
+      - "--entryPoints.websecure.transport.respondingTimeouts.writeTimeout=0s"

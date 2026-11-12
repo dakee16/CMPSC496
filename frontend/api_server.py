@@ -4,8 +4,10 @@ Place this file in your microprog_phase1/ folder and run:
     pip install fastapi uvicorn
     uvicorn api_server:app --port 8000 --reload
 """
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
+import anyio.to_thread
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -24,7 +26,20 @@ load_dotenv()
 from main import auth as auth_mod
 from main.run_phase1 import get_chunk_decomposition
 
-app = FastAPI(title="MicroTutor API", version="1.0")
+
+
+@asynccontextmanager
+async def _lifespan(_app):
+    # Every plain `def` route runs on this thread pool, and most of their time
+    # is spent waiting on a model or the runner. AnyIO's default of 40 would
+    # cap each worker at 40 requests in flight regardless of its CPU.
+    threads = int(os.environ.get("MICROTUTOR_THREADS") or 0)
+    if threads:
+        anyio.to_thread.current_default_thread_limiter().total_tokens = threads
+    yield
+
+
+app = FastAPI(title="MicroTutor API", version="1.0", lifespan=_lifespan)
 
 # Say the roster out loud at startup. A sign-in gate that is silently OFF is
 # the worst way for this to be wrong - it was, for exactly one afternoon,
@@ -373,6 +388,26 @@ class LiveRunRequest(BaseModel):
 @app.get("/health")
 def health():
     return {"status": "ok", "message": "MicroTutor API running"}
+
+
+@app.get("/ready")
+def ready():
+    """Can this instance serve traffic? /health only says the process is up;
+    a load balancer should stop routing here if a shared store is unreachable."""
+    from main import pg, shared
+    try:
+        if pg.enabled():
+            conn = pg.connect()
+            try:
+                conn.execute("SELECT 1")
+            finally:
+                conn.close()
+        if shared.client() is not None:
+            shared.client().ping()
+    except Exception as e:
+        print(f"  ⚠️  not ready: {e!r}"[:200])
+        return JSONResponse(status_code=503, content={"status": "unavailable"})
+    return {"status": "ok"}
 
 
 # NOTE: POST /decompose (the older step-based flow) was removed. It had zero
@@ -3919,7 +3954,9 @@ app.include_router(student_progress_router(get_supabase, require_student))
 class RevalidatedFiles(StaticFiles):
     def file_response(self, *args, **kwargs):
         response = super().file_response(*args, **kwargs)
-        response.headers.setdefault("Cache-Control", "no-cache")
+        # A CDN in front needs a real lifetime to absorb page loads.
+        response.headers.setdefault(
+            "Cache-Control", os.environ.get("MICROTUTOR_STATIC_CACHE") or "no-cache")
         return response
 
 

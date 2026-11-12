@@ -1,0 +1,39 @@
+# TLS and routing, replacing Caddy. Written for Traefik, the ingress k3s ships
+# with; k8s/cluster/traefik-config.yaml sets its timeouts for teacher uploads.
+# The allowlist middleware (Caddy's MICROTUTOR_ALLOWED_CIDRS) is added by
+# deploy.sh only when that variable is set.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: acadia
+  annotations:
+    cert-manager.io/cluster-issuer: __TLS_ISSUER__
+    traefik.ingress.kubernetes.io/router.middlewares: acadia-acadia-https@kubernetescrd
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - __HOST__
+      secretName: acadia-tls
+  rules:
+    - host: __HOST__
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: acadia-app
+                port:
+                  name: http
+---
+# Plain http goes to https. A no-op on a request that is already https, so it
+# can sit on the one router that serves both.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: acadia-https
+spec:
+  redirectScheme:
+    scheme: https
+    permanent: true

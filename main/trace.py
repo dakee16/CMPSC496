@@ -10,11 +10,14 @@ model yields cost=None rather than a fabricated number.
 import json
 import logging
 import os
+import sys
 import threading
 import time
 from collections import deque
 from logging.handlers import RotatingFileHandler
 from contextlib import contextmanager
+
+from . import shared
 
 _LOCK = threading.Lock()
 # Bounded: a server that stays up for a term makes millions of model calls,
@@ -71,6 +74,14 @@ def _file_sink() -> bool:
     path = os.environ.get("MICROTUTOR_TRACE_FILE")
     if not path:
         return False
+    if not _ATTACHED and shared.client() is not None:
+        # REDIS_URL means several processes (start.sh), and RotatingFileHandler
+        # is only safe with one. Whole lines on stdout are safe with many, and
+        # the platform's log pipeline collects them across machines.
+        handler = logging.StreamHandler(sys.stdout)
+        handler.setFormatter(logging.Formatter("%(message)s"))
+        _LOG.addHandler(handler)
+        _ATTACHED = True
     if not _ATTACHED:
         directory = os.path.dirname(os.path.abspath(path))
         if directory:

@@ -31,6 +31,8 @@ import sys
 import threading
 from contextvars import ContextVar
 
+from . import shared
+
 # Who the current request is for. Set per request by api_server, only while
 # some account is capped; None everywhere else (teacher uploads run in their
 # own threads and are never capped).
@@ -39,7 +41,7 @@ ACCOUNT: ContextVar[str | None] = ContextVar("acadia_account", default=None)
 _CHARS_PER_TOKEN = 4
 _REPLY_TOKENS = 1000        # the reservation for the reply: ~1c on gpt-4o
 _IMAGE_TOKENS = 1500        # a design picture, high detail, rounded up
-_LOCK = threading.Lock()    # one worker (start.sh), so a thread lock is enough
+_LOCK = threading.Lock()    # guards the file; Redis does this across workers
 _PARSED: dict = {}
 
 
@@ -70,7 +72,14 @@ def _path() -> str:
     return os.environ.get("MICROTUTOR_ACCOUNT_SPEND", "data/account_spend.json")
 
 
+def _spend_key() -> str:
+    return shared.key("account_spend")
+
+
 def spent() -> dict[str, float]:
+    r = shared.client()
+    if r is not None:
+        return {k: float(v) for k, v in r.hgetall(_spend_key()).items()}
     try:
         with open(_path(), encoding="utf-8") as f:
             return json.load(f)
@@ -112,6 +121,21 @@ def reserve(model: str, messages: list, price: tuple | None):
         raise CapReached(f"{who}: no price known for {model!r}, so it cannot be capped")
     pin, pout = price[0] / 1e6, price[1] / 1e6
     guess = _prompt_tokens(messages) * pin + _REPLY_TOKENS * pout
+    r = shared.client()
+    if r is not None:
+        # Added first and checked after, so concurrent calls from different
+        # workers cannot all see room for themselves. If Redis cannot answer,
+        # refuse: a cap that cannot count is not a cap.
+        try:
+            total = float(r.hincrbyfloat(_spend_key(), who, guess))
+            if total > cap:
+                r.hincrbyfloat(_spend_key(), who, -guess)
+        except Exception as e:
+            raise CapReached(f"{who}: spend store unavailable ({e!r})") from e
+        if total > cap:
+            raise CapReached(f"{who} has used ${total - guess:.2f} of its "
+                             f"${cap:.2f} model budget")
+        return who, guess, pin, pout
     with _LOCK:
         totals = spent()
         if totals.get(who, 0.0) + guess > cap:
@@ -131,6 +155,13 @@ def settle(hold, usage: dict | None) -> None:
         actual = usage["prompt_tokens"] * pin + usage["completion_tokens"] * pout
     except (TypeError, KeyError):
         return                          # no usage to read: the estimate stands
+    r = shared.client()
+    if r is not None:
+        try:
+            r.hincrbyfloat(_spend_key(), who, actual - guess)
+        except Exception as e:          # the estimate stands
+            print(f"  ⚠️  could not settle spend for {who}: {e!r}"[:160])
+        return
     with _LOCK:
         totals = spent()
         totals[who] = max(0.0, totals.get(who, 0.0) - guess + actual)
