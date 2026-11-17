@@ -420,13 +420,12 @@ function renderGraph(el, graph, emptyText, opts = {}){
  * `payload` is exactly the body of POST /graphs. */
 function renderDual(el, payload){
   if (!el) return;
-  const sim = payload.comparison && typeof payload.comparison.similarity === "number"
-    ? Math.round(payload.comparison.similarity * 100) : null;
+  // No "% structural match" pill (27 Oct, a TA on HW4). It counted boxes by
+  // kind, not what they say: a plan stating exactly what put's code does
+  // scored 58% in amber. The two charts side by side are the comparison.
   el.innerHTML =
     `<div class="graphMeta">
        ${gLegend()}
-       ${sim === null ? "" : `<span class="pill ${
-          sim >= 70 ? "ok" : sim >= 40 ? "warn" : "bad"}">${sim}% structural match</span>`}
      </div>
      <div class="graphPair">
        <div class="graphBox">

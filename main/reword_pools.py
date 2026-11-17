@@ -1,6 +1,9 @@
 """reword_pools.py - ONE-OFF: new wording for saved steps that start the loop
-the next step carries on inside, but are not worded that way (gates.opens_unsaid).
-The code of every step stays exactly as is.
+the next step carries on inside, but are not worded that way (gates.opens_unsaid)
+- and, since 18 Oct, the reverse: set-up steps worded as starting it
+(gates.claims_unstarted, HW4 __contains__), and steps that return their
+answer worded as keeping it (gates.keeps_what_it_returns, HW4 __getitem__). The code of every step stays
+exactly as is.
 
 THE MEASUREMENT (server, 30 Sep). prompts.SPLIT_PROMPTS_SYSTEM quoted one
 example setup step - "Write code that gets everything ready to work through the
@@ -35,7 +38,8 @@ import sys
 import textwrap
 
 from . import grading, splitter
-from .gates import assert_serveable, check_prompts, opens_unsaid
+from .gates import (assert_serveable, check_prompts, claims_unstarted,
+                    keeps_what_it_returns, opens_unsaid)
 from .identity import content_hash
 from .run_phase1 import (_add_to_pool, _deserialize, _load_pool,
                          _reading_saved_tests, _sb, _answerable as _usable)
@@ -60,11 +64,15 @@ def _ready_problems() -> dict:
 
 
 def _unsaid(entry: dict) -> list[int]:
-    """Steps that start the loop the next step continues, without saying so.
-    Found by SHAPE, not by words: the first re-word searched for the copied
-    sentence and missed get-postfix's "prepares everything needed to work
-    through the expression" - the roadmap in the 30 Sep student report."""
-    return opens_unsaid(_deserialize(entry)["chunks"])
+    """Steps whose wording gets the loop wrong: they start the loop the next
+    step continues without saying so, or say they start it when only the next
+    step does (18 Oct). Found by SHAPE, not by words: the first re-word
+    searched for the copied sentence and missed get-postfix's "prepares
+    everything needed to work through the expression" - the roadmap in the
+    30 Sep student report."""
+    chunks = _deserialize(entry)["chunks"]
+    return sorted(set(opens_unsaid(chunks)) | set(claims_unstarted(chunks))
+                  | set(keeps_what_it_returns(chunks)))
 
 
 def affected(problems: dict) -> list[tuple]:
@@ -190,8 +198,8 @@ def main(argv: list[str]) -> int:
         for i in _unsaid(e):
             print(f"  {problem['slug']} (roadmap {fingerprint(e)}) step {i + 1}: "
                   f"{e['chunks'][i].get('prompt')}")
-    print(f"{len(targets)} roadmap(s) with a step that starts a loop but is not "
-          f"worded that way: about "
+    print(f"{len(targets)} roadmap(s) with a step whose wording misleads (the "
+          f"loop started unsaid or claimed, or an answer to return worded as kept): about "
           f"${0.007 * len(targets):.2f} to re-word, at most {3 * len(targets)} model "
           f"calls. Nothing changed, $0. Next: --draft FILE.")
     return 0

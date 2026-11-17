@@ -11,8 +11,10 @@ import anyio.to_thread
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+import collections
 import json
+import threading
 from dotenv import load_dotenv
 import os
 from supabase import create_client
@@ -261,9 +263,15 @@ class ReplanRequest(BaseModel, extra="forbid"):
     whether the design was approved are all decided server-side - the browser
     is not authoritative about any of them. `code` is evidence, not
     instruction: it is compared against the step's own reference and can only
-    ever make a rebuild be ATTEMPTED, never accepted."""
+    ever make a rebuild be ATTEMPTED, never accepted.
+
+    `force` is the student's "These steps don't match my plan" (18 Oct): build
+    from their plan whatever the shape check says - the check counts loops,
+    branches and returns, and a plan to search from the TAIL counts the same as
+    the teacher's head-first loop (GPT's audit of HW4 __contains__)."""
     slug: str
     code: str | None = None
+    force: bool = False
 
 class ReopenRequest(BaseModel, extra="forbid"):
     """A step the student wants back. Only an opaque session id and an index:
@@ -333,6 +341,10 @@ class TutorChatRequest(BaseModel, extra="forbid"):
     # neither, and a student told Dr. Saha "the tutor is no help since I don't
     # think the tutor can see the entire code file".
     code: str = ""
+    # Names THIS request, so a Submit pressed while it is still being answered
+    # can supersede it - see _supersede. Opaque, set by the page, and only ever
+    # compared for equality with what the same student sent.
+    call_id: str = Field("", max_length=64)
 
 
 class PlanGraphRequest(BaseModel, extra="forbid"):
@@ -355,6 +367,11 @@ class PlanSubmitRequest(BaseModel, extra="forbid"):
     graph: dict
     history: list[dict] = []
     messages: list[dict] = []
+    # Set by the page ONLY when a tutor reply was still in flight at Submit:
+    # that request's id, and the student's own message it was answering. See
+    # _supersede and _fold_in_latest. Both optional - an older page sends neither.
+    superseded: str = Field("", max_length=64)
+    latest: str = Field("", max_length=20000)
 
 
 class GraphsRequest(BaseModel, extra="forbid"):
@@ -369,20 +386,6 @@ class MarkSolvedRequest(BaseModel, extra="forbid"):
     """Only a completed grading session may claim a solve. Student, slug and
     independence are DERIVED from it - the client cannot assert any of them."""
     session_id: str
-
-
-class LiveRunRequest(BaseModel):
-    # Either a curated slug (solution looked up in the DB) or a fully custom
-    # problem with the ground truth pasted in. Same rule as /decompose_chunks:
-    # no ground truth, no run.
-    slug: str
-    title: str | None = None
-    description: str | None = None
-    solution: str | None = None
-    # Playground knob overrides, keyed by PLAYGROUND_PARAMS keys. Values are
-    # clamped server-side to each knob's registered bounds; unknown keys are
-    # dropped. Omitting this runs the pipeline exactly as production does.
-    params: dict | None = None
 
 
 @app.get("/health")
@@ -484,6 +487,27 @@ def _server_problem(slug: str, title: str | None = None,
     return problem
 
 
+# Rebuilds a student ASKED for, by (student, problem version, plan): a rebuild
+# that seated, or came back the same, is not paid for twice. In-process and
+# bounded, like reroute._NO_ROUTE - a restart only costs one more rebuild.
+_ASKED_REBUILDS: set = set()
+_ASKED_LIMIT = 2048
+_ALREADY_FOLLOWS = ("These steps already follow your plan - they were built from "
+                    "it. If your approach has changed, update your plan with the "
+                    "tutor first, then ask again.")
+
+
+def _plan_fingerprint(plan: dict) -> str:
+    import hashlib
+    return hashlib.sha256(json.dumps(plan, sort_keys=True, default=str).encode()).hexdigest()[:16]
+
+
+def _remember_asked(key) -> None:
+    if len(_ASKED_REBUILDS) >= _ASKED_LIMIT:
+        _ASKED_REBUILDS.clear()
+    _ASKED_REBUILDS.add(key)
+
+
 @app.post("/replan")
 def replan(req: ReplanRequest, request: Request):
     """WHOSE ROADMAP? - asked at the only moment the answer can be known.
@@ -538,6 +562,12 @@ def replan(req: ReplanRequest, request: Request):
     from main.sessions import abandon_active, create_session, find_resumable
 
     quiet = {"rerouted": False}
+
+    def told(reason: str, message: str) -> dict:
+        """What a student who ASKED is told when nothing changed. An unasked
+        check stays {"rerouted": False}: nobody is waiting on it."""
+        return {**quiet, "reason": reason, "message": message} if req.force else quiet
+    asked = None
     try:
         problem = _server_problem(req.slug)
     except HTTPException:
@@ -549,13 +579,23 @@ def replan(req: ReplanRequest, request: Request):
     try:
         current = find_resumable(claims["sub"], content_hash(problem))
         if current is None:
-            return quiet
+            return told("no_session", "Open the problem again, then ask - there are "
+                                      "no steps here to rebuild yet.")
 
         sb = get_supabase()
         plan = latest_plan_graph(sb, claims["sub"], req.slug,
                                  since=_restart_marker(sb, claims["sub"], req.slug))
         if not plan:
-            return quiet
+            return told("no_plan", "We couldn't find a plan of yours for this problem "
+                                   "to build steps from. Talk your approach through "
+                                   "with the tutor and submit it, then ask again.")
+        if req.force:
+            # THE SAME PLAN, ASKED TWICE, IS ANSWERED FROM MEMORY. A rebuild is
+            # up to a minute of model work; once it has been built from this
+            # plan (or come back the same), building it again buys nothing.
+            asked = (claims["sub"], content_hash(problem), _plan_fingerprint(plan))
+            if asked in _ASKED_REBUILDS:
+                return told("same", _ALREADY_FOLLOWS)
         # reroute.effective_header, NOT header_of: the latter returns "" for a
         # plain function by design, and an empty header makes the oracle gate
         # inside build() test whatever the model named its function rather than
@@ -574,7 +614,7 @@ def replan(req: ReplanRequest, request: Request):
         # means no tier could attribute anything, which is the state a genuinely
         # different approach produces. Comparing it to that step's own reference
         # is like with like, so it can be strict where the plan check cannot.
-        diverged = not reroute.follows_reference(problem, header, plan)
+        diverged = req.force or not reroute.follows_reference(problem, header, plan)
         if not diverged and req.code:
             diverged = reroute.diverges_from_roadmap(
                 current.get("chunks") or [], current.get("index") or 0,
@@ -584,11 +624,12 @@ def replan(req: ReplanRequest, request: Request):
         result = reroute.build(problem, header, plan)
     except reroute.RouteUnavailable as e:
         print(f"  🧭 Kept the reference roadmap for {req.slug}: {e.reason}")
-        return quiet
+        return told("unavailable", reroute.student_message())
     except Exception as e:
         print(f"  🧭 /replan errored for {req.slug}, keeping the reference "
               f"roadmap: {e!r}")
-        return quiet
+        return told("error", "Something went wrong building new steps - you still "
+                             "have the steps you had. Try again in a minute.")
 
     # A REBUILD THAT LANDS ON THE SAME ROADMAP IS NOT A REROUTE. Found by an
     # audit: a student planned the ordinary count-based approach, was approved,
@@ -610,7 +651,9 @@ def replan(req: ReplanRequest, request: Request):
         if before and before == after:
             print(f"  🧭 Rebuilt roadmap for {req.slug} is the one they already "
                   f"have; left the session alone.")
-            return quiet
+            if asked:
+                _remember_asked(asked)
+            return told("same", _ALREADY_FOLLOWS)
     except Exception:
         pass            # cannot compare -> fall through and seat it as before
 
@@ -643,10 +686,13 @@ def replan(req: ReplanRequest, request: Request):
         # would have been anyway.
         print(f"  🧭 /replan could not seat the rebuilt roadmap for "
               f"{req.slug}: {e!r}")
-        return quiet
+        return told("error", "Something went wrong setting up the new steps - "
+                             "open the problem again to carry on.")
 
+    if asked:
+        _remember_asked(asked)
     print(f"  🧭 Rebuilt the roadmap for {req.slug} around this student's own "
-          f"plan ({len(result['chunks'])} steps).")
+          f"plan ({len(result['chunks'])} steps){' - asked for' if req.force else ''}.")
     return {"rerouted": True, "carried": carried,
             **_gate_steps(claims["sub"], req.slug, public)}
 
@@ -892,6 +938,66 @@ def _recorded_chat(student_id: str, slug: str) -> tuple[list, list]:
                 and (not since or (m.get("created_at") or "") > since)]
 
     return turns("tutor")[-40:], turns("design")[-12:]
+
+
+# A TUTOR REPLY THE STUDENT HAS MOVED PAST (26 Oct). The tutor's turn is archived
+# only when its reply is DONE, so a student who pressed Submit while it was still
+# answering had their plan judged without the message being answered - and then
+# the reply landed, and was archived, under an approved plan. The page tags each
+# tutor request with an id and, on Submit, stops it and sends that id here. The
+# id is remembered for the student, the late request sees it and drops its
+# reply, and the message goes to the reviewer and the archive through the submit
+# (_fold_in_latest) instead - once.
+#
+# Per student, so an id means nothing to anyone else. In process and bounded: a
+# restart forgets it, and a request that was in flight across a restart is gone.
+MAX_SUPERSEDED = 2000
+_SUPERSEDED: "collections.OrderedDict[tuple, bool]" = collections.OrderedDict()
+_SUPERSEDED_LOCK = threading.Lock()
+
+
+def _supersede(student_id: str, call_id: str) -> None:
+    if not student_id or not call_id:
+        return
+    with _SUPERSEDED_LOCK:
+        _SUPERSEDED[(student_id, call_id)] = True
+        _SUPERSEDED.move_to_end((student_id, call_id))
+        while len(_SUPERSEDED) > MAX_SUPERSEDED:
+            _SUPERSEDED.popitem(last=False)
+
+
+def _was_superseded(student_id: str, call_id: str) -> bool:
+    if not student_id or not call_id:
+        return False
+    with _SUPERSEDED_LOCK:
+        return (student_id, call_id) in _SUPERSEDED
+
+
+def _fold_in_latest(student_id: str, slug: str, turns: list, latest: str) -> list:
+    """`turns` plus the student's latest message, when the archive does not hold
+    it yet - and it is archived here, so it is on the record once.
+
+    ONLY AFTER the caller's "is there a conversation at all" check (see
+    design_review_plan): this is the student's own message and nothing more, but
+    a plan with no chat behind it must still be refused, and a crafted request
+    must not be able to supply the chat itself. Compared with the last archived
+    turn rather than searched for, so a student who really does say the same
+    thing twice is not recorded twice by this path's own race.
+
+    ponytail: an identical repeat ("ok", "ok") is treated as already on the
+    record. The cost is one lost duplicate line; the alternative is a duplicate
+    on every race."""
+    from main.archive import save_messages
+    from main.tutor import MAX_MESSAGE_CHARS
+    latest = (latest or "").strip()[:MAX_MESSAGE_CHARS]
+    if not latest:
+        return turns
+    last = next((m["content"] for m in reversed(turns) if m["role"] == "user"), "")
+    if last.strip() == latest:
+        return turns
+    save_messages(get_supabase(), student_id, slug, "tutor",
+                  [{"role": "user", "content": latest}])
+    return turns + [{"role": "user", "content": latest}]
 
 
 def _owned_session(request: Request, session_id: str) -> tuple[dict, dict]:
@@ -1200,321 +1306,13 @@ def reopen_step_route(req: ReopenRequest, request: Request):
     return state
 
 
-# ── playground (read-only showcase) ───────────────────────────────────────
-# These serve the step-through demo in frontend/playground.html. They REPLAY
-# cached results and never trigger validation, decomposition, or any LLM call
-# a demo must not stall for minutes on a click. The only things computed on read
-# are the AST mutants and their knockouts, which are deterministic, model-free
-# and sub-second; they are recomputed because evaluate_oracle's per-mutant
-# breakdown is not currently persisted (only the aggregate rates are).
-
-@app.get("/playground/problems")
-def playground_problems(request: Request):
-    """Every problem in Supabase, with its whole pipeline story in one row:
-    did preparation succeed, where did it stop, is there a validated oracle,
-    how many pooled decompositions exist. This is the troubleshooter's list -
-    teacher-gated, because the page it feeds also shows ground truths."""
-    require_teacher(request)
-    from main.identity import content_hash
-    from main.publish import stage_of_error
-    from main.run_phase1 import _load_pool
-    from tests.sandbox import _load_cache
-
-    sb = get_supabase()
-    rows = sb.table("problems").select(
-        "slug, title, difficulty, description, solution, ready, prepare_error,"
-        " assignment_id, context, group_slug, group_title, group_description"
-        ).execute().data or []
-    asg = {a["id"]: a["name"] for a in (sb.table("assignments").select(
-        "id, name").execute().data or [])}
-    cache = _load_cache()
-    pool = _load_pool()
-
-    out = []
-    for p in rows:
-        # Must include the class context: content_hash folds context_prefix and
-        # context_suffix in, so hashing description+solution alone never matches
-        # a method's cached verdict - every class problem read "no oracle yet".
-        key = content_hash({"description": p.get("description") or "",
-                            "solution": p.get("solution") or "",
-                            **_context_of(p)})
-        oracle = cache.get(key)
-        # Three states, not two. "review" is a suite that may well be fine but
-        # carries checks nothing could decide; calling that "weak" sends the
-        # instructor rewriting a problem that might need no change at all.
-        oracle_state = (None if not (isinstance(oracle, dict) and "strong" in oracle)
-                        else "strong" if oracle["strong"]
-                        # A one-line getter generates no mutants at all, so it
-                        # can never be strong. Shown as its own state rather
-                        # than as "weak": nothing about it is weak, and sending
-                        # the instructor to rewrite a correct `return self.count`
-                        # is the one thing this list must not do.
-                        else "doctest" if oracle.get("status") == "doctest_verified"
-                        else "review" if oracle.get("status") == "needs_review"
-                        else "weak")
-        out.append({
-            "slug": p["slug"], "title": p.get("title") or p["slug"],
-            "difficulty": p.get("difficulty"),
-            "assignment": asg.get(p.get("assignment_id"), ""),
-            "assignment_id": p.get("assignment_id"),
-            "ready": bool(p.get("ready")),
-            "prepare_error": p.get("prepare_error"),
-            # Which gate preparation stopped at ("parses"/"runs"/"tests"/
-            # "strength"/"steps"), or None once it passed - same mapping the
-            # teacher's fix panel uses.
-            "stage": None if p.get("ready") else stage_of_error(p.get("prepare_error")),
-            "has_solution": bool((p.get("solution") or "").strip()),
-            "oracle": oracle_state,
-            "kill_rate_direct": (oracle or {}).get("kill_rate_direct")
-                                if oracle_state else None,
-            "kill_rate_lower": (oracle or {}).get("kill_rate_lower"),
-            "kill_rate_upper": (oracle or {}).get("kill_rate_upper"),
-            "undetermined": (oracle or {}).get("undetermined"),
-            "pool_entries": len(pool.get(key) or []),
-        })
-    # Broken first - this list exists to find them.
-    return {"problems": sorted(out, key=lambda r: (r["ready"], r["slug"]))}
-
-
-@app.get("/playground/params")
-def playground_params(request: Request):
-    """The tunable-knob registry, straight from the pipeline. The page builds
-    its sliders from this, so bounds and defaults have exactly one home
-    (main/live_playground.PLAYGROUND_PARAMS)."""
-    require_teacher(request)
-    from main.live_playground import current_params
-    return {"params": current_params()}
-
-
-@app.get("/playground/problem/{slug}")
-def playground_problem(slug: str, request: Request):
-    """One problem WITH its ground truth, for the troubleshooter's left panel.
-    Teacher-gated for exactly that reason - this is the one read path that
-    hands a solution to a browser."""
-    require_teacher(request)
-    from main.identity import content_hash
-    from main.run_phase1 import _load_pool
-    from tests.sandbox import _load_cache
-
-    row = get_supabase().table("problems").select(
-        "slug, title, description, difficulty, solution, ready, prepare_error, "
-        "context, group_slug, group_title, group_description"
-    ).eq("slug", slug).execute().data
-    if not row:
-        raise HTTPException(status_code=404, detail=f"Problem '{slug}' not found.")
-    p = row[0]
-    key = content_hash({"description": p.get("description") or "",
-                        "solution": p.get("solution") or "",
-                        **_context_of(p)})
-    oracle = _load_cache().get(key)
-    if not (isinstance(oracle, dict) and "strong" in oracle):
-        oracle = None
-    return {"slug": p["slug"], "title": p.get("title") or p["slug"],
-            "description": p.get("description") or "",
-            "difficulty": p.get("difficulty"),
-            "solution": p.get("solution") or "",
-            "ready": bool(p.get("ready")),
-            "prepare_error": p.get("prepare_error"),
-            "oracle": None if oracle is None else {
-                "strong": bool(oracle["strong"]),
-                "kill_rate_direct": oracle.get("kill_rate_direct", 0.0),
-                "n_tests": len(oracle.get("final_tests", [])),
-                "validated_at": oracle.get("validated_at", "")},
-            "pool_entries": len(_load_pool().get(key) or [])}
-
-
-@app.get("/playground/{slug}")
-def playground_detail(slug: str, request: Request):
-    """One problem's full journey, assembled from cache. Never recomputes an
-    oracle or a decomposition; returns nulls the UI renders as 'not yet'.
-
-    Teacher-gated like every other playground route. It withholds `solution`,
-    which is what made it look safe - but it returns the decomposition, and a
-    decomposition carries every step's private reference answer. Ungated, the
-    complete answer key was one guessed slug away from any signed-out visitor."""
-    import json as _json
-    import os as _os
-    from main.identity import content_hash, get_resolved_entry
-    from main.mutation import _disagrees, generate_mutants
-    from tests.sandbox import _load_cache, passes_tests, run_solution
-
-    require_teacher(request)
-    row = get_supabase().table("problems").select(
-        "slug, title, description, difficulty, solution, context, group_slug, "
-        "group_title, group_description").eq("slug", slug).execute().data
-    if not row:
-        raise HTTPException(status_code=404, detail=f"Problem '{slug}' not found.")
-    # get_resolved_entry and the mutant replay below both EXECUTE this problem,
-    # so it has to carry its class context or a method resolves to a bare
-    # `def pop(self)` that cannot run.
-    problem = {**row[0], **_context_of(row[0])}
-    solution = problem.get("solution") or ""
-    # The solution is needed BELOW to recompute mutants, but it must not be
-    # returned. Everything sent back is built from `public_problem`.
-    public_problem = {k: v for k, v in problem.items() if k != "solution"}
-
-    cached = _load_cache().get(content_hash(problem))
-    if not (isinstance(cached, dict) and "strong" in cached):
-        return {"problem": public_problem, "oracle": None, "mutants": [],
-                "chunks": None, "necessity": [], "grading": None,
-                "note": "not yet validated"}
-
-    tests = cached.get("final_tests", [])
-    entry = get_resolved_entry(problem)["entry_name"]
-
-    # Stage 2 - prefer the breakdown persisted at validation time; only fall
-    # back to recomputing for entries written before it was stored.
-    breakdown = cached.get("breakdown")
-    if isinstance(breakdown, dict) and breakdown.get("mutants"):
-        # "killed" means the suite AS HANDED IN caught it; killed_on_retry means
-        # it only died after the search added a test, i.e. it slipped past the
-        # suite the student would have faced.
-        mutants = [{"label": m["label"], "caught": m["status"] == "killed",
-                    "status": m["status"]}
-                   for m in breakdown["mutants"]]
-        source = "cached"
-    else:
-        base = run_solution(solution, [t["input"] for t in tests], entry_name=entry)
-        expected = base["results"] if base["ok"] else []
-        mutants = []
-        for m in generate_mutants(solution):
-            caught = bool(expected) and _disagrees(
-                m["code"], entry, [t["input"] for t in tests], expected)
-            mutants.append({"label": m["label"], "caught": caught,
-                            "status": "killed" if caught else "survived"})
-        source = "recomputed"
-
-    # Stages 3/4 - pooled decomposition, if one exists.
-    chunks, necessity = None, []
-    pool_path = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
-                              "main", "chunk_pool.json")
-    if _os.path.exists(pool_path):
-        try:
-            pool = _json.load(open(pool_path))
-        except Exception:
-            pool = {}
-        pooled = (pool.get(content_hash(problem)) or [None])[0]
-        if pooled:
-            chunks = pooled["chunks"]
-            header = pooled["header"]
-            body = [c.get("reference", "") for c in chunks]
-            for i, c in enumerate(chunks):
-                knocked = list(body)
-                knocked[i] = "pass"
-                code = header + "\n" + "\n".join(
-                    "    " + ln for ref in knocked for ln in (ref or "").splitlines())
-                res = passes_tests(code, tests, entry_name=entry)
-                necessity.append({
-                    "step_id": c.get("step_id", f"Part {i + 1}"),
-                    "broke": (not res["ok"]) or res["fraction"] < 1.0,
-                    "passed": res.get("passed", 0), "total": res.get("total", 0)})
-
-    # Stage 5 - a right and a wrong submission, decided by EXECUTION only.
-    grading = None
-    if tests:
-        wrong = "def _f(*a, **k):\n    return None"
-        ok = passes_tests(solution, tests, entry_name=entry)
-        bad = passes_tests(wrong, tests, entry_name="_f")
-        grading = {
-            "correct": {"tier": "Tier 2 - executed against the oracle",
-                        "verdict": ok["ok"] and ok["fraction"] == 1.0,
-                        "passed": ok.get("passed", 0), "total": ok.get("total", 0)},
-            "incorrect": {"tier": "Tier 2 - executed against the oracle",
-                          "verdict": bad["ok"] and bad["fraction"] == 1.0,
-                          "passed": bad.get("passed", 0), "total": bad.get("total", 0)},
-        }
-
-    # Why is it weak? Without this the UI can show "100% caught" beside a WEAK
-    # badge - true but self-contradictory-looking - when the real reason is that
-    # the solution yielded too few mutants to judge at all.
-    from main.mutation import _MIN_MUTANTS, CUTOFF_1_KILL_RATE
-    weak_reason = None
-    if cached.get("status") == "doctest_verified":
-        weak_reason = None                  # not weak - see oracle_store.certified
-    elif not cached["strong"]:
-        if len(mutants) < _MIN_MUTANTS:
-            weak_reason = (f"only {len(mutants)} way(s) to break this solution could be "
-                           f"found - too few to judge the tests fairly "
-                           f"(need at least {_MIN_MUTANTS})")
-        else:
-            weak_reason = (f"{round(cached.get('kill_rate_direct', 0.0) * 100)}% of cheaters "
-                           f"caught is below the {round(CUTOFF_1_KILL_RATE * 100)}% bar")
-
-    # Chunk PROMPTS are public; chunk REFERENCES are the answer to each step and
-    # never leave the server. The showcase only ever needed the prompts and the
-    # knockout result, so dropping the references costs it nothing.
-    if chunks:
-        chunks = [{k: v for k, v in c.items() if k != "reference"} for c in chunks]
-
-    return {"problem": public_problem,
-            "oracle": {"n_tests": len(tests), "tests": tests[:6],
-                       "kill_rate_direct": cached.get("kill_rate_direct", 0.0),
-                       "kill_rate": cached.get("kill_rate", 0.0),
-                       "strong": bool(cached["strong"]),
-                       "weak_reason": weak_reason,
-                       "validated_at": cached.get("validated_at", "")},
-            "mutants": mutants, "breakdown": breakdown,
-            "breakdown_source": source, "chunks": chunks,
-            "necessity": necessity, "grading": grading, "note": None}
-
-
-# ── playground LIVE (real pipeline run, streamed) ─────────────────────────
-# The read-only endpoints above replay cache; this one runs the REAL pipeline
-# (fresh oracle generation, mutation testing + repair, verdict, decomposition,
-# Gate 1) and streams every step as a newline-delimited JSON event the moment
-# it happens. Served with fetch()+ReadableStream on the frontend - the
-# one-directional SSE pattern, delivered over POST because the ground-truth
-# solution rides in the request body (EventSource can only GET).
-#
-# COSTS REAL MONEY per click: same OpenAI usage as a warmup pass on one
-# problem. It also persists its verdict to tests/tests_cache.json exactly as
-# warmup would, so a live run is never wasted work.
-
-@app.get("/teacher/prepare/live/{assignment_id}/{slug}")
-def prepare_live_mirror(assignment_id: str, slug: str, request: Request):
-    """Watch one problem being prepared by an upload that is ALREADY running.
-
-    The mirror half of /playground/live. That route STARTS a pipeline run; this
-    one attaches to the run an upload is in the middle of, replaying what has
-    happened so far and then following along - see main/prepare_bus.py for why
-    a second run would be the wrong answer (it costs a second set of model calls
-    and races the first one to write the same oracle cache entry).
-
-    Teacher-gated for the same reason /playground/live is: the transcript
-    carries the ground truth, the oracle suite and every chunk reference, which
-    together are the complete answer key."""
-    import json as _json
-    from fastapi.responses import StreamingResponse
-    from main.prepare_bus import is_open, key, subscribe
-
-    require_teacher(request)
-    k = key(assignment_id, slug)
-    if not is_open(k):
-        raise HTTPException(status_code=404, detail={
-            "reason_code": "no_run_to_watch",
-            "message": (f"Nothing is preparing '{slug}' right now. A run can "
-                        f"only be watched while it is happening - if the upload "
-                        f"has finished, open the problem in the playground to "
-                        f"run it again.")})
-
-    def events():
-        # None is a heartbeat: an idle connection has to put something on the
-        # wire or a proxy closes it, and the readers already skip blank lines.
-        for ev in subscribe(k):
-            yield "\n" if ev is None else _json.dumps(ev) + "\n"
-
-    return StreamingResponse(events(), media_type="application/x-ndjson",
-                             headers={"Cache-Control": "no-cache",
-                                      "X-Accel-Buffering": "no"})
-
-
 @app.get("/teacher/problems/{assignment_id}/{slug}/transcript")
 def problem_transcript(assignment_id: str, slug: str, request: Request):
     """The saved narration of the run that blocked this problem.
 
-    The after-the-fact half of /teacher/prepare/live: that one attaches to a run
-    in progress, this one replays a run that has already finished. Only problems
-    that did NOT pass have one - see main/transcripts.py.
+    Replays a preparation run that has already finished. Only problems that did
+    NOT pass have one - see main/transcripts.py. (The live "watch" view of a run
+    in progress went with the Playground, 19 Oct.)
 
     Teacher-gated like every other route that carries a transcript: it contains
     the ground truth, the oracle suite and the chunk references."""
@@ -1529,50 +1327,6 @@ def problem_transcript(assignment_id: str, slug: str, request: Request):
                         f"for problems that did not pass, and are cleared once "
                         f"a problem is fixed.")})
     return saved
-
-
-@app.post("/playground/live")
-def playground_live(req: LiveRunRequest, request: Request):
-    from fastapi.responses import StreamingResponse
-
-    # Teacher-gated: the stream narrates the ground truth, the oracle suite and
-    # every chunk reference - the complete answer key for the problem.
-    require_teacher(request)
-
-    problem = {"slug": req.slug, "title": req.title or req.slug,
-               "description": req.description or "",
-               "solution": (req.solution or "").strip()}
-
-    # Same contract as /decompose_chunks: curated problems keep their ground
-    # truth in the DB; uploads carry it in the request. No ground truth = no
-    # oracle = nothing to watch - hard error, not a degraded run.
-    # The context blob is fetched UNCONDITIONALLY, not only when the solution is
-    # missing. A method problem without it is not a degraded problem, it is the
-    # WRONG problem: is_method() goes false, main/context.py stops assembling the
-    # class around the method, and the entry point resolves to `pop` instead of
-    # the sequence driver. Every class problem then dies at oracle generation
-    # with "no usable test cases", because a bare `def pop(self)` cannot be run.
-    row = get_supabase().table("problems").select(
-        "slug, title, description, solution, context, group_slug, group_title, "
-        "group_description").eq("slug", req.slug).execute().data
-    if row:
-        problem["solution"] = problem["solution"] or (row[0].get("solution") or "").strip()
-        problem["description"] = problem["description"] or (row[0].get("description") or "")
-        problem["title"] = req.title or row[0].get("title") or req.slug
-        problem.update(_context_of(row[0]))
-    if not problem["solution"]:
-        raise HTTPException(
-            status_code=400,
-            detail=(f"No reference solution for '{req.slug}'. A live run cannot "
-                    f"start without ground truth - oracle tests, mutation "
-                    f"validation and Gate 1 all depend on it. Supply `solution` "
-                    f"with the request."))
-
-    from main.live_playground import ndjson_stream
-    return StreamingResponse(
-        ndjson_stream(problem, req.params),
-        media_type="application/x-ndjson",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 @app.get("/problems")
@@ -1760,8 +1514,8 @@ def upload_assignment(req: AssignmentUpload, request: Request):
 
     Preparation (oracle generation, mutation validation, decomposition) is
     minutes of work, so this streams NDJSON as each problem finishes instead of
-    holding the connection silent. Same one-directional pattern as
-    /playground/live, delivered over POST because the file rides in the body."""
+    holding the connection silent, delivered over POST because the file rides
+    in the body."""
     import json as _json
     from fastapi.responses import StreamingResponse
     from main.assignments import AssignmentParseError, parse_assignment_file
@@ -2850,9 +2604,13 @@ def teacher_review_try(assignment_id: str, slug: str, req: TryCaseRequest,
             "labels": [c["label"] for c in caught],
             "catches": [title(c) for c in caught],
             "missed": [title(c) for c in open_ if c not in caught],
-            "edited_source": (review_help.insert_examples(
-                row.get("solution") or "", v["doctest"], problem.get("entry_hint"))
-                if caught else None)}
+            # OFFERED EVEN WHEN IT CATCHES NO KNOWN SLIP (18 Oct): the slips are
+            # one-line changes to the teacher's own code, and a different wrong
+            # answer is not one - HW4 clear accepted `while self.remainingSpace
+            # < self.maxSize`, which leaves a zero-size item behind. The case
+            # that shows it catches none of the slips and is still worth adding.
+            "edited_source": review_help.insert_examples(
+                row.get("solution") or "", v["doctest"], problem.get("entry_hint"))}
 
 
 def _problem_for(assignment_id: str, slug: str) -> tuple[dict, dict]:
@@ -2978,7 +2736,6 @@ def manual_split(req: ManualSplitRequest, request: Request):
     sb.table("problems").update(
         {"ready": True, "prepare_error": None}).eq("slug", req.slug).execute()
     return out
-
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -3363,6 +3120,20 @@ def tutor_chat(req: TutorChatRequest, request: Request):
             "message": "The tutor is unavailable right now. Try again shortly.",
             "detail": str(e)[:120]})
 
+    # THE STUDENT SUBMITTED WHILE THIS WAS BEING ANSWERED. Nothing below is
+    # wanted: not the reply, not the gate lookups that would only decide what to
+    # say, and not the archive row - the submit already carries their message.
+    # Checked here, before the guards spend a reviewer call, and again before the
+    # write, because a submit can land during the guards too.
+    def superseded() -> bool:
+        return _was_superseded(claims["sub"], req.call_id)
+
+    def dropped() -> dict:
+        return {"reply": "", "ready": False, "offtrack": False,
+                "offtrack_reason": "", "discarded": True}
+    if superseded():
+        return dropped()
+
     # ── THE TUTOR DOES NOT GET TO PROMISE WHAT THE GATE WILL SAY ──────────
     #
     # Twice now a student was told "sounds like you have a plan", submitted it,
@@ -3387,22 +3158,38 @@ def tutor_chat(req: TutorChatRequest, request: Request):
     # this call can only ever HOLD a release (the branch below fires on
     # `not approved`), so a forged transcript can buy nothing. The gate itself
     # is /design_review/plan, which reads the archive.
+    #
+    # ONE VERDICT PER TURN. This guard, the box below and the release guard
+    # after it all need the gate's answer about the same conversation; asking
+    # three times would pay three times and, worse, could get three answers.
+    # `gate()` asks at most once, and design_review remembers the answer for the
+    # submit that follows (it is per student and per conversation).
+    asked_gate = []
+
+    def gate():
+        """The real gate's verdict on this plan and chat, or None when it could
+        not be reached - which every guard reads as "say nothing"."""
+        if not asked_gate:
+            try:
+                from main.design_review import review_plan_graph
+                asked_gate.append(review_plan_graph(
+                    row[0], req.plan, [], chat_log=req.messages,
+                    who=claims["sub"], note=False))
+            except Exception:
+                asked_gate.append(None)
+        return asked_gate[0]
+
     if out.get("ready") and not approved and (req.plan or {}).get("nodes"):
-        try:
-            from main.design_review import review_plan_graph
-            verdict = review_plan_graph(row[0], req.plan, [],
-                                        chat_log=req.messages)
-            if not verdict.get("approved"):
-                # offtrack stays FALSE here. The fork offers "carry on and it
-                # may come out wrong", and this plan cannot carry on at all -
-                # the design gate is about to reject exactly it. The reviewer's
-                # own objection is the message that belongs on screen.
-                out = {**out, "ready": False, "reply": verdict["reply"],
-                       "offtrack": False, "held_by_review": True}
-        except Exception:
-            # The gate being unreachable must not strand a student mid-chat.
-            # They keep the tutor's reply; the real gate still runs on submit.
-            pass
+        verdict = gate()
+        if verdict is not None and not verdict.get("approved"):
+            # offtrack stays FALSE here. The fork offers "carry on and it
+            # may come out wrong", and this plan cannot carry on at all -
+            # the design gate is about to reject exactly it. The reviewer's
+            # own objection is the message that belongs on screen.
+            out = {**out, "ready": False, "reply": verdict["reply"],
+                   "offtrack": False, "held_by_review": True}
+        # An unreachable gate must not strand a student mid-chat: they keep
+        # the tutor's reply, and the real gate still runs on submit.
 
     # ── NOR DOES IT GET TO WARN ALONE ─────────────────────────────────────
     #
@@ -3417,14 +3204,50 @@ def tutor_chat(req: TutorChatRequest, request: Request):
     if out.get("offtrack"):
         rejected = False
         if (req.plan or {}).get("nodes"):
-            try:
-                from main.design_review import review_plan_graph
-                rejected = not review_plan_graph(row[0], req.plan, [],
-                                                 chat_log=req.messages).get("approved")
-            except Exception:
-                pass                    # an unreachable gate warns nobody
+            verdict = gate()            # an unreachable gate warns nobody
+            rejected = verdict is not None and not verdict.get("approved")
         if not rejected:
             out = {**out, "offtrack": False, "offtrack_reason": ""}
+
+    # ── NOR DOES IT GET TO HOLD WHAT THE GATE WOULD PASS ──────────────────
+    #
+    # The two guards above stop the tutor promising what the gate will refuse.
+    # This is the other direction, and it was missing: a student told "you have
+    # not said what it starts out as" could press Submit and have the plan
+    # approved, and then asked the tutor what to believe. Measured on the live
+    # archive (26 Oct): 79 of 210 approvals came with the tutor's last message
+    # still a question; those students solved the problem as often as everyone
+    # else (91% against 94%), so it was the tutor's hold that was out of step.
+    #
+    # The reviewer is the one authority - it is the gate, and the tutor's
+    # `ready` has never opened anything. So when the tutor names a gap (or
+    # demands the walk-through) and a plan is on the table, the gate is asked,
+    # and if it approves the tutor releases instead of asking. Same question,
+    # same answer, in both places: the verdict is remembered for the submit.
+    #
+    # Left alone, deliberately:
+    #   * a hold with all four points covered (no `gap`): that is the tutor's
+    #     question floor, not a claim that something is absent;
+    #   * "try something else" - the student just chose to rethink, and being
+    #     released over that choice would contradict it;
+    #   * a message that asks the tutor something: the reply answers it, and
+    #     swapping it for a release line would leave the question unanswered.
+    #     The next message that is not a question reaches this guard.
+    # One call (~1c), only on a turn the tutor holds on a named gap.
+    last_said = next((m.get("content") or "" for m in reversed(req.messages)
+                      if m.get("role") == "user"), "")
+    if (not out.get("ready") and out.get("gap") and not out.get("held_by_review")
+            and not approved and not req.offtrack_hint
+            and "?" not in last_said and (req.plan or {}).get("nodes")):
+        verdict = gate()
+        if verdict is not None and verdict.get("approved"):
+            from main.tutor import RELEASED_BY_REVIEW
+            out = {**out, "ready": True, "reply": RELEASED_BY_REVIEW,
+                   "offtrack": False, "offtrack_reason": "",
+                   "released_by_review": True}
+
+    if superseded():
+        return dropped()
 
     # Archive only the NEW turns - the student's last message and this reply.
     # The client resends the whole history every call, so writing all of it
@@ -3435,7 +3258,8 @@ def tutor_chat(req: TutorChatRequest, request: Request):
         tail = [m for m in req.messages[-1:] if m.get("role") == "user"]
         save_messages(get_supabase(), _student, req.slug, "tutor",
                       tail + [{"role": "assistant", "content": out["reply"]}])
-    return out
+    # `gap` is for the guards above; the page has never been sent it.
+    return {k: v for k, v in out.items() if k != "gap"}
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -3556,6 +3380,8 @@ async def design_review(request: Request,
                         slug: str = Form(...),
                         history: str = Form("[]"),
                         chat: str = Form("[]"),
+                        superseded: str = Form(""),
+                        latest: str = Form(""),
                         design: UploadFile = File(...)):
     """Review a student's uploaded design before they may write any code.
 
@@ -3573,6 +3399,8 @@ async def design_review(request: Request,
     from main.design_review import DesignRejected, review_design
 
     claims = require_student(request)
+    # See design_review_plan: the tutor request this supersedes is still running.
+    _supersede(claims["sub"], superseded[:64])
     row = get_supabase().table("problems").select(
         "slug, title, description").eq("slug", slug).execute().data
     if not row:
@@ -3591,6 +3419,7 @@ async def design_review(request: Request,
     # the artifact being judged is a picture the server received, not a
     # structure the browser composed.
     tutor_chat, prior = _recorded_chat(claims["sub"], slug)
+    tutor_chat = _fold_in_latest(claims["sub"], slug, tutor_chat, latest)
 
     blob = await design.read()
     try:
@@ -3834,6 +3663,9 @@ def design_review_plan(req: PlanSubmitRequest, request: Request):
     from main.design_review import DesignRejected, review_plan_graph
 
     claims = require_student(request)
+    # FIRST, before anything slow: the tutor request this submit supersedes is
+    # still running and will look for its id when it finishes.
+    _supersede(claims["sub"], req.superseded)
     row = get_supabase().table("problems").select(
         "slug, title, description").eq("slug", req.slug).execute().data
     if not row:
@@ -3859,8 +3691,12 @@ def design_review_plan(req: PlanSubmitRequest, request: Request):
             "message": "There is no plan to submit yet. Talk through your "
                        "approach in the chat first - the plan builds itself as "
                        "you explain it."})
+    # The plan is judged on the conversation up to their LATEST message, even if
+    # the tutor had not finished answering it - see _fold_in_latest.
+    tutor_turns = _fold_in_latest(claims["sub"], req.slug, tutor_turns, req.latest)
     try:
-        out = review_plan_graph(row[0], req.graph, prior, chat_log=tutor_turns)
+        out = review_plan_graph(row[0], req.graph, prior, chat_log=tutor_turns,
+                                who=claims["sub"])
     except DesignRejected as e:
         raise HTTPException(status_code=400, detail={
             "reason_code": "design_rejected", "message": str(e)})

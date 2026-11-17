@@ -98,10 +98,8 @@ function render(){
   drawQueue();
 
   if (!reviewable(v)){
-    $("main").innerHTML = v.ready
-      ? `<div class="banner ok">${esc(v.title)} is ready and visible to students.
-          Nothing is waiting on you here.</div>`
-      : `<div class="banner warn">${esc(v.title)} is not waiting on review - it
+    if (v.ready) return renderEdit(v);
+    $("main").innerHTML = `<div class="banner warn">${esc(v.title)} is not waiting on review - it
           stopped for another reason: ${esc(v.error || "unknown")}. Fix it from
           the Assignments page.</div>`;
     return;
@@ -126,6 +124,41 @@ function render(){
   // broke the row it sat in.
   document.querySelectorAll("pre[data-test]").forEach(pre =>
     pre.innerHTML = hlPython(v.help.tests[+pre.dataset.test].doctest));
+  if ($("trySrc")) $("trySrc").value = mine.text;
+  if ($("tryEx") && mine.out && mine.out.doctest) $("tryEx").innerHTML = hlPython(mine.out.doctest);
+  wire();
+}
+
+/* A READY PROBLEM WITH NOTHING WAITING, opened with Edit (18 Oct). It had no
+   way to be changed at all: the editor and the test-case box lived only on a
+   problem that was flagged. GPT's HW4 round 2 found `clear` accepting a wrong
+   loop (a zero-size item left behind) - a case the tests lacked, on a problem
+   nothing flagged. */
+function renderEdit(v){
+  $("main").innerHTML = `<div class="banner ok">${esc(v.title)} is ready and visible to
+      students. Nothing is waiting on you here.</div>
+    <section class="card" id="editCard">
+      <h2 style="margin:0 0 6px">Change this problem</h2>
+      <p class="hint" style="margin:0 0 14px">A change makes a new version of just this
+        problem, prepared again (a minute or two). Students keep the version they have
+        until the new one is ready.</p>
+      ${yours(true)}
+      <div class="option">
+        <h4>Edit the problem yourself</h4>
+        <p>Change the statement, the examples or the solution, then prepare this
+          problem again.</p>
+        <div class="acts"><button type="button" class="ghost" id="editGo">Open the editor</button></div>
+        <div id="editor"></div>
+      </div>
+      <div id="actMsg" aria-live="polite">${notice}</div>
+    </section>
+    <section class="card solution">
+      <h2 style="margin:0 0 12px">Your solution</h2>
+      <pre id="sol"></pre>
+    </section>`;
+  $("sol").innerHTML = (v.source || "").split("\n").map((c, i) =>
+    `<div class="srow"><span class="n">${i + 1}</span><span
+      class="c">${c ? esc(c) : " "}</span></div>`).join("");
   if ($("trySrc")) $("trySrc").value = mine.text;
   if ($("tryEx") && mine.out && mine.out.doctest) $("tryEx").innerHTML = hlPython(mine.out.doctest);
   wire();
@@ -343,9 +376,10 @@ function yours(canAdd){
     <div class="option${canAdd ? "" : " rec"}">
       <h4>Write your own test case${canAdd ? "" : ` <span class="pill ok">recommended</span>`}</h4>
       <p>Type it the way a docstring example looks - <code>&gt;&gt;&gt;</code> lines,
-        or plain lines of Python. We run it on your solution and on each wrong
-        answer above, and say which ones it catches. Your solution supplies the
-        answers, so you don't need to type them.</p>
+        or plain lines of Python. ${view && view.checks && view.checks.length
+          ? "We run it on your solution and on each wrong answer above, and say which ones it catches."
+          : "We run it on your solution, and it becomes a test - an example in the problem."}
+        Your solution supplies the answers, so you don't need to type them.</p>
       <textarea class="rvEdit tryBox" id="trySrc" rows="4" spellcheck="false"
         aria-label="Your test case"
         placeholder="&gt;&gt;&gt; obj = YourClass(10)&#10;&gt;&gt;&gt; obj.method(10)"></textarea>
@@ -359,10 +393,22 @@ function tryResult(){
   const o = mine.out;
   if (!o) return "";
   if (!o.ok) return `<div class="banner bad">${esc(o.reason || "It could not be checked.")}</div>`;
+  const add = o.edited_source ? `
+    <div class="acts">
+      <button type="button" id="tryAdd">Add it and prepare again</button>
+      <button type="button" class="ghost" id="tryEdit">Edit it first</button>
+      <span class="cost">Prepares just this problem again - a minute or two.</span>
+    </div>
+    <div id="tryEditor"></div>` : "";
   if (!o.catches.length)
-    return `<div class="banner warn">It didn't catch any of them - your solution and
-      every wrong answer above give the same results on it.</div>
-      <pre class="code ex" id="tryEx"></pre>`;
+    // Still worth adding (18 Oct): the wrong answers listed are one-line
+    // changes to your code, and a student's mistake need not be one of them.
+    return `<div class="banner warn">${o.missed.length
+        ? "It didn't catch any of the wrong answers above - your solution and each of them give the same results on it."
+        : "Here is what your solution gives on it."} You can still add it: it becomes a
+      test, with these answers - useful for a mistake that is not one of the changes
+      we try.</div>
+      <pre class="code ex" id="tryEx"></pre>${add}`;
   return `
     <div class="tcase">
       <div class="tchead"><span class="tcnum">Your test case</span>
@@ -370,13 +416,7 @@ function tryResult(){
       <pre class="code ex" id="tryEx"></pre>
     </div>
     <p class="note">${o.missed.length ? `Still not caught: ${o.missed.map(esc).join("; ")}.`
-      : "It catches every wrong answer above."}</p>
-    <div class="acts">
-      <button type="button" id="tryAdd">Add it and prepare again</button>
-      <button type="button" class="ghost" id="tryEdit">Edit it first</button>
-      <span class="cost">Prepares just this problem again - a minute or two.</span>
-    </div>
-    <div id="tryEditor"></div>`;
+      : "It catches every wrong answer above."}</p>${add}`;
 }
 
 async function tryCase(btn){

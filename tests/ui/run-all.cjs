@@ -30,6 +30,7 @@ const SUITES = [
   'problem-sort.dom.cjs',
   'workspace-race.dom.cjs',
   'review.dom.cjs',
+  'tutor-submit-race.dom.cjs',
 ];
 
 const failed = [];

@@ -152,7 +152,15 @@ def test_an_answer_that_also_does_the_next_step_covers_it(step2):
     r = _grade_w(both)
     assert (r.verdict, r.tier, r.covers_chunks) == ("correct", "execution-reference", 2), \
         (r.tier, r.covers_chunks, r.student_reason)
-    assert "already written what the next 1 step(s) asked for" in r.student_reason
+    # Said as a person would (18 Oct): "the next 1 step(s)" read as a form letter.
+    assert "already written what the next step asked for, so we have marked it done" \
+        in r.student_reason, r.student_reason
+
+
+def test_covering_several_steps_is_said_in_the_plural():
+    from main.grading import _covered_said
+    assert _covered_said(1) == "Correct - your step works with the rest of the solution."
+    assert "the next 2 steps asked for, so we have marked those done" in _covered_said(3)
 
 
 def test_an_ordinary_step_covers_only_itself(step2):

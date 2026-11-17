@@ -197,6 +197,7 @@
   .failCase pre + pre{margin-top:6px}
   .charcount{margin:6px 0 0; font-size:.75rem; color:var(--text-dim); text-align:right}
   .failMore{margin:8px 0 0; font-size:.8125rem; color:var(--text-dim)}
+  .failKey{margin:10px 0 0; white-space:pre-wrap; overflow-wrap:anywhere}
 
 
 
@@ -540,6 +541,9 @@ body.in-studio .page{padding:calc(var(--header-height) + 28px) 24px 40px;max-wid
 .work-step .stepnotes p{margin:2px 0}
 .work-step .stepnotes strong{font-weight:600}
 .work-step .stepnotes .loop{color:var(--accent-ink)}
+/* 18 Oct: a student whose approved plan the steps do not follow can ask for steps built from it. */
+.work-step .notmyplan{margin:10px 0 0}
+.work-step .notmyplan .ghost{font-size:12.5px;padding:4px 10px;min-height:0}
 .planLocked{padding:18px 24px;background:var(--accent-tint);border-bottom:1px solid var(--border)}
 .planLocked strong{font-size:13px;color:var(--accent-ink)}
 .planLocked p{font-size:13px;line-height:1.7;margin:4px 0 0;color:var(--text-muted)}

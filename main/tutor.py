@@ -449,7 +449,9 @@ _STRUCTURE_WORDS = {
 # and a plan-graph label with NO determiner at all ("Loop through set") still
 # needs to match, which is why the exclusion requires "to" nearby rather than
 # requiring a determiner outright.
-_SET_AS_VERB = re.compile(r"\bsets?\b(?:\s+\S+){0,3}?\s+\bto\b", re.I)
+# Six words, not three (6 Nov, the class on contains): "set the node's
+# .previous and .next to none" was asked what its set starts out as, twice.
+_SET_AS_VERB = re.compile(r"\bsets?\b(?:\s+\S+){0,6}?\s+\bto\b", re.I)
 # The same verb in ASSIGNMENT form, which the "to" pattern above cannot reach.
 # "I will loop over d.items(), set result[value] = key" answered an ordinary
 # dictionary plan with "You just mentioned a set. What does it start out as?" -
@@ -809,6 +811,13 @@ _FALLBACK = {
 }
 
 
+# What the tutor says when the real gate (design_review) has just approved the
+# plan it was about to hold the student on. Fixed text, not a model's: it must
+# claim nothing the gate did not decide (no "go code" - coding opens only when
+# the plan is SUBMITTED and approved) and ask nothing. See api_server.tutor_chat.
+RELEASED_BY_REVIEW = "Your plan covers what it needs to - I don't see anything missing."
+
+
 def _first_gap(covered: set) -> str:
     """The first rubric point the student has not stated, or "" when none.
 
@@ -850,6 +859,46 @@ def _new_structures(clean: list[dict]) -> set:
         return set()
     seen_before = _structures(" ".join(turns[:-1]))
     return _structures(turns[-1]) - seen_before
+
+
+# NAMED, NOT MADE (27 Oct, a TA on HW4's Cache.insert, __getitem__, __setitem__).
+# A plan saying "...then call put on that cache list" was answered "You just
+# mentioned a list. What does it start out as?" - about one of the CacheLists
+# the starter already built into every Cache. Nobody is making it, so it starts
+# out as nothing; the TA, three problems running: "My approach never mentioned
+# accessing a list." The question is for a container the student BRINGS IN.
+#
+# So a family the statement already has - in its words, or inside a class name
+# (CacheList reads as "cache list") - is left alone unless the student's own
+# words bring in a new one: "a list", "a new list", "an extra dictionary". A
+# class name spelled out ("cache list", "linked list") is a name, not a family.
+# The tutor itself still asks about state when it is missing; only the canned
+# question steps aside. Words, so free.
+_NEW_ONE = (r"\b(?:a|an|new|another|empty|own|separate|extra|second|temporary|"
+            r"temp|local|fresh)\s+(?:\w+\s+)?(?:{})\b")
+_CAMEL = re.compile(r"\b[A-Z][a-z0-9]+(?:[A-Z][a-z0-9]+)+\b")
+
+
+def _already_there(structs: set, problem: dict, said: str) -> set:
+    """Of `structs`, the families `said` only REFERS to - see above."""
+    stmt = " ".join(str(problem.get(k) or "") for k in ("title", "description"))
+    names = set(_CAMEL.findall(stmt))
+    given = _structures(stmt + " " + " ".join(
+        re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", n) for n in names))
+    # Their spelling of a class name, any spacing: CacheList, cache list, cache_list.
+    for n in names:
+        parts = re.findall(r"[A-Z][a-z0-9]+", n)
+        said = re.sub(r"\b" + r"[\s_-]*".join(parts) + r"s?\b", " ", said, flags=re.I)
+    if "list" in given:
+        said = re.sub(r"\b(?:doubly[\s-]+)?linked[\s-]+lists?\b", " ", said, flags=re.I)
+    out = set()
+    for name in structs:
+        pattern = _STRUCTURE_WORDS[name]
+        if not re.search(r"\b(?:" + pattern + r")\b", said, re.I):
+            out.add(name)               # only ever inside a class name
+        elif name in given and not re.search(_NEW_ONE.format(pattern), said, re.I):
+            out.add(name)
+    return out
 
 
 def _proposed_structures(new_structs: set, clean: list[dict]) -> set:
@@ -1274,6 +1323,12 @@ def reply(problem: dict, history: list[dict],
     if new_structs and (_states_expectation(_last_said)
                         or _states_initial_value(_last_said)):
         new_structs = set()
+    # ...and never about one the problem already has (_already_there). A fault
+    # in it falls back to asking, as before - never a broken turn.
+    try:
+        new_structs -= _already_there(new_structs, problem, _last_said)
+    except Exception:
+        pass
     if new_structs:
         # ONE MORE CHECK before this commits to a canned reply: is the student
         # actually proposing these, or did they just reject one in the same
@@ -1283,6 +1338,7 @@ def reply(problem: dict, history: list[dict],
         if proposed:
             return {"reply": _init_question(proposed), "ready": False,
                     "offtrack": False, "offtrack_reason": "",
+                    "gap": "state",
                     "questions_asked": asked + 1,
                     "min_questions": MIN_PROBING_QUESTIONS}
         # Every "new" structure this turn was rejected, not proposed - nothing
@@ -1390,6 +1446,7 @@ def reply(problem: dict, history: list[dict],
                 pass                      # malformed retry: keep the first turn
 
     gap = ""
+    trace_held = False
     try:
         if data is None:
             raise ValueError(unparsed or "no JSON")
@@ -1436,6 +1493,7 @@ def reply(problem: dict, history: list[dict],
             ready, text = False, _FALLBACK[gap]
         if ready and len(str(data.get("trace") or "").strip()) < MIN_TRACE_CHARS:
             ready = False
+            trace_held = True
             text = ("Before you write it - walk your plan through the smallest "
                     "example in the problem statement, one step at a time. What "
                     "does it give you at the end?")
@@ -1494,7 +1552,15 @@ def reply(problem: dict, history: list[dict],
     # A release and a dead end are contradictory verdicts on the same plan. The
     # release wins: it is the one the model had to produce a hand-trace for.
     flagged = offtrack and not ready
-    return {"reply": text, "ready": ready, "offtrack": flagged,
+    # WHAT THE TUTOR SAYS IS MISSING, for the server (it never reaches the
+    # student as a field). "" when the plan is released, or when the tutor holds
+    # only to meet its question floor with all four points covered - that is a
+    # probing question, not a claim that something is absent. A release refused
+    # for want of a hand-trace is a demand too: "trace". The caller puts a
+    # NON-EMPTY gap to the real gate before the student hears it - see
+    # api_server.tutor_chat.
+    held_for = "" if ready else (gap or ("trace" if trace_held else ""))
+    return {"reply": text, "ready": ready, "offtrack": flagged, "gap": held_for,
             # Never leaked outside a genuine flag - a diagnosis with nowhere to
             # aim (offtrack False) is not the page's business either way.
             "offtrack_reason": offtrack_diag if flagged else "",

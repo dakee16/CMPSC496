@@ -134,3 +134,70 @@ def test_unpacked_parts_pair_by_position():
     t = bridge._first_setups("for s in self.items:\n    name, expr = s.split('=', 1)", amb)
     u = bridge._first_setups("for line in self.items:\n    left, right = line.split('=', 1)", amb)
     assert (t["name"], t["expr"]) == (u["left"], u["right"]) and t["name"] != u["right"]
+
+
+# ── `a, b = x, y` IS `a = x` AND `b = y` (18 Oct, GPT's HW4 round 2) ─────
+# mruEvict: `retired, self.head = self.head, self.head.next` for the teacher's
+# `node = self.head` / `self.head = node.next` - correct, and "could not
+# confirm" after three model calls. The pairing read `retired` as "part 0 of
+# (self.head, self.head.next)", which pairs with nothing the teacher wrote.
+
+def test_a_name_set_from_a_tuple_of_values_pairs_with_its_own_value():
+    from main import bridge
+    amb = {"self"}
+    theirs = bridge._first_setups("retired, self.head = self.head, self.head.next", amb)
+    ours = bridge._first_setups("node = self.head\nself.head = node.next", amb)
+    assert theirs["retired"] == ours["node"], (theirs, ours)
+    # A tuple from ONE value is still split by position, as before.
+    t = bridge._first_setups("a, b = self.pair", amb)
+    assert t["a"] != t["b"] and "part 0" in t["a"], t
+
+
+def test_a_renamed_step_written_as_one_tuple_assignment_is_confirmed(grade):
+    own = WHILE["chunks"][0]["reference"].replace("counts = {}\ni = 0", "tally, i = {}, 0")
+    own = own.replace("counts", "tally")
+    assert own.startswith("tally, i = {}, 0"), own
+    r = grade(own)
+    assert (r.verdict, r.tier) == ("correct", "execution-bridged"), (r.tier, r.student_reason)
+
+
+# ── A RENAMED STEP THAT IS WRONG gets a case to trace (19 Oct, Sanan "B") ──
+# GPT's round 2, HW4 lruEvict: `discarded = self.tail` (the teacher's `node`)
+# then the wrong link. The teacher's next step reads `node`, so joined as it
+# is, it crashed on the name - a crash that is ours, never shown - and the
+# student got a bare "could not confirm" with nothing to look at. Their own
+# names swapped into the rest of the solution give the case instead. Still not
+# a verdict: a renamed step can also be right and AHEAD, which the swapped-in
+# rest of the solution would then repeat.
+
+def test_a_renamed_wrong_step_is_shown_a_case_with_its_own_names(grade):
+    wrong = RENAMED.replace("if not ch.isalpha():", "if ch.isalpha():")
+    assert wrong != RENAMED
+    r = grade(wrong)
+    assert (r.verdict, r.consume_attempt) == ("indeterminate", False), r
+    assert r.failing_cases, ("a case to trace", r.reason_code, r.student_reason)
+    assert "worth tracing" in r.student_reason, r.student_reason
+
+
+def test_an_ambiguous_pairing_shows_nothing_rather_than_a_guess():
+    """Two names set up the same way: which one the teacher's `counts` is,
+    is a guess - and a case drawn from a guess could blame a correct step."""
+    from main import bridge
+    from test_restart_reroute import PROBLEM as P
+    chunks = [{"reference": "counts = {}\nseen = {}"},
+              {"reference": "return counts"}]
+    out = bridge.renamed_failure(dict(P), "def frequency(txt):", chunks, 0,
+                                 "a = {}\nb = {}", [{"input": ["ab"], "expected": {}}],
+                                 "frequency", {"txt"})
+    assert out is None
+
+
+def test_a_renamed_step_that_hangs_is_shown_the_case_that_never_finished(grade):
+    """The whole run timing out names no case, so the tests are tried one at a
+    time - and a hang is said as a hang, not as a crash."""
+    hangs = RENAMED.replace("    if not ch.isalpha():\n        i += 1\n        continue",
+                            "    if not ch.isalpha():\n        continue")
+    assert hangs != RENAMED
+    r = grade(hangs)
+    assert r.verdict == "indeterminate" and r.failing_cases, (r.reason_code, r.student_reason)
+    assert "never finished" in r.failing_cases[0] and "crashed" not in r.failing_cases[0]

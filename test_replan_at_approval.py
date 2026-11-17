@@ -253,3 +253,91 @@ def test_a_rebuild_cut_inside_a_while_loop_is_not_served(env_unsafe):
     assert out["rerouted"] is False, out
     again, _ = _open(env)
     assert again["session_id"] == first["session_id"], "they keep the teacher's roadmap"
+
+
+# ── "THESE STEPS DON'T MATCH MY PLAN" (18 Oct, Sanan) ─────────────────────
+# GPT's audit of HW4 __contains__: an approved plan to search from the TAIL
+# reads (1 loop, 3 branches, 2 returns) - the teacher's head-first count - so
+# the router called it the same route and the student got head-first steps.
+# The student can now ask: the route is told to rebuild from their plan
+# whatever the shape check says. Same gates, same carrying of their code;
+# the same plan asked twice is answered for free.
+
+def _same_shape_plan(env):
+    from main.context import solution_body
+    from main.graphs import code_graph
+    from main import reroute
+    env.sb.rows("mt_graphs").append(
+        {"student_id": env.student, "slug": SLUG, "kind": "plan", "created_at": _stamp(),
+         "graph": code_graph(solution_body(dict(PROBLEM)), reroute.effective_header(dict(PROBLEM)))})
+
+
+def _force(env):
+    before = len(env.calls)
+    r = env.client.post("/replan", json={"slug": SLUG, "force": True})
+    assert r.status_code == 200, r.text
+    return r.json(), len(env.calls) - before
+
+
+def test_asking_rebuilds_from_the_plan_even_when_the_shape_matches(env2):
+    env = env2
+    first, _ = _open(env)
+    _same_shape_plan(env); _approve_design(env)
+    assert _replan(env) == ({"rerouted": False}, 0), "unasked, the shape check still decides"
+    out, spent = _force(env)
+    assert out["rerouted"] is True and spent > 0, out
+    assert out["session_id"] != first["session_id"]
+
+
+def test_asking_again_for_the_same_plan_costs_nothing(env2):
+    env = env2
+    _open(env)
+    _same_shape_plan(env); _approve_design(env)
+    assert _force(env)[0]["rerouted"] is True
+    again, spent = _force(env)
+    assert spent == 0, "the same plan was already rebuilt - asking again must be free"
+    assert again["rerouted"] is False and again["reason"] == "same" and again["message"], again
+
+
+def test_a_rebuild_that_comes_back_the_same_says_so(env2, monkeypatch):
+    """Built from their plan, the steps are the ones they already have: their
+    plan IS this roadmap's approach, and the page says so instead of nothing.
+    The rebuild's RESULT is faked (this fixture's own roadmap is a two-line
+    stand-in no real decomposition reproduces); the comparison and the answer
+    are the route's own."""
+    import types
+    from main import reroute, sessions
+    env = env2
+    first, _ = _open(env)
+    mine = sessions.load_session(first["session_id"])["chunks"]
+    built = []
+    monkeypatch.setattr(reroute, "build", lambda *a, **k: built.append(1) or {
+        "header": "def frequency(txt):",
+        "chunks": [types.SimpleNamespace(step_id=c["step_id"], prompt=c["prompt"],
+                                         reference=c["reference"]) for c in mine]})
+    _same_shape_plan(env); _approve_design(env)
+    out, _ = _force(env)
+    assert built and out["rerouted"] is False and out["reason"] == "same", out
+    assert "already follow" in out["message"], out
+    again, _ = _open(env)
+    assert again["session_id"] == first["session_id"], "nothing was swapped"
+    assert _force(env)[0]["reason"] == "same" and len(built) == 1, "asked again: free"
+
+
+def test_a_rebuild_that_cannot_be_served_says_why_in_the_students_terms(env_unsafe):
+    from main import reroute
+    env = env_unsafe
+    first, _ = _open(env)
+    _plan(env, _stamp()); _approve_design(env)
+    out, spent = _force(env)
+    assert spent > 0 and out["rerouted"] is False and out["reason"] == "unavailable", out
+    assert out["message"] == reroute.student_message()
+    again, _ = _open(env)
+    assert again["session_id"] == first["session_id"], "they keep the steps they had"
+
+
+def test_asking_with_no_plan_says_so_and_spends_nothing(env):
+    _open(env)
+    _approve_design(env)
+    out, spent = _force(env)
+    assert (out["rerouted"], out["reason"], spent) == (False, "no_plan", 0), out

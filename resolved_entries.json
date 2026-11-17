@@ -240,5 +240,13 @@
     ],
     "confirmed": true,
     "slug": "total"
+  },
+  "b99d448f080624b6e113815c46a3fb4bc2250bc6503c690167ad7efc02e63b34": {
+    "entry_name": "count_vowels",
+    "params": [
+      "word"
+    ],
+    "confirmed": true,
+    "slug": "count-vowels"
   }
 }

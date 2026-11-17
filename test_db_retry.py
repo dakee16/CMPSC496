@@ -67,3 +67,24 @@ def test_a_write_is_never_repeated(db):
 def test_both_live_clients_have_it(db):
     assert isinstance(db.sb.postgrest.session._transport, RetryReads)
     assert isinstance(db.other().postgrest.session._transport, RetryReads)
+
+
+def test_both_live_clients_talk_http1(monkeypatch):
+    """ONE CONNECTION PER REQUEST IN FLIGHT (30 Oct, the 15-student load test).
+    The Supabase client speaks HTTP/2 by default: every request from every
+    thread shares one connection, and under load its frames tangled - saves
+    lost ("ReadError: [Errno 11]", "deque mutated during iteration"), a read
+    that fails closed told three students their approved plan was not, and two
+    tutor turns answered 500. Measured on the live box, 20 threads mixing reads
+    and saves: HTTP/2 lost 129 of 7,200 requests over four rounds, HTTP/1.1
+    none, at the same speed."""
+    from frontend import api_server
+    from main import run_phase1
+    monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
+    monkeypatch.setenv("SUPABASE_KEY", JWT_SHAPED)
+    monkeypatch.setattr(api_server, "_SB", None)
+    monkeypatch.setattr(run_phase1, "_SB", None)
+    for sb in (api_server.get_supabase(), run_phase1._sb()):
+        inner = sb.postgrest.session._transport.inner
+        assert isinstance(inner, httpx.HTTPTransport), inner
+        assert (inner._pool._http1, inner._pool._http2) == (True, False), "HTTP/2 is back"

@@ -9,6 +9,7 @@ let sessionId = null, chunks = [], idx = 0, accepted = [], editor = null, header
 const BODY_INDENT = 4;
 // The tutor is scoped to whatever is open on the LEFT. No problem, no chat.
 let openProblem = null, chatLog = [], chatBusy = false;
+let tutorCall = null;   // {ctl, id, text} while a tutor request is being answered
 // The wrong-direction fork's own memory. `lastOfftrackReason` is the tutor's
 // OWN prior diagnosis (main/tutor.py offtrack_reason), echoed back only when
 // the student explicitly asks to try something else - never shown on screen,
@@ -223,6 +224,46 @@ async function offerRoadmapForTheirCode(code){
   }
 }
 
+/* "THESE STEPS DON'T MATCH MY PLAN" (18 Oct). Whose roadmap a student gets is
+   decided by the SHAPE of their plan - how many loops, branches and returns -
+   and a plan to search from the tail counts the same as the teacher's
+   head-first loop (GPT's audit of HW4 __contains__), so it was given the
+   teacher's steps. The student can ask instead: the same /replan, told to
+   build from their plan whatever the shape says. Every gate still applies on
+   the server, nothing changes unless a roadmap clears them, and the same plan
+   asked twice is answered without rebuilding. */
+async function rebuildFromPlan(btn){
+  if (!openProblem || !sessionId) return;
+  if (!confirm("Build new steps from your approved plan?\n\nThis can take up to a "
+      + "minute. Code you have already had accepted comes with you into the editor."))
+    return;
+  const mine = workspaceEpoch;
+  setBusy(btn, true, "Building steps from your plan\u2026");
+  show("info", "Building steps that follow your plan - this can take up to a minute.");
+  let res = null, failed = "";
+  try {
+    const r = await fetch(`${API}/replan`, {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({slug: openProblem.slug, force: true})
+    });
+    if (r.ok) res = await r.json();
+    else failed = ((await r.json().catch(() => ({}))).detail || {}).message
+                  || "Your steps are unchanged.";
+  } catch (e) { failed = "Could not reach the server. Your steps are unchanged."; }
+  setBusy(btn, false);
+  if (mine !== workspaceEpoch) return;     // another problem is open now
+  const seed = adoptRoadmap(res);
+  if (seed !== null){
+    render();
+    await loadSteps();                     // clears #msg, so it is said after
+    if (editor && seed) { editor.setValue(seed); saveDraft(); }
+    show("ok", "These steps follow the approach you described. What you had "
+             + "written is in the editor.");
+    return;
+  }
+  show("warn", (res && res.message) || failed || "Your steps are unchanged.");
+}
+
 /* Fetch the step prompts, which the server withholds until the design is
    accepted. Until then `chunks` carries empty prompts - the right count, the
    right indents, and nothing that gives the answer away. */
@@ -284,6 +325,11 @@ let designFileRef = null;
 // refresh because it belongs to a STUDENT and there is nobody to key it to yet
 // - see main/archive.py for where it goes once PSU login is live.
 let planGraph = null, planSeen = new Set();
+// The student's own words the drawing on screen was made from. Same words,
+// same drawing: no new request (27 Oct, a TA on HW4 __hash__ saw "the same
+// plan in multiple different formats" - Submit and approval each redrew it
+// with nothing new said, and each redraw came out a little different).
+let planSaid = "";
 // Refreshes run one at a time, in order, and NONE IS EVER DROPPED.
 //
 // This was a plain `planBusy` flag with `if (planBusy) return;`, which threw
@@ -348,6 +394,12 @@ async function drawPlanGraph(){
   // student was approved on - and the later the conversation goes, the less it
   // is about the plan at all, so the redraw gets worse as it gets less welcome.
   if (planFrozen || !openProblem) return;
+  // Button presses are not words: the server leaves the same two out
+  // (design_review._MARKERS).
+  const said=JSON.stringify(chatLog.concat(designLog)
+    .filter(m=>m.role==="user"&&!/^\[submitted (a design|the plan from my chat)\]$/.test(m.content))
+    .map(m=>m.content));
+  if (planGraph?.nodes?.length && said===planSaid) return;
   const drawing=workspaceEpoch;planUpdating=true;workspaceSync();
   if(!planGraph?.nodes?.length)renderGraphLoading($("planLive"),"Building your working plan…");
   try {
@@ -362,6 +414,7 @@ async function drawPlanGraph(){
     if(drawing!==workspaceEpoch||planFrozen)return;
     if (g && g.nodes && g.nodes.length){
       planGraph = g;
+      planSaid = said;
       paintPlan(g);
     }
   } catch(e){
@@ -466,6 +519,13 @@ async function uploadDesign(){
   // workable came back rejected for a step the student had already explained.
   fd.append("chat", JSON.stringify(chatLog));
   fd.append("design", designFileRef);
+  // Stop a tutor reply still being written, and hand its message to the review:
+  // see stopTutor.
+  const stopped = stopTutor();
+  if (stopped){
+    fd.append("superseded", stopped.id);
+    fd.append("latest", stopped.text);
+  }
 
   // A verdict on THIS problem's design. Approval unlocks the coding stage, so
   // a review that lands after the student opened something else would open the
@@ -537,6 +597,9 @@ async function submitPlanGraph(){
   setBusy(btn, true, "Reviewing…");
   designMsg("info", "Reading your plan and preparing your steps. This can "
                   + "take up to a minute.");
+  // A tutor reply still being written is stopped HERE, before anything slow:
+  // it must not land mid-review, and its message goes with the submit instead.
+  const stopped = stopTutor();
   try {
     // CATCH THE GRAPH UP FIRST. It is drawn in the background while the student
     // reads each reply, so the last thing they said is routinely not in it yet -
@@ -553,7 +616,9 @@ async function submitPlanGraph(){
     const r = await fetch(`${API}/design_review/plan`, {
       method: "POST", headers: {"Content-Type": "application/json"},
       body: JSON.stringify({slug: openProblem.slug, graph: planGraph,
-                            history: designLog, messages: chatLog})
+                            history: designLog, messages: chatLog,
+                            ...(stopped ? {superseded: stopped.id,
+                                           latest: stopped.text} : {})})
     });
     const data = await r.json();
     if (reviewing !== workspaceEpoch) return;
@@ -1196,6 +1261,7 @@ async function start(p){
   tutorReleased = false;
   designLog = [];
   planGraph = null;
+  planSaid = "";
   planSeen = new Set();
   planFrozen = false;
   planNudged = false;
@@ -1617,6 +1683,7 @@ function renderStepper(){
 /* Reviewing swaps the code surface for a read-only listing, so there is never
    an editor on screen that silently refuses to accept the step you are in. */
 function setReviewMode(on){
+  if (on) $("notMyPlanRow").hidden = true;
   $("codestack").hidden = on;
   $("workControls").hidden = on;
   $("reviewControls").hidden = !on;
@@ -1732,6 +1799,7 @@ async function reworkStep(i, btn){
    and Start over is where it always was. */
 function showFinished(){
   $("prompt").textContent = "";
+  $("notMyPlanRow").hidden = true;
   $("editorWrap").hidden = true;
   $("submit").style.display = "none";
   $("ctx").style.maxHeight = "none";
@@ -1795,6 +1863,7 @@ function render(){
     : "";
   $("prompt").textContent = cur ? undash(cur.prompt) : "";
   renderStepNotes(cur, idx === chunks.length - 1);
+  $("notMyPlanRow").hidden = !(cur && cur.prompt && sessionId && tutorReleased);
   $("attempts").textContent = "";
 
   const shown = renderContext();
@@ -1899,6 +1968,8 @@ function hash32(text){
   }
   return h.toString(36);
 }
+
+$("notMyPlan").onclick = () => rebuildFromPlan($("notMyPlan"));
 
 $("submit").onclick = async () => {
   const code = editor ? editor.getValue() : "";
@@ -2121,7 +2192,14 @@ function failingCasesHTML(res){
   const head = hidden > 0
     ? `Show ${cases.length} of the ${total} ${noun(total)} it failed`
     : `Show the ${total > 1 ? total + " " : ""}${noun(total)} it failed`;
-  return `<details class="failCase">
+  // WHERE IT WENT WRONG, in sight (27 Oct, a TA on HW4 put: "it doesn't make
+  // clear what went wrong" - the case sat in the closed disclosure). The last
+  // paragraph of the first case is its result: "they first differ at ...",
+  // "got stuck at ...", or expected/you gave. The program stays below.
+  const parts = String(cases[0]).split("\n\n");
+  const key = parts.length > 1 ? parts[parts.length - 1].trim() : "";
+  return `${key ? `<pre class="code failKey">${esc(key)}</pre>` : ""}
+    <details class="failCase">
       <summary>${esc(head)}</summary>
       ${cases.map(c => `<pre class="code">${esc(c)}</pre>`).join("")}
       ${hidden > 0 ? `<p class="failMore">${esc(
@@ -2434,6 +2512,37 @@ function resetChat(title){
   // The stage introduction now provides the guidance once given by a popup.
 }
 
+/* One id per tutor request, so a Submit pressed while it is still being
+   answered can say WHICH request it superseded. Opaque: the server only ever
+   compares it with what the same student sent. */
+function newCallId(){
+  return (typeof crypto !== "undefined" && crypto.randomUUID)
+    ? crypto.randomUUID()
+    : Date.now().toString(36) + Math.random().toString(36).slice(2, 12);
+}
+
+/* Stop the tutor request that is still being answered, because the student has
+   submitted their plan: the plan is judged on everything they have said, and
+   a reply to a message the verdict already covers would only land underneath it
+   as a question about a plan that was just approved (or refused).
+
+   Returns what the server needs - that request's id and the message it was
+   answering, which has not been archived yet - or null when nothing was in
+   flight. The message stays in the chat; only the reply is dropped. */
+function stopTutor(){
+  if (!tutorCall) return null;
+  const call = tutorCall;
+  tutorCall = null;
+  call.ctl.abort();
+  return {id: call.id, text: call.text};
+}
+
+/* A tutor bubble that will never get its text: the whole row goes, not just the
+   dots, or an empty "Tutor 3:04 PM" is left standing in the conversation. */
+function dropBubble(body){
+  (body.closest(".bub") || body).remove();
+}
+
 async function sendToTutor(text, extra = {}){
   // They found the chat on their own, so the tip has done its job.
   dismissCoach(true);
@@ -2458,12 +2567,17 @@ async function sendToTutor(text, extra = {}){
   chatLog.push({role: "user", content: text});
   const thinking = bubble("bot", "");
   thinking.innerHTML = '<span class="think"><i></i><i></i><i></i></span>';
+  const ctl = new AbortController();
+  tutorCall = {ctl, id: newCallId(), text};
+  const callId = tutorCall.id;
   try {
     const r = await fetch(`${API}/tutor_chat`, {
       method: "POST",
+      signal: ctl.signal,
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({
         slug: openProblem.slug,
+        call_id: callId,
         // A WINDOW, not the whole log. The server rejects a conversation past
         // MAX_TURNS*2 with "start a fresh one", and the only recovery the page
         // offered was Start over - which wipes the plan, the design and every
@@ -2492,6 +2606,8 @@ async function sendToTutor(text, extra = {}){
       chatLog.pop();                       // do not poison the next turn
       return;
     }
+    // The server dropped this reply because a Submit superseded the request.
+    if (data.discarded){ dropBubble(thinking); return; }
     renderLearningText(thinking, data.reply);
     chatLog.push({role: "assistant", content: data.reply});
     // Planning only. Once the design is approved they are implementing a plan
@@ -2519,10 +2635,14 @@ async function sendToTutor(text, extra = {}){
                   + "or upload your own drawing as a PNG, JPEG, or PDF.");
     }
   } catch (e) {
+    // Stopped by a Submit (stopTutor), not a failure: the student's message
+    // stays in the chat and the reply simply does not come.
+    if (e && e.name === "AbortError"){ dropBubble(thinking); return; }
     if (asked !== workspaceEpoch) return;
     thinking.textContent = "Could not reach the tutor. Check your connection.";
     chatLog.pop();
   } finally {
+    if (tutorCall && tutorCall.ctl === ctl) tutorCall = null;
     // Cleanup is state too: clearing chatBusy here after the student moved on
     // would free a request belonging to the workspace now open, and let a
     // second message go out under it. resetWorkspace() clears the flag for the

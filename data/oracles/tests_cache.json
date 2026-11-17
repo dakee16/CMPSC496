@@ -11415,5 +11415,137 @@
       "calls"
     ],
     "final_tests_src": "[{'input': [{2020: {'Alice': ['Developer', 'Full-time', 50000], 'Bob': ['Designer', 'Part-time', 30000]}}, 5000, 2021], 'expected': {2020: {'Alice': ['Developer', 'Full-time', 50000], 'Bob': ['Designer', 'Part-time', 30000]}, 2021: {'Alice': ['Developer', 'Full-time', 55000], 'Bob': ['Designer', 'Part-time', 35000]}}}, {'input': [{2021: {'Charlie': ['Manager', 'Full-time', 80000], 'Diana': ['Analyst', 'Full-time', 55000]}}, 10000, 2022], 'expected': {2021: {'Charlie': ['Manager', 'Full-time', 80000], 'Diana': ['Analyst', 'Full-time', 55000]}, 2022: {'Charlie': ['Manager', 'Full-time', 90000], 'Diana': ['Analyst', 'Full-time', 65000]}}}, {'input': [{2019: {'Eve': ['CTO', 'Full-time', 120000], 'Frank': ['Intern', 'Part-time', 20000]}}, 15000, 2020], 'expected': {2019: {'Eve': ['CTO', 'Full-time', 120000], 'Frank': ['Intern', 'Part-time', 20000]}, 2020: {'Eve': ['CTO', 'Full-time', 135000], 'Frank': ['Intern', 'Part-time', 35000]}}}, {'input': [{2020: {'Grace': ['Sales Lead', 'Full-time', 70000]}}, 2000, 2021], 'expected': {2020: {'Grace': ['Sales Lead', 'Full-time', 70000]}, 2021: {'Grace': ['Sales Lead', 'Full-time', 72000]}}}, {'input': [{2021: {'Hank': ['Product Owner', 'Full-time', 90000], 'Ivy': ['Marketing Specialist', 'Full-time', 45000]}}, 3000, 2022], 'expected': {2021: {'Hank': ['Product Owner', 'Full-time', 90000], 'Ivy': ['Marketing Specialist', 'Full-time', 45000]}, 2022: {'Hank': ['Product Owner', 'Full-time', 93000], 'Ivy': ['Marketing Specialist', 'Full-time', 48000]}}}, {'input': [{2022: {'Jack': ['Support Engineer', 'Full-time', 40000]}}, 2500, 2023], 'expected': {2022: {'Jack': ['Support Engineer', 'Full-time', 40000]}, 2023: {'Jack': ['Support Engineer', 'Full-time', 42500]}}}, {'input': [{2020: {'Kate': ['HR Manager', 'Full-time', 65000], 'Leo': ['Data Scientist', 'Full-time', 95000]}}, 5000, 2021], 'expected': {2020: {'Kate': ['HR Manager', 'Full-time', 65000], 'Leo': ['Data Scientist', 'Full-time', 95000]}, 2021: {'Kate': ['HR Manager', 'Full-time', 70000], 'Leo': ['Data Scientist', 'Full-time', 100000]}}}, {'input': [{2018: {'Mia': ['UX Researcher', 'Part-time', 35000], 'Nina': ['Content Writer', 'Full-time', 40000]}}, 7000, 2019], 'expected': {2018: {'Mia': ['UX Researcher', 'Part-time', 35000], 'Nina': ['Content Writer', 'Full-time', 40000]}, 2019: {'Mia': ['UX Researcher', 'Part-time', 42000], 'Nina': ['Content Writer', 'Full-time', 47000]}}}, {'input': [{2021: {'Oscar': ['DevOps Engineer', 'Full-time', 85000], 'Paul': ['QA Tester', 'Part-time', 30000]}}, 6000, 2022], 'expected': {2021: {'Oscar': ['DevOps Engineer', 'Full-time', 85000], 'Paul': ['QA Tester', 'Part-time', 30000]}, 2022: {'Oscar': ['DevOps Engineer', 'Full-time', 91000], 'Paul': ['QA Tester', 'Part-time', 36000]}}}, {'input': [{2020: {'Quinn': ['Business Analyst', 'Full-time', 75000]}}, 8000, 2021], 'expected': {2020: {'Quinn': ['Business Analyst', 'Full-time', 75000]}, 2021: {'Quinn': ['Business Analyst', 'Full-time', 83000]}}}]"
+  },
+  "b99d448f080624b6e113815c46a3fb4bc2250bc6503c690167ad7efc02e63b34": {
+    "final_tests": [
+      {
+        "input": [
+          "banana"
+        ],
+        "expected": 3
+      },
+      {
+        "input": [
+          "Apple"
+        ],
+        "expected": 2
+      },
+      {
+        "input": [
+          "rhythm"
+        ],
+        "expected": 0
+      },
+      {
+        "input": [
+          ""
+        ],
+        "expected": 0
+      },
+      {
+        "input": [
+          "a"
+        ],
+        "expected": 1
+      },
+      {
+        "input": [
+          "b"
+        ],
+        "expected": 0
+      },
+      {
+        "input": [
+          "AEIOU"
+        ],
+        "expected": 5
+      },
+      {
+        "input": [
+          "aeiou"
+        ],
+        "expected": 5
+      },
+      {
+        "input": [
+          "xyz"
+        ],
+        "expected": 0
+      },
+      {
+        "input": [
+          "Hello World"
+        ],
+        "expected": 3
+      },
+      {
+        "input": [
+          "Umbrella"
+        ],
+        "expected": 3
+      },
+      {
+        "input": [
+          "Python"
+        ],
+        "expected": 1
+      },
+      {
+        "input": [
+          "Supercalifragilisticexpialidocious"
+        ],
+        "expected": 16
+      }
+    ],
+    "strong": true,
+    "kill_rate": 1.0,
+    "kill_rate_direct": 1.0,
+    "status": "strong",
+    "needs_review": false,
+    "undetermined": 0,
+    "kill_rate_lower": 1.0,
+    "kill_rate_upper": 1.0,
+    "validated_at": "2026-11-06T20:33:12+00:00",
+    "breakdown": {
+      "total_mutants": 7,
+      "killed": 7,
+      "killed_on_retry": 0,
+      "proven_equivalent": 0,
+      "unresolved": 0,
+      "mutants": [
+        {
+          "label": "line 12: remove `count = 0`",
+          "status": "killed"
+        },
+        {
+          "label": "line 13: remove `for ch in word:`",
+          "status": "killed"
+        },
+        {
+          "label": "line 16: remove `return count`",
+          "status": "killed"
+        },
+        {
+          "label": "line 12: 0 -> 1",
+          "status": "killed"
+        },
+        {
+          "label": "line 14: in -> not in",
+          "status": "killed"
+        },
+        {
+          "label": "line 15: += -> -=",
+          "status": "killed"
+        },
+        {
+          "label": "line 15: 1 -> 2",
+          "status": "killed"
+        }
+      ]
+    },
+    "slug": "count-vowels",
+    "features": [
+      "calls"
+    ]
   }
 }

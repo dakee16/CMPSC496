@@ -178,6 +178,38 @@ def body_span(problem: dict, total: int) -> tuple[int, int] | None:
     return (a, b) if 0 <= a <= b <= total else None
 
 
+def _stripped(lines: list[str]) -> list[str]:
+    return [ln.rstrip() for ln in lines]
+
+
+def _method_span(lines: list[str], problem: dict) -> tuple[int, int] | None:
+    """Where this method's body sits in `lines`, found by its class and name -
+    after the docstring, end-exclusive - or None. For a problem whose stored
+    split no longer matches the file being rebuilt (it was edited alone)."""
+    import ast
+    try:
+        tree = ast.parse("\n".join(lines))
+    except SyntaxError:
+        return None
+    name = (problem.get("entry_hint") or "").strip()
+    cls = (problem.get("group_title") or "").strip()
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.ClassDef) and (not cls or node.name == cls)):
+            continue
+        fn = next((n for n in node.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+                   and n.name == name), None)
+        if fn is None or not fn.body:
+            continue
+        first = fn.body[0]
+        if (isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant)
+                and isinstance(first.value.value, str)):
+            if len(fn.body) == 1:
+                return None
+            first = fn.body[1]                 # the docstring stays: it is the statement
+        return (first.lineno - 1, fn.end_lineno)
+    return None
+
+
 # The teacher's own plumbing: the block markers main/assignments.py reads the
 # file with. `# --- steps: push, pop, peek ---` tells a student which methods
 # are graded and which are scaffolding, which is not theirs to know, and
@@ -348,6 +380,14 @@ def build_handback(problems: list[dict], answers: dict,
         if not answered and not blank_unanswered:
             continue                      # keep the teacher's body
         span = body_span(p, total)
+        if span is not None and _stripped(lines[span[0]:span[1]]) != _stripped(solution_body_lines(p)):
+            # NOT THIS PROBLEM'S BODY AT ITS STORED PLACE (18 Oct): it was edited
+            # on its own (the review page), so its copy of the file no longer
+            # lines up with the copy `lines` was rebuilt from. Found by name in
+            # the file we actually have, measured on the same pristine text.
+            span = _method_span(lines, p)
+        elif span is None and p.get("context_prefix"):
+            span = _method_span(lines, p)
         if span is None:
             # NO CONTEXT, so there is no hole in the rebuilt module to splice
             # into - this problem is a plain function sitting beside the class,
@@ -384,6 +424,19 @@ def build_handback(problems: list[dict], answers: dict,
             raise HandbackUnsafe(
                 f"could not blank '{p.get('slug')}' - refusing to serve a "
                 f"starter file that still contains a reference solution")
+
+    if blank_unanswered:
+        # NO ANSWER LEFT IN, however it was placed: every unfinished problem's
+        # own body must be gone. A span that pointed somewhere else would
+        # otherwise be a quiet disclosure in a file titled "left blank for you".
+        text = "\n".join(_stripped(lines))
+        for p in problems:
+            body = _stripped(solution_body_lines(p))
+            if p.get("slug") not in answers and len([b for b in body if b]) >= 2 \
+                    and "\n".join(body) in text:
+                raise HandbackUnsafe(
+                    f"could not blank '{p.get('slug')}' - refusing to serve a "
+                    f"starter file that still contains a reference solution")
 
     all_slugs = {p.get("slug") for p in problems}
     filled = sorted(s for s in answers if s not in revealed_slugs)

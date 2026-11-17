@@ -114,3 +114,44 @@ def test_an_ordinary_correct_answer_is_untouched(grade):
     res = grade(STEPS[0]["reference"])
     assert res.verdict == "correct", (res.reason_code, res.student_reason)
     assert res.tier == "execution-reference", res.tier
+
+
+def test_a_block_opened_on_the_last_line_is_named_as_empty(grade):
+    """GPT's audit of HW4 __contains__ (15 Oct): `probe = self.tail` then
+    `while probe is not None:` as the whole answer was told "The line above it
+    opens a block, so the line under it has to sit further in" - about an
+    assignment. Python points at the opener itself when nothing follows it."""
+    res = grade("counts = {}\nfor value in d.values():", "stu-dangling")
+    assert res.reason_code == "indentation_error", (res.reason_code, res.student_reason)
+    said = res.student_reason
+    assert "line 2" in said.lower() and "for value in d.values():" in said, said
+    assert "nothing" in said, said
+    assert "line above it opens a block" not in said, said
+
+
+def test_a_line_left_out_of_a_block_is_still_told_to_move_in(grade):
+    """The case the old advice was written for must keep it."""
+    res = grade("counts = {}\nfor value in d.values():\ncounts[value] = 1", "stu-under")
+    assert res.reason_code == "indentation_error", (res.reason_code, res.student_reason)
+    assert "line 3" in res.student_reason and "has to sit further in" in res.student_reason
+
+
+@pytest.mark.parametrize("label,code", [
+    ("pass", "pass"),
+    ("ellipsis", "..."),
+    ("pass with a comment", "# do this later\npass"),
+    ("pass twice", "pass\npass"),
+])
+def test_a_placeholder_alone_is_named_as_no_code(grade, label, code):
+    """GPT's audit of HW4 put (15 Oct): `pass` for the guard step ran, a later
+    loop never stopped, and the student was told about a loop. Said as what
+    it is - but only once the run that accepts a `pass` whose work an earlier
+    step already did has failed (that case: test_step_seating)."""
+    res = grade(code, "stu-ph-" + label.replace(" ", "-"))
+    assert (res.verdict, res.reason_code) == ("incorrect", "placeholder_only"), (label, res)
+    assert "no code" in res.student_reason and "pass" in res.student_reason, res.student_reason
+
+
+def test_a_placeholder_beside_real_code_is_graded_as_code(grade):
+    res = grade("counts = {}\npass", "stu-ph-real")
+    assert res.reason_code != "placeholder_only", res
