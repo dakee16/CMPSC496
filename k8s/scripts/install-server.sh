@@ -38,6 +38,12 @@ export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
 # kubectl for the login user too, so deploy.sh runs without sudo.
 install -d -m 0700 -o "$TARGET_USER" "$TARGET_HOME/.kube"
 install -m 0600 -o "$TARGET_USER" /etc/rancher/k3s/k3s.yaml "$TARGET_HOME/.kube/config"
+# A freshly started k3s takes a few seconds to register its node, and
+# `kubectl wait --all` on zero nodes fails at once ("no matching resources").
+for _ in $(seq 1 60); do
+    [ -n "$(kubectl get nodes -o name 2>/dev/null)" ] && break
+    sleep 5
+done
 kubectl wait --for=condition=Ready node --all --timeout=300s
 
 step "Traefik settings (long teacher uploads, real client IPs)"
