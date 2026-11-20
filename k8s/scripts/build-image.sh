@@ -25,7 +25,22 @@ if [ -n "${REGISTRY:-}" ]; then
     docker push "$IMAGE"
 else
     echo "==> importing into k3s"
-    docker save "$IMAGE" | sudo k3s ctr images import -
+    # Saved to a file so a failed import can be retried without re-saving.
+    # containerd sometimes fails to unmount its temporary extract mount
+    # ("device or resource busy"); the same import succeeds on a retry.
+    tarball="$(mktemp "${TMPDIR:-/tmp}/acadia-image.XXXXXX.tar")"
+    trap 'rm -f "$tarball"' EXIT
+    docker save "$IMAGE" -o "$tarball"
+    imported=
+    for attempt in 1 2 3 4 5; do
+        if sudo k3s ctr images import "$tarball"; then
+            imported=1
+            break
+        fi
+        echo "    import attempt $attempt failed; retrying in 5s" >&2
+        sleep 5
+    done
+    [ -n "$imported" ] || { echo "FATAL: could not import $IMAGE into k3s" >&2; exit 1; }
 fi
 
 mkdir -p k8s/secrets
