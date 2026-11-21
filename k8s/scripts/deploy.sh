@@ -26,6 +26,11 @@ IMAGE="${IMAGE:-$(cat "$SECRETS/last-image" 2>/dev/null || true)}"
 OVERLAY="${OVERLAY:-test}"
 TLS_ISSUER="${TLS_ISSUER:-selfsigned}"
 
+# k3s's kubectl falls back to /etc/rancher/k3s/k3s.yaml, which only root can
+# read. install-server.sh puts the user's copy in ~/.kube/config; use it.
+if [ -z "${KUBECONFIG:-}" ] && [ -r "$HOME/.kube/config" ]; then
+    export KUBECONFIG="$HOME/.kube/config"
+fi
 command -v kubectl >/dev/null || fail "kubectl not found - run k8s/scripts/install-server.sh"
 [ -n "$IMAGE" ] || fail "no image - run k8s/scripts/build-image.sh first"
 [ -n "${ACADIA_HOST:-}" ] || fail "ACADIA_HOST is unset - see k8s/deploy.env.example"
