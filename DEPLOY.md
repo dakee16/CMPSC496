@@ -1,4 +1,7 @@
-# Deploying MicroTutor on AWS Lightsail
+# Deploying MicroTutor on a single VM
+
+Target: one Ubuntu VM with **1 vCPU and 2 GB RAM**. Nothing here is tied to
+a cloud provider - any VM with Docker and a public IP works.
 
 Two containers on one box: the app, and Caddy in front of it holding TLS and
 the network fence. `docker-compose.yml` runs both.
@@ -20,35 +23,56 @@ Measured, not guessed:
 
 ```
 app idle ..............  90 MB
-student subprocess ....  up to 512 MB   (main/execution.py:54, RLIMIT_AS)
+caddy .................  ~30 MB
+student subprocess ....  up to 256 MB each   (main/execution.py, RLIMIT_AS)
 real data on disk .....  ~100 KB
 ```
 
-Grading subprocesses run sequentially per request, so the variable is concurrent
-students. **4 GB** covers a lab section comfortably. Disk and bandwidth are
-irrelevant on any plan.
+The variable is concurrent students, and on 2 GB it has to be BOUNDED, not
+hoped about. Grading runs on FastAPI's thread pool, so without a cap a burst of
+submissions starts dozens of student processes at once and the OOM killer takes
+the whole app down. `main/execution.py` therefore admits at most
+`MICROTUTOR_EXEC_CONCURRENCY` (default **2**) student programs at a time; the
+rest queue for up to `MICROTUTOR_EXEC_QUEUE_WAIT` seconds (default 30). A
+submission that times out in the queue is reported as a server error, never as
+a failed attempt, so the student just resubmits.
 
-## 1. Create the instance
+Worst case is therefore roughly 90 + 30 + 2 x 256 MB, well inside 2 GB. Each
+run is capped at 5 CPU-seconds, so on one vCPU a queued student waits seconds,
+not minutes. Raise the cap only after giving the VM more RAM and cores:
 
-Lightsail console → **Create instance**:
+| Knob (in `.env`) | Default | What it bounds |
+|---|---|---|
+| `MICROTUTOR_EXEC_CONCURRENCY` | 2 | student programs running at once |
+| `MICROTUTOR_EXEC_MEM_MB` | 256 | address space of ONE student program |
+| `MICROTUTOR_EXEC_QUEUE_WAIT` | 30 | seconds a submission waits for a slot |
 
-- Platform **Linux/Unix**, blueprint **OS Only → Ubuntu 22.04 LTS** (or 24.04)
-- Plan: the **4 GB** tier
-- Create, then **Networking → attach a static IP**. Without this the address
-  changes whenever the instance stops, and your DNS record goes stale.
+## 1. Prepare the VM
 
-Then **Networking → IPv4 Firewall**, add:
-
-| Application | Port |
-|---|---|
-| SSH | 22 |
-| HTTP | 80 |
-| HTTPS | 443 |
+- **Ubuntu 22.04 or 24.04 LTS**, 1 vCPU / 2 GB.
+- A **stable public IP** (a static/reserved address). If it changes, the DNS
+  record goes stale and the certificate stops renewing.
+- Inbound firewall (provider security group and/or `ufw`) open on **22, 80,
+  443**.
 
 **Leave 80 open to the whole internet.** The Let's Encrypt challenge comes from
-their validation servers, not from campus. Restricting 80 to PSU ranges lets the
-certificate issue once and then silently fail to renew ~60 days later. The
-network fence belongs in `Caddyfile`, not in the firewall.
+their validation servers, not from campus. Restricting 80 lets the certificate
+issue once and then silently fail to renew ~60 days later.
+
+**Add swap.** 2 GB has no headroom for a `docker compose build` plus a running
+app, and swap turns a brief memory spike into slowness instead of a killed
+process:
+
+```bash
+sudo fallocate -l 2G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+echo 'vm.swappiness=10' | sudo tee /etc/sysctl.d/99-swappiness.conf
+sudo sysctl --system
+free -h          # Swap: 2.0Gi
+```
 
 ## 2. Install Docker
 
@@ -88,8 +112,10 @@ SUPABASE_KEY                anon key
 OPENAI_API_KEY              sk-...
 MICROTUTOR_ENV              production
 MICROTUTOR_ALLOWED_DOMAINS  psu.edu
+MICROTUTOR_ALLOWED_EMAILS   the class roster, comma-separated (see step 7)
+MICROTUTOR_INSTRUCTOR_EMAILS  instructors (also listed in ALLOWED_EMAILS)
 MICROTUTOR_DOMAIN           acadiapsu.com
-MICROTUTOR_ALLOWED_CIDRS    (leave empty until PSU IT sends the ranges)
+MICROTUTOR_ALLOWED_CIDRS    leave empty (see step 7)
 ```
 
 Generate a **fresh** session secret; do not reuse the local one.
@@ -139,22 +165,29 @@ docker compose logs caddy | tail -20
 If every request logs `172.x.x.x`, Caddy is matching the Docker bridge and the
 allowlist would be meaningless - fix that before narrowing `MICROTUTOR_ALLOWED_CIDRS`.
 
-## 7. Lock it to the PSU network
+## 7. Restrict who can get in
 
-Ask PSU IT for the VPN's **egress** ranges (what the outside world sees when a
-student is on the VPN - not the campus wired blocks). Then:
+Access is gated by the **roster**, not by network. `MICROTUTOR_ALLOWED_EMAILS`
+(`main/auth.py`) is checked on registration, on sign-in, and on every request
+carrying a cookie; anyone not on it gets the not-authorized page, and removing
+an address cuts off an existing session on its next request. That does not care
+where a student is sitting, which a VPN allowlist does.
+
+**Set the roster before you hand out the URL.** Left empty, the old rule
+applies: any address *ending with* `psu.edu` may register (`main/auth.py:122`),
+with no confirmation email - so on a public URL anyone can create an account and
+reach `main/execution.py`, which states plainly that it is a hardened harness,
+not a secure sandbox.
 
 ```bash
-nano .env      # MICROTUTOR_ALLOWED_CIDRS=128.118.0.0/16 146.186.0.0/16
+nano .env      # MICROTUTOR_ALLOWED_EMAILS=abc123@psu.edu,def456@psu.edu,...
 docker compose up -d
 ```
 
-Test from off-VPN: you should get the 403 naming the VPN, not a timeout.
-
-This matters more than it looks. Registration checks only that an address *ends
-with* `psu.edu` (`main/auth.py:122`) - there is no confirmation email - so on a
-public URL anyone can create an account and reach `main/execution.py`, which
-states plainly that it is a hardened harness, not a secure sandbox.
+The Caddy network fence is still there and defaults to "allow everything". If
+you later also want to narrow by network, set `MICROTUTOR_ALLOWED_CIDRS` to PSU
+VPN **egress** ranges (from PSU IT) and check first that the Caddy logs show
+real client IPs (step 6). It is optional, not a substitute for the roster.
 
 ## Shipping a change
 
@@ -210,12 +243,16 @@ git log --oneline -5                       # find the last good commit
 git checkout <sha> && docker compose up -d --build
 ```
 
-If that is not enough - a wrecked volume, a bad data migration - restore the
-Lightsail snapshot instead. Which is why the snapshot is taken BEFORE anything
+If that is not enough - a wrecked volume, a bad data migration - restore a VM
+snapshot / disk backup instead (whatever your provider offers). Which is why the snapshot is taken BEFORE anything
 risky, not after.
 
 ## Operational notes
 
+- **Student programs are queued, not unbounded.** At most
+  `MICROTUTOR_EXEC_CONCURRENCY` run at once (see Sizing). If students report
+  "server busy" during a lab, the box is the bottleneck: give it more RAM/CPU
+  and raise the cap, rather than raising the cap alone.
 - **One worker, deliberately** (`start.sh`). `prepare_bus.py`, the per-account
   brute-force counter (`auth.py:294`) and the trace ring are process-local and
   wrong with a second worker. Scale up, not out; scaling out means moving those

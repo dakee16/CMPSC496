@@ -20,6 +20,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 
 from .context import SEQ_ENTRY
 from .pyvalue import SOURCE as _PYVALUE_SRC, dumps as _dumps, loads as _loads
@@ -55,8 +56,31 @@ _MAX_OUTPUT_BYTES = 4 * 1024 * 1024
 # Problems whose oracle results exceed the cap are UNSUPPORTED rather than a
 # reason to weaken limits for everyone.
 _DEFAULT_TIMEOUT = 6.0
-_MEM_BYTES = 512 * 1024 * 1024
 _CPU_SECONDS = 5
+
+
+def _env_int(name: str, default: int) -> int:
+    try:
+        return max(1, int(os.environ.get(name, default)))
+    except ValueError:
+        return default
+
+
+# Sized for the single small server (1 vCPU / 2 GB). RLIMIT_AS is a ceiling on
+# ONE child's address space; 256 MB is far above what a homework solution needs
+# and keeps two runaway children well inside RAM. Raise it only with the box.
+_MEM_BYTES = _env_int("MICROTUTOR_EXEC_MEM_MB", 256) * 1024 * 1024
+
+# How many student programs may run AT ONCE across the whole process. Sync
+# routes run on FastAPI's thread pool (~40 threads), so without this a burst of
+# submissions starts up to 40 children at _MEM_BYTES each and the kernel's OOM
+# killer takes the whole app down. Extra submissions wait their turn instead.
+_MAX_CONCURRENT = _env_int("MICROTUTOR_EXEC_CONCURRENCY", 2)
+_SLOTS = threading.BoundedSemaphore(_MAX_CONCURRENT)
+# A queued submission gives up after this long. That is reported as
+# harness_error - OUR capacity, not the student's code - so it never consumes
+# an attempt; the student simply retries.
+_QUEUE_WAIT_SECONDS = float(os.environ.get("MICROTUTOR_EXEC_QUEUE_WAIT", "30"))
 
 
 # OUR module-level helpers, spliced into the program next to the student's
@@ -371,10 +395,16 @@ def run_student_code(code: str, inputs: list, entry_name: str | None = None,
         # hostile ambient environment; there isn't one to defend against.
         # -P (no cwd on sys.path) and -s (no user site-packages) are the halves
         # that actually isolate, and both are kept.
-        proc = subprocess.run(
-            [sys.executable, "-P", "-s", "-S", "-c", _STUDENT_HARNESS, payload_path],
-            capture_output=True, text=True, timeout=timeout,
-            cwd=workdir, env=_sanitized_env(), stdin=subprocess.DEVNULL)
+        if not _SLOTS.acquire(timeout=_QUEUE_WAIT_SECONDS):
+            return ("harness_error", [],
+                    f"server busy: no execution slot within {_QUEUE_WAIT_SECONDS:g}s")
+        try:
+            proc = subprocess.run(
+                [sys.executable, "-P", "-s", "-S", "-c", _STUDENT_HARNESS, payload_path],
+                capture_output=True, text=True, timeout=timeout,
+                cwd=workdir, env=_sanitized_env(), stdin=subprocess.DEVNULL)
+        finally:
+            _SLOTS.release()
     except subprocess.TimeoutExpired:
         return "timeout", [], f"exceeded {timeout}s"
     except Exception as e:                       # our failure, not the student's
